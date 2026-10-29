@@ -1,0 +1,81 @@
+# Local dev only (prod is docker-compose.prod.yml, deployed by Coolify).
+#
+# Unlike the other NS repos this does not use the shared tbc-localdev-infra stack: fundlens
+# needs Postgres 18 (the shared one is 17) and an S3 stand-in, and a fresh clone has to come
+# up with nothing but Docker and go-task. Nothing joins the shared `proxy` network, so the
+# service names are private to this project's default network and `app` cannot collide with
+# another repo's DNS alias. No published ports either: every task runs through
+# `docker compose exec app`.
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    # The whole repo (which covers src/, sql/, resolution/ and tests/), so edits are live and
+    # `uv add` / `uv lock` write pyproject.toml and uv.lock back to the host.
+    volumes:
+      - .:/app
+      # Hide a host IDE venv; dependencies live in the image's system Python.
+      - /app/.venv
+      - data:/data/fundlens
+    # Literal, and deliberately only what CI will set: the process environment is all the
+    # suite sees. No `env_file` for the same reason. The credentials are throwaway ones for the
+    # Postgres and MinIO defined below, reachable only on this project's network, so there is no
+    # real secret to interpolate from `.env`.
+    environment:
+      DATABASE_URL: "postgresql://fundlens:fundlens@postgres:5432/fundlens"
+      R2_ENDPOINT: "http://minio:9000"
+      R2_ACCESS_KEY_ID: "fundlens"
+      R2_SECRET_ACCESS_KEY: "fundlens-dev-secret"
+      DATA_DIR: "/data/fundlens"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "fundlens", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Probe every second until the first pass, so `task up` (`up --wait`) isn't held for a
+      # full interval on every start.
+      start_period: 30s
+      start_interval: 1s
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: fundlens
+      POSTGRES_PASSWORD: fundlens
+      POSTGRES_DB: fundlens
+    # Postgres 18's image keeps PGDATA in a versioned subdirectory and expects the volume at
+    # /var/lib/postgresql, not /var/lib/postgresql/data.
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fundlens -d fundlens"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # R2 stand-in: the same boto3 client, with R2_ENDPOINT pointed here. Chainguard's build,
+  # because MinIO no longer publishes images to Docker Hub or quay.io.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: fundlens
+      MINIO_ROOT_PASSWORD: fundlens-dev-secret
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  data:
+  postgres:
+  minio:

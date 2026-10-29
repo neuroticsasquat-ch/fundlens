@@ -19,7 +19,7 @@ The ~2025 attempt failed on cost (per-execution Azure billing) and data quality 
 |---|---|
 | Shape | Batch ELT on one machine; no queues, no workers, no managed DB (ADR-0001). One scheduled job rebuilds one cycle and republishes. |
 | Storage of record | Cloudflare R2 holds bronze, silver, resolution snapshots and the public dataset; the box's NVMe is a cache (ADR-0002). Storage Box keeps pg_dump only. |
-| Repo | One public MIT repo `tomboone/fundlens`: Python package `fundlens` (pipeline + API, one image, per-service entrypoints) and `frontend/` (SPA) (ADR-0003). |
+| Repo | One public MIT repo `neuroticsasquat-ch/fundlens`: Python package `fundlens` (pipeline + API, one image, per-service entrypoints) and `frontend/` (SPA) (ADR-0003). |
 | Runner | v1 runs on the Hetzner Robot box `music-box-dancer` under Coolify. Every step reads/writes R2 so it can move to an ephemeral Hetzner Cloud runner later with no code change. Full-rebuild wall time is measured and recorded (§10.6). |
 | Transforms | Plain SQL files under `sql/` executed by a thin Python runner over DuckDB, parameterized by cycle. No dbt. |
 | Itemized detail | Served from silver Parquet by in-process DuckDB inside the API; only aggregates and search live in Postgres (ADR-0006). |
@@ -303,7 +303,7 @@ Snapshots are weekly after the Sunday run; the last 8 are kept. The README state
 
 ### 10.1 Coolify
 
-One Coolify project `fundlens` on `music-box-dancer`, compose resource from `tomboone/fundlens` `main`, `docker-compose.prod.yml` (port from upmovies: `build: {context: ., target: prod}`, `${VAR:-default}` fallbacks seeded once — see `reference_coolify_compose_env_seed`), "Source commit availability: available during build" on, domain `api.fundlens.org` on `api`. Env: `DATABASE_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BUCKET`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN` (purge only), `DEEPINFRA_API_KEY`, `ADJUDICATE_MODEL`, `SENTRY_DSN` (Bugsink), `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES` (literal, `service.name=fundlens-api` / `fundlens-pipeline`), `KUMA_PUSH_WEEKLY`, `KUMA_PUSH_PUBLISH`, `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS`, `DATA_DIR`. Postgres: `shared_buffers=4GB`, `work_mem=256MB`, `maintenance_work_mem=2GB`, `max_wal_size=4GB` via `command:` flags.
+One Coolify project `fundlens` on `music-box-dancer`, compose resource from `neuroticsasquat-ch/fundlens` `main`, `docker-compose.prod.yml` (port from upmovies: `build: {context: ., target: prod}`, `${VAR:-default}` fallbacks seeded once — see `reference_coolify_compose_env_seed`), "Source commit availability: available during build" on, domain `api.fundlens.org` on `api`. Env: `DATABASE_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BUCKET`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN` (purge only), `DEEPINFRA_API_KEY`, `ADJUDICATE_MODEL`, `SENTRY_DSN` (Bugsink), `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES` (literal, `service.name=fundlens-api` / `fundlens-pipeline`), `KUMA_PUSH_WEEKLY`, `KUMA_PUSH_PUBLISH`, `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS`, `DATA_DIR`. Postgres: `shared_buffers=4GB`, `work_mem=256MB`, `maintenance_work_mem=2GB`, `max_wal_size=4GB` via `command:` flags.
 
 ### 10.2 Cloudflare
 

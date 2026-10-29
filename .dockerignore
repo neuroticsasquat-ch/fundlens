@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.git
+.gitignore
+.venv
+.env
+.idea
+node_modules
+frontend/
+docs/

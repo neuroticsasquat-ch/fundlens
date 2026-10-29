@@ -1,0 +1,103 @@
+version: '3'
+
+# No `infra:` include: fundlens brings its own Postgres 18 and MinIO in docker-compose.yml
+# rather than using the shared tbc-localdev-infra stack (see the comment there), so `up` has
+# no `task: infra:up` step.
+
+vars:
+  COMPOSE: docker compose
+  SVC: app
+  EXEC: "{{.COMPOSE}} exec {{.SVC}}"
+
+tasks:
+  up:
+    desc: Start app, Postgres and MinIO (waits until they are healthy)
+    # `--wait`, unlike the CONVENTIONS `up -d`: the integration tests need Postgres and MinIO
+    # accepting connections, and `task up && task test` on a fresh clone would otherwise race them.
+    cmds:
+      - "{{.COMPOSE}} up -d --wait"
+  down:
+    desc: Stop the stack (volumes are kept)
+    cmds:
+      - "{{.COMPOSE}} down"
+  restart:
+    desc: Restart the app container
+    cmds:
+      - "{{.COMPOSE}} restart {{.SVC}}"
+  build:
+    desc: Rebuild the dev image (installs uv.lock) and recreate the containers
+    cmds:
+      - "{{.COMPOSE}} build"
+      - "{{.COMPOSE}} up -d --wait"
+  logs:
+    desc: Follow app logs
+    cmds:
+      - "{{.COMPOSE}} logs -f {{.SVC}}"
+  shell:
+    desc: Open a bash shell inside the app container
+    cmds:
+      - "{{.EXEC}} bash"
+  ps:
+    desc: Show compose service status
+    cmds:
+      - "{{.COMPOSE}} ps"
+
+  # `--no-sync` on all three: the image is where dependencies get installed, and
+  # `uv remove`'s sync is exact without the `dev` extra, so it would strip pytest, ruff and
+  # pyright out of the running container. The change lands with `task build`.
+  deps:add:
+    desc: 'Add a dependency (task deps:add -- <pkg>), then `task build`'
+    cmds:
+      - "{{.EXEC}} uv add --no-sync {{.CLI_ARGS}}"
+  deps:add-dev:
+    desc: 'Add a dev dependency (task deps:add-dev -- <pkg>), then `task build`'
+    # Dev tools live in the `dev` optional extra, not a dependency group, so `--optional dev`
+    # rather than `--dev`.
+    cmds:
+      - "{{.EXEC}} uv add --no-sync --optional dev {{.CLI_ARGS}}"
+  deps:remove:
+    desc: 'Remove a dependency (task deps:remove -- <pkg>; add `--optional dev` for a dev one), then `task build`'
+    cmds:
+      - "{{.EXEC}} uv remove --no-sync {{.CLI_ARGS}}"
+  deps:lock:
+    desc: Re-resolve uv.lock after a pyproject.toml change (then `task build`)
+    # A throwaway container with the repo mounted, so the lockfile lands on the host whether
+    # or not the app service is running (or can even build, when the lock is what's broken).
+    cmds:
+      - docker run --rm -v "$PWD":/app -w /app ghcr.io/astral-sh/uv:python3.13-bookworm-slim uv lock {{.CLI_ARGS}}
+
+  db:migrate:
+    desc: Apply Alembic migrations to the `app` schema
+    # Alembic and migrations/ arrive with the `app` schema ticket (NEU-2031); until then this
+    # fails with "alembic: not found".
+    cmds:
+      - "{{.EXEC}} alembic upgrade head"
+
+  test:
+    desc: Run the whole pytest suite (task test -- <path> for one file)
+    cmds:
+      - "{{.EXEC}} pytest {{.CLI_ARGS}}"
+  test:unit:
+    desc: Run only the unit tests
+    cmds:
+      - "{{.EXEC}} pytest tests/unit {{.CLI_ARGS}}"
+  test:integration:
+    desc: Run only the integration tests (needs Postgres and MinIO up)
+    cmds:
+      - "{{.EXEC}} pytest tests/integration {{.CLI_ARGS}}"
+  lint:
+    desc: Run ruff check
+    cmds:
+      - "{{.EXEC}} ruff check src tests"
+  format:
+    desc: Run ruff format
+    cmds:
+      - "{{.EXEC}} ruff format src tests"
+  format:check:
+    desc: Check ruff formatting without writing
+    cmds:
+      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests"}}'
+  typecheck:
+    desc: Run pyright (strict) over src and tests
+    cmds:
+      - "{{.EXEC}} pyright src tests"
