@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  # Every PR whatever its base, so Dependabot's PRs into updates/dependencies are tested too.
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # The job name is the required status check in scripts/github-rulesets.sh; rename both together.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to the exact tag: setup-task publishes no floating major tag.
+      - uses: arduino/setup-task@v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The same stack as local dev: the dev image built from uv.lock, plus the Postgres 18 and
+      # MinIO services from docker-compose.yml. Compose rather than Actions `services:`, which
+      # cannot pass MinIO its `server /data` command, and so the two environments can't drift.
+      - name: Build the dev image and start the stack
+        run: task build
+
+      # The Taskfile targets the pre-commit hooks call, so CI and the hooks check the same thing.
+      - name: Lint
+        run: task lint
+
+      - name: Format check
+        run: task format:check
+
+      - name: Typecheck
+        run: task typecheck
+
+      - name: Test (unit + integration)
+        run: task test
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
