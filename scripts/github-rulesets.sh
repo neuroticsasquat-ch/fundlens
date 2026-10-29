@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates the long-lived updates/dependencies branch and the repository's three rulesets, or
 # brings them back in line with this file. The rulesets are the NS-repo standard, copied from
-# tvbf-backend, plus the required CI check on main.
+# tvbf-backend, plus the required CI checks on main.
 #
 #   scripts/github-rulesets.sh [owner/repo]     # default: neuroticsasquat-ch/fundlens
 #
@@ -17,9 +17,10 @@ set -euo pipefail
 
 REPO="${1:-neuroticsasquat-ch/fundlens}"
 DEPS_BRANCH="updates/dependencies"
-# The `test` job in .github/workflows/ci.yml; 15368 is the GitHub Actions app, so only a run of
-# that workflow can satisfy the check.
-CI_CHECK="test"
+# The `test` and `frontend` jobs in .github/workflows/ci.yml; 15368 is the GitHub Actions app,
+# so only a run of that workflow can satisfy the checks. `frontend` is skipped by its `if:` on a
+# change that doesn't touch the frontend, and a skipped job satisfies a required check.
+CI_CHECKS='["test", "frontend"]'
 ACTIONS_APP_ID=15368
 
 # The fields a ruleset GET returns that this script manages, so a GET can be compared with a body.
@@ -93,7 +94,7 @@ ensure_deps_branch
 
 apply_ruleset "$(ruleset "main" '["~DEFAULT_BRANCH"]' "$(jq -n \
   --argjson pr "$(pull_request_rule '["merge"]')" \
-  --arg check "$CI_CHECK" --argjson app "$ACTIONS_APP_ID" '[
+  --argjson checks "$CI_CHECKS" --argjson app "$ACTIONS_APP_ID" '[
     {type: "deletion"},
     {type: "non_fast_forward"},
     $pr,
@@ -101,7 +102,7 @@ apply_ruleset "$(ruleset "main" '["~DEFAULT_BRANCH"]' "$(jq -n \
       type: "required_status_checks",
       parameters: {
         do_not_enforce_on_create: false,
-        required_status_checks: [{context: $check, integration_id: $app}],
+        required_status_checks: [$checks[] | {context: ., integration_id: $app}],
         strict_required_status_checks_policy: false
       }
     }

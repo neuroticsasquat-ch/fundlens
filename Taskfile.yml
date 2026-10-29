@@ -8,6 +8,7 @@ vars:
   COMPOSE: docker compose
   SVC: app
   EXEC: "{{.COMPOSE}} exec {{.SVC}}"
+  FE_EXEC: "{{.COMPOSE}} exec frontend"
 
 tasks:
   up:
@@ -17,9 +18,11 @@ tasks:
     cmds:
       - "{{.COMPOSE}} up -d --wait"
   down:
-    desc: Stop the stack (volumes are kept)
+    desc: Stop the stack, frontend included (volumes are kept)
+    # The frontend sits behind a compose profile, and `down` leaves a profiled service running
+    # unless the profile is named.
     cmds:
-      - "{{.COMPOSE}} down"
+      - "{{.COMPOSE}} --profile frontend down"
   restart:
     desc: Restart the app container
     cmds:
@@ -101,3 +104,30 @@ tasks:
     desc: Run pyright (strict) over src and tests
     cmds:
       - "{{.EXEC}} pyright src tests"
+
+  # The frontend service sits behind a compose profile (see docker-compose.yml), so `fe:dev`
+  # starts it and every other fe: target runs in it.
+  fe:dev:
+    desc: Start the frontend service; Vite serves http://localhost:5180 (waits for pnpm install)
+    cmds:
+      - "{{.COMPOSE}} --profile frontend up -d --wait frontend"
+  fe:test:
+    desc: Run vitest once
+    cmds:
+      - "{{.FE_EXEC}} pnpm test {{.CLI_ARGS}}"
+  fe:lint:
+    desc: Run oxlint (warnings fail)
+    cmds:
+      - "{{.FE_EXEC}} pnpm lint"
+  fe:typecheck:
+    desc: Run tsc -b over the app and the Vite config
+    cmds:
+      - "{{.FE_EXEC}} pnpm typecheck"
+  fe:build:
+    desc: Build the SPA into frontend/dist/
+    cmds:
+      - "{{.FE_EXEC}} pnpm build"
+  fe:worker:
+    desc: Serve frontend/dist/ through wrangler dev, as the Worker will (http://localhost:8780)
+    cmds:
+      - "{{.FE_EXEC}} pnpm exec wrangler dev --ip 0.0.0.0 --port 8787"

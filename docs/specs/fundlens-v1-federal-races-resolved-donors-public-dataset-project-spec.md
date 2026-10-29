@@ -97,7 +97,7 @@ tests/
   fixtures/fec/2024/     # synthetic mini-cycle in FEC bulk format (§12)
   fixtures/dime/         # tiny DIME-shaped file for the validator
 frontend/
-  package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  wrangler.jsonc  oxlint.json
+  package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  wrangler.jsonc  .oxlintrc.json
   src/  api/ (generated types + client)  routes/  components/  charts/
 ```
 

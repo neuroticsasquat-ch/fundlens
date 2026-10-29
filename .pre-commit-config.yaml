@@ -1,9 +1,11 @@
 minimum_pre_commit_version: "3.5.0"
 
-# Every hook calls a Taskfile target, and the target runs inside the dev container via
-# `docker compose exec app` (tbc-localdev-infra/CONVENTIONS.md). The Taskfile is the only place
+# Every hook calls a Taskfile target, and the target runs inside a dev container via
+# `docker compose exec app` or, for frontend/, `docker compose exec frontend`
+# (tbc-localdev-infra/CONVENTIONS.md). The Taskfile is the only place
 # the toolchain is invoked, so the hooks and `task <x>` can't drift apart. The container must
-# be up (`task up`) and rebuilt after a dependency change (`task build`).
+# be up (`task up`, and `task fe:dev` for a frontend commit) and rebuilt after a dependency
+# change (`task build`).
 #
 # Exception: the test hook runs `task test:unit` rather than `task test` (spec §11 names
 # pytest-unit as the hook): the integration and end-to-end suites grow to need a loaded
@@ -38,3 +40,17 @@ repos:
         language: system
         pass_filenames: false
         files: \.py$|^pyproject\.toml$|^uv\.lock$
+
+      - id: fe-lint
+        name: fe:lint (container)
+        entry: task fe:lint
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: fe-typecheck
+        name: fe:typecheck (container)
+        entry: task fe:typecheck
+        language: system
+        pass_filenames: false
+        files: ^frontend/
