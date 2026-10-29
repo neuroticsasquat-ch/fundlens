@@ -36,6 +36,15 @@ Pre-commit hooks call the same `task` targets, so they need the stack up:
 pre-commit install
 ```
 
+## CI and dependency updates
+
+`.github/workflows/ci.yml` builds the dev image and runs lint, format check, typecheck and the
+whole pytest suite against the compose stack on every PR and push to `main`; its `test` job is a
+required check on `main`. Dependabot opens its PRs against the long-lived `updates/dependencies`
+branch, and `merge-main-into-dependencies.yml` merges `main` into it every Saturday before
+Dependabot runs. The branch and the repository rulesets are created, and kept as declared, by
+`scripts/github-rulesets.sh` (run on the host with `gh` and `jq`; safe to re-run).
+
 ## License
 
 Code: [MIT](LICENSE). The published dataset carries its own license (CC BY 4.0), described with

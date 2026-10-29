@@ -1,0 +1,59 @@
+# Everything lands on the long-lived updates/dependencies branch, not main, and reaches main
+# through one reviewed PR. merge-main-into-dependencies.yml keeps that branch caught up with main
+# each Saturday morning before these run.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: America/New_York
+    target-branch: updates/dependencies
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: America/New_York
+    target-branch: updates/dependencies
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # frontend/ arrives with the frontend skeleton ticket; until it does, Dependabot reports this
+  # entry as finding no manifest and the other two run normally.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: America/New_York
+    target-branch: updates/dependencies
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

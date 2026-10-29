@@ -44,7 +44,7 @@ The ~2025 attempt failed on cost (per-execution Azure billing) and data quality 
 
 ```
 pyproject.toml  uv.lock  Dockerfile  docker-compose.yml  docker-compose.prod.yml  Taskfile.yml
-.pre-commit-config.yaml  .github/workflows/{ci,dependabot-merge}.yml  .github/dependabot.yml
+.pre-commit-config.yaml  .github/workflows/{ci,merge-main-into-dependencies}.yml  .github/dependabot.yml
 CLAUDE.md  CONTEXT.md  LICENSE  README.md
 docs/  adr/  specs/  plans/  campaign-finance-handover.md  dataset/  (schema docs published with the dataset)
 sql/
