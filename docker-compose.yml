@@ -4,8 +4,8 @@
 # needs Postgres 18 (the shared one is 17) and an S3 stand-in, and a fresh clone has to come
 # up with nothing but Docker and go-task. Nothing joins the shared `proxy` network, so the
 # service names are private to this project's default network and `app` cannot collide with
-# another repo's DNS alias. No published ports either: every task runs through
-# `docker compose exec app`.
+# another repo's DNS alias. No published ports for the backend either: every task runs through
+# `docker compose exec app`. The frontend publishes the two ports a browser needs.
 services:
   app:
     build:
@@ -75,7 +75,44 @@ services:
       timeout: 3s
       retries: 10
 
+  # The SPA's toolchain (pnpm, Vite, oxlint, vitest, wrangler). Behind a profile so `task up`
+  # and the backend CI job don't pay for a pnpm install; `task fe:dev` starts it.
+  frontend:
+    image: node:24
+    profiles: [frontend]
+    working_dir: /app
+    environment:
+      # `/v1` goes to the API in the app service.
+      API_PROXY_TARGET: "http://app:8000"
+      # corepack fetches the pnpm that `packageManager` pins without asking first.
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      # pnpm's store on the cache volume; it copies rather than hardlinks into node_modules.
+      pnpm_config_store_dir: /root/.cache/pnpm-store
+    volumes:
+      - ./frontend:/app
+      # Shadows any host `node_modules` with the container's Linux one.
+      - frontend-node-modules:/app/node_modules
+      # corepack's pnpm download and the pnpm store, kept across container recreation.
+      - frontend-cache:/root/.cache
+    # Host ports off the 5173/8787 defaults, which other NS frontends already publish.
+    ports:
+      - "5180:5173" # Vite dev server (task fe:dev)
+      - "8780:8787" # wrangler dev serving dist/ (task fe:worker)
+    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && exec pnpm dev"]
+    init: true
+    # Healthy once the install is done and Vite is serving, so `up --wait` returns only when
+    # `docker compose exec frontend pnpm …` has its dependencies.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:5173/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+      start_interval: 1s
+
 volumes:
   data:
   postgres:
   minio:
+  frontend-node-modules:
+  frontend-cache:

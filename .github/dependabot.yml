@@ -38,8 +38,6 @@ updates:
           - minor
           - patch
 
-  # frontend/ arrives with the frontend skeleton ticket; until it does, Dependabot reports this
-  # entry as finding no manifest and the other two run normally.
   - package-ecosystem: npm
     directory: /frontend
     schedule:

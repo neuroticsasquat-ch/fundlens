@@ -31,7 +31,7 @@ venv/
 *.parquet
 !tests/fixtures/**/*.parquet
 
-# Frontend (frontend/ arrives with its own ticket)
+# Frontend (frontend/.gitignore covers dist/ and .wrangler/ too)
 node_modules/
 
 # Logs
