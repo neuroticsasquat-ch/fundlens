@@ -5,7 +5,9 @@ import io
 import zipfile
 from collections.abc import Iterator, Mapping
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import pytest
@@ -22,9 +24,15 @@ from tests.fake_fec import zipped
 from tests.integration.conftest import TEST_BUCKET
 
 BUILD = "20261030T030000Z"
-TABLES: tuple[SilverTable, ...] = ("committee", "candidate", "candidate_committee_link")
+TABLES: tuple[SilverTable, ...] = (
+    "committee",
+    "candidate",
+    "candidate_committee_link",
+    "contribution",
+)
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
+ACTBLUE, WINRED = "C00401224", "C00694323"
 
 
 @pytest.fixture
@@ -167,6 +175,183 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
     # OKAFOR's principal and authorized committees.
     designations = {row["committee_id"]: row["designation"] for row in links}
     assert (designations["C00800103"], designations["C00800113"]) == ("P", "A")
+
+    contributions = read_silver(store, "contribution", tmp_path)
+    assert list(contributions[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "recipient_committee_id",
+        "candidate_id",
+        "amount",
+        "date",
+        "transaction_type",
+        "entity_type",
+        "report_type",
+        "amendment_indicator",
+        "memo_text",
+        "conduit_committee_id",
+        "is_self_funding",
+        "image_num",
+        "file_num",
+    ]
+
+
+def sum_by(rows: list[dict[str, object]], key: str) -> dict[object, int]:
+    """Whole-dollar amount totals of `rows` by `key`, rows without one left out."""
+    totals: dict[object, int] = {}
+    for row in rows:
+        if row[key] is not None:
+            totals[row[key]] = totals.get(row[key], 0) + int(cast(Decimal, row["amount"]))
+    return totals
+
+
+def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    rows = read_silver(store, "contribution", tmp_path)
+    expected = fec_fixture.expected()
+    by_id = {row["source_record_id"]: row for row in rows}
+
+    assert (
+        sum(int(cast(Decimal, row["amount"])) for row in rows)
+        == (expected["contributions"]["total_amount"])
+    )
+    # Each planted earmark is three rows: the conduit's 24T, the memo line and the counted row.
+    donors = expected["donors"]
+    for donor, conduit in (("earmark_actblue", ACTBLUE), ("earmark_winred", WINRED)):
+        [counted] = donors[donor]["sub_ids"]
+        assert {counted - 2, counted - 1, counted} & set(by_id) == {counted}
+        assert by_id[counted]["conduit_committee_id"] == conduit
+        assert by_id[counted]["amount"] == donors[donor]["amount"]
+    reyes = by_id[donors["earmark_actblue"]["sub_ids"][0]]
+    assert (reyes["recipient_committee_id"], reyes["candidate_id"]) == ("C00800103", "S4MD00103")
+    earmarked = sum_by([row | {"amount": 1} for row in rows], "conduit_committee_id")
+    assert earmarked == expected["contributions"]["earmarked"]
+    # A conduit is never a recipient (CONTEXT.md).
+    assert {ACTBLUE, WINRED} & {row["recipient_committee_id"] for row in rows} == set()
+
+    individual = [row for row in rows if not row["is_self_funding"]]
+    self_funding = [row for row in rows if row["is_self_funding"]]
+    assert len(self_funding) == expected["contributions"]["self_funding"]
+    committees = expected["committees"]
+    assert sum_by(individual, "recipient_committee_id") == {
+        committee_id: totals["total_individual"]
+        for committee_id, totals in committees.items()
+        if totals["total_individual"]
+    }
+    assert sum_by(self_funding, "recipient_committee_id") == {
+        committee_id: totals["self_funding"]
+        for committee_id, totals in committees.items()
+        if totals["self_funding"]
+    }
+    candidates = expected["candidates"]
+    assert sum_by(individual, "candidate_id") == {
+        candidate_id: totals["total_individual"]
+        for candidate_id, totals in candidates.items()
+        if totals["total_individual"]
+    }
+    assert sum_by(self_funding, "candidate_id") == {
+        candidate_id: totals["self_funding"]
+        for candidate_id, totals in candidates.items()
+        if totals["self_funding"]
+    }
+    races = {
+        row["candidate_id"]: row["race_id"] for row in read_silver(store, "candidate", tmp_path)
+    }
+    race_totals = sum_by(
+        [
+            row | {"race_id": races[row["candidate_id"]]}
+            for row in individual
+            if row["candidate_id"]
+        ],
+        "race_id",
+    )
+    for race_id, totals in expected["races"].items():
+        assert race_totals.get(race_id, 0) == totals["total_individual"], race_id
+
+
+def test_a_candidates_own_money_is_self_funding_only_to_their_own_committee(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    donors = fec_fixture.expected()["donors"]
+
+    gift, loan = (by_id[sub_id] for sub_id in donors["self_funder"]["sub_ids"])
+    assert (loan["transaction_type"], loan["amount"], loan["is_self_funding"]) == (
+        "16C",
+        1500000,
+        True,
+    )
+    assert gift["is_self_funding"] and gift["conduit_committee_id"] is None
+    own, other = (by_id[sub_id] for sub_id in donors["candidate_as_donor"]["sub_ids"])
+    # OKAFOR to her own committee, then to CALLOWAY's: an ordinary contribution from a candidate.
+    assert (own["candidate_id"], own["is_self_funding"]) == ("S4MD00103", True)
+    assert (other["candidate_id"], other["entity_type"], other["is_self_funding"]) == (
+        "H4MD05106",
+        "CAN",
+        False,
+    )
+    refund = by_id[donors["partial_refund"]["sub_ids"][1]]
+    assert (refund["amount"], refund["date"]) == (-1000, date(2024, 3, 1))
+
+
+def test_a_blank_entity_type_is_an_individual_and_self_funding_is_never_an_earmark(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    indiv = fec_fixture.bulk_text("indiv") + (
+        # A paper or pre-2002 filing leaves ENTITY_TP blank: still an individual's gift.
+        "C00800105|N|Q2|P2024|1|15||DOE, JANE|TOWSON|MD|21204|ACME|CLERK|05012024|100|"
+        "|SA.1|1|||4249999999999999991\n"
+        # WHITLOCK under a fuller form of his cn name: still his own money.
+        "C00800104|N|Q2|P2024|1|15C|CAN|WHITLOCK, GORDON R. MR|POTOMAC|MD|20854|"
+        "WHITLOCK HOLDINGS|EXECUTIVE|05012024|1000||SA.2|1|||4249999999999999992\n"
+        # WHITLOCK through his WinRed page: an earmark, so not self-funding.
+        "C00800104|N|Q2|P2024|1|15E|CAN|WHITLOCK, GORDON|POTOMAC|MD|20854|WHITLOCK HOLDINGS|"
+        "EXECUTIVE|05022024|500|C00694323|SA.3|1||EARMARKED THROUGH WINRED|4249999999999999993\n"
+    )
+    put_bronze(store, texts={"indiv": indiv})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    blank, variant, earmarked = (by_id[4249999999999999990 + n] for n in (1, 2, 3))
+    assert (blank["entity_type"], blank["candidate_id"], blank["is_self_funding"]) == (
+        None,
+        "S4MD00105",
+        False,
+    )
+    assert variant["is_self_funding"]
+    assert (earmarked["conduit_committee_id"], earmarked["is_self_funding"]) == (WINRED, False)
+
+
+def test_a_recipient_missing_from_the_committee_file_aborts_the_run(
+    store: R2, cli_env: Path
+) -> None:
+    stray = (
+        "C00999999|N|Q1|P2024|1|15|IND|DOE, JOHN|BALTIMORE|MD|21201|ACME|CLERK|01022024|100|"
+        "|SA.1|1|||4249999999999999999\n"
+    )
+    put_bronze(store, texts={"indiv": fec_fixture.bulk_text("indiv") + stray})
+    seats_report()
+
+    result = transform()
+
+    assert isinstance(result.exception, ChecksFailed)
+    assert "silver_contribution_recipient.sql" in str(result.exception)
+    assert "C00999999" in str(result.exception)
+    assert uploaded_silver(store) == []
 
 
 def test_the_race_check_fails_until_the_bad_district_is_an_unmatched_filing(
