@@ -258,7 +258,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 | `donor_cycle` | `donor_id, cycle, amount, contribution_count` |
 | `donor_top_recipient` | `donor_id, rank, recipient_kind, recipient_id, name, amount` (all cycles) |
 | `donor_redirect` | `old_donor_id, donor_id` |
-| `search_entity` | `kind (donor/candidate/committee/race), id, name, aliases text, weight numeric`; `GIN (name gin_trgm_ops)` |
+| `search_entity` | `kind (donor/candidate/committee/race), id, name, aliases text, weight numeric`; `GIN (name gin_trgm_ops)`, `GIN (aliases gin_trgm_ops)` (NEU-2040: search matches either) |
 
 Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation": every endpoint is a primary-key or indexed lookup on these tables, or a single-partition DuckDB row scan.
 

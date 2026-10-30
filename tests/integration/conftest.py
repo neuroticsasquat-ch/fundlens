@@ -1,6 +1,7 @@
 """A MinIO bucket and a Postgres database of the integration tests' own."""
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,9 +23,8 @@ TEST_BUCKET = "fundlens-test"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture
-def store() -> Iterator[R2]:
-    """An empty MinIO bucket of its own, emptied again after the test."""
+def empty_store() -> R2:
+    """The test bucket, created if MinIO does not have it yet, and emptied."""
     r2 = R2.from_settings(get_settings(), bucket=TEST_BUCKET)
     try:
         r2.client.create_bucket(Bucket=TEST_BUCKET)
@@ -32,13 +32,20 @@ def store() -> Iterator[R2]:
         if exc.response.get("Error", {}).get("Code") != "BucketAlreadyOwnedByYou":
             raise
     r2.delete_prefix("")
+    return r2
+
+
+@pytest.fixture
+def store() -> Iterator[R2]:
+    """An empty MinIO bucket of its own, emptied again after the test."""
+    r2 = empty_store()
     yield r2
     r2.delete_prefix("")
 
 
-@pytest.fixture
-def scratch_db() -> Iterator[str]:
-    """The conninfo of an empty database of the test's own, dropped afterwards.
+@contextmanager
+def scratch_database() -> Generator[str]:
+    """The conninfo of an empty database of its own, dropped on exit.
 
     Its own, not the dev database: a test that builds and swaps `gold` schemas would otherwise
     clobber whatever the dev seed loaded.
@@ -52,6 +59,13 @@ def scratch_db() -> Iterator[str]:
     finally:
         with psycopg.connect(admin, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name)))
+
+
+@pytest.fixture
+def scratch_db() -> Iterator[str]:
+    """The conninfo of an empty database of the test's own, dropped afterwards."""
+    with scratch_database() as conninfo:
+        yield conninfo
 
 
 def alembic_config(conninfo: str) -> Config:
