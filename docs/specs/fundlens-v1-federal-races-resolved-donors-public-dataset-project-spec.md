@@ -105,7 +105,7 @@ frontend/
 
 | Service | Image | Role |
 |---|---|---|
-| `api` | fundlens (prod target) | `uvicorn fundlens.api.app:app --proxy-headers --forwarded-allow-ips="*"`. Mounts the silver volume read-only. |
+| `api` | fundlens (prod target) | `fundlens api`: uvicorn serving the `fundlens.api.app:create_app` factory with `--proxy-headers --forwarded-allow-ips="*"`. Mounts the silver volume read-only. |
 | `pipeline` | fundlens (prod target) | Idle (`sleep infinity`). Coolify scheduled tasks `docker exec` the CLI in it. Mounts silver + scratch + bronze volumes read-write. Memory limit 40 GB; DuckDB `memory_limit` 28 GB. |
 | `postgres` | postgres:18 | Schemas `app` (authored, migrated), `gold` (live, rebuilt), `gold_prev` (rollback), `gold_build` (in progress). |
 | Worker | Cloudflare | Serves the SPA at `fundlens.org`. |
@@ -212,7 +212,7 @@ For a cycle: all House districts under the apportionment in force (a vendored `a
 
 ### 5.5 Load and publish
 
-`load.gold` creates `gold_build`, runs `sql/gold/*.sql` (DuckDB computes the aggregates from silver and writes CSV/Parquet; Postgres `COPY`s them; or DuckDB's postgres extension writes directly, decided in the ticket), creates indexes, runs `sql/checks/gold_*.sql`, writes `gold_build.meta`. `publish` then, in one transaction: `DROP SCHEMA IF EXISTS gold_prev CASCADE; ALTER SCHEMA gold RENAME TO gold_prev; ALTER SCHEMA gold_build RENAME TO gold;` then purges the Cloudflare zone, writes the `published` marker, snapshots `app.crosswalk` and `app.adjudication` to R2, prunes old silver builds, and (with `--dataset`) runs the dataset snapshot (§9). Readers never see a half-loaded state. `gold_prev` is the rollback: `fundlens publish --rollback` swaps it back.
+`load.gold` creates `gold_build`, runs `sql/gold/*.sql` (DuckDB computes the aggregates from silver and writes CSV/Parquet; Postgres `COPY`s them; or DuckDB's postgres extension writes directly, decided in the ticket), creates indexes, runs `sql/checks/gold_*.sql`, writes `gold_build.meta`. `publish` then, in one transaction: `DROP SCHEMA IF EXISTS gold_prev CASCADE; ALTER SCHEMA gold RENAME TO gold_prev; ALTER SCHEMA gold_build RENAME TO gold;` then, at least 60 s after the swap commits (the API reads `gold.meta.build_id` for its `ETag` at most once a minute, `api/cache.py`; a purge inside that window lets the edge keep a new body under the old `ETag` for a week), purges the Cloudflare zone, writes the `published` marker, snapshots `app.crosswalk` and `app.adjudication` to R2, prunes old silver builds, and (with `--dataset`) runs the dataset snapshot (§9). Readers never see a half-loaded state. `gold_prev` is the rollback: `fundlens publish --rollback` swaps it back.
 
 ### 5.6 Schedule
 

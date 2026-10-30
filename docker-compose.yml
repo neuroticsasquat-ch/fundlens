@@ -28,6 +28,9 @@ services:
       R2_ACCESS_KEY_ID: "fundlens"
       R2_SECRET_ACCESS_KEY: "fundlens-dev-secret"
       DATA_DIR: "/data/fundlens"
+      # The SPA's origins: prod, plus the Vite dev server and `wrangler dev` (the frontend
+      # service's published ports below).
+      CORS_ORIGINS: '["https://fundlens.org", "http://localhost:5180", "http://localhost:8780"]'
     depends_on:
       postgres:
         condition: service_healthy

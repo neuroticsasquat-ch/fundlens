@@ -69,6 +69,11 @@ tasks:
     cmds:
       - docker run --rm -v "$PWD":/app -w /app ghcr.io/astral-sh/uv:python3.13-bookworm-slim uv lock {{.CLI_ARGS}}
 
+  api:
+    desc: Serve the API on app:8000, the frontend's /v1 proxy target (Ctrl-C stops it)
+    cmds:
+      - "{{.EXEC}} fundlens api"
+
   db:migrate:
     desc: Apply Alembic migrations to the `app` schema
     # Alembic and migrations/ arrive with the `app` schema ticket (NEU-2031); until then this

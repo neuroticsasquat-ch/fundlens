@@ -2,7 +2,7 @@
 
 Each step arrives with its own ticket as a subcommand on `app`, wrapped in `step`. This module
 owns the shared callback, which handles `--version` and sets up logging and crash reporting
-before any subcommand runs, the `step` wrapper itself, and `health`.
+before any subcommand runs, the `step` wrapper itself, `health` and `api`.
 """
 
 import functools
@@ -14,6 +14,7 @@ import boto3
 import psycopg
 import sentry_sdk
 import typer
+import uvicorn
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from opentelemetry import trace
@@ -165,3 +166,24 @@ def health() -> None:
             typer.echo(f"{service}: ok")
     if not healthy:
         raise typer.Exit(1)
+
+
+@app.command()
+def api(
+    host: Annotated[str, typer.Option(help="Interface to bind.")] = "0.0.0.0",
+    port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
+) -> None:
+    """Serve the public JSON API (spec §7.2) with uvicorn; the `api` service's command."""
+    # Crash reporting is already on from the callback; sentry-sdk enables its FastAPI and
+    # Starlette integrations by itself, so an unhandled request error reaches Bugsink.
+    uvicorn.run(
+        "fundlens.api.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        # Behind Coolify's Traefik and Cloudflare: take the client and scheme from their headers.
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+        # Keep the callback's JSON logging rather than uvicorn's own formatters.
+        log_config=None,
+    )
