@@ -5,14 +5,15 @@ the `api`, the idle `pipeline` and `fundlens-postgres` from `docker-compose.prod
 Bugsink crash reporting, the two Uptime Kuma push monitors and the nightly Postgres backup. Run it once,
 top to bottom. Append to the [Log](#log) at the bottom; never rewrite it.
 
-**Not in this runbook:** the scheduled task (NEU-2063), Cloudflare DNS, R2 and tokens (NEU-2033), the
-first data run (NEU-2046).
+**Not in this runbook:** the scheduled task (NEU-2063), Cloudflare DNS, R2 and tokens
+([cloudflare-setup.md](cloudflare-setup.md), NEU-2033), the first data run (NEU-2046).
 
 ## Before you start
 
-- **NEU-2033 is done up to its DNS, R2 and token steps.** This runbook needs, from its as-built section:
-  the R2 endpoint, the R2 read/write token's access key ID and secret, the zone ID, the purge-only API
-  token, and the proxied `api` record pointing at the Coolify host.
+- **Part A of [cloudflare-setup.md](cloudflare-setup.md) (NEU-2033) is done.** This runbook reads its
+  *As built* table (R2 endpoint, zone ID) and its vault items `fundlens R2 token` and `fundlens
+  Cloudflare purge token`, and needs its proxied `api` record. Part B of that runbook comes after this
+  one.
 - You can sign in to Coolify, Bugsink (`https://bugsink.neuroticsasquat.ch`), Kuma
   (`https://kuma.tail1afe5a.ts.net`, tailnet only) and DeepInfra as the admin, and the laptop is on the
   tailnet.
@@ -105,11 +106,11 @@ Coolify → the resource → *Environment Variables* (production). Coolify creat
 | Variable | Value |
 | --- | --- |
 | `POSTGRES_PASSWORD` | Generate on the laptop with `openssl rand -hex 32`. Hex only, because it is spliced into `DATABASE_URL`. Store it in the business vault as `fundlens Postgres` before pasting. |
-| `R2_ENDPOINT` | `https://<account id>.r2.cloudflarestorage.com`, from NEU-2033's as-built section |
-| `R2_ACCESS_KEY_ID` | The R2 read/write token's *Access Key ID* (NEU-2033) |
-| `R2_SECRET_ACCESS_KEY` | The same token's *Secret Access Key* (NEU-2033) |
-| `CLOUDFLARE_ZONE_ID` | The `fundlens.org` zone ID (NEU-2033) |
-| `CLOUDFLARE_API_TOKEN` | The purge-only API token (NEU-2033) |
+| `R2_ENDPOINT` | `https://<account id>.r2.cloudflarestorage.com`, from the *As built* table in [cloudflare-setup.md](cloudflare-setup.md) |
+| `R2_ACCESS_KEY_ID` | *Access Key ID* from the vault item `fundlens R2 token` |
+| `R2_SECRET_ACCESS_KEY` | *Secret Access Key* from the vault item `fundlens R2 token` |
+| `CLOUDFLARE_ZONE_ID` | *Zone ID* from the *As built* table in [cloudflare-setup.md](cloudflare-setup.md) |
+| `CLOUDFLARE_API_TOKEN` | The vault item `fundlens Cloudflare purge token` |
 | `DEEPINFRA_API_KEY` | DeepInfra → *API keys* → *New API key*, named `fundlens` |
 | `SENTRY_DSN` | The `fundlens` DSN from step 4 |
 | `KUMA_PUSH_WEEKLY` | The `fundlens/weekly` push URL from step 5 |
@@ -198,7 +199,8 @@ curl -sSI https://api.fundlens.org/healthz | grep -i '^server:'
 ```
 
 **Expected:** `200`, then `server: cloudflare`. A `000` or a TLS error means the DNS record or the
-certificate is not there yet: check NEU-2033's `api` record, then the deployment's Traefik logs.
+certificate is not there yet: check the `api` record ([cloudflare-setup.md](cloudflare-setup.md)
+step 2), then the deployment's Traefik logs.
 
 Then SigNoz → *Services* (tailnet only): after a minute, `fundlens-api` is listed; one of its traces
 shows `service.version=<sha>` and `deployment.environment=production`.
