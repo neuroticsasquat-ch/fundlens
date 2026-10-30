@@ -16,6 +16,11 @@ services:
       target: prod
     # Under `opentelemetry-instrument`, whose logging handler ships the records (spec §10.3).
     command: ["opentelemetry-instrument", "fundlens", "api"]
+    # Tells Traefik where uvicorn listens. Coolify adds a port label only when the domain carries one
+    # (`https://api.fundlens.org:8000`); without either, Traefik logs "port is missing" and answers 503,
+    # and no certificate is requested (first run, 2026-10-30).
+    expose:
+      - "8000"
     environment:
       # Built from the one password the database is initialised with, so the two cannot
       # disagree. The host is the service name below, which is unique on Coolify's shared

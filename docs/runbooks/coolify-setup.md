@@ -67,8 +67,10 @@ before, so step 10 re-checks them.)
 
 ## 3. Domain
 
-1. *General* → *Domains for api* = `https://api.fundlens.org:8000`. The `:8000` is the container port
-   Traefik routes to; the public URL stays on 443.
+1. *General* → *Domains for api* = `https://api.fundlens.org:8000`, with the scheme and the port. The
+   `:8000` is the container port Traefik routes to; the public URL stays on 443. Re-read the field
+   after saving: without the port, Traefik logs `port is missing`, answers 503, and never requests a
+   certificate, so Cloudflare shows 526 (first run, 2026-10-30).
 2. Leave the domain fields for `pipeline` and `fundlens-postgres` empty. *Save*.
 
 ## 4. Bugsink project
@@ -100,8 +102,9 @@ Copy each push URL (`https://kuma.tail1afe5a.ts.net/api/push/<token>?status=up&m
 
 ## 6. Environment variables
 
-Coolify → the resource → *Environment Variables* (production). Coolify created an entry for every
-`${NAME}` in the compose file when it loaded it. Set each value below, one at a time, and *Save*.
+Coolify → the resource → *Environment Variables* (production). Before the first deploy Coolify may
+list none of the compose file's variables (it did not on 2026-10-30), so add each value below with
+*+ Add*, one at a time, and *Save*; where an entry already exists, set its value instead.
 
 | Variable | Value |
 | --- | --- |
@@ -116,15 +119,16 @@ Coolify → the resource → *Environment Variables* (production). Coolify creat
 | `KUMA_PUSH_WEEKLY` | The `fundlens/weekly` push URL from step 5 |
 | `KUMA_PUSH_PUBLISH` | The `fundlens/publish` push URL from step 5 |
 
-These entries were seeded from the compose fallbacks. Leave them as they are: `R2_BUCKET=fundlens-data`,
-`R2_PUBLIC_BUCKET=fundlens-public`, `LOG_LEVEL=INFO`, `ADJUDICATE_MODEL=deepseek-ai/DeepSeek-V4-Flash`,
-`DUCKDB_MEMORY_LIMIT=28GB`, `DUCKDB_THREADS=6`,
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-b144lcfm2xe4mxo73dg7b8z9:4318`, and
-`SERVICE_FQDN_API_8000`, which Coolify fills from step 3. `DATABASE_URL`, `DATA_DIR` and
-`OTEL_RESOURCE_ATTRIBUTES` are literals in the compose file and have no entry.
+Do **not** add the non-secret variables: `R2_BUCKET`, `R2_PUBLIC_BUCKET`, `LOG_LEVEL`,
+`ADJUDICATE_MODEL`, `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS` and `OTEL_EXPORTER_OTLP_ENDPOINT`. The
+compose file's `${NAME:-default}` fallbacks supply them at deploy, and leaving them out of the UI keeps
+a later change to a fallback effective; a UI entry would shadow it. If Coolify lists them after the
+first deploy, leave those entries as they are. `SERVICE_FQDN_API_8000` is filled by Coolify from step 3.
+`DATABASE_URL`, `DATA_DIR` and `OTEL_RESOURCE_ATTRIBUTES` are literals in the compose file. Step 8's
+`pipeline` loop proves the fallbacks arrived: `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` come only from
+them.
 
-**Check:** no entry in the list has an empty value except, at most, `SERVICE_FQDN_API_8000` before the
-first deploy, and there is no entry named `SOURCE_COMMIT` or `OTEL_RESOURCE_ATTRIBUTES`. Either would
+**Check:** all ten variables above are listed with values, and there is no entry named `SOURCE_COMMIT` or `OTEL_RESOURCE_ATTRIBUTES`. Either would
 shadow what the compose file sets and turn `service.version` into `unknown`. Delete one if you find it.
 If Coolify refuses because the name appears in the compose file, set its value to match the compose
 file (ops `docs/runbooks/backend-telemetry-env.md`, §1 step 2).

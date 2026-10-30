@@ -103,13 +103,17 @@ after the Coolify runbook has deployed `api`.
    payment method; usage stays inside the free tier at first).
 2. *Create bucket*: name `fundlens-data`, location **Provide a location hint → Western Europe (WEUR)**
    (the pipeline that reads and writes it runs in Germany), default storage class **Standard**.
-   *Create bucket*. Leave public access and custom domains off.
+   *Create bucket*. Leave public access and custom domains off. **Not** *Specify jurisdiction → EU*,
+   which sits next to it: an EU-jurisdiction bucket has its own endpoint
+   (`https://<account id>.eu.r2.cloudflarestorage.com`), and the app reaches both buckets through one
+   `R2_ENDPOINT` (picked by mistake on the first run, 2026-10-30; the bucket was recreated).
 3. *Create bucket*: name `fundlens-public`, location **Automatic**, storage class **Standard**.
    *Create bucket*. Leave public access off: NEU-2067 turns it on with the custom domain, once there
    is a snapshot to serve.
 
 **Check:** *R2 Object Storage → Overview* lists both buckets, and each bucket's *Settings* shows
-*Public access: Disabled*.
+*Public access: Disabled* and an S3 API URL on `https://<account id>.r2.cloudflarestorage.com` (no
+`.eu.`).
 
 ### 4. R2 API token
 
@@ -262,11 +266,29 @@ PIPE=$(docker ps --format '{{.Names}}' | grep "^pipeline-$U")
 docker exec "$PIPE" fundlens health; echo "exit=$?"
 ```
 
-**Expected:** `postgres: ok`, `r2: ok`, `exit=0`. On `r2: unreachable (ClientError: … 403 …)`, open
-the `fundlens-pipeline` token (step 4) and check `fundlens-data` is among its buckets. If it is, the
-403 comes from `fundlens health`'s `HeadBucket` call, which Cloudflare's R2 docs do not list under
-*Object Read & Write*: record it in the Log and file a ticket to switch the check to a one-key
-`ListObjectsV2`, rather than widening the token to *Admin*.
+**Expected:** `postgres: ok`, `r2: ok`, `exit=0`. An *Object Read & Write* token scoped to the bucket
+can make the `HeadBucket` call `fundlens health` uses (confirmed on the first run, 2026-10-30). A 403
+is the credentials, and the error from a one-key listing says which part:
+
+```bash
+# VM
+docker exec "$PIPE" python -c "
+import os, boto3
+c = boto3.client('s3', endpoint_url=os.environ['R2_ENDPOINT'], aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'], region_name='auto')
+for b in ('fundlens-data', 'fundlens-public'):
+    try:
+        print(b, 'list ok, keys:', c.list_objects_v2(Bucket=b, MaxKeys=1).get('KeyCount'))
+    except Exception as e:
+        print(b, 'list FAIL:', e)
+"
+docker exec "$PIPE" sh -c 'printf %s "$R2_ACCESS_KEY_ID" | wc -c; printf %s "$R2_SECRET_ACCESS_KEY" | wc -c'
+```
+
+- `AccessDenied`: the bucket is not in the token's scope (step 4), or is in the EU jurisdiction
+  (step 3). R2 refuses before it checks the signature.
+- `SignatureDoesNotMatch`: the bucket is in scope but `R2_SECRET_ACCESS_KEY` is wrong. The lengths
+  must print `32` then `64`; re-paste both from the vault item and redeploy, since a container sees
+  new values only when it is recreated.
 
 ### 11. The purge token can purge and cannot list buckets
 
