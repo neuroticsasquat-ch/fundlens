@@ -160,15 +160,17 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
    | Build command | `pnpm install --frozen-lockfile && pnpm build` |
    | Deploy command | `npx wrangler deploy` |
    | Non-production branch builds | **on** |
-   | Non-production branch deploy command | `npx wrangler versions upload`. Set it explicitly: on the other NS Workers a preview build ran `npx wrangler preview`, which fails without a `previews` block in `wrangler.jsonc` (ops `docs/runbooks/frontend-workers-migration.md`, 2026-10-17). |
+   | Non-production branch deploy command (*Preview command* on the *Previews Base* tab) | `npx wrangler preview`, the default. It needs the `previews` block `frontend/wrangler.jsonc` carries. Not `npx wrangler versions upload`: Workers Builds binds a preview build to the Worker's Previews identity, and that command's name check then fails every time (2026-10-30, below). |
    | Root directory (*Advanced settings*) | `frontend` |
 
    *Deploy*. This first build runs before the variables below exist; step 9's PR rebuilds with them.
-   A PR's preview build (`wrangler versions upload`) can only add a version to a Worker that has been
-   deployed once. If this first production build fails, the preview then fails with "The name in your
-   wrangler.jsonc file (fundlens) must match the name of your Worker" even though the names match:
-   get one production deploy through first (retry this build, or merge step 9's PR), then retry the
-   preview (first run, 2026-10-30).
+   A preview build that fails with "The name in your wrangler.jsonc file (fundlens) must match the
+   name of your Worker" although the names match is running `wrangler versions upload` (or `wrangler
+   deploy`): their check compares the Worker's script tag with the tag Workers Builds passes in
+   `WRANGLER_CI_MATCH_TAG`, which for a preview build is the Worker's Previews identity, so it never
+   matches. Set the preview command to `npx wrangler preview`. A `WRANGLER_LOG` = `debug` build
+   variable prints both tags (`Failed to match Worker tag. The API returned …, but the CI system
+   expected …`).
 3. Worker `fundlens` → *Settings* → *Build*:
    - *Branch control*: production branch **`main`**.
    - *Build watch paths*: include `frontend/**`, exclude nothing. *Save*.
@@ -176,6 +178,8 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
      `https://api.fundlens.org`. Add a second, `NODE_VERSION` = `24` (spec §2; pins the build image's
      Node). *Save*. These are build variables: the bundle is static, so they are inlined at build time
      (an assets-only Worker refuses runtime variables anyway).
+   - *Previews Base* tab: the same two variables. A preview build reads only this tab's, so without
+     them a preview bundle calls same-origin `/v1` and finds no API.
 4. Worker `fundlens` → *Settings* → *Domains & Routes*: leave `workers.dev` and **Preview URLs**
    enabled. Preview builds are served from them.
 

@@ -1,7 +1,7 @@
 // A static-assets Worker: no script, just the Vite build. Workers Builds runs
 // `pnpm install --frozen-lockfile && pnpm build` from this directory, then `wrangler deploy` on
-// `main` and `wrangler versions upload` for a PR's preview (spec §8; the Cloudflare runbook wires
-// the build and the custom domain).
+// `main` and `wrangler preview` for a PR's preview (spec §8; the Cloudflare runbook wires the build
+// and the custom domain).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fundlens",
@@ -10,5 +10,10 @@
     "directory": "./dist",
     // Any path that is not a built file gets index.html, so React Router owns client-side routes.
     "not_found_handling": "single-page-application"
-  }
+  },
+  // Required by `wrangler preview`, and empty because an assets-only Worker has no bindings or
+  // variables for a Preview to override. Not `wrangler versions upload` instead: Workers Builds
+  // binds a preview build to the Worker's Previews identity, which that command's name check
+  // rejects ("The name in your wrangler.jsonc file (fundlens) must match the name of your Worker").
+  "previews": {}
 }
