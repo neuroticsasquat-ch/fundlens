@@ -251,7 +251,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 | `candidate_cycle` | `candidate_id, cycle, race_id, total_individual, total_committee, self_funding, ie_support, ie_oppose, contributor_count` |
 | `candidate_top_donor` | `candidate_id, cycle, rank, donor_id, display_name, amount` |
 | `committee` | `committee_id, name, type, designation, party, connected_org, is_conduit, cycles int[]` |
-| `committee_cycle` | `committee_id, cycle, total_individual, total_from_committees, total_to_candidates, ie_total` |
+| `committee_cycle` | `committee_id, cycle, total_individual, self_funding, total_from_committees, total_to_candidates, ie_total` (`self_funding` added by NEU-2039: a candidate committee's own-money receipts, kept out of `total_individual`) |
 | `committee_top_donor` | `committee_id, cycle, rank, donor_id, display_name, amount` |
 | `committee_top_recipient` | `committee_id, cycle, rank, recipient_kind (candidate/committee), recipient_id, name, amount` |
 | `donor` | `donor_id, display_name, employer, occupation, city, state, zip5, total_all_cycles, first_cycle, last_cycle, contributor_key_count` |
@@ -345,7 +345,7 @@ The backfill milestone records in `docs/capacity.md`: per-cycle transform time, 
 
 ## 13. Open items deferred (not blockers for v1 tickets)
 
-- Whether gold loads via DuckDB's postgres extension or `COPY` from Parquet: decided in the load ticket by measuring on the fixture and one real cycle.
+- ~~Whether gold loads via DuckDB's postgres extension or `COPY` from Parquet~~: decided 2026-10-30 in ADR-0007 (DuckDB → CSV → `COPY`); fixture timing in the NEU-2039 spec, real-cycle timing in `docs/capacity.md` (NEU-2046).
 - Trained Splink thresholds: defaults above; tuned in the DIME validation ticket.
 - Exact MinIO-vs-R2 parity edge cases (multipart rename semantics): handled in the R2 client ticket with an integration test against MinIO.
 - Hetzner Cloud ephemeral runner: out of v1; the capacity record decides.

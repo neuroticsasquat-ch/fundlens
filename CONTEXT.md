@@ -87,5 +87,16 @@ Pre-aggregated serving tables in Postgres that every page reads from. No page ag
 **Publish**:
 The atomic swap that makes a freshly built gold schema live, followed by the cache purge.
 
+**Build**:
+One run of the pipeline for one cycle, named by its `build_id` (`YYYYMMDDTHHMMSSZ` of the run start). Every step of a run writes under the same build; `seats`, `transform`, `load` and `publish` must be given the same one.
+_Avoid_: run id, version
+
+**Live build**:
+The build `gold.meta.cycles` names for a cycle: the one gold was built from and the one the API resolves silver partitions from. The build it replaced sits in `gold_prev` and is the rollback target.
+_Avoid_: current build, latest build (the newest build in R2 need not be live)
+
+**Rollback**:
+`fundlens publish --rollback`: swapping `gold_prev` back in as `gold` and purging again. A second rollback swaps forward again.
+
 **Snapshot**:
 One dated release of the public dataset: the resolved silver tables, crosswalk and overrides as published to data.fundlens.org. `latest` always points at the newest snapshot.
