@@ -29,6 +29,7 @@ from fundlens.logging import configure_logging
 from fundlens.r2 import R2
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
+from fundlens.transform import seats as seat_calendar
 
 if TYPE_CHECKING:
     # The stubs are a dev dependency, absent from the prod image. A local variable's
@@ -234,6 +235,58 @@ def extract(
     for result in results:
         outcome = "downloaded" if result.downloaded else "unchanged"
         typer.echo(f"{result.file}: {outcome} {result.key}")
+
+
+@app.command()
+@step("seats")
+def seats(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    report: Annotated[
+        bool,
+        typer.Option(
+            "--report",
+            help="Also list the cycle's `cn` filings that match no seat, and record them in"
+            " app.unmatched_filing.",
+        ),
+    ] = False,
+    build_id: Annotated[
+        str | None,
+        typer.Option(help="The build the `race` partition is for. Default: one starting now."),
+    ] = None,
+) -> None:
+    """Generate the cycle's seat calendar and write it as the `race` silver partition
+    (spec §5.2)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    store = R2.from_settings(settings)
+    build = build_id or _new_build_id()
+    if report:
+        with psycopg.connect(settings.database_url) as conn:
+            try:
+                result = seat_calendar.seats(
+                    cycle, store, build_id=build, data_dir=settings.data_dir, conn=conn
+                )
+            except FileNotFoundError as exc:
+                typer.echo(f"{exc}: run `fundlens extract --cycle {cycle} --file cn`", err=True)
+                raise typer.Exit(1) from exc
+    else:
+        result = seat_calendar.seats(cycle, store, build_id=build, data_dir=settings.data_dir)
+    for office, name in seat_calendar.OFFICE_NAMES.items():
+        races = [race for race in result.races if race.office == office]
+        if races:
+            specials = sum(race.is_special for race in races)
+            typer.echo(f"{name}: {len(races)} races ({specials} special)")
+    typer.echo(f"wrote {result.key}")
+    if result.unmatched is not None:
+        for filing in result.unmatched:
+            typer.echo(
+                f"unmatched: {filing.candidate_id} {filing.office}"
+                f" {filing.state}-{filing.district or '(blank)'}"
+            )
+        typer.echo(f"{len(result.unmatched)} unmatched filings recorded")
 
 
 @app.command("crash-test", hidden=True)
