@@ -170,7 +170,10 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
    `WRANGLER_CI_MATCH_TAG`, which for a preview build is the Worker's Previews identity, so it never
    matches. Set the preview command to `npx wrangler preview`. A `WRANGLER_LOG` = `debug` build
    variable prints both tags (`Failed to match Worker tag. The API returned …, but the CI system
-   expected …`).
+   expected …`). Changing the command afterwards on the *Previews Base* tab did not reach PR
+   builds, nor did *Retry build*, which replays a build's original settings: what worked was
+   *Disconnect* the repository, connect it again without ever entering `versions upload`, and push
+   a change under `frontend/` (2026-10-30, PR #27).
 3. Worker `fundlens` → *Settings* → *Build*:
    - *Branch control*: production branch **`main`**.
    - *Build watch paths*: include `frontend/**`, exclude nothing. *Save*.
