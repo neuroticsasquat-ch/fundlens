@@ -33,7 +33,7 @@ Read at build time and baked into the bundle (see `.env.example`):
 
 ## Deploy
 
-Workers Builds (configured by the Cloudflare runbook, not here): root directory `frontend`,
+Workers Builds (configured by [the Cloudflare runbook](../docs/runbooks/cloudflare-setup.md), not here): root directory `frontend`,
 build command `pnpm install --frozen-lockfile && pnpm build`, deploy command
 `npx wrangler deploy`, watch paths `frontend/**`, production branch `main`, preview
 deployments on PRs.

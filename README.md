@@ -44,8 +44,9 @@ pre-commit install
 ## Production
 
 `docker-compose.prod.yml` is deployed by Coolify (`api`, an idle `pipeline` and Postgres 18); set it up
-with [docs/runbooks/coolify-setup.md](docs/runbooks/coolify-setup.md). `task prod:check` validates the
-file, as CI does.
+with [docs/runbooks/coolify-setup.md](docs/runbooks/coolify-setup.md), after Part A of
+[docs/runbooks/cloudflare-setup.md](docs/runbooks/cloudflare-setup.md) (DNS, R2, tokens, the SPA's
+Worker). `task prod:check` validates the file, as CI does.
 
 ## CI and dependency updates
 
