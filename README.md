@@ -25,6 +25,7 @@ task lint        # ruff check
 task format      # ruff format
 task typecheck   # pyright, strict
 task shell       # bash inside the app container
+task db:seed     # the synthetic 2024 cycle through every pipeline step, into MinIO + Postgres
 ```
 
 `docker compose exec app fundlens --help` runs the CLI. After changing dependencies
@@ -37,6 +38,17 @@ vendored under `src/fundlens/fec/headers/` so neither the pipeline nor the tests
 `task fec:headers -- --check` compares the vendored copies with FEC's live ones (exit 1 if any
 differs); `task fec:headers` overwrites them. When a file changes, update its columns in
 `src/fundlens/fec/files.py` to match: `tests/unit/test_fec_files.py` fails until they agree.
+
+### The fixture cycle
+
+`tests/fixtures/fec/2024/` is a small invented 2024 cycle written by hand as CSVs, one per bulk
+file, with comments naming the hard case each block plants (earmarks, the Musk-style donor,
+self-funding, refunds, an unmatched district, IEs). `tests/fec_fixture.py` zips them into FEC's
+exact layout, and the tests' fake FEC server serves them, so tests and `task db:seed` run the
+real `extract` with no network. `expected.yaml` beside them holds the totals, counts and donor
+groupings the pipeline must produce; `tests/unit/test_fec_fixture.py` fails when a CSV edit
+leaves it behind. `tests/fixtures/dime/` labels every counted contribution with the donor
+behind it, DIME-style, for the resolution validator.
 
 The SPA in `frontend/` has its own container, started with `task fe:dev` (Vite on
 http://localhost:5180), and `fe:test`, `fe:lint`, `fe:typecheck`, `fe:build` targets; see

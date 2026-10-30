@@ -107,6 +107,14 @@ tasks:
     desc: Fail if the migrated `app` schema and `fundlens.app_schema` disagree (run db:migrate first)
     cmds:
       - "{{.EXEC}} alembic check"
+  db:seed:
+    desc: Run the synthetic 2024 fixture cycle through every pipeline step that exists, into MinIO and Postgres (re-runnable)
+    # The fixture zips are served by the tests' fake FEC server from inside the app container, so
+    # nothing reaches fec.gov. `buckets` and `db:migrate` first: a fresh `task up` has neither.
+    cmds:
+      - task: buckets
+      - task: db:migrate
+      - "{{.EXEC}} python -m tests.seed"
 
   test:
     desc: Run the whole pytest suite (task test -- <path> for one file)
