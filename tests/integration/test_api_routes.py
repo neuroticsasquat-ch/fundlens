@@ -2,7 +2,8 @@
 module (spec §7.2, §12)."""
 
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,10 @@ def leave_logging_alone(level: str) -> None:
     pass
 
 
-@pytest.fixture(scope="module")
-def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    """A database whose live `gold` is the fixture cycle's, as `publish` leaves it."""
+@contextmanager
+def published_fixture_cycle(data_dir: Path) -> Generator[str]:
+    """A database whose live `gold` is the fixture cycle's, as `publish` leaves it, with that
+    build's silver under `data_dir`; the database's conninfo."""
     with scratch_database() as conninfo:
         command.upgrade(alembic_config(conninfo), "head")
         store = empty_store()
@@ -50,7 +52,7 @@ def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
             env.setattr(cli, "configure_logging", leave_logging_alone)
             env.setenv("R2_BUCKET", TEST_BUCKET)
             env.setenv("DATABASE_URL", conninfo)
-            env.setenv("DATA_DIR", str(tmp_path_factory.mktemp("data")))
+            env.setenv("DATA_DIR", str(data_dir))
             get_settings.cache_clear()
             try:
                 put_bronze(store)
@@ -61,6 +63,13 @@ def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
                 get_settings.cache_clear()
         with psycopg.connect(conninfo, autocommit=True) as conn:
             gold_publish.swap(conn)
+        yield conninfo
+
+
+@pytest.fixture(scope="module")
+def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """A database whose live `gold` is the fixture cycle's, as `publish` leaves it."""
+    with published_fixture_cycle(tmp_path_factory.mktemp("data")) as conninfo:
         yield conninfo
 
 

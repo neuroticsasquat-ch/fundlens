@@ -12,8 +12,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from fundlens import __version__
-from fundlens.api.cache import BuildIdCache, CacheHeaders, read_build_id
+from fundlens.api.cache import CacheHeaders, TtlCache, read_build_id
 from fundlens.api.cors import DefaultAllowOrigin
+from fundlens.api.itemized import ItemizedReader, read_live_builds
 from fundlens.api.problems import install_problem_handlers
 from fundlens.api.routers import candidates, committees, cycles, health, meta, races, search
 from fundlens.load.db import create_pool
@@ -29,8 +30,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # coming up, and `/healthz` says so until it is.
         with create_pool(settings.database_url) as pool:
             app.state.pool = pool
-            app.state.build_ids = BuildIdCache(partial(read_build_id, pool))
-            yield
+            app.state.build_ids = TtlCache(partial(read_build_id, pool))
+            live_builds = TtlCache(partial(read_live_builds, pool))
+            app.state.itemized = ItemizedReader(settings.data_dir, live_builds.get)
+            try:
+                yield
+            finally:
+                app.state.itemized.close()
 
     app = FastAPI(title="fundlens", version=__version__, lifespan=lifespan)
     app.state.settings = settings

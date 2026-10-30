@@ -13,7 +13,9 @@ ROUTES = {
     "/v1/cycles/{cycle}/races",
     "/v1/races/{cycle}/{office}/{place}",
     "/v1/candidates/{candidate_id}",
+    "/v1/candidates/{candidate_id}/contributions",
     "/v1/committees/{committee_id}",
+    "/v1/committees/{committee_id}/contributions",
     "/v1/search",
 }
 

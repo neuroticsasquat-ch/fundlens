@@ -186,6 +186,42 @@ class Committee(BaseModel):
     cycles: list[CommitteeCycle]
 
 
+class Contribution(BaseModel):
+    """One counted contribution from silver `contribution` (spec §4), the contributor as
+    reported."""
+
+    # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
+    source_record_id: str
+    # None for a filing whose date FEC could not parse.
+    date: date | None
+    amount: float
+    recipient_committee_id: str
+    # The candidate the recipient raises for as principal or authorized committee, if any.
+    candidate_id: str | None
+    contributor_name: str | None
+    contributor_city: str | None
+    contributor_state: str | None
+    contributor_zip: str | None
+    contributor_employer: str | None
+    contributor_occupation: str | None
+    entity_type: str | None
+    transaction_type: str | None
+    report_type: str | None
+    memo_text: str | None
+    # The conduit (ActBlue, WinRed) an earmark came through.
+    conduit_committee_id: str | None
+    is_self_funding: bool
+    # The filing image FEC shows this contribution on.
+    image_num: str | None
+
+
+class ContributionPage(BaseModel):
+    """A page of contributions, newest first; `next_cursor` fetches the next, None on the last."""
+
+    contributions: list[Contribution]
+    next_cursor: str | None
+
+
 class SearchResult(BaseModel):
     """`gold.search_entity`: one match, best first."""
 
