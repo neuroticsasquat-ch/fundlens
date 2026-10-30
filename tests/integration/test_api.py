@@ -40,7 +40,10 @@ def seed_meta(
             sql.SQL(
                 "INSERT INTO {} VALUES (%s, '2026-11-02T09:00:00Z', 'r1', 'm1', 0.97, 0.91, %s)"
             ).format(table),
-            (build_id, Jsonb({"2026": {"build_id": build_id}})),
+            (
+                build_id,
+                Jsonb({"2026": {"build_id": build_id, "source_dates": {"cm": "2026-11-02"}}}),
+            ),
         )
 
 
@@ -76,7 +79,7 @@ def test_meta_returns_the_live_build_with_cache_headers(
         "model_version": "m1",
         "precision": 0.97,
         "recall": 0.91,
-        "cycles": {"2026": {"build_id": BUILD_ID}},
+        "cycles": {"2026": {"build_id": BUILD_ID, "source_dates": {"cm": "2026-11-02"}}},
     }
     assert response.headers["cache-control"] == CACHE_CONTROL
     assert response.headers["etag"] == f'"{BUILD_ID}"'

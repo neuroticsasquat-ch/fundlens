@@ -1,6 +1,7 @@
 """A MinIO bucket and a Postgres database of the integration tests' own."""
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -36,9 +37,9 @@ def store() -> Iterator[R2]:
     r2.delete_prefix("")
 
 
-@pytest.fixture
-def scratch_db() -> Iterator[str]:
-    """The conninfo of an empty database of the test's own, dropped afterwards.
+@contextmanager
+def scratch_database() -> Generator[str]:
+    """The conninfo of an empty database of its own, dropped on exit.
 
     Its own, not the dev database: a test that builds and swaps `gold` schemas would otherwise
     clobber whatever the dev seed loaded.
@@ -52,6 +53,13 @@ def scratch_db() -> Iterator[str]:
     finally:
         with psycopg.connect(admin, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name)))
+
+
+@pytest.fixture
+def scratch_db() -> Iterator[str]:
+    """The conninfo of an empty database of the test's own, dropped afterwards."""
+    with scratch_database() as conninfo:
+        yield conninfo
 
 
 def alembic_config(conninfo: str) -> Config:

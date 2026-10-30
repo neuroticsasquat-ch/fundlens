@@ -15,7 +15,7 @@ from fundlens import __version__
 from fundlens.api.cache import BuildIdCache, CacheHeaders, read_build_id
 from fundlens.api.cors import DefaultAllowOrigin
 from fundlens.api.problems import install_problem_handlers
-from fundlens.api.routers import health, meta
+from fundlens.api.routers import candidates, committees, cycles, health, meta, races, search
 from fundlens.load.db import create_pool
 from fundlens.settings import Settings, get_settings
 
@@ -43,6 +43,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
     )
-    app.include_router(health.router)
-    app.include_router(meta.router)
+    for module in (health, meta, cycles, races, candidates, committees, search):
+        app.include_router(module.router)
     return app
