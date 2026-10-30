@@ -147,3 +147,46 @@ def test_typer_reads_the_wrapped_signature_and_the_crash_fails_the_command(
     assert result.exit_code == 1
     assert isinstance(result.exception, RuntimeError)
     assert [params(url)["status"] for url in pushes] == ["up", "down"]
+
+
+@pytest.fixture
+def quiet_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep `cli.main` off the root logger and off the test's own Sentry client."""
+
+    def leave_logging_alone(level: str) -> None:
+        pass
+
+    def leave_sentry_alone(settings: Settings, integrations: object) -> None:
+        pass
+
+    monkeypatch.setattr(cli, "configure_logging", leave_logging_alone)
+    monkeypatch.setattr(cli, "init_sentry", leave_sentry_alone)
+
+
+def test_crash_test_crashes_through_the_weekly_step(
+    bugsink: FakeTransport, pushes: list[str], quiet_callback: None
+) -> None:
+    result = CliRunner().invoke(cli.app, ["crash-test"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert [params(url)["status"] for url in pushes] == ["down"]
+    assert params(pushes[0])["msg"].startswith("crash-test: RuntimeError: deliberate crash")
+    assert len(bugsink.events) == 1
+    assert bugsink.events[0]["tags"] == {"pipeline_mode": "crash-test"}
+
+
+def test_crash_test_recover_pushes_the_weekly_monitor_back_up(
+    bugsink: FakeTransport, pushes: list[str], quiet_callback: None
+) -> None:
+    result = CliRunner().invoke(cli.app, ["crash-test", "--recover"])
+
+    assert result.exit_code == 0, result.output
+    assert [params(url)["status"] for url in pushes] == ["up"]
+    assert bugsink.events == []
+
+
+def test_crash_test_is_left_out_of_the_help(quiet_callback: None) -> None:
+    result = CliRunner().invoke(cli.app, ["--help"])
+
+    assert "crash-test" not in result.output

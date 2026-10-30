@@ -2,7 +2,8 @@
 
 Each step arrives with its own ticket as a subcommand on `app`, wrapped in `step`. This module
 owns the shared callback, which handles `--version` and sets up logging and crash reporting
-before any subcommand runs, the `step` wrapper itself, `health` and `api`.
+before any subcommand runs, the `step` wrapper itself, `health`, `api` and the hidden
+`crash-test` the Coolify runbook fires.
 """
 
 import functools
@@ -187,3 +188,16 @@ def api(
         # Keep the callback's JSON logging rather than uvicorn's own formatters.
         log_config=None,
     )
+
+
+@app.command("crash-test", hidden=True)
+@step("crash-test", family="weekly")
+def crash_test(
+    recover: Annotated[
+        bool, typer.Option("--recover", help="Succeed instead, pushing the monitor back up.")
+    ] = False,
+) -> None:
+    """Crash on purpose, to prove a step's crash reaches Bugsink and the `fundlens/weekly`
+    monitor (docs/runbooks/coolify-setup.md)."""
+    if not recover:
+        raise RuntimeError("deliberate crash from `fundlens crash-test`")
