@@ -16,7 +16,7 @@ specs_dir: docs
 
 Project spec: `docs/specs/fundlens-v1-federal-races-resolved-donors-public-dataset-project-spec.md` — the shared reference for every ticket; read it before implementing anything.
 Glossary: `CONTEXT.md` (terms are enforced in code and tickets; avoid the listed synonyms).
-Decisions: `docs/adr/` (0001 batch ELT on one machine, 0002 R2 is the source of truth, 0003 monorepo + Worker frontend, 0004 earmarks count once, 0005 overrides in git / crosswalk in Postgres, 0006 itemized via DuckDB in the API).
+Decisions: `docs/adr/` (0001 batch ELT on one machine, 0002 R2 is the source of truth, 0003 monorepo + Worker frontend, 0004 earmarks count once, 0005 overrides in git / crosswalk in Postgres, 0006 itemized via DuckDB in the API, 0007 gold loads by DuckDB → CSV → `COPY`).
 Original brief: `docs/campaign-finance-handover.md`.
 
 ## Layout
