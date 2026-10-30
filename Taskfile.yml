@@ -22,6 +22,15 @@ tasks:
     # accepting connections, and `task up && task test` on a fresh clone would otherwise race them.
     cmds:
       - "{{.COMPOSE}} up -d --wait"
+      - task: buckets
+  buckets:
+    internal: true
+    desc: Create the R2 buckets in MinIO, which starts empty (idempotent)
+    # The two the pipeline reads and writes by default (`R2_BUCKET`, `R2_PUBLIC_BUCKET` in
+    # settings.py); the integration tests make their own. `MC_HOST_<alias>` gives `mc` the
+    # compose file's throwaway root credentials without `mc alias set` state in the container.
+    cmds:
+      - "{{.COMPOSE}} exec -T -e MC_HOST_local=http://fundlens:fundlens-dev-secret@localhost:9000 minio mc mb --ignore-existing local/fundlens-data local/fundlens-public"
   down:
     desc: Stop the stack, frontend included (volumes are kept)
     # The frontend sits behind a compose profile, and `down` leaves a profiled service running
@@ -37,6 +46,7 @@ tasks:
     cmds:
       - "{{.COMPOSE}} build"
       - "{{.COMPOSE}} up -d --wait"
+      - task: buckets
   logs:
     desc: Follow app logs
     cmds:
