@@ -34,7 +34,7 @@ Fill this in during Part A, then commit it ([step 9](#9-record-the-as-built-valu
 | Account ID | 6fa481ae677c7dc06dfe81f4522dfa84 |
 | Zone ID (`fundlens.org`) | 04a93f8792c4313c7f2c1c3b73175307 |
 | Cloudflare nameservers | kara.ns.cloudflare.com. mike.ns.cloudflare.com. |
-| R2 endpoint (`R2_ENDPOINT`) | `https://<account id>.r2.cloudflarestorage.com` |
+| R2 endpoint (`R2_ENDPOINT`) | `https://6fa481ae677c7dc06dfe81f4522dfa84.r2.cloudflarestorage.com` |
 | R2 buckets | `fundlens-data` (private, location hint WEUR), `fundlens-public` (private until NEU-2067) |
 | R2 token | `fundlens-pipeline`, Object Read & Write on both buckets; vault item `fundlens R2 token` |
 | Purge token | `fundlens-purge`, Zone → Cache Purge on `fundlens.org`; vault item `fundlens Cloudflare purge token` |
@@ -164,6 +164,11 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
    | Root directory (*Advanced settings*) | `frontend` |
 
    *Deploy*. This first build runs before the variables below exist; step 9's PR rebuilds with them.
+   A PR's preview build (`wrangler versions upload`) can only add a version to a Worker that has been
+   deployed once. If this first production build fails, the preview then fails with "The name in your
+   wrangler.jsonc file (fundlens) must match the name of your Worker" even though the names match:
+   get one production deploy through first (retry this build, or merge step 9's PR), then retry the
+   preview (first run, 2026-10-30).
 3. Worker `fundlens` → *Settings* → *Build*:
    - *Branch control*: production branch **`main`**.
    - *Build watch paths*: include `frontend/**`, exclude nothing. *Save*.
@@ -204,7 +209,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://fundlens.org/race/2024/senate/
 
 1. Zone → *Caching* → *Cache Rules* → *Create rule*:
    - Name `api: cache everything, respect origin`.
-   - *Custom filter expression*: **Hostname** · *equals* · `api.fundlens.org`.
+   - *Custom filter expression*: **Hostname** · *equals* · `api.fundlens.org`. The form opens on
+     **URI Full** · *wildcard*; change the field. `api.fundlens.org` as a URI Full wildcard matches no
+     request (the full URI carries the scheme and path), and the API then reads `cf-cache-status:
+     DYNAMIC` (first run, 2026-10-30). *Edit expression* must show `(http.host eq "api.fundlens.org")`.
    - *Cache eligibility*: **Eligible for cache**.
    - *Edge TTL*: **Use cache-control header if present, bypass cache if not**. Every API response
      sets `Cache-Control` (`public, max-age=3600, s-maxage=604800`; `no-store` on `/healthz` and server
@@ -309,18 +317,46 @@ authentication error (code `10000`).
 
 ### 12. The API is cached at the edge
 
+Use `GET`, not `curl -I`: the API's routes answer a `HEAD` with 405. Until the first gold build
+(NEU-2046), `/v1/meta` answers 503 with `no-store` and is never cached, so prove the rule on a path that
+404s, which the API sends with the ordinary public `Cache-Control`. NEU-2046's runbook checks the real
+`/v1/meta` HIT after its first purge.
+
 ```bash
 # laptop
-curl -sSI https://api.fundlens.org/v1/meta | grep -i '^cf-cache-status'
-curl -sSI https://api.fundlens.org/v1/meta | grep -i '^cf-cache-status'
-curl -sSI https://api.fundlens.org/healthz | grep -i '^cf-cache-status'
+for i in 1 2; do curl -sS -D - -o /dev/null https://api.fundlens.org/v1/cache-check | grep -iE '^HTTP|^cache-control|^cf-cache-status'; done
+curl -sS -D - -o /dev/null https://api.fundlens.org/healthz | grep -i '^cf-cache-status'
 ```
 
-**Expected:** `MISS` (or `EXPIRED`), then **`HIT`**, then `BYPASS` or `DYNAMIC` for `/healthz`, which
-must never be cached.
+**Expected:** `HTTP/2 404` with `cache-control: public, max-age=3600, s-maxage=604800` twice, the first
+`cf-cache-status: MISS` (or `EXPIRED`) and the second **`HIT`**; then `DYNAMIC` for `/healthz`, which
+must never be cached. `DYNAMIC` on the 404 means the cache rule does not match (step 8).
 
 Append a Log entry with the date, the values filled in, and any step that deviated.
 
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-10-30 — First run (NEU-2033)
+
+Part A, then `coolify-setup.md`, then Part B, from `f449f37` onwards. Every check passed in the end;
+deviations, each now folded into the steps above:
+
+- **Step 3:** `fundlens-data` was first created under *Specify jurisdiction → EU* instead of a WEUR
+  location hint. Deleted (empty) and recreated with the hint; step 3 now warns against it.
+- **Step 4:** the R2 token was at first scoped to neither bucket (`AccessDenied` on both), then the
+  secret in Coolify was wrong (`SignatureDoesNotMatch`). Fixed by editing the token's buckets and
+  re-pasting the keys; step 10 now explains both errors. An *Object Read & Write* token can make the
+  `HeadBucket` call `fundlens health` uses, so no code change was needed.
+- **Step 6:** the root directory did not stick at import, so the first build ran from the repo root
+  (`ERR_PNPM_NO_PKG_MANIFEST`); then the PR #12 preview failed with a misleading name-mismatch error
+  because the Worker had never been deployed. Fixed by setting the root directory and merging PR #12,
+  whose production deploy created the Worker.
+- **Step 8:** the cache rule was saved on the form's default *URI Full · wildcard* and matched nothing
+  (`DYNAMIC`). Fixed by matching *Hostname*.
+- **Step 12:** `/v1/meta` cannot be cached before the first gold build; the edge cache was proven on a
+  404 path instead (`MISS`, then `HIT`). The `/v1/meta` HIT moves to NEU-2046.
+- **Step 10 and 11:** `fundlens health` printed `r2: ok`; the purge token purged and could not list
+  buckets.
+
