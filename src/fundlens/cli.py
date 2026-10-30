@@ -22,6 +22,7 @@ from botocore.exceptions import ClientError
 from opentelemetry import trace
 
 from fundlens import __version__, paths
+from fundlens.api.app import openapi_json
 from fundlens.fec import extract as fec_extract
 from fundlens.fec.files import CATALOGUE
 from fundlens.heartbeat import JobFamily, heartbeat_for
@@ -182,8 +183,19 @@ def health() -> None:
 def api(
     host: Annotated[str, typer.Option(help="Interface to bind.")] = "0.0.0.0",
     port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
+    export_openapi: Annotated[
+        bool,
+        typer.Option(
+            "--export-openapi",
+            help="Print the OpenAPI document (the frontend's contract) and exit, serving nothing.",
+        ),
+    ] = False,
 ) -> None:
     """Serve the public JSON API (spec §7.2) with uvicorn; the `api` service's command."""
+    if export_openapi:
+        # Stdout carries only the document: logging is on stderr, so `> openapi.json` is clean.
+        typer.echo(openapi_json(get_settings()))
+        return
     # Crash reporting is already on from the callback; sentry-sdk enables its FastAPI and
     # Starlette integrations by itself, so an unhandled request error reaches Bugsink.
     uvicorn.run(

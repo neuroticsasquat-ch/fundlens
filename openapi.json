@@ -1,0 +1,1988 @@
+{
+  "components": {
+    "schemas": {
+      "Candidate": {
+        "description": "A candidate page: `gold.candidate` and a row per cycle, newest first.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "cycles": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateCycle"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "office": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Office"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "name",
+          "party",
+          "office",
+          "state",
+          "district",
+          "cycles"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "CandidateCycle": {
+        "description": "`gold.candidate_cycle`: a candidate's money in one cycle.",
+        "properties": {
+          "contributor_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Count"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "ie_oppose": {
+            "title": "Ie Oppose",
+            "type": "number"
+          },
+          "ie_support": {
+            "title": "Ie Support",
+            "type": "number"
+          },
+          "race_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Race Id"
+          },
+          "race_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Race Slug"
+          },
+          "self_funding": {
+            "title": "Self Funding",
+            "type": "number"
+          },
+          "total_committee": {
+            "title": "Total Committee",
+            "type": "number"
+          },
+          "total_individual": {
+            "title": "Total Individual",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cycle",
+          "race_id",
+          "race_slug",
+          "total_individual",
+          "total_committee",
+          "self_funding",
+          "ie_support",
+          "ie_oppose",
+          "contributor_count"
+        ],
+        "title": "CandidateCycle",
+        "type": "object"
+      },
+      "Committee": {
+        "description": "A committee page: `gold.committee` and a row per cycle, newest first.",
+        "properties": {
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "connected_org": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Org"
+          },
+          "cycles": {
+            "items": {
+              "$ref": "#/components/schemas/CommitteeCycle"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "designation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
+          "is_conduit": {
+            "title": "Is Conduit",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "committee_id",
+          "name",
+          "type",
+          "designation",
+          "party",
+          "connected_org",
+          "is_conduit",
+          "cycles"
+        ],
+        "title": "Committee",
+        "type": "object"
+      },
+      "CommitteeCycle": {
+        "description": "`gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to.",
+        "properties": {
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "ie_total": {
+            "title": "Ie Total",
+            "type": "number"
+          },
+          "self_funding": {
+            "title": "Self Funding",
+            "type": "number"
+          },
+          "top_recipients": {
+            "items": {
+              "$ref": "#/components/schemas/CommitteeTopRecipient"
+            },
+            "title": "Top Recipients",
+            "type": "array"
+          },
+          "total_from_committees": {
+            "title": "Total From Committees",
+            "type": "number"
+          },
+          "total_individual": {
+            "title": "Total Individual",
+            "type": "number"
+          },
+          "total_to_candidates": {
+            "title": "Total To Candidates",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cycle",
+          "total_individual",
+          "self_funding",
+          "total_from_committees",
+          "total_to_candidates",
+          "ie_total",
+          "top_recipients"
+        ],
+        "title": "CommitteeCycle",
+        "type": "object"
+      },
+      "CommitteeTopRecipient": {
+        "description": "`gold.committee_top_recipient`: one of the 100 a committee gave most to in a cycle.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "recipient_id": {
+            "title": "Recipient Id",
+            "type": "string"
+          },
+          "recipient_kind": {
+            "enum": [
+              "candidate",
+              "committee"
+            ],
+            "title": "Recipient Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "recipient_kind",
+          "recipient_id",
+          "name",
+          "amount"
+        ],
+        "title": "CommitteeTopRecipient",
+        "type": "object"
+      },
+      "Contribution": {
+        "description": "One counted contribution from silver `contribution` (spec \u00a74), the contributor as\nreported.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "conduit_committee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conduit Committee Id"
+          },
+          "contributor_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor City"
+          },
+          "contributor_employer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Employer"
+          },
+          "contributor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Name"
+          },
+          "contributor_occupation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Occupation"
+          },
+          "contributor_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor State"
+          },
+          "contributor_zip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Zip"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "image_num": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Num"
+          },
+          "is_self_funding": {
+            "title": "Is Self Funding",
+            "type": "boolean"
+          },
+          "memo_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo Text"
+          },
+          "recipient_committee_id": {
+            "title": "Recipient Committee Id",
+            "type": "string"
+          },
+          "report_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Type"
+          },
+          "source_record_id": {
+            "title": "Source Record Id",
+            "type": "string"
+          },
+          "transaction_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Type"
+          }
+        },
+        "required": [
+          "source_record_id",
+          "date",
+          "amount",
+          "recipient_committee_id",
+          "candidate_id",
+          "contributor_name",
+          "contributor_city",
+          "contributor_state",
+          "contributor_zip",
+          "contributor_employer",
+          "contributor_occupation",
+          "entity_type",
+          "transaction_type",
+          "report_type",
+          "memo_text",
+          "conduit_committee_id",
+          "is_self_funding",
+          "image_num"
+        ],
+        "title": "Contribution",
+        "type": "object"
+      },
+      "ContributionPage": {
+        "description": "A page of contributions, newest first; `next_cursor` fetches the next, None on the last.",
+        "properties": {
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/Contribution"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "contributions",
+          "next_cursor"
+        ],
+        "title": "ContributionPage",
+        "type": "object"
+      },
+      "Cycle": {
+        "description": "`gold.cycle`: one cycle's totals.",
+        "properties": {
+          "contribution_count": {
+            "title": "Contribution Count",
+            "type": "integer"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "race_count": {
+            "title": "Race Count",
+            "type": "integer"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cycle",
+          "race_count",
+          "contribution_count",
+          "total_amount"
+        ],
+        "title": "Cycle",
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "postgres": {
+            "title": "Postgres",
+            "type": "string"
+          },
+          "silver": {
+            "title": "Silver",
+            "type": "string"
+          }
+        },
+        "required": [
+          "postgres",
+          "silver"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "Meta": {
+        "description": "The live gold build (`gold.meta`, spec \u00a77.1).",
+        "properties": {
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "cycles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MetaCycle"
+            },
+            "title": "Cycles",
+            "type": "object"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "resolver_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolver Version"
+          }
+        },
+        "required": [
+          "build_id",
+          "published_at",
+          "resolver_version",
+          "model_version",
+          "precision",
+          "recall",
+          "cycles"
+        ],
+        "title": "Meta",
+        "type": "object"
+      },
+      "MetaCycle": {
+        "description": "One cycle's live build and the date of each bulk file it was built from.",
+        "properties": {
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "source_dates": {
+            "additionalProperties": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Source Dates",
+            "type": "object"
+          }
+        },
+        "required": [
+          "build_id",
+          "source_dates"
+        ],
+        "title": "MetaCycle",
+        "type": "object"
+      },
+      "Office": {
+        "enum": [
+          "H",
+          "S",
+          "P"
+        ],
+        "type": "string"
+      },
+      "Problem": {
+        "description": "An RFC 9457 problem details document (`application/problem+json`).",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "Race": {
+        "description": "A race page: the race, its candidates (most money first) and its top committees.",
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RaceCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "district": {
+            "title": "District",
+            "type": "string"
+          },
+          "ie_oppose": {
+            "title": "Ie Oppose",
+            "type": "number"
+          },
+          "ie_support": {
+            "title": "Ie Support",
+            "type": "number"
+          },
+          "is_special": {
+            "title": "Is Special",
+            "type": "boolean"
+          },
+          "office": {
+            "$ref": "#/components/schemas/Office"
+          },
+          "race_id": {
+            "title": "Race Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "top_committees": {
+            "items": {
+              "$ref": "#/components/schemas/RaceTopCommittee"
+            },
+            "title": "Top Committees",
+            "type": "array"
+          },
+          "total_committee": {
+            "title": "Total Committee",
+            "type": "number"
+          },
+          "total_individual": {
+            "title": "Total Individual",
+            "type": "number"
+          }
+        },
+        "required": [
+          "race_id",
+          "cycle",
+          "office",
+          "state",
+          "district",
+          "is_special",
+          "slug",
+          "candidate_count",
+          "total_individual",
+          "total_committee",
+          "ie_support",
+          "ie_oppose",
+          "candidates",
+          "top_committees"
+        ],
+        "title": "Race",
+        "type": "object"
+      },
+      "RaceCandidate": {
+        "description": "`gold.race_candidate`: a candidate in the race and their money this cycle.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "ie_oppose": {
+            "title": "Ie Oppose",
+            "type": "number"
+          },
+          "ie_support": {
+            "title": "Ie Support",
+            "type": "number"
+          },
+          "incumbent_challenger_open": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incumbent Challenger Open"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party"
+          },
+          "principal_committee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Committee Id"
+          },
+          "self_funding": {
+            "title": "Self Funding",
+            "type": "number"
+          },
+          "total_committee": {
+            "title": "Total Committee",
+            "type": "number"
+          },
+          "total_individual": {
+            "title": "Total Individual",
+            "type": "number"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "name",
+          "party",
+          "incumbent_challenger_open",
+          "principal_committee_id",
+          "total_individual",
+          "total_committee",
+          "self_funding",
+          "ie_support",
+          "ie_oppose"
+        ],
+        "title": "RaceCandidate",
+        "type": "object"
+      },
+      "RaceSummary": {
+        "description": "`gold.race`: one race and its totals, summed over its candidates.",
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "district": {
+            "title": "District",
+            "type": "string"
+          },
+          "ie_oppose": {
+            "title": "Ie Oppose",
+            "type": "number"
+          },
+          "ie_support": {
+            "title": "Ie Support",
+            "type": "number"
+          },
+          "is_special": {
+            "title": "Is Special",
+            "type": "boolean"
+          },
+          "office": {
+            "$ref": "#/components/schemas/Office"
+          },
+          "race_id": {
+            "title": "Race Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "total_committee": {
+            "title": "Total Committee",
+            "type": "number"
+          },
+          "total_individual": {
+            "title": "Total Individual",
+            "type": "number"
+          }
+        },
+        "required": [
+          "race_id",
+          "cycle",
+          "office",
+          "state",
+          "district",
+          "is_special",
+          "slug",
+          "candidate_count",
+          "total_individual",
+          "total_committee",
+          "ie_support",
+          "ie_oppose"
+        ],
+        "title": "RaceSummary",
+        "type": "object"
+      },
+      "RaceTopCommittee": {
+        "description": "`gold.race_top_committee`: a committee among the 100 that spent most on the race.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "contribution",
+              "ie"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "committee_id",
+          "name",
+          "amount",
+          "kind"
+        ],
+        "title": "RaceTopCommittee",
+        "type": "object"
+      },
+      "SearchKind": {
+        "enum": [
+          "donor",
+          "candidate",
+          "committee",
+          "race"
+        ],
+        "type": "string"
+      },
+      "SearchResult": {
+        "description": "`gold.search_entity`: one match, best first.",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SearchKind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "aliases",
+          "score"
+        ],
+        "title": "SearchResult",
+        "type": "object"
+      },
+      "ValidationErrorDetail": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationErrorDetail",
+        "type": "object"
+      },
+      "ValidationProblem": {
+        "description": "A 422: the problem details document, with what was wrong with each parameter.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "errors"
+        ],
+        "title": "ValidationProblem",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "fundlens",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/v1/candidates/{candidate_id}": {
+      "get": {
+        "operationId": "get_candidate_v1_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Candidate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Candidate"
+      }
+    },
+    "/v1/candidates/{candidate_id}/contributions": {
+      "get": {
+        "description": "The contributions the candidate's principal and authorized committees received in\n`cycle`, newest first.",
+        "operationId": "get_candidate_contributions_v1_candidates__candidate_id__contributions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "minimum": 1980,
+              "multipleOf": 2,
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContributionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Candidate Contributions"
+      }
+    },
+    "/v1/committees/{committee_id}": {
+      "get": {
+        "operationId": "get_committee_v1_committees__committee_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "committee_id",
+            "required": true,
+            "schema": {
+              "title": "Committee Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Committee"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Committee"
+      }
+    },
+    "/v1/committees/{committee_id}/contributions": {
+      "get": {
+        "description": "The contributions the committee received in `cycle`, newest first.",
+        "operationId": "get_committee_contributions_v1_committees__committee_id__contributions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "committee_id",
+            "required": true,
+            "schema": {
+              "title": "Committee Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "minimum": 1980,
+              "multipleOf": 2,
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContributionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Committee Contributions"
+      }
+    },
+    "/v1/cycles": {
+      "get": {
+        "description": "Every cycle in gold, newest first.",
+        "operationId": "list_cycles_v1_cycles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Cycle"
+                  },
+                  "title": "Response List Cycles V1 Cycles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Cycles"
+      }
+    },
+    "/v1/cycles/{cycle}/races": {
+      "get": {
+        "description": "A cycle's races: President, then Senate, then House, each by state and district.",
+        "operationId": "list_races_v1_cycles__cycle__races_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "H, S or P, as in `office`.",
+            "in": "query",
+            "name": "office",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Office"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "H, S or P, as in `office`.",
+              "title": "Office"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RaceSummary"
+                  },
+                  "title": "Response List Races V1 Cycles  Cycle  Races Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Races"
+      }
+    },
+    "/v1/meta": {
+      "get": {
+        "operationId": "get_meta_v1_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Meta"
+      }
+    },
+    "/v1/races/{cycle}/{office}/{place}": {
+      "get": {
+        "operationId": "get_race_v1_races__cycle___office___place__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "office",
+            "required": true,
+            "schema": {
+              "enum": [
+                "house",
+                "senate",
+                "president"
+              ],
+              "title": "Office",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The state, and for a House race its district: `MD`, `MD-05`, `US`.",
+            "in": "path",
+            "name": "place",
+            "required": true,
+            "schema": {
+              "description": "The state, and for a House race its district: `MD`, `MD-05`, `US`.",
+              "pattern": "^[A-Z]{2}(-[0-9]{2})?$",
+              "title": "Place",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The special race, not the regular one.",
+            "in": "query",
+            "name": "special",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The special race, not the regular one.",
+              "title": "Special",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Race"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Race"
+      }
+    },
+    "/v1/search": {
+      "get": {
+        "operationId": "search_v1_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SearchKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  },
+                  "title": "Response Search V1 Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Search"
+      }
+    }
+  }
+}

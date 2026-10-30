@@ -1,10 +1,13 @@
 """The OpenAPI document is the frontend's contract (spec §7.2): every route is in it, and every
 response it describes is typed down to its leaves, so the generated client has no `unknown`."""
 
+from pathlib import Path
 from typing import Any, cast
 
-from fundlens.api.app import create_app
+from fundlens.api.app import create_app, openapi_json
 from fundlens.settings import get_settings
+
+OPENAPI_JSON = Path(__file__).resolve().parents[2] / "openapi.json"
 
 ROUTES = {
     "/healthz",
@@ -76,3 +79,11 @@ def test_errors_are_documented_as_problem_details() -> None:
     assert races["422"]["content"]["application/problem+json"]["schema"] == {
         "$ref": "#/components/schemas/ValidationProblem"
     }
+
+
+def test_the_committed_openapi_json_is_the_apps_document() -> None:
+    # CI's drift check fails on this too, along with the frontend/src/api/ it generates; here it
+    # fails at commit time, in the unit hook.
+    assert OPENAPI_JSON.read_text() == openapi_json(get_settings()) + "\n", (
+        "openapi.json is stale: run `task fe:generate` and commit what it changes"
+    )

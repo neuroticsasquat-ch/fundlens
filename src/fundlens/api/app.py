@@ -1,9 +1,12 @@
 """The public, read-only JSON API at `api.fundlens.org` (spec §7.2).
 
 A factory rather than a module-level app, so importing this module reads no settings and a test
-can build an app against its own database. `fundlens api` serves it with uvicorn.
+can build an app against its own database. `fundlens api` serves it with uvicorn, and
+`fundlens api --export-openapi` prints `openapi_json`, which the frontend's client is generated
+from.
 """
 
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from functools import partial
@@ -52,3 +55,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for module in (health, meta, cycles, races, candidates, committees, search):
         app.include_router(module.router)
     return app
+
+
+def openapi_json(settings: Settings | None = None) -> str:
+    """The app's OpenAPI document as the repo's `openapi.json` holds it (spec §7.2).
+
+    Keys sorted, so the same routes and schemas always print the same bytes and CI's drift
+    check compares contracts, not dict orderings. Building the app opens no connection.
+    """
+    return json.dumps(create_app(settings).openapi(), indent=2, sort_keys=True)
