@@ -45,6 +45,12 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # Zone purge at publish (spec §5.5, §10.2). Both unset in dev and CI, where there is no zone
+    # and `publish` skips the purge. The token is the purge-only `fundlens-purge` token of
+    # docs/runbooks/cloudflare-setup.md; secret because it clears the whole edge cache.
+    cloudflare_zone_id: str | None = Field(default=None, alias="CLOUDFLARE_ZONE_ID")
+    cloudflare_api_token: SecretStr | None = Field(default=None, alias="CLOUDFLARE_API_TOKEN")
+
     # Origins the API's CORS headers allow (spec §7.2): the SPA in prod, plus its local servers
     # in dev. A JSON list in the environment; the first is the one a request without an
     # `Origin` is answered for (`api.cors`).

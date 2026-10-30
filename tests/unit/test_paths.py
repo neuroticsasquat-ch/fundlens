@@ -18,6 +18,8 @@ BUILD = "20261102T030000Z"
             "bronze/cycle=2026/indiv/2026-11-02.zip",
         ),
         (paths.bronze_dir(2024, "cm"), "bronze/cycle=2024/cm/"),
+        (paths.silver_cycle_dir("contribution", 2024), "silver/contribution/cycle=2024/"),
+        (paths.markers_dir(2026), "markers/cycle=2026/"),
         (
             f"{paths.silver_partition('committee', 2024, BUILD)}/{paths.part(0)}",
             f"silver/committee/cycle=2024/build={BUILD}/part-0000.parquet",
@@ -84,6 +86,23 @@ def test_rejects_a_malformed_build_id(build_id: str) -> None:
 def test_rejects_a_cycle_that_is_not_an_even_year(cycle: int) -> None:
     with pytest.raises(ValueError, match="even year"):
         paths.silver_partition("committee", cycle, BUILD)
+
+
+@pytest.mark.parametrize(
+    ("key", "build_id"),
+    [
+        (f"silver/committee/cycle=2024/build={BUILD}/part-0000.parquet", BUILD),
+        (f"silver/contribution/cycle=2024/build={BUILD}/bucket=ff/part-0000.parquet", BUILD),
+        (f"markers/cycle=2026/build={BUILD}/transformed.json", BUILD),
+        (f"silver/committee/cycle=2024/build={BUILD}", BUILD),
+        ("silver/committee/cycle=2024/", None),
+        ("bronze/cycle=2026/indiv/2026-11-02.zip", None),
+        # Not a build id: the segment has to be the whole `YYYYMMDDTHHMMSSZ`.
+        ("silver/committee/cycle=2024/build=latest/part-0000.parquet", None),
+    ],
+)
+def test_build_of_reads_the_build_segment_of_a_key(key: str, build_id: str | None) -> None:
+    assert paths.build_of(key) == build_id
 
 
 @pytest.mark.parametrize("bucket", [-1, 256])

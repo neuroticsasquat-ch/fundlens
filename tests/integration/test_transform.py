@@ -3,25 +3,22 @@
 
 import io
 import zipfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
 import duckdb
-import pytest
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
 from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
-from fundlens.settings import get_settings
 from fundlens.transform.runner import ChecksFailed
 from tests import fec_fixture
 from tests.fake_fec import zipped
-from tests.integration.conftest import TEST_BUCKET
 
 BUILD = "20261030T030000Z"
 TABLES: tuple[SilverTable, ...] = (
@@ -34,26 +31,6 @@ TABLES: tuple[SilverTable, ...] = (
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
 ACTBLUE, WINRED = "C00401224", "C00694323"
-
-
-@pytest.fixture
-def cli_env(
-    monkeypatch: pytest.MonkeyPatch, store: R2, migrated_db: str, tmp_path: Path
-) -> Iterator[Path]:
-    """Point the CLI's settings at the test bucket, a migrated database and a scratch
-    `DATA_DIR`."""
-
-    def leave_logging_alone(level: str) -> None:
-        # The callback reconfigures the root logger, which would outlive the test.
-        pass
-
-    monkeypatch.setattr(cli, "configure_logging", leave_logging_alone)
-    monkeypatch.setenv("R2_BUCKET", TEST_BUCKET)
-    monkeypatch.setenv("DATABASE_URL", migrated_db)
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    get_settings.cache_clear()
-    yield tmp_path / "data"
-    get_settings.cache_clear()
 
 
 def put_bronze(store: R2, cycle: int = 2024, texts: Mapping[FecFile, str] | None = None) -> None:

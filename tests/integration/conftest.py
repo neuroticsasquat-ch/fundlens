@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
+from fundlens import cli
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 
@@ -67,3 +68,23 @@ def migrated_db(scratch_db: str) -> str:
     """A scratch database with the `app` schema migrated to head."""
     command.upgrade(alembic_config(scratch_db), "head")
     return scratch_db
+
+
+@pytest.fixture
+def cli_env(
+    monkeypatch: pytest.MonkeyPatch, store: R2, migrated_db: str, tmp_path: Path
+) -> Iterator[Path]:
+    """Point the CLI's settings at the test bucket, a migrated database and a scratch
+    `DATA_DIR`; that `DATA_DIR`."""
+
+    def leave_logging_alone(level: str) -> None:
+        # The callback reconfigures the root logger, which would outlive the test.
+        pass
+
+    monkeypatch.setattr(cli, "configure_logging", leave_logging_alone)
+    monkeypatch.setenv("R2_BUCKET", TEST_BUCKET)
+    monkeypatch.setenv("DATABASE_URL", migrated_db)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    get_settings.cache_clear()
+    yield tmp_path / "data"
+    get_settings.cache_clear()

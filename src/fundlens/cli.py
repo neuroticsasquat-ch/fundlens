@@ -25,7 +25,10 @@ from fundlens import __version__, paths
 from fundlens.fec import extract as fec_extract
 from fundlens.fec.files import CATALOGUE
 from fundlens.heartbeat import JobFamily, heartbeat_for
+from fundlens.load import gold as gold_load
 from fundlens.logging import configure_logging
+from fundlens.publish import cloudflare
+from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
@@ -324,6 +327,98 @@ def transform(
         typer.echo(f"{table}: {rows} rows")
     for key in result.keys:
         typer.echo(f"wrote {key}")
+
+
+@app.command()
+# No family, like `extract`: a hand backfill must not push the weekly monitor up.
+@step("load")
+def load(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    build_id: Annotated[
+        str | None,
+        typer.Option(help="The transformed build to load. Default: the newest one."),
+    ] = None,
+) -> None:
+    """Build the Postgres schema `gold_build` from the cycle's silver partitions, check it, and
+    write the `loaded` marker (spec §5.5); `fundlens publish` swaps it in."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        try:
+            result = gold_load.load(
+                cycle,
+                R2.from_settings(settings),
+                build_id=build_id,
+                data_dir=settings.data_dir,
+                sql_dir=settings.sql_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+            )
+        except FileNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+    for table, rows in result.row_counts.items():
+        typer.echo(f"{table}: {rows} rows")
+    typer.echo(
+        f"loaded build {result.build_id} into gold_build"
+        f" (aggregates {result.aggregate_s:.2f} s, copy {result.copy_s:.2f} s)"
+    )
+
+
+@app.command()
+@step("publish", family="publish")
+def publish(
+    cycle: Annotated[
+        int | None, typer.Option(help="The cycle whose loaded build goes live.")
+    ] = None,
+    rollback: Annotated[
+        bool,
+        typer.Option("--rollback", help="Swap the previous build back in instead (no --cycle)."),
+    ] = False,
+) -> None:
+    """Swap the loaded gold build in atomically, purge the Cloudflare zone, write the
+    `published` marker and prune old silver builds (spec §5.5). `--rollback` swaps the previous
+    build back and purges again."""
+    if rollback and cycle is not None:
+        raise typer.BadParameter("--rollback takes no --cycle", param_hint="--cycle")
+    if not rollback and cycle is None:
+        raise typer.BadParameter("--cycle is required", param_hint="--cycle")
+    settings = get_settings()
+    purge = cloudflare.purge_for(settings)
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        if rollback:
+            try:
+                rolled = gold_publish.rollback(conn, purge=purge)
+            except gold_publish.NothingToRollBack as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
+            typer.echo(f"rolled back: build {rolled.build_id} is live")
+            typer.echo(f"build {rolled.previous_build_id} is now gold_prev")
+            return
+        assert cycle is not None
+        try:
+            seat_calendar.check_cycle(cycle)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+        try:
+            result = gold_publish.publish(
+                cycle,
+                R2.from_settings(settings),
+                conn=conn,
+                data_dir=settings.data_dir,
+                purge=purge,
+            )
+        except gold_publish.NothingToPublish as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+    swapped = "published" if result.swapped else "finished publishing"
+    typer.echo(f"{swapped} build {result.build_id} of {cycle}")
+    typer.echo(f"previous build: {result.previous_build_id or 'none'}")
+    typer.echo(f"cloudflare purge: {'done' if result.purged else 'skipped (not configured)'}")
+    typer.echo(f"pruned {result.pruned.builds} silver builds ({result.pruned.objects} objects)")
 
 
 @app.command("crash-test", hidden=True)

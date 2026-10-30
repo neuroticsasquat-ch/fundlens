@@ -24,8 +24,9 @@ class Meta(BaseModel):
 
     build_id: str
     published_at: datetime
-    resolver_version: str
-    model_version: str
+    # None until M3 publishes a resolved build (NEU-2039 §3).
+    resolver_version: str | None
+    model_version: str | None
     precision: float | None
     recall: float | None
     # cycle → its live build_id and source download dates. Left loose until the gold build

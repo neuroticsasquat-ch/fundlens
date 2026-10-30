@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
 from pathlib import Path
-from typing import get_args
+from typing import Literal, get_args
 
 import duckdb
 from psycopg import Connection
@@ -52,6 +52,9 @@ CHUNK_BYTES = 1024 * 1024
 SHOWN_ROWS = 5
 
 
+type DuckDBConfig = dict[str, str | bool | int | float | list[str]]
+
+
 class ChecksFailed(Exception):
     """One or more silver checks returned rows: the build is wrong and nothing was uploaded."""
 
@@ -72,6 +75,18 @@ class Limits:
             settings.duckdb_threads,
         )
 
+    def duckdb_config(self, temp_directory: Path) -> "DuckDBConfig":
+        """The `config` for `duckdb.connect`, spilling under `temp_directory`."""
+        config: DuckDBConfig = {
+            "temp_directory": str(temp_directory),
+            "max_temp_directory_size": self.max_temp_directory_size,
+        }
+        if self.memory_limit is not None:
+            config["memory_limit"] = self.memory_limit
+        if self.threads is not None:
+            config["threads"] = self.threads
+        return config
+
 
 @dataclass(frozen=True)
 class Transformed:
@@ -81,7 +96,7 @@ class Transformed:
     keys: list[str]
 
 
-def _literal(value: str | Path) -> str:
+def literal(value: str | Path) -> str:
     """`value` as a SQL string literal."""
     return "'" + str(value).replace("'", "''") + "'"
 
@@ -117,7 +132,7 @@ def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -
     names = file.header()
     if names != list(file.columns):
         raise ValueError(f"the vendored {file.header_file} disagrees with the catalogue")
-    columns = ", ".join(f"{_literal(name)}: 'VARCHAR'" for name in names)
+    columns = ", ".join(f"{literal(name)}: 'VARCHAR'" for name in names)
     selected = ", ".join(
         f'"{name}"' if kind == VARCHAR else f'CAST("{name}" AS {kind}) AS "{name}"'
         for name, kind in file.columns.items()
@@ -125,7 +140,7 @@ def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -
     # Pipe-delimited and unquoted (a quote in a name is just a character), with no header row.
     # FEC's bulk text is not UTF-8 throughout; latin-1 decodes any byte.
     con.execute(
-        f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({_literal(text)},"
+        f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
         f" delim = '|', quote = '', escape = '', header = false, auto_detect = false,"
         f" columns = {{{columns}}}, encoding = 'latin-1')"
     )
@@ -164,21 +179,33 @@ def _models(sql_dir: Path) -> list[tuple[SilverTable, Path]]:
     return models
 
 
-def _render(path: Path, params: Mapping[str, object]) -> str:
+def render(path: Path, params: Mapping[str, object]) -> str:
+    """The SQL in `path` with its `{name}` parameters filled from `params`."""
     return path.read_text().format_map(params)
 
 
-def _check(con: duckdb.DuckDBPyConnection, sql_dir: Path, params: Mapping[str, object]) -> None:
-    """Run every silver check; raise `ChecksFailed` naming each that returned rows."""
+def check(
+    con: duckdb.DuckDBPyConnection,
+    sql_dir: Path,
+    params: Mapping[str, object],
+    *,
+    tier: Literal["silver", "gold"],
+    consequence: str,
+) -> None:
+    """Run every `sql/checks/<tier>_*.sql`; raise `ChecksFailed` naming each that returned rows.
+
+    `consequence` says what the failure spared ("nothing uploaded"); the gold loader reuses this
+    with its own.
+    """
     failures: list[str] = []
-    for path in sorted((sql_dir / "checks").glob("silver_*.sql")):
-        rows = con.execute(_render(path, params)).fetchmany(SHOWN_ROWS + 1)
+    for path in sorted((sql_dir / "checks").glob(f"{tier}_*.sql")):
+        rows = con.execute(render(path, params)).fetchmany(SHOWN_ROWS + 1)
         if rows:
             shown = "; ".join(str(row) for row in rows[:SHOWN_ROWS])
             more = ", …" if len(rows) > SHOWN_ROWS else ""
             failures.append(f"{path.name}: {shown}{more}")
     if failures:
-        raise ChecksFailed("silver checks failed, nothing uploaded:\n" + "\n".join(failures))
+        raise ChecksFailed(f"{tier} checks failed, {consequence}:\n" + "\n".join(failures))
 
 
 def _write(
@@ -189,7 +216,7 @@ def _write(
     local = paths.local_path(data_dir, key)
     local.parent.mkdir(parents=True, exist_ok=True)
     con.execute(
-        f"COPY {table} TO {_literal(local)}"
+        f"COPY {table} TO {literal(local)}"
         f" (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE {ROW_GROUP_ROWS})"
     )
     [(rows,)] = con.execute(f"SELECT count(*) FROM {table}").fetchall()
@@ -216,14 +243,6 @@ def transform(
     scratch = paths.scratch_dir(data_dir)
     work = scratch / f"transform-{cycle}-{build_id}"
     work.mkdir(parents=True, exist_ok=True)
-    config: dict[str, str | bool | int | float | list[str]] = {
-        "temp_directory": str(scratch),
-        "max_temp_directory_size": limits.max_temp_directory_size,
-    }
-    if limits.memory_limit is not None:
-        config["memory_limit"] = limits.memory_limit
-    if limits.threads is not None:
-        config["threads"] = limits.threads
     params = {
         "cycle": cycle,
         "build_id": build_id,
@@ -231,7 +250,7 @@ def transform(
         "silver_dir": paths.local_path(data_dir, "silver"),
     }
     try:
-        with duckdb.connect(config=config) as con:
+        with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
             for file in files_for(cycle):
                 _register_bulk(con, file, _unzip(store, cycle, file, data_dir=data_dir, work=work))
             seats.load_races(con, seats.races_for(cycle))
@@ -239,8 +258,8 @@ def transform(
             _register_unmatched(con, conn, cycle)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
-                con.execute(_render(path, params))
-            _check(con, sql_dir, params)
+                con.execute(render(path, params))
+            check(con, sql_dir, params, tier="silver", consequence="nothing uploaded")
             written = [
                 _write(con, table, cycle=cycle, build_id=build_id, data_dir=data_dir)
                 for table, _ in models
