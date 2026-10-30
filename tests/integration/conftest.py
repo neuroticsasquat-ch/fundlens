@@ -23,9 +23,8 @@ TEST_BUCKET = "fundlens-test"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture
-def store() -> Iterator[R2]:
-    """An empty MinIO bucket of its own, emptied again after the test."""
+def empty_store() -> R2:
+    """The test bucket, created if MinIO does not have it yet, and emptied."""
     r2 = R2.from_settings(get_settings(), bucket=TEST_BUCKET)
     try:
         r2.client.create_bucket(Bucket=TEST_BUCKET)
@@ -33,6 +32,13 @@ def store() -> Iterator[R2]:
         if exc.response.get("Error", {}).get("Code") != "BucketAlreadyOwnedByYou":
             raise
     r2.delete_prefix("")
+    return r2
+
+
+@pytest.fixture
+def store() -> Iterator[R2]:
+    """An empty MinIO bucket of its own, emptied again after the test."""
+    r2 = empty_store()
     yield r2
     r2.delete_prefix("")
 

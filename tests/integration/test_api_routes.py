@@ -18,10 +18,14 @@ from fundlens.api.cache import CACHE_CONTROL
 from fundlens.api.problems import NO_GOLD
 from fundlens.fec.files import files_for
 from fundlens.publish import gold as gold_publish
-from fundlens.r2 import R2
 from fundlens.settings import get_settings
 from tests import fec_fixture
-from tests.integration.conftest import TEST_BUCKET, alembic_config, scratch_database
+from tests.integration.conftest import (
+    TEST_BUCKET,
+    alembic_config,
+    empty_store,
+    scratch_database,
+)
 from tests.integration.test_publish import load, transform
 from tests.integration.test_transform import put_bronze
 
@@ -41,8 +45,7 @@ def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """A database whose live `gold` is the fixture cycle's, as `publish` leaves it."""
     with scratch_database() as conninfo:
         command.upgrade(alembic_config(conninfo), "head")
-        store = R2.from_settings(get_settings(), bucket=TEST_BUCKET)
-        store.delete_prefix("")
+        store = empty_store()
         with pytest.MonkeyPatch.context() as env:
             env.setattr(cli, "configure_logging", leave_logging_alone)
             env.setenv("R2_BUCKET", TEST_BUCKET)
