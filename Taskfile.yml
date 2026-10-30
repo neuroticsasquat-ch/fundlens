@@ -89,6 +89,13 @@ tasks:
     cmds:
       - "{{.EXEC_TTY}} fundlens api"
 
+  api:openapi:
+    desc: Write openapi.json, the API's contract, from the app (task fe:generate also regenerates the client)
+    # Stdout only: the CLI logs to stderr, so the redirect captures nothing but the document.
+    # Through a temporary file, so a failed export leaves the committed one as it was.
+    cmds:
+      - "{{.EXEC}} fundlens api --export-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json || { rm -f openapi.json.tmp; exit 1; }"
+
   fec:headers:
     desc: 'Refresh the vendored FEC header files from FEC (task fec:headers -- --check to compare only)'
     cmds:
@@ -163,6 +170,12 @@ tasks:
     desc: Run tsc -b over the app and the Vite config
     cmds:
       - "{{.FE_EXEC}} pnpm typecheck"
+  fe:generate:
+    desc: Regenerate openapi.json and, from it, frontend/src/api/schema.d.ts (commit both; CI fails on drift)
+    # The document goes in on stdin: the frontend service mounts only frontend/, not the repo root.
+    cmds:
+      - task: api:openapi
+      - "{{.FE_EXEC}} sh scripts/generate-api.sh < openapi.json"
   fe:build:
     desc: Build the SPA into frontend/dist/
     cmds:

@@ -54,6 +54,13 @@ The SPA in `frontend/` has its own container, started with `task fe:dev` (Vite o
 http://localhost:5180), and `fe:test`, `fe:lint`, `fe:typecheck`, `fe:build` targets; see
 [frontend/README.md](frontend/README.md).
 
+`openapi.json` at the root is the API's contract, and `frontend/src/api/schema.d.ts` the
+client types generated from it; both are committed. After changing a route or a model in
+`src/fundlens/api/`, run `task fe:generate` (stack and frontend up) and commit what it changes:
+it exports the document (`task api:openapi`, which is `fundlens api --export-openapi`) and
+regenerates the types. The document carries the package version, so a version bump in
+`pyproject.toml` needs the same.
+
 Pre-commit hooks call the same `task` targets, so they need the stack up (and `task fe:dev`
 for a commit touching `frontend/`):
 
@@ -71,8 +78,9 @@ Worker). `task prod:check` validates the file, as CI does.
 ## CI and dependency updates
 
 `.github/workflows/ci.yml` builds the dev image and runs lint, format check, typecheck and the
-whole pytest suite against the compose stack on every PR and push to `main`; its `test` job is a
-required check on `main`. So is its `frontend` job (typecheck, oxlint, vitest, build in the
+whole pytest suite against the compose stack on every PR and push to `main`, then regenerates
+`openapi.json` and the frontend's client types and fails if either changed (the drift check); its
+`test` job is a required check on `main`. So is its `frontend` job (typecheck, oxlint, vitest, build in the
 frontend container), which runs only when `frontend/`, the compose file, the Taskfile or the
 workflow changes and otherwise reports as skipped.
 Dependabot opens its PRs against the long-lived `updates/dependencies` branch, and

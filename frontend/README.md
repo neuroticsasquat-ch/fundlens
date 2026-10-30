@@ -22,6 +22,35 @@ wrote, so build first; any path that is not a built file gets `index.html`, as i
 `docker compose exec frontend pnpm add <pkg>` (`-D` for a dev one); the lockfile lands on the
 host through the bind mount.
 
+## API client
+
+`src/api/schema.d.ts` is generated from the API's OpenAPI document (`../openapi.json`) by
+`scripts/generate-api.sh` ([openapi-typescript](https://openapi-ts.dev)); never edit it. Run
+`task fe:generate` from the repo root after any change to the API's routes or models, and commit
+both files: CI regenerates them and fails on any difference. `src/api/client.ts` is the
+[openapi-fetch](https://openapi-ts.dev/openapi-fetch/) client over those types, at
+`VITE_API_BASE_URL`, and re-exports every schema by name:
+
+```ts
+import { api, type Race } from "./api/client";
+
+const { data, error } = await api.GET("/v1/races/{cycle}/{office}/{place}", {
+  params: { path: { cycle: 2024, office: "senate", place: "MD" } },
+});
+```
+
+Tests run against [MSW](https://mswjs.io): `src/test/api.ts` holds the server every test file
+starts (a request no handler answers fails the test) and `http`, handlers typed from the same
+document ([openapi-msw](https://github.com/christoph-fricke/openapi-msw)), so a mock cannot
+return a body the API would not:
+
+```ts
+server.use(http.get("/v1/meta", ({ response }) => response(200).json(meta)));
+```
+
+The generator needs the TypeScript 5 compiler API, which the app's TypeScript 7 does not ship;
+`.pnpmfile.cjs` gives it a TypeScript 5 of its own.
+
 ## Configuration
 
 Read at build time and baked into the bundle (see `.env.example`):
@@ -36,6 +65,7 @@ Read at build time and baked into the bundle (see `.env.example`):
 Workers Builds (configured by [the Cloudflare runbook](../docs/runbooks/cloudflare-setup.md), not here): root directory `frontend`,
 build command `pnpm install --frozen-lockfile && pnpm build`, deploy command
 `npx wrangler deploy`, watch paths `frontend/**`, production branch `main`, preview
-deployments on PRs.
+deployments on PRs with preview command `npx wrangler preview` (which needs the `previews` block
+in `wrangler.jsonc`; set on the *Previews Base* tab).
 
-As built: Worker \fundlens`, custom domain`fundlens.org`(docs/runbooks/cloudflare-setup.md).`
+As built: Worker `fundlens`, custom domain `fundlens.org` ([the Cloudflare runbook](../docs/runbooks/cloudflare-setup.md)).

@@ -27,5 +27,8 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     include: ["src/**/*.test.{ts,tsx}"],
+    // An absolute origin for the client and the MSW handlers (src/test/api.ts) to share: Node's
+    // fetch, unlike a browser's, cannot resolve the same-origin `/v1/...` the default gives.
+    env: { VITE_API_BASE_URL: "http://api.test" },
   },
 });

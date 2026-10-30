@@ -77,6 +77,24 @@ jobs:
       - name: Test (unit + integration)
         run: task test
 
+      # Spec §7.2: the SPA's client types are generated from the API's OpenAPI document, and both
+      # are committed. Regenerating them here must change nothing, so a contract change that lands
+      # without its regenerated client fails the build (ADR-0003). In this job rather than
+      # `frontend`, which a backend-only change skips.
+      - name: Start the frontend service (pnpm install --frozen-lockfile)
+        run: task fe:dev
+
+      - name: OpenAPI drift check
+        run: |
+          task fe:generate
+          # `status`, not `diff`: it also catches a generated file that is new and untracked.
+          if [ -n "$(git status --porcelain -- openapi.json frontend/src/api/)" ]; then
+            git status --short -- openapi.json frontend/src/api/
+            git diff -- openapi.json frontend/src/api/
+            echo "::error::openapi.json or frontend/src/api/ is stale: run \`task fe:generate\` and commit the result"
+            exit 1
+          fi
+
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --no-color
