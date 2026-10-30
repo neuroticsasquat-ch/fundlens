@@ -1,6 +1,7 @@
 // A static-assets Worker: no script, just the Vite build. Workers Builds runs
-// `pnpm install --frozen-lockfile && pnpm build` from this directory, then `wrangler deploy`
-// (spec §8; the Cloudflare runbook wires the build and the custom domain).
+// `pnpm install --frozen-lockfile && pnpm build` from this directory, then `wrangler deploy` on
+// `main` and `wrangler versions upload` for a PR's preview (spec §8; the Cloudflare runbook wires
+// the build and the custom domain).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fundlens",
