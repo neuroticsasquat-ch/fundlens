@@ -59,6 +59,9 @@ class BulkFile:
     name: FecFile
     # The first cycle FEC publishes this file for.
     first_cycle: int
+    # The text file inside the zip. A zip is opened by this name, never as "its one file": the
+    # `indiv` zip also holds the same rows again, split by date under `by_date/`.
+    member: str
     # Column name → DuckDB type, in file order; the vendored header must name the same columns.
     columns: dict[str, str]
 
@@ -83,6 +86,7 @@ CATALOGUE: dict[FecFile, BulkFile] = {
         BulkFile(
             "cm",
             1980,
+            "cm.txt",
             _varchar(
                 "CMTE_ID",
                 "CMTE_NM",
@@ -104,6 +108,7 @@ CATALOGUE: dict[FecFile, BulkFile] = {
         BulkFile(
             "cn",
             1980,
+            "cn.txt",
             _varchar("CAND_ID", "CAND_NAME", "CAND_PTY_AFFILIATION")
             | {"CAND_ELECTION_YR": YEAR}
             | _varchar(
@@ -124,6 +129,7 @@ CATALOGUE: dict[FecFile, BulkFile] = {
         BulkFile(
             "ccl",
             2000,
+            "ccl.txt",
             {
                 "CAND_ID": VARCHAR,
                 "CAND_ELECTION_YR": YEAR,
@@ -134,9 +140,11 @@ CATALOGUE: dict[FecFile, BulkFile] = {
                 "LINKAGE_ID": LINKAGE_ID,
             },
         ),
-        BulkFile("indiv", 1980, _ITEMIZED_HEAD | _ITEMIZED_TAIL),
-        BulkFile("pas2", 1980, _ITEMIZED_HEAD | {"CAND_ID": VARCHAR} | _ITEMIZED_TAIL),
-        BulkFile("oth", 1980, _ITEMIZED_HEAD | _ITEMIZED_TAIL),
+        BulkFile("indiv", 1980, "itcont.txt", _ITEMIZED_HEAD | _ITEMIZED_TAIL),
+        BulkFile(
+            "pas2", 1980, "itpas2.txt", _ITEMIZED_HEAD | {"CAND_ID": VARCHAR} | _ITEMIZED_TAIL
+        ),
+        BulkFile("oth", 1980, "itoth.txt", _ITEMIZED_HEAD | _ITEMIZED_TAIL),
     )
 }
 

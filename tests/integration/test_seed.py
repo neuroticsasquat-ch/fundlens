@@ -46,6 +46,7 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
     assert sorted(store.list_keys("bronze/")) == bronze
     for build_id in (first, second):
         assert markers.exists("extracted", store, cycle=2024, build_id=build_id)
+        assert markers.exists("transformed", store, cycle=2024, build_id=build_id)
         assert store.list_keys(paths.silver_partition("race", 2024, build_id))
     with psycopg.connect(seed_env) as conn:
         unmatched = conn.execute(

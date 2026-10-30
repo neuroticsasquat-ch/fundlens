@@ -2,10 +2,10 @@
 Postgres, for local dev to browse (spec §12).
 
 Serves the fixture zips on the fake FEC server and runs the real CLI against it with one build:
-`extract`, then `seats --report`. Each step that later tickets add goes on the end of `STEPS`.
-Re-runnable: `extract` finds bronze unchanged and downloads nothing, and every other step writes
-a fresh build. Run from the repo root inside the app container (`python -m tests.seed`), with
-the `app` schema migrated.
+`extract`, `seats --report` (whose unmatched filings a transform check reads), then `transform`.
+Each step that later tickets add goes on the end of `STEPS`. Re-runnable: `extract` finds bronze
+unchanged and downloads nothing, and every other step writes a fresh build. Run from the repo
+root inside the app container (`python -m tests.seed`), with the `app` schema migrated.
 """
 
 import os
@@ -21,6 +21,7 @@ from tests.fake_fec import FakeFec
 STEPS = (
     ("extract", "--cycle", str(fec_fixture.CYCLE)),
     ("seats", "--cycle", str(fec_fixture.CYCLE), "--report"),
+    ("transform", "--cycle", str(fec_fixture.CYCLE)),
 )
 
 
