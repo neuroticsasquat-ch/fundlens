@@ -68,4 +68,4 @@ build command `pnpm install --frozen-lockfile && pnpm build`, deploy command
 deployments on PRs with preview command `npx wrangler preview` (which needs the `previews` block
 in `wrangler.jsonc`; set on the *Previews Base* tab).
 
-As built: Worker \fundlens`, custom domain`fundlens.org`(docs/runbooks/cloudflare-setup.md).`
+As built: Worker `fundlens`, custom domain `fundlens.org` ([the Cloudflare runbook](../docs/runbooks/cloudflare-setup.md)).
