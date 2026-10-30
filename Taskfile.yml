@@ -74,6 +74,11 @@ tasks:
     cmds:
       - "{{.EXEC}} fundlens api"
 
+  prod:check:
+    desc: Validate docker-compose.prod.yml (warnings about unset secrets are expected)
+    cmds:
+      - "{{.COMPOSE}} -f docker-compose.prod.yml config --quiet"
+
   db:migrate:
     desc: Apply Alembic migrations to the `app` schema
     cmds:

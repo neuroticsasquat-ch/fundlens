@@ -46,6 +46,10 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Coolify deploys docker-compose.prod.yml; a typo in it would otherwise surface only there.
+      - name: Validate the prod compose file
+        run: task prod:check
+
       # The same stack as local dev: the dev image built from uv.lock, plus the Postgres 18 and
       # MinIO services from docker-compose.yml. Compose rather than Actions `services:`, which
       # cannot pass MinIO its `server /data` command, and so the two environments can't drift.
