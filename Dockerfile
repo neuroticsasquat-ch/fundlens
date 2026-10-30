@@ -8,6 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     UV_PYTHON_DOWNLOADS=never
 
+# opentelemetry-distro defaults the OTLP protocol to gRPC, but only the HTTP exporter is
+# installed. Pin http/protobuf so the absent gRPC one is never looked up. The endpoint and the
+# resource attributes come from the deploy env (spec §10.1).
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
