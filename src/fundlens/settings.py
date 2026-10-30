@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Root of the local cache volumes (bronze/, silver/, scratch/, resolution/; spec §3.4).
     data_dir: Path = Field(default=Path("/data/fundlens"), alias="DATA_DIR")
 
+    # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
+    fec_bulk_url: str = Field(
+        default="https://www.fec.gov/files/bulk-downloads", alias="FEC_BULK_URL"
+    )
+
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     # Origins the API's CORS headers allow (spec §7.2): the SPA in prod, plus its local servers

@@ -61,10 +61,15 @@ def _check_cycle(cycle: int) -> None:
         raise ValueError(f"cycle {cycle} is not an even year")
 
 
+def bronze_dir(cycle: int, file: str) -> str:
+    """Every download of one FEC bulk file for one cycle: `bronze/cycle=<c>/<file>/`."""
+    _check_cycle(cycle)
+    return f"bronze/cycle={cycle}/{file}/"
+
+
 def bronze_zip(cycle: int, file: str, download_date: date) -> str:
     """One FEC bulk zip, as downloaded on `download_date`: `bronze/cycle=<c>/<file>/<date>.zip`."""
-    _check_cycle(cycle)
-    return f"bronze/cycle={cycle}/{file}/{download_date.isoformat()}.zip"
+    return f"{bronze_dir(cycle, file)}{download_date.isoformat()}.zip"
 
 
 def silver_partition(table: SilverTable, cycle: int, build_id: str) -> str:

@@ -9,6 +9,7 @@ before any subcommand runs, the `step` wrapper itself, `health`, `api` and the h
 import functools
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 
 import boto3
@@ -20,9 +21,12 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from opentelemetry import trace
 
-from fundlens import __version__
+from fundlens import __version__, paths
+from fundlens.fec import extract as fec_extract
+from fundlens.fec.files import CATALOGUE
 from fundlens.heartbeat import JobFamily, heartbeat_for
 from fundlens.logging import configure_logging
+from fundlens.r2 import R2
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
 
@@ -188,6 +192,48 @@ def api(
         # Keep the callback's JSON logging rather than uvicorn's own formatters.
         log_config=None,
     )
+
+
+def _new_build_id() -> str:
+    return paths.format_build_id(datetime.now(UTC))
+
+
+@app.command()
+# No family: the weekly monitor is `run`'s, the scheduled entry. A backfill extract run by hand
+# would otherwise push it up and hide a missed Sunday.
+@step("extract")
+def extract(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    file: Annotated[
+        str | None,
+        typer.Option(help=f"Only this file ({', '.join(CATALOGUE)}); writes no marker."),
+    ] = None,
+    build_id: Annotated[
+        str | None,
+        typer.Option(help="The build the `extracted` marker is for. Default: one starting now."),
+    ] = None,
+) -> None:
+    """Download the cycle's FEC bulk zips into R2 bronze, skipping any unchanged since the
+    last download (spec §5.1)."""
+    if file is not None and file not in CATALOGUE:
+        raise typer.BadParameter(f"not one of {', '.join(CATALOGUE)}", param_hint="--file")
+    if file is not None and CATALOGUE[file].first_cycle > cycle:
+        first = CATALOGUE[file].first_cycle
+        raise typer.BadParameter(
+            f"FEC publishes no {file} file before {first}", param_hint="--file"
+        )
+    settings = get_settings()
+    results = fec_extract.extract(
+        cycle,
+        R2.from_settings(settings),
+        build_id=build_id or _new_build_id(),
+        data_dir=settings.data_dir,
+        base_url=settings.fec_bulk_url,
+        file=file,
+    )
+    for result in results:
+        outcome = "downloaded" if result.downloaded else "unchanged"
+        typer.echo(f"{result.file}: {outcome} {result.key}")
 
 
 @app.command("crash-test", hidden=True)

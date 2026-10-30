@@ -30,6 +30,14 @@ task shell       # bash inside the app container
 `docker compose exec app fundlens --help` runs the CLI. After changing dependencies
 (`task deps:add -- <pkg>`), run `task build`.
 
+### FEC header files
+
+FEC's bulk files have no header row; their column names come from FEC's data dictionaries,
+vendored under `src/fundlens/fec/headers/` so neither the pipeline nor the tests fetch them.
+`task fec:headers -- --check` compares the vendored copies with FEC's live ones (exit 1 if any
+differs); `task fec:headers` overwrites them. When a file changes, update its columns in
+`src/fundlens/fec/files.py` to match: `tests/unit/test_fec_files.py` fails until they agree.
+
 The SPA in `frontend/` has its own container, started with `task fe:dev` (Vite on
 http://localhost:5180), and `fe:test`, `fe:lint`, `fe:typecheck`, `fe:build` targets; see
 [frontend/README.md](frontend/README.md).

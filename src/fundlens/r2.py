@@ -5,7 +5,7 @@ Keys are the strings `paths` builds.
 """
 
 import io
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -74,12 +74,30 @@ class R2:
             raise
         return response["Body"].read()
 
-    def put(self, key: str, body: bytes | Path) -> None:
-        """Write `body` (bytes, or a local file) to `key`, in parts above `MULTIPART_BYTES`."""
+    def put(self, key: str, body: bytes | Path, metadata: Mapping[str, str] | None = None) -> None:
+        """Write `body` (bytes, or a local file) to `key`, in parts above `MULTIPART_BYTES`.
+
+        `metadata` is stored as the object's user metadata (`metadata` reads it back). S3
+        lowercases its keys, so give them in lower case.
+        """
+        extra = {"Metadata": dict(metadata)} if metadata else None
         if isinstance(body, Path):
-            self.client.upload_file(str(body), self.bucket, key, Config=_TRANSFER)
+            self.client.upload_file(str(body), self.bucket, key, ExtraArgs=extra, Config=_TRANSFER)
         else:
-            self.client.upload_fileobj(io.BytesIO(body), self.bucket, key, Config=_TRANSFER)
+            self.client.upload_fileobj(
+                io.BytesIO(body), self.bucket, key, ExtraArgs=extra, Config=_TRANSFER
+            )
+
+    def metadata(self, key: str) -> dict[str, str]:
+        """The user metadata `put` stored with `key`. Raises `FileNotFoundError` when there is
+        no object."""
+        try:
+            response = self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if _not_found(exc):
+                raise FileNotFoundError(key) from exc
+            raise
+        return response.get("Metadata", {})
 
     def exists(self, key: str) -> bool:
         try:

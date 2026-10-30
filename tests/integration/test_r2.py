@@ -49,9 +49,27 @@ def test_put_get_exists(store: R2) -> None:
     assert store.get("markers/a.json") == b'{"ok": true}'
 
 
+def test_metadata_put_with_an_object_reads_back_from_bytes_and_files(
+    store: R2, tmp_path: Path
+) -> None:
+    meta = {"source-last-modified": "Fri, 30 Oct 2026 05:43:50 GMT", "source-size": "3"}
+    local = tmp_path / "cm.zip"
+    local.write_bytes(b"zip")
+
+    store.put("bronze/a.zip", b"zip", metadata=meta)
+    store.put("bronze/b.zip", local, metadata=meta)
+    store.put("bronze/c.zip", b"zip")
+
+    assert store.metadata("bronze/a.zip") == meta
+    assert store.metadata("bronze/b.zip") == meta
+    assert store.metadata("bronze/c.zip") == {}
+
+
 def test_a_missing_object_is_file_not_found(store: R2, tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         store.get("nope")
+    with pytest.raises(FileNotFoundError):
+        store.metadata("nope")
     with pytest.raises(FileNotFoundError):
         store.download_to("nope", tmp_path / "nope")
     assert not (tmp_path / "nope.part").exists()
