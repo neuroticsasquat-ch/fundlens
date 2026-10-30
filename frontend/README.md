@@ -65,6 +65,7 @@ Read at build time and baked into the bundle (see `.env.example`):
 Workers Builds (configured by [the Cloudflare runbook](../docs/runbooks/cloudflare-setup.md), not here): root directory `frontend`,
 build command `pnpm install --frozen-lockfile && pnpm build`, deploy command
 `npx wrangler deploy`, watch paths `frontend/**`, production branch `main`, preview
-deployments on PRs.
+deployments on PRs with preview command `npx wrangler preview` (which needs the `previews` block
+in `wrangler.jsonc`; set on the *Previews Base* tab).
 
 As built: Worker \fundlens`, custom domain`fundlens.org`(docs/runbooks/cloudflare-setup.md).`
