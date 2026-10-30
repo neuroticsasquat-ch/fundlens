@@ -67,10 +67,11 @@ before, so step 10 re-checks them.)
 
 ## 3. Domain
 
-1. *General* → *Domains for api* = `https://api.fundlens.org:8000`, with the scheme and the port. The
-   `:8000` is the container port Traefik routes to; the public URL stays on 443. Re-read the field
-   after saving: without the port, Traefik logs `port is missing`, answers 503, and never requests a
-   certificate, so Cloudflare shows 526 (first run, 2026-10-30).
+1. *General* → *Domains for api* = `https://api.fundlens.org`. No port: Coolify strips one from the
+   field on deploy. Traefik finds the container port from `expose: ["8000"]` on `api` in
+   `docker-compose.prod.yml`; without it, Traefik logged `port is missing`, answered 503 and never
+   requested a certificate, so Cloudflare showed 526 (first run, 2026-10-30). Coolify's warning that
+   port 8000 is "not listed in Ports Exposes" is harmless.
 2. Leave the domain fields for `pipeline` and `fundlens-postgres` empty. *Save*.
 
 ## 4. Bugsink project
@@ -303,3 +304,29 @@ from step 8, the Bugsink project ID, the ops PR, and any step that deviated.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-10-30 — First run (NEU-2032)
+
+Resource UUID `lvch8zyndujjzkz16ksys8im`; containers `<service>-lvch8zyndujjzkz16ksys8im-<timestamp>`.
+Run after `cloudflare-setup.md` Part A; the last deploy was `1058e7b`. Every check passed in the end;
+deviations, each now folded into the steps above:
+
+- **Step 6:** Coolify listed none of the compose variables before the first deploy; the ten secrets
+  were added by hand and the non-secret fallbacks left to the compose file.
+- **Step 7:** `api` was unhealthy on the first deploy: `fundlens health` reported R2 `403` on
+  `HeadBucket`. The cause was the R2 bucket and token setup (see `cloudflare-setup.md` Log), not the
+  check; fixed there, then redeployed.
+- **Step 3 and step 10:** `/healthz` returned 526 through Cloudflare: Traefik logged `port is missing`
+  for `api` and never requested a certificate, because the image declares no port and Coolify strips
+  `:8000` from the domain on deploy. Fixed by `expose: ["8000"]` on `api` (PR #13); then the Let's
+  Encrypt certificate (`YR2`) arrived and `/healthz` returned 200.
+- **Container names change on every deploy.** Variables set before a redeploy point at containers
+  that no longer exist; a shell function that looks the name up each time avoids it:
+  `fl() { docker ps --format '{{.Names}}' | grep "^$1-lvch8zyndujjzkz16ksys8im" | head -1; }`, then
+  `docker exec "$(fl pipeline)" …`.
+- **Step 8:** `OTEL_RESOURCE_ATTRIBUTES` carried the deployed SHA (`fundlens health` logged
+  `release=e0d160ab…` on the first deploy). The `SOURCE_COMMIT` reading and the Bugsink project ID were
+  not recorded.
+- **Step 13:** ops PR #84 (`neuroticsasquat-ch/ops`) switched `REQUIRED_CONTAINERS` to prefix matching
+  and added `fundlens-postgres-lvch8zyndujjzkz16ksys8im`.
+
