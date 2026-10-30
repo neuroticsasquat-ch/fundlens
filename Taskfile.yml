@@ -7,8 +7,13 @@ version: '3'
 vars:
   COMPOSE: docker compose
   SVC: app
-  EXEC: "{{.COMPOSE}} exec {{.SVC}}"
-  FE_EXEC: "{{.COMPOSE}} exec frontend"
+  # `-T`: no TTY. A pre-commit hook has a terminal on stdout but not on stdin, and without it
+  # `docker compose exec` refuses with "cannot attach stdin to a TTY-enabled container". The
+  # interactive targets (`shell`, `api`, `fe:worker`) use the `_TTY` forms instead.
+  EXEC: "{{.COMPOSE}} exec -T {{.SVC}}"
+  FE_EXEC: "{{.COMPOSE}} exec -T frontend"
+  EXEC_TTY: "{{.COMPOSE}} exec {{.SVC}}"
+  FE_EXEC_TTY: "{{.COMPOSE}} exec frontend"
 
 tasks:
   up:
@@ -39,7 +44,7 @@ tasks:
   shell:
     desc: Open a bash shell inside the app container
     cmds:
-      - "{{.EXEC}} bash"
+      - "{{.EXEC_TTY}} bash"
   ps:
     desc: Show compose service status
     cmds:
@@ -72,7 +77,7 @@ tasks:
   api:
     desc: Serve the API on app:8000, the frontend's /v1 proxy target (Ctrl-C stops it)
     cmds:
-      - "{{.EXEC}} fundlens api"
+      - "{{.EXEC_TTY}} fundlens api"
 
   prod:check:
     desc: Validate docker-compose.prod.yml (warnings about unset secrets are expected)
@@ -142,4 +147,4 @@ tasks:
   fe:worker:
     desc: Serve frontend/dist/ through wrangler dev, as the Worker will (http://localhost:8780)
     cmds:
-      - "{{.FE_EXEC}} pnpm exec wrangler dev --ip 0.0.0.0 --port 8787"
+      - "{{.FE_EXEC_TTY}} pnpm exec wrangler dev --ip 0.0.0.0 --port 8787"
