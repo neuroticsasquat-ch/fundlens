@@ -170,7 +170,14 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
 4. Worker `fundlens` → *Settings* → *Domains & Routes*: leave `workers.dev` and **Preview URLs**
    enabled. Preview builds are served from them.
 
-**Check:** the Worker's *Deployments* tab shows the first build. Its log shows pnpm `12.16.1` (the
+**Check:** Worker `fundlens` → *Settings* → *Build* → *Build configuration* reads **Root directory**
+`frontend`. The import dialog keeps that field under *Advanced settings*, and when it is missed the
+build runs from the repo root: the log shows `uv sync` against `pyproject.toml`, then
+`ERR_PNPM_NO_PKG_MANIFEST` (hit on the first run, 2026-10-30). If it is wrong, *Edit*, set it, *Save*,
+and *Retry build* on the failed build; an empty commit would not rebuild, because the watch path is
+`frontend/**`.
+
+Then the Worker's *Deployments* tab shows the first build. Its log shows pnpm `12.16.1` (the
 build image takes the version from `packageManager` in `frontend/package.json`, ahead of any
 `PNPM_VERSION` variable) and `pnpm install --frozen-lockfile` completing.
 
