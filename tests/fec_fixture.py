@@ -19,15 +19,8 @@ from tests.fake_fec import FakeFec, zipped
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CYCLE = 2024
 
-# The one member each FEC bulk zip holds.
-MEMBERS: dict[FecFile, str] = {
-    "cm": "cm.txt",
-    "cn": "cn.txt",
-    "ccl": "ccl.txt",
-    "indiv": "itcont.txt",
-    "pas2": "itpas2.txt",
-    "oth": "itoth.txt",
-}
+# The one file each fixture zip holds, named as in FEC's own zips.
+MEMBERS: dict[FecFile, str] = {name: bulk.member for name, bulk in CATALOGUE.items()}
 
 
 def fixture_dir(cycle: int = CYCLE) -> Path:

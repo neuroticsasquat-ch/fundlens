@@ -209,6 +209,16 @@ def _special_races(cycle: int, regular: set[tuple[str, str, str]]) -> list[Race]
     return specials
 
 
+def load_races(con: duckdb.DuckDBPyConnection, races: Iterable[Race]) -> None:
+    """Create the table `race` in `con`, holding `races` in the silver `race` columns."""
+    rows = [
+        (r.race_id, r.cycle, JURISDICTION, r.office, r.state, r.district, r.is_special, r.slug)
+        for r in races
+    ]
+    con.execute(f"CREATE TABLE race ({_RACE_COLUMNS})")
+    con.executemany("INSERT INTO race VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+
+
 def write_partition(
     races: Iterable[Race], *, cycle: int, build_id: str, store: R2, data_dir: Path
 ) -> str:
@@ -217,13 +227,8 @@ def write_partition(
     key = f"{prefix}/{paths.part(0)}"
     local = paths.local_path(data_dir, key)
     local.parent.mkdir(parents=True, exist_ok=True)
-    rows = [
-        (r.race_id, r.cycle, JURISDICTION, r.office, r.state, r.district, r.is_special, r.slug)
-        for r in races
-    ]
     with duckdb.connect() as con:
-        con.execute(f"CREATE TABLE race ({_RACE_COLUMNS})")
-        con.executemany("INSERT INTO race VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+        load_races(con, races)
         con.table("race").write_parquet(str(local), compression="zstd")
     store.put(key, local)
     return key

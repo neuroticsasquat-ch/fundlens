@@ -26,6 +26,18 @@ class Settings(BaseSettings):
     # Root of the local cache volumes (bronze/, silver/, scratch/, resolution/; spec §3.4).
     data_dir: Path = Field(default=Path("/data/fundlens"), alias="DATA_DIR")
 
+    # The SQL the pipeline runs (spec §3.1): the repo's `sql/`, which the image copies to /app.
+    sql_dir: Path = Field(default=Path("/app/sql"), alias="SQL_DIR")
+
+    # DuckDB's limits in transform (spec §3.2, §3.4). The memory limit and thread count are set
+    # on the pipeline service alone (docker-compose.prod.yml), so the API's in-process DuckDB
+    # never inherits them; unset, DuckDB picks its own. Spill under `scratch/` stops at 60 GB.
+    duckdb_memory_limit: str | None = Field(default=None, alias="DUCKDB_MEMORY_LIMIT")
+    duckdb_max_temp_directory_size: str = Field(
+        default="60GB", alias="DUCKDB_MAX_TEMP_DIRECTORY_SIZE"
+    )
+    duckdb_threads: int | None = Field(default=None, alias="DUCKDB_THREADS")
+
     # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
     fec_bulk_url: str = Field(
         default="https://www.fec.gov/files/bulk-downloads", alias="FEC_BULK_URL"

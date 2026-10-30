@@ -46,6 +46,8 @@ FROM base AS prod
 RUN uv sync --locked --inexact --no-cache --no-dev --no-install-project
 
 COPY src/ src/
+# What `fundlens transform` runs (`SQL_DIR`, spec §3.1).
+COPY sql/ sql/
 # `alembic upgrade head` runs from /app in the pipeline container (spec §7.3).
 COPY alembic.ini ./
 COPY migrations/ migrations/

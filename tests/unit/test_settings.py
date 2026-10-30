@@ -16,6 +16,10 @@ OPTIONAL = (
     "R2_BUCKET",
     "R2_PUBLIC_BUCKET",
     "DATA_DIR",
+    "SQL_DIR",
+    "DUCKDB_MEMORY_LIMIT",
+    "DUCKDB_MAX_TEMP_DIRECTORY_SIZE",
+    "DUCKDB_THREADS",
     "LOG_LEVEL",
     "SENTRY_DSN",
     "OTEL_RESOURCE_ATTRIBUTES",
@@ -43,6 +47,10 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.r2_bucket == "fundlens-data"
     assert settings.r2_public_bucket == "fundlens-public"
     assert settings.data_dir == Path("/data/fundlens")
+    assert settings.sql_dir == Path("/app/sql")
+    assert settings.duckdb_memory_limit is None
+    assert settings.duckdb_max_temp_directory_size == "60GB"
+    assert settings.duckdb_threads is None
     assert settings.log_level == "INFO"
     # Telemetry is off until the deploy sets it.
     assert settings.sentry_dsn is None

@@ -29,6 +29,7 @@ from fundlens.logging import configure_logging
 from fundlens.r2 import R2
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
+from fundlens.transform import runner
 from fundlens.transform import seats as seat_calendar
 
 if TYPE_CHECKING:
@@ -287,6 +288,42 @@ def seats(
                 f" {filing.state}-{filing.district or '(blank)'}"
             )
         typer.echo(f"{len(result.unmatched)} unmatched filings recorded")
+
+
+@app.command()
+@step("transform")
+def transform(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    build_id: Annotated[
+        str | None,
+        typer.Option(help="The build the silver partitions are for. Default: one starting now."),
+    ] = None,
+) -> None:
+    """Build the cycle's silver tables from its bronze zips, check them, and upload them
+    (spec §5.3). Run `fundlens seats --report` first: a check reads its unmatched filings."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    with psycopg.connect(settings.database_url) as conn:
+        try:
+            result = runner.transform(
+                cycle,
+                R2.from_settings(settings),
+                build_id=build_id or _new_build_id(),
+                data_dir=settings.data_dir,
+                sql_dir=settings.sql_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+            )
+        except FileNotFoundError as exc:
+            typer.echo(f"{exc}: run `fundlens extract --cycle {cycle}`", err=True)
+            raise typer.Exit(1) from exc
+    for table, rows in result.row_counts.items():
+        typer.echo(f"{table}: {rows} rows")
+    for key in result.keys:
+        typer.echo(f"wrote {key}")
 
 
 @app.command("crash-test", hidden=True)
