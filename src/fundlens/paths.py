@@ -30,6 +30,7 @@ ResolutionTable = Literal["crosswalk", "adjudication"]
 
 BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 _BUILD_ID = re.compile(r"\d{8}T\d{6}Z")
+_BUILD_IN_KEY = re.compile(r"/build=(\d{8}T\d{6}Z)(?:/|$)")
 
 # `silver/contribution` is split into donor_id % 256 buckets (spec §3.4).
 BUCKETS = 256
@@ -72,11 +73,16 @@ def bronze_zip(cycle: int, file: str, download_date: date) -> str:
     return f"{bronze_dir(cycle, file)}{download_date.isoformat()}.zip"
 
 
+def silver_cycle_dir(table: SilverTable, cycle: int) -> str:
+    """Every build of one cycle of a silver table: `silver/<table>/cycle=<c>/`."""
+    _check_cycle(cycle)
+    return f"silver/{table}/cycle={cycle}/"
+
+
 def silver_partition(table: SilverTable, cycle: int, build_id: str) -> str:
     """The directory holding one build of one cycle of a silver table."""
-    _check_cycle(cycle)
     _check_build_id(build_id)
-    return f"silver/{table}/cycle={cycle}/build={build_id}"
+    return f"{silver_cycle_dir(table, cycle)}build={build_id}"
 
 
 def silver_bucket(cycle: int, build_id: str, bucket: int) -> str:
@@ -97,11 +103,26 @@ def resolution_snapshot(build_id: str, table: ResolutionTable) -> str:
     return f"resolution/build={build_id}/{table}.parquet"
 
 
+def markers_dir(cycle: int) -> str:
+    """Every marker of every build of one cycle: `markers/cycle=<c>/`."""
+    _check_cycle(cycle)
+    return f"markers/cycle={cycle}/"
+
+
 def marker(cycle: int, build_id: str, step: Step) -> str:
     """The completion marker `step` writes for one build of one cycle (spec §5.1)."""
-    _check_cycle(cycle)
     _check_build_id(build_id)
-    return f"markers/cycle={cycle}/build={build_id}/{step}.json"
+    return f"{markers_dir(cycle)}build={build_id}/{step}.json"
+
+
+def build_of(key: str) -> str | None:
+    """The `build_id` in a silver or marker key's `build=` segment, or None if it has none.
+
+    How a step lists the builds under a cycle prefix: `build_id`s are `YYYYMMDDTHHMMSSZ`, so
+    sorting the results sorts them by run start.
+    """
+    match = _BUILD_IN_KEY.search(key)
+    return match.group(1) if match else None
 
 
 def local_path(data_dir: Path, key: str) -> Path:

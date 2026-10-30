@@ -21,6 +21,8 @@ OPTIONAL = (
     "DUCKDB_MAX_TEMP_DIRECTORY_SIZE",
     "DUCKDB_THREADS",
     "LOG_LEVEL",
+    "CLOUDFLARE_ZONE_ID",
+    "CLOUDFLARE_API_TOKEN",
     "SENTRY_DSN",
     "OTEL_RESOURCE_ATTRIBUTES",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -52,6 +54,9 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.duckdb_max_temp_directory_size == "60GB"
     assert settings.duckdb_threads is None
     assert settings.log_level == "INFO"
+    # No zone in dev: publish skips the purge.
+    assert settings.cloudflare_zone_id is None
+    assert settings.cloudflare_api_token is None
     # Telemetry is off until the deploy sets it.
     assert settings.sentry_dsn is None
     assert settings.otel_resource_attributes == ""
@@ -63,12 +68,14 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
 def test_secrets_are_not_rendered(env: pytest.MonkeyPatch) -> None:
     env.setenv("KUMA_PUSH_WEEKLY", "https://kuma.example/api/push/s3cr3tTok")
     env.setenv("SENTRY_DSN", "https://dsnK3y@bugsink.example/1")
+    env.setenv("CLOUDFLARE_API_TOKEN", "cfPurg3Tok")
 
     settings = Settings()  # pyright: ignore[reportCallIssue]
 
     assert "hunter2" not in repr(settings)
     assert "s3cr3tTok" not in repr(settings)
     assert "dsnK3y" not in repr(settings)
+    assert "cfPurg3Tok" not in repr(settings)
 
 
 def test_missing_database_url_fails(env: pytest.MonkeyPatch) -> None:
