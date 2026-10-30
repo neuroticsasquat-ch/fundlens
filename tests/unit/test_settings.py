@@ -83,3 +83,20 @@ def test_missing_database_url_fails(env: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError, match="DATABASE_URL"):
         Settings()  # pyright: ignore[reportCallIssue]
+
+
+def test_a_blank_variable_is_unset(env: pytest.MonkeyPatch) -> None:
+    # Coolify hands a service a blank entry for a variable it has in its UI but the compose file
+    # gives another service (DUCKDB_THREADS reached `api` as '', 2026-10-30): a crash on every
+    # command if blank were a value.
+    for name in OPTIONAL:
+        env.setenv(name, "")
+
+    settings = Settings()  # pyright: ignore[reportCallIssue]
+
+    assert settings.duckdb_threads is None
+    assert settings.duckdb_memory_limit is None
+    assert settings.r2_bucket == "fundlens-data"
+    assert settings.data_dir == Path("/data/fundlens")
+    assert settings.cloudflare_zone_id is None
+    assert settings.sentry_dsn is None

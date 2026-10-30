@@ -12,7 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # A blank variable is an unset one: Coolify can hand a service an empty entry for a variable
+    # the compose file only gives another service, and '' is no value for an int or a path.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     database_url: str = Field(..., alias="DATABASE_URL")
 
