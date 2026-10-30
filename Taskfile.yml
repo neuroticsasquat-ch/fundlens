@@ -76,10 +76,12 @@ tasks:
 
   db:migrate:
     desc: Apply Alembic migrations to the `app` schema
-    # Alembic and migrations/ arrive with the `app` schema ticket (NEU-2031); until then this
-    # fails with "alembic: not found".
     cmds:
       - "{{.EXEC}} alembic upgrade head"
+  db:check:
+    desc: Fail if the migrated `app` schema and `fundlens.app_schema` disagree (run db:migrate first)
+    cmds:
+      - "{{.EXEC}} alembic check"
 
   test:
     desc: Run the whole pytest suite (task test -- <path> for one file)
@@ -96,19 +98,19 @@ tasks:
   lint:
     desc: Run ruff check
     cmds:
-      - "{{.EXEC}} ruff check src tests"
+      - "{{.EXEC}} ruff check src tests migrations"
   format:
     desc: Run ruff format
     cmds:
-      - "{{.EXEC}} ruff format src tests"
+      - "{{.EXEC}} ruff format src tests migrations"
   format:check:
     desc: Check ruff formatting without writing
     cmds:
-      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests"}}'
+      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests migrations"}}'
   typecheck:
-    desc: Run pyright (strict) over src and tests
+    desc: Run pyright (strict) over src, tests and migrations
     cmds:
-      - "{{.EXEC}} pyright src tests"
+      - "{{.EXEC}} pyright src tests migrations"
 
   # The frontend service sits behind a compose profile (see docker-compose.yml), so `fe:dev`
   # starts it and every other fe: target runs in it.
