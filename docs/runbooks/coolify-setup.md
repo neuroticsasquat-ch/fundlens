@@ -67,8 +67,10 @@ before, so step 10 re-checks them.)
 
 ## 3. Domain
 
-1. *General* → *Domains for api* = `https://api.fundlens.org:8000`. The `:8000` is the container port
-   Traefik routes to; the public URL stays on 443.
+1. *General* → *Domains for api* = `https://api.fundlens.org:8000`, with the scheme and the port. The
+   `:8000` is the container port Traefik routes to; the public URL stays on 443. Re-read the field
+   after saving: without the port, Traefik logs `port is missing`, answers 503, and never requests a
+   certificate, so Cloudflare shows 526 (first run, 2026-10-30).
 2. Leave the domain fields for `pipeline` and `fundlens-postgres` empty. *Save*.
 
 ## 4. Bugsink project
