@@ -17,6 +17,7 @@ BUILD = "20261102T030000Z"
             paths.bronze_zip(2026, "indiv", date(2026, 11, 2)),
             "bronze/cycle=2026/indiv/2026-11-02.zip",
         ),
+        (paths.bronze_dir(2024, "cm"), "bronze/cycle=2024/cm/"),
         (
             f"{paths.silver_partition('committee', 2024, BUILD)}/{paths.part(0)}",
             f"silver/committee/cycle=2024/build={BUILD}/part-0000.parquet",

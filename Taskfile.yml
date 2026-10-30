@@ -79,6 +79,11 @@ tasks:
     cmds:
       - "{{.EXEC_TTY}} fundlens api"
 
+  fec:headers:
+    desc: 'Refresh the vendored FEC header files from FEC (task fec:headers -- --check to compare only)'
+    cmds:
+      - "{{.EXEC}} python -m fundlens.fec.refresh_headers {{.CLI_ARGS}}"
+
   prod:check:
     desc: Validate docker-compose.prod.yml (warnings about unset secrets are expected)
     cmds:
