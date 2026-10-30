@@ -31,9 +31,9 @@ Fill this in during Part A, then commit it ([step 9](#9-record-the-as-built-valu
 
 | What | Value |
 | --- | --- |
-| Account ID | |
-| Zone ID (`fundlens.org`) | |
-| Cloudflare nameservers | |
+| Account ID | 6fa481ae677c7dc06dfe81f4522dfa84 |
+| Zone ID (`fundlens.org`) | 04a93f8792c4313c7f2c1c3b73175307 |
+| Cloudflare nameservers | kara.ns.cloudflare.com. mike.ns.cloudflare.com. |
 | R2 endpoint (`R2_ENDPOINT`) | `https://<account id>.r2.cloudflarestorage.com` |
 | R2 buckets | `fundlens-data` (private, location hint WEUR), `fundlens-public` (private until NEU-2067) |
 | R2 token | `fundlens-pipeline`, Object Read & Write on both buckets; vault item `fundlens R2 token` |
@@ -170,7 +170,14 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
 4. Worker `fundlens` → *Settings* → *Domains & Routes*: leave `workers.dev` and **Preview URLs**
    enabled. Preview builds are served from them.
 
-**Check:** the Worker's *Deployments* tab shows the first build. Its log shows pnpm `12.16.1` (the
+**Check:** Worker `fundlens` → *Settings* → *Build* → *Build configuration* reads **Root directory**
+`frontend`. The import dialog keeps that field under *Advanced settings*, and when it is missed the
+build runs from the repo root: the log shows `uv sync` against `pyproject.toml`, then
+`ERR_PNPM_NO_PKG_MANIFEST` (hit on the first run, 2026-10-30). If it is wrong, *Edit*, set it, *Save*,
+and *Retry build* on the failed build; an empty commit would not rebuild, because the watch path is
+`frontend/**`.
+
+Then the Worker's *Deployments* tab shows the first build. Its log shows pnpm `12.16.1` (the
 build image takes the version from `packageManager` in `frontend/package.json`, ahead of any
 `PNPM_VERSION` variable) and `pnpm install --frozen-lockfile` completing.
 

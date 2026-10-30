@@ -27,7 +27,7 @@ host through the bind mount.
 Read at build time and baked into the bundle (see `.env.example`):
 
 | Variable | Meaning |
-|---|---|
+| --- | --- |
 | `VITE_API_BASE_URL` | Origin of the API. Unset means same-origin `/v1`, which the dev server proxies to the `app` service. Workers Builds sets `https://api.fundlens.org`. |
 | `WORKERS_CI_COMMIT_SHA` | Set by Workers Builds; the page shows its first 7 characters as the build. Anywhere else the build reads `dev`. |
 
@@ -37,3 +37,5 @@ Workers Builds (configured by [the Cloudflare runbook](../docs/runbooks/cloudfla
 build command `pnpm install --frozen-lockfile && pnpm build`, deploy command
 `npx wrangler deploy`, watch paths `frontend/**`, production branch `main`, preview
 deployments on PRs.
+
+As built: Worker \fundlens`, custom domain`fundlens.org`(docs/runbooks/cloudflare-setup.md).`
