@@ -13,7 +13,7 @@ swap (spec §5.5), or the edge can keep such a response for a week.
 import logging
 import time
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, cast
 
 import psycopg
 from anyio import to_thread
@@ -45,12 +45,13 @@ def read_build_id(pool: Pool) -> str | None:
     return None if row is None else str(row[0])
 
 
-class BuildIdCache:
-    """`read()`'s answer, refreshed once it is `ttl` seconds old."""
+class TtlCache[T]:
+    """`read()`'s answer, refreshed once it is `ttl` seconds old: the live build id here, and
+    each cycle's live silver build for the itemized reader (`api.itemized`)."""
 
     def __init__(
         self,
-        read: Callable[[], str | None],
+        read: Callable[[], T],
         *,
         ttl: float = BUILD_ID_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
@@ -58,10 +59,10 @@ class BuildIdCache:
         self._read = read
         self._ttl = ttl
         self._clock = clock
-        self._value: str | None = None
+        self._value: T | None = None
         self._expires_at: float | None = None
 
-    def get(self) -> str | None:
+    def get(self) -> T:
         # A failed read is kept for the ttl like any other answer, so while Postgres is down
         # each request does not wait out the pool's timeout again just to omit the ETag.
         now = self._clock()
@@ -69,7 +70,7 @@ class BuildIdCache:
             # Two requests racing here both read; either answer is current, so no lock.
             self._value = self._read()
             self._expires_at = now + self._ttl
-        return self._value
+        return cast(T, self._value)
 
 
 class BuildIds(Protocol):

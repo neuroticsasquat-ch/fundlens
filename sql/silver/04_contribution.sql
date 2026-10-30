@@ -62,6 +62,14 @@ SELECT
     'fec' AS source,
     kept.SUB_ID AS source_record_id,
     'US' AS jurisdiction,
+    -- The contributor as reported on this contribution, before resolution: what an itemized list
+    -- shows, and what M3 reduces to contributor keys.
+    kept.NAME AS contributor_name,
+    kept.CITY AS contributor_city,
+    kept.STATE AS contributor_state,
+    kept.ZIP_CODE AS contributor_zip,
+    kept.EMPLOYER AS contributor_employer,
+    kept.OCCUPATION AS contributor_occupation,
     kept.CMTE_ID AS recipient_committee_id,
     linked.candidate_id,
     kept.TRANSACTION_AMT AS amount,

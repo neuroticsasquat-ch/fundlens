@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.testclient import TestClient
 
-from fundlens.api.cache import CACHE_CONTROL, NO_STORE, BuildIdCache, CacheHeaders
+from fundlens.api.cache import CACHE_CONTROL, NO_STORE, CacheHeaders, TtlCache
 from fundlens.api.problems import install_problem_handlers
 
 BUILD_ID = "20261102T030000Z"
@@ -95,7 +95,7 @@ class Clock:
 def test_build_id_is_read_once_per_ttl() -> None:
     reads: list[str | None] = [BUILD_ID, "20261109T030000Z"]
     clock = Clock()
-    cache = BuildIdCache(lambda: reads.pop(0), ttl=60, clock=clock)
+    cache = TtlCache(lambda: reads.pop(0), ttl=60, clock=clock)
 
     assert cache.get() == BUILD_ID
     clock.now = 59.9
@@ -107,7 +107,7 @@ def test_build_id_is_read_once_per_ttl() -> None:
 def test_no_build_is_cached_like_any_other_answer() -> None:
     reads: list[str | None] = [None, BUILD_ID]
     clock = Clock()
-    cache = BuildIdCache(lambda: reads.pop(0), ttl=60, clock=clock)
+    cache = TtlCache(lambda: reads.pop(0), ttl=60, clock=clock)
 
     assert cache.get() is None
     assert cache.get() is None
