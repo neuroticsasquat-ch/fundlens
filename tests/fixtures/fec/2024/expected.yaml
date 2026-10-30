@@ -1,0 +1,362 @@
+# What the pipeline must make of the 2024 fixture cycle (spec §12). Every number here is checked
+# against the fixture CSVs by tests/unit/test_fec_fixture.py: change a row, then this file.
+#
+# Rules the totals follow (spec §4, ADR-0004):
+# - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, MEMO_CD not X and
+#   TRANSACTION_TP not 24T. Refunds (negative 22Y rows) are counted and net out.
+# - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
+#   committee is linked to. It is never in total_individual: it is its own total.
+# - A candidate's money is that of the committees `ccl` links to them as principal (P) or
+#   authorized (A). A leadership PAC (D) is not the candidate's.
+# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows.
+#   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
+#   total_from_committees: `oth` rows, by the receiving committee (CMTE_ID). A committee's gift to
+#   a candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
+# - A race's totals are the sums over the candidates attached to it.
+# All amounts are whole dollars.
+
+cycle: 2024
+
+# Data rows per bulk file, comment lines and header excluded.
+rows:
+  cm: 17
+  cn: 12
+  ccl: 12
+  indiv: 300
+  pas2: 16
+  oth: 10
+
+# Rows per silver table after transform. independent_expenditure is every `pas2` row but the
+# 24K committee contributions (24A/24E, and the 24C kept with its kind).
+silver:
+  committee: 17
+  candidate: 12
+  candidate_committee_link: 12
+  contribution: 275
+  independent_expenditure: 9
+  committee_transfer: 10
+
+contributions:
+  # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
+  dropped_memo: 12
+  dropped_conduit_24t: 12
+  dropped_not_individual: 1
+  self_funding: 3
+  # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
+  # conduit only in MEMO_TEXT.
+  earmarked:
+    C00401224: 5
+    C00694323: 7
+  # Every counted contribution, self-funding included.
+  total_amount: 2244775
+
+# cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
+unmatched_filings: [H4MD09109]
+
+races:
+  2024-P-US-00:
+    candidate_count: 3
+    total_individual: 54775
+    total_committee: 5000
+    ie_support: 400000
+    ie_oppose: 0
+  2024-S-MD-00:
+    candidate_count: 4
+    total_individual: 91975
+    total_committee: 10000
+    ie_support: 150000
+    ie_oppose: 125000
+  2024-H-MD-05:
+    candidate_count: 4
+    total_individual: 67100
+    total_committee: 12500
+    ie_support: 28000
+    ie_oppose: 15000
+  # A special in the seat calendar with no one attached: cn cannot tell its filings from the
+  # regular NE race beside it, so the fixture plants none (race attachment is NEU-2037's).
+  2024-S-NE-00-special:
+    candidate_count: 0
+    total_individual: 0
+    total_committee: 0
+    ie_support: 0
+    ie_oppose: 0
+  # A seat no one filed for: a race all the same, with nothing in it.
+  2024-H-MD-08:
+    candidate_count: 0
+    total_individual: 0
+    total_committee: 0
+    ie_support: 0
+    ie_oppose: 0
+
+candidates:
+  P40000101: # HARGROVE
+    race_id: 2024-P-US-00
+    total_individual: 19625
+    total_committee: 5000
+    self_funding: 0
+    ie_support: 400000
+    ie_oppose: 0
+  P40000102: # STRATTON
+    race_id: 2024-P-US-00
+    total_individual: 35150
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  P40000110: # QUILL: no committee
+    race_id: 2024-P-US-00
+    total_individual: 0
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  S4MD00103: # OKAFOR: principal + authorized committee
+    race_id: 2024-S-MD-00
+    total_individual: 49700
+    total_committee: 5000
+    self_funding: 5000
+    ie_support: 150000
+    ie_oppose: 45000
+  S4MD00104: # WHITLOCK: the self-funder, with a loan
+    race_id: 2024-S-MD-00
+    total_individual: 31850
+    total_committee: 5000
+    self_funding: 1750000
+    ie_support: 0
+    ie_oppose: 80000
+  S4MD00105: # PELL
+    race_id: 2024-S-MD-00
+    total_individual: 3250
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  S4MD00111: # BRANNIGAN
+    race_id: 2024-S-MD-00
+    total_individual: 7175
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  H4MD05106: # CALLOWAY: his leadership PAC's receipts are not his; its 24K gift to him is
+    race_id: 2024-H-MD-05
+    total_individual: 35825
+    total_committee: 10000
+    self_funding: 0
+    ie_support: 28000
+    ie_oppose: 0
+  H4MD05107: # DRISCOLL
+    race_id: 2024-H-MD-05
+    total_individual: 25825
+    total_committee: 2500
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 15000
+  H4MD05108: # YANG
+    race_id: 2024-H-MD-05
+    total_individual: 5450
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  H4MD05112: # ESPOSITO: no committee
+    race_id: 2024-H-MD-05
+    total_individual: 0
+    total_committee: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  H4MD09109: # FENWICK: the unmatched-district filing, money but no race
+    race_id: null
+    total_individual: 3200
+    total_committee: 1000
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+
+committees:
+  C00401224: # ACTBLUE: a conduit, never a counted recipient
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00694323: # WINRED
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800101: # HARGROVE FOR AMERICA
+    total_individual: 19625
+    self_funding: 0
+    total_from_committees: 5000
+    total_to_candidates: 0
+    ie_total: 0
+  C00800102: # STRATTON 2024
+    total_individual: 35150
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800103: # OKAFOR FOR MARYLAND
+    total_individual: 37550
+    self_funding: 5000
+    total_from_committees: 25000
+    total_to_candidates: 0
+    ie_total: 0
+  C00800113: # FRIENDS OF DIANA OKAFOR (authorized)
+    total_individual: 12150
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800104: # WHITLOCK FOR SENATE
+    total_individual: 31850
+    self_funding: 1750000
+    total_from_committees: 5000
+    total_to_candidates: 0
+    ie_total: 0
+  C00800105: # PELL FOR LIBERTY
+    total_individual: 3250
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800111: # BRANNIGAN FOR MARYLAND
+    total_individual: 7175
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800106: # CALLOWAY FOR CONGRESS
+    total_individual: 35825
+    self_funding: 0
+    total_from_committees: 10000
+    total_to_candidates: 0
+    ie_total: 0
+  C00800114: # CALLOWAY LEADERSHIP FUND (designation D)
+    total_individual: 4000
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 5000
+    ie_total: 0
+  C00800107: # DRISCOLL FOR CONGRESS
+    total_individual: 25825
+    self_funding: 0
+    total_from_committees: 2500
+    total_to_candidates: 0
+    ie_total: 0
+  C00800108: # YANG FOR MARYLAND
+    total_individual: 5450
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800109: # FENWICK FOR CONGRESS
+    total_individual: 3200
+    self_funding: 0
+    total_from_committees: 1000
+    total_to_candidates: 0
+    ie_total: 0
+  C00800201: # MARYLAND FORWARD PAC: the super PAC
+    total_individual: 250375
+    self_funding: 0
+    total_from_committees: 50000
+    total_to_candidates: 0
+    ie_total: 670000
+  C00800202: # BRICKLAYERS UNITED PAC
+    total_individual: 4050
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 17500
+    ie_total: 3000
+  C00800203: # OLD LINE REPUBLICAN COMMITTEE
+    total_individual: 14300
+    self_funding: 0
+    total_from_committees: 15000
+    total_to_candidates: 6000
+    ie_total: 45000
+
+# The donors behind the planted hard cases (spec §6), each with every one of their counted
+# contributions by SUB_ID and their label in tests/fixtures/dime/ (`bonica.cid`).
+# resolved_by: `linkage` when Splink should group their contributor keys, `merge_override` /
+# `split_override` when it takes an entry in resolution/overrides.yaml, `none` when all their
+# contributions share one contributor key and there is nothing to group.
+donors:
+  # MARLOWE, AUGUSTINE: four name / employer / ZIP variants. The California row shares no blocking
+  # key with the Texas ones (spec §6.3) until the employer alias table maps ASTRAX to ASTRA
+  # EXPLORATION TECHNOLOGIES (§6.2): linkage needs that alias.
+  musk_case:
+    bonica_cid: 100000003
+    resolved_by: linkage
+    amount: 23200
+    sub_ids: [4240100000000000007, 4240100000000000008, 4240100000000000009, 4240100000000000010, 4240100000000000011]
+  employer_variant: # DUBOIS, RAYMOND: ASTRAX / ASTRA EXPLORATION TECHNOLOGIES
+    bonica_cid: 100000004
+    resolved_by: linkage
+    amount: 2500
+    sub_ids: [4240100000000000012, 4240100000000000013]
+  same_name_md: # SMITH, JOHN of Baltimore, MD: never merged with smith_tx
+    bonica_cid: 100000005
+    resolved_by: none
+    amount: 750
+    sub_ids: [4240100000000000014, 4240100000000000015]
+  same_name_tx: # SMITH, JOHN of Dallas, TX
+    bonica_cid: 100000006
+    resolved_by: none
+    amount: 1000
+    sub_ids: [4240100000000000016]
+  earmark_actblue: # REYES, CARMEN: three rows, counted once
+    bonica_cid: 100000001
+    resolved_by: none
+    amount: 250
+    sub_ids: [4240100000000000003]
+  earmark_winred: # HOLLOWAY, DEAN
+    bonica_cid: 100000002
+    resolved_by: none
+    amount: 500
+    sub_ids: [4240100000000000006]
+  partial_refund: # PRESCOTT, VIVIAN: 4300 less a 1000 refund
+    bonica_cid: 100000007
+    resolved_by: none
+    amount: 3300
+    sub_ids: [4240100000000000017, 4240100000000000018]
+  full_refund: # TANAKA, HIRO: nets to zero
+    bonica_cid: 100000008
+    resolved_by: none
+    amount: 0
+    sub_ids: [4240100000000000019, 4240100000000000020]
+  self_funder: # WHITLOCK, GORDON: self-funding, never a top donor
+    bonica_cid: 100000009
+    resolved_by: none
+    amount: 1750000
+    sub_ids: [4240100000000000021, 4240100000000000022]
+  candidate_as_donor: # OKAFOR, DIANA: 5000 self-funding, 2000 an ordinary gift to CALLOWAY
+    bonica_cid: 100000010
+    resolved_by: none
+    amount: 7000
+    sub_ids: [4240100000000000023, 4240100000000000024]
+  merge_override: # KOWALCZYK, MARGARET and KOWALCZYK, PEGGY
+    bonica_cid: 100000011
+    resolved_by: merge_override
+    amount: 1250
+    sub_ids: [4240100000000000026, 4240100000000000027]
+  split_override_jr: # ABERNATHY, CHARLES JR: not his father
+    bonica_cid: 100000012
+    resolved_by: split_override
+    amount: 100
+    sub_ids: [4240100000000000028]
+  split_override_sr: # ABERNATHY, CHARLES SR
+    bonica_cid: 100000013
+    resolved_by: split_override
+    amount: 2000
+    sub_ids: [4240100000000000029]
+  super_pac_donor: # VANTERPOOL, SIMONE: counted on the super PAC, on no candidate
+    bonica_cid: 100000014
+    resolved_by: none
+    amount: 250000
+    sub_ids: [4240100000000000030]
+
+# The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
+distinct_donors: 100
