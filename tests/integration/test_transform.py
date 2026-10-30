@@ -29,6 +29,7 @@ TABLES: tuple[SilverTable, ...] = (
     "candidate",
     "candidate_committee_link",
     "contribution",
+    "committee_transfer",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -195,6 +196,21 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "is_self_funding",
         "image_num",
         "file_num",
+    ]
+
+    transfers = read_silver(store, "committee_transfer", tmp_path)
+    assert list(transfers[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "from_committee_id",
+        "to_committee_id",
+        "candidate_id",
+        "amount",
+        "date",
+        "transaction_type",
+        "side",
     ]
 
 
@@ -475,3 +491,76 @@ def test_transform_without_bronze_says_to_extract(store: R2, cli_env: Path) -> N
 
 def test_an_odd_cycle_is_a_usage_error(store: R2, cli_env: Path) -> None:
     assert transform(2025).exit_code == 2
+
+
+def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_totals(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    rows = read_silver(store, "committee_transfer", tmp_path)
+    expected = fec_fixture.expected()
+    receipts = [row for row in rows if row["side"] == "receipt"]
+    disbursements = [row for row in rows if row["side"] == "disbursement"]
+
+    # Every `oth` row is a receipt; every 24K `pas2` row a disbursement; nothing else is here.
+    assert len(receipts) == expected["rows"]["oth"]
+    assert len(disbursements) == len(rows) - len(receipts)
+    assert len(rows) == expected["silver"]["committee_transfer"]
+    assert {row["transaction_type"] for row in disbursements} == {"24K"}
+    assert {row["candidate_id"] for row in receipts} == {None}
+    assert None not in {row["candidate_id"] for row in disbursements}
+    assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
+        ("fec", "US", 2024)
+    }
+    # BRICKLAYERS' gift to OKAFOR: the giver's 24K and the recipient's 18K, one row each.
+    by_id = {row["source_record_id"]: row for row in rows}
+    given, received = by_id[4240200000000000010], by_id[4240300000000000004]
+    assert (given["from_committee_id"], given["to_committee_id"], given["candidate_id"]) == (
+        "C00800202",
+        "C00800103",
+        "S4MD00103",
+    )
+    assert (received["from_committee_id"], received["to_committee_id"]) == (
+        "C00800202",
+        "C00800103",
+    )
+    assert (given["amount"], received["amount"], given["date"]) == (5000, 5000, date(2024, 4, 10))
+
+    # One side each (expected.yaml's rule): receipts by recipient, disbursements by giver and
+    # by candidate.
+    committees = expected["committees"]
+    assert sum_by(receipts, "to_committee_id") == {
+        committee_id: totals["total_from_committees"]
+        for committee_id, totals in committees.items()
+        if totals["total_from_committees"]
+    }
+    assert sum_by(disbursements, "from_committee_id") == {
+        committee_id: totals["total_to_candidates"]
+        for committee_id, totals in committees.items()
+        if totals["total_to_candidates"]
+    }
+    candidates = expected["candidates"]
+    assert sum_by(disbursements, "candidate_id") == {
+        candidate_id: totals["total_committee"]
+        for candidate_id, totals in candidates.items()
+        if totals["total_committee"]
+    }
+
+
+def test_a_duplicated_committee_receipt_aborts_the_run_before_any_upload(
+    store: R2, cli_env: Path
+) -> None:
+    oth = fec_fixture.bulk_text("oth")
+    put_bronze(store, texts={"oth": oth + oth.splitlines(keepends=True)[0]})
+    seats_report()
+
+    result = transform()
+
+    assert isinstance(result.exception, ChecksFailed)
+    assert "silver_committee_transfer_key.sql" in str(result.exception)
+    assert "4240300000000000001" in str(result.exception)
+    assert uploaded_silver(store) == []
+    assert not markers.exists("transformed", store, cycle=2024, build_id=BUILD)

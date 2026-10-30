@@ -27,14 +27,16 @@ rows:
   oth: 10
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
-# 24K committee contributions (24A/24E, and the 24C kept with its kind).
+# 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
+# every `oth` row (a receipt, recorded by the receiving committee) plus every `pas2` 24K row (a
+# disbursement, recorded by the giver): the one gift on both sides, each side its own row.
 silver:
   committee: 17
   candidate: 12
   candidate_committee_link: 12
   contribution: 275
   independent_expenditure: 9
-  committee_transfer: 10
+  committee_transfer: 17
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.

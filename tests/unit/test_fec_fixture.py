@@ -243,7 +243,8 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "candidate_committee_link": len(rows("ccl")),
         "contribution": len(contributions),
         "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
-        "committee_transfer": len(rows("oth")),
+        "committee_transfer": len(rows("oth"))
+        + sum(r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION for r in pas2),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     assert EXPECTED["contributions"] == {
