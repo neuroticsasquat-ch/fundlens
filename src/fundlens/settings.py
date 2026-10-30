@@ -28,6 +28,21 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # Telemetry (spec §10.3). All unset in dev and CI, where Sentry stays off and every Kuma push
+    # is a no-op.
+    # Secret because its key is what Bugsink accepts events on.
+    sentry_dsn: SecretStr | None = Field(default=None, alias="SENTRY_DSN")
+    # OTel reads these itself inside `opentelemetry-instrument`; they are read here only so
+    # Sentry can report the same release and environment (`telemetry.resolve_telemetry`).
+    otel_resource_attributes: str = Field(default="", alias="OTEL_RESOURCE_ATTRIBUTES")
+    otel_exporter_otlp_endpoint: str | None = Field(
+        default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT"
+    )
+    # One Uptime Kuma push monitor per job family. Secret because the token in the URL is the
+    # monitor's only credential (see `logging.redact_push_token`).
+    kuma_push_weekly: SecretStr | None = Field(default=None, alias="KUMA_PUSH_WEEKLY")
+    kuma_push_publish: SecretStr | None = Field(default=None, alias="KUMA_PUSH_PUBLISH")
+
 
 @lru_cache
 def get_settings() -> Settings:

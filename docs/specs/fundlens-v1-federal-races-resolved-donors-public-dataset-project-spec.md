@@ -198,7 +198,7 @@ fundlens health                                      # exit 0 iff Postgres + R2 
 
 Every step writes a completion marker to R2 (`markers/...`) with `build_id`, row counts and timing. `run` skips a step whose marker exists for this `build_id`; a crashed run is resumed by re-running `run` with `--build-id`. The idempotency check for extract is "does the silver partition for this cycle exist and is the bronze download date unchanged", never "is the zip on disk". Each step is also a Python function so tests call it without the CLI.
 
-Every CLI entry is wrapped: Kuma push `/start` and `/` on success, `/fail` on exception; the exception is reported to Bugsink with `pipeline_mode=<step>` and re-raised (crash, not items).
+Every CLI entry is wrapped: Kuma push `status=up` on success, `status=down` on exception (Kuma has no start signal, so a run that hangs or never starts is caught by the monitor's interval expiring); the exception is reported to Bugsink with `pipeline_mode=<step>` and re-raised (crash, not items).
 
 ### 5.2 Seat calendar (`fundlens seats`)
 
