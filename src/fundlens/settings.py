@@ -28,6 +28,11 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # Origins the API's CORS headers allow (spec §7.2): the SPA in prod, plus its local servers
+    # in dev. A JSON list in the environment; the first is the one a request without an
+    # `Origin` is answered for (`api.cors`).
+    cors_origins: list[str] = Field(default=["https://fundlens.org"], alias="CORS_ORIGINS")
+
     # Telemetry (spec §10.3). All unset in dev and CI, where Sentry stays off and every Kuma push
     # is a no-op.
     # Secret because its key is what Bugsink accepts events on.
