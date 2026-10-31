@@ -7,9 +7,12 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import Providers from "../Providers";
 import { routes } from "../routes";
 import { http, server } from "./api";
-import { CYCLES, META, problem, RACES, SEARCH_CALLOWAY } from "./fixtures";
+import { CYCLES, META, problem, RACE_PAGES, RACES, SEARCH_CALLOWAY } from "./fixtures";
 
-/** The fixture API: the 2024 cycle, its races, and hits for any query containing "calloway". */
+/**
+ * The fixture API: the 2024 cycle, its races and their pages, and hits for any query containing
+ * "calloway".
+ */
 export const fixtureApi = (): HttpHandler[] => [
   http.get("/v1/cycles", ({ response }) => response(200).json(CYCLES)),
   http.get("/v1/meta", ({ response }) => response(200).json(META)),
@@ -18,6 +21,14 @@ export const fixtureApi = (): HttpHandler[] => [
       ? response(200).json(RACES)
       : response(404).json(problem(404, "Not Found", `No cycle ${params.cycle}.`)),
   ),
+  http.get("/v1/races/{cycle}/{office}/{place}", ({ params, request, response }) => {
+    const special = new URL(request.url).searchParams.get("special") === "true";
+    const slug = `${params.cycle}/${params.office}/${params.place}${special ? "-special" : ""}`;
+    const race = RACE_PAGES[slug];
+    return race
+      ? response(200).json(race)
+      : response(404).json(problem(404, "Not Found", `No race ${slug}.`));
+  }),
   http.get("/v1/search", ({ request, response }) => {
     const q = new URL(request.url).searchParams.get("q") ?? "";
     return response(200).json(q.toLowerCase().includes("calloway") ? SEARCH_CALLOWAY : []);

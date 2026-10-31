@@ -1,4 +1,12 @@
-import type { Cycle, Meta, Problem, RaceSummary, SearchResult } from "../api/client";
+import type {
+  Cycle,
+  Meta,
+  Problem,
+  Race,
+  RaceCandidate,
+  RaceSummary,
+  SearchResult,
+} from "../api/client";
 
 // The fixture cycle as the API serves it, from tests/fixtures/fec/2024/expected.yaml.
 
@@ -84,6 +92,96 @@ export const RACES: RaceSummary[] = [
     slug: "2024/house/MD-08",
   }),
 ];
+
+const candidate = (
+  candidate: Pick<RaceCandidate, "candidate_id" | "name" | "party" | "principal_committee_id"> &
+    Partial<RaceCandidate>,
+): RaceCandidate => ({
+  incumbent_challenger_open: "O",
+  total_individual: 0,
+  total_committee: 0,
+  self_funding: 0,
+  ie_support: 0,
+  ie_oppose: 0,
+  ...candidate,
+});
+
+/**
+ * `/v1/races/2024/senate/MD`: four candidates, most money first (the API's order), and the two
+ * committees that gave to them. WHITLOCK is the self-funder: his loan is self-funding, not in
+ * `total_individual`.
+ */
+export const RACE_SENATE_MD: Race = {
+  ...RACES[1],
+  candidates: [
+    candidate({
+      candidate_id: "S4MD00104",
+      name: "WHITLOCK, GORDON",
+      party: "REP",
+      principal_committee_id: "C00800104",
+      total_individual: 31850,
+      total_committee: 5000,
+      self_funding: 1750000,
+      ie_oppose: 80000,
+    }),
+    candidate({
+      candidate_id: "S4MD00103",
+      name: "OKAFOR, DIANA",
+      party: "DEM",
+      principal_committee_id: "C00800103",
+      total_individual: 49700,
+      total_committee: 5000,
+      self_funding: 5000,
+      ie_support: 150000,
+      ie_oppose: 45000,
+    }),
+    candidate({
+      candidate_id: "S4MD00111",
+      name: "BRANNIGAN, TESS",
+      party: "DEM",
+      principal_committee_id: "C00800111",
+      total_individual: 7175,
+    }),
+    candidate({
+      candidate_id: "S4MD00105",
+      name: "PELL, MARCUS",
+      party: "LIB",
+      principal_committee_id: "C00800105",
+      total_individual: 3250,
+    }),
+  ],
+  top_committees: [
+    {
+      rank: 1,
+      committee_id: "C00800202",
+      name: "BRICKLAYERS UNITED PAC",
+      amount: 5000,
+      kind: "contribution",
+    },
+    {
+      rank: 2,
+      committee_id: "C00800203",
+      name: "OLD LINE REPUBLICAN COMMITTEE",
+      amount: 5000,
+      kind: "contribution",
+    },
+  ],
+};
+
+/**
+ * The race pages the fixture API serves, by slug: Maryland's Senate race and the two races nobody
+ * is running in. The President and Maryland 5th pages are not written out, so they are a 404.
+ */
+export const RACE_PAGES: Record<string, Race> = Object.fromEntries(
+  [
+    RACE_SENATE_MD,
+    ...RACES.filter((race) => race.candidate_count === 0).map((race) => ({
+      ...race,
+      candidates: [],
+      top_committees: [],
+    })),
+  ].map((race) => [race.slug, race]),
+);
 
 /** `/v1/search?q=calloway`: a candidate and two committees, best first. */
 export const SEARCH_CALLOWAY: SearchResult[] = [

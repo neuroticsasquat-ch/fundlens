@@ -18,6 +18,9 @@ Object.defineProperty(document, "fonts", {
   value: { addEventListener: vi.fn(), removeEventListener: vi.fn(), ready: Promise.resolve() },
 });
 
+// jsdom has no canvas, so every chart draws through the stand-in; a test reads back its option.
+vi.mock("../components/charts/echarts", () => import("./echarts"));
+
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });
 });

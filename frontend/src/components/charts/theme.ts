@@ -1,5 +1,6 @@
 import { useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import type { MantineTheme } from "@mantine/core";
+import { useMemo } from "react";
 import { PARTY_COLOURS } from "../../theme";
 import type { PartyColourKey } from "../../theme";
 
@@ -19,10 +20,17 @@ const resolve = (token: string, theme: MantineTheme) => {
   return theme.colors[name][Number(shade)];
 };
 
-/** The chart colours for the colour scheme in force: Mantine's, which follows the system. */
+/**
+ * The chart colours for the colour scheme in force: Mantine's, which follows the system. The same
+ * object until the scheme changes, so a chart can memoize its option on it.
+ */
 export function useChartTheme(): ChartTheme {
   const theme = useMantineTheme();
   const dark = useComputedColorScheme("light") === "dark";
+  return useMemo(() => chartTheme(theme, dark), [theme, dark]);
+}
+
+function chartTheme(theme: MantineTheme, dark: boolean): ChartTheme {
   return {
     ink: dark ? theme.colors.dark[0] : theme.black,
     dimmed: dark ? theme.colors.dark[2] : theme.colors.gray[6],

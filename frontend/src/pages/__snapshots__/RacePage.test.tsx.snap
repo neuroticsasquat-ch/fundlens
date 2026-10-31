@@ -1,0 +1,171 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = `
+{
+  "backgroundColor": "transparent",
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 8,
+    "right": 24,
+    "top": 8,
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "itemStyle": {
+            "color": "#fa5252",
+          },
+          "value": 1786850,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 59700,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 7175,
+        },
+        {
+          "itemStyle": {
+            "color": "#868e96",
+          },
+          "value": 3250,
+        },
+      ],
+      "name": "Total",
+      "type": "bar",
+    },
+  ],
+  "textStyle": {
+    "color": "#C9C9C9",
+  },
+  "tooltip": {
+    "axisPointer": {
+      "type": "shadow",
+    },
+    "trigger": "axis",
+    "valueFormatter": [Function],
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#828282",
+      "formatter": [Function],
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#3b3b3b",
+      },
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLine": {
+      "lineStyle": {
+        "color": "#696969",
+      },
+    },
+    "axisTick": {
+      "show": false,
+    },
+    "data": [
+      "WHITLOCK, GORDON",
+      "OKAFOR, DIANA",
+      "BRANNIGAN, TESS",
+      "PELL, MARCUS",
+    ],
+    "inverse": true,
+    "type": "category",
+  },
+}
+`;
+
+exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] = `
+{
+  "backgroundColor": "transparent",
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 8,
+    "right": 24,
+    "top": 8,
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "itemStyle": {
+            "color": "#fa5252",
+          },
+          "value": 1786850,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 59700,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 7175,
+        },
+        {
+          "itemStyle": {
+            "color": "#868e96",
+          },
+          "value": 3250,
+        },
+      ],
+      "name": "Total",
+      "type": "bar",
+    },
+  ],
+  "textStyle": {
+    "color": "#000",
+  },
+  "tooltip": {
+    "axisPointer": {
+      "type": "shadow",
+    },
+    "trigger": "axis",
+    "valueFormatter": [Function],
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#868e96",
+      "formatter": [Function],
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#e9ecef",
+      },
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLine": {
+      "lineStyle": {
+        "color": "#adb5bd",
+      },
+    },
+    "axisTick": {
+      "show": false,
+    },
+    "data": [
+      "WHITLOCK, GORDON",
+      "OKAFOR, DIANA",
+      "BRANNIGAN, TESS",
+      "PELL, MARCUS",
+    ],
+    "inverse": true,
+    "type": "category",
+  },
+}
+`;
