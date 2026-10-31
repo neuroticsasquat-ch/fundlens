@@ -359,29 +359,38 @@ def resolve(
     ] = None,
 ) -> None:
     """Link every cycle's contributor keys into clusters of one person with Splink, save the
-    trained model, and write each cycle's `resolved` marker (spec §6.3–§6.4)."""
+    trained model, give each cluster its persistent donor_id, write it onto each cycle's silver
+    and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
     if not full:
         # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
         raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
     settings = get_settings()
     try:
-        result = resolution.resolve_full(
-            R2.from_settings(settings),
-            build_id=build_id or _new_build_id(),
-            data_dir=settings.data_dir,
-            limits=runner.Limits.from_settings(settings),
-            thresholds=resolution.Thresholds(
-                match=settings.resolve_match_threshold,
-                cluster=settings.resolve_cluster_threshold,
-            ),
-            min_training_keys=settings.resolve_min_training_keys,
-        )
+        # Autocommit, so the crosswalk's `conn.transaction()` is a transaction of its own.
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = resolution.resolve_full(
+                R2.from_settings(settings),
+                build_id=build_id or _new_build_id(),
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                thresholds=resolution.Thresholds(
+                    match=settings.resolve_match_threshold,
+                    cluster=settings.resolve_cluster_threshold,
+                ),
+                min_training_keys=settings.resolve_min_training_keys,
+                conn=conn,
+            )
     except FileNotFoundError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     for cycle, build in result.builds.items():
         typer.echo(f"{cycle}: build {build}")
     typer.echo(f"{result.contributor_keys} contributor keys in {result.clusters} clusters")
+    assigned = result.assigned
+    typer.echo(
+        f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"
+        f" {assigned.redirects} redirects"
+    )
     parameters = "trained" if result.trained else "priors (too few keys to train on)"
     typer.echo(f"model {result.model_version}: {parameters}, wrote {result.model_key}")
     typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
@@ -477,6 +486,7 @@ def publish(
     typer.echo(f"{swapped} build {result.build_id} of {cycle}")
     typer.echo(f"previous build: {result.previous_build_id or 'none'}")
     typer.echo(f"cloudflare purge: {'done' if result.purged else 'skipped (not configured)'}")
+    typer.echo(f"wrote {result.crosswalk_key}")
     typer.echo(f"pruned {result.pruned.builds} silver builds ({result.pruned.objects} objects)")
 
 
