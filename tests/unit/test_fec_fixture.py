@@ -18,6 +18,7 @@ from typing import get_args
 import pytest
 
 from fundlens.fec.files import CATALOGUE, FecFile
+from fundlens.resolve import normalize
 from fundlens.transform.seats import Filing, races_for
 from tests import fec_fixture
 from tests.fec_fixture import CYCLE, MEMBERS, CandidateTotals, CommitteeTotals, RaceTotals
@@ -301,6 +302,16 @@ def test_the_expected_totals_match_a_tally_of_the_fixture() -> None:
     assert EXPECTED["unmatched_filings"] == [c for c, r in race_ids().items() if r is None]
 
 
+def contributor_key(row: dict[str, str]) -> str:
+    """The contributor key of an `indiv` row (spec §6.1), from the normalizers it is built from."""
+    return normalize.contributor_key(
+        normalize.normalize_name(row["NAME"]).norm,
+        normalize.zip5(row["ZIP_CODE"]),
+        normalize.normalize_employer(row["EMPLOYER"]),
+        normalize.normalize_occupation(row["OCCUPATION"]),
+    )
+
+
 def test_the_expected_counts_match_the_fixture() -> None:
     indiv, pas2 = rows("indiv"), rows("pas2")
     contributions = counted()
@@ -313,6 +324,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
         "committee_transfer": len(committee_receipts())
         + sum(r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION for r in pas2),
+        "contributor": len({contributor_key(r) for r in contributions}),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}

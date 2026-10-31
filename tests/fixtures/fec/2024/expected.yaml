@@ -43,6 +43,9 @@ silver:
   contribution: 281
   independent_expenditure: 9
   committee_transfer: 20
+  # One row per contributor key among the counted contributions (spec §6.1): more than the donors
+  # below, since a key is a spelling and a donor may have several; fewer than the contributions.
+  contributor: 107
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -296,9 +299,10 @@ committees:
 # `split_override` when it takes an entry in resolution/overrides.yaml, `none` when all their
 # contributions share one contributor key and there is nothing to group.
 donors:
-  # MARLOWE, AUGUSTINE: four name / employer / ZIP variants. The California row shares no blocking
-  # key with the Texas ones (spec §6.3) until the employer alias table maps ASTRAX to ASTRA
-  # EXPLORATION TECHNOLOGIES (§6.2): linkage needs that alias.
+  # MARLOWE, AUGUSTINE: four name / employer / ZIP variants, one written twice (the second time
+  # MARLOWE,AUGUSTINE JR.: punctuation and suffix normalize away, so the two share a contributor key).
+  # The California rows share no blocking key with the Texas ones (spec §6.3) until the employer
+  # alias table maps ASTRA EXPLORATION TECHNOLOGIES to ASTRAX (§6.2): linkage needs that alias.
   musk_case:
     bonica_cid: 100000003
     resolved_by: linkage

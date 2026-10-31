@@ -1,0 +1,37 @@
+# Employer aliases (spec §6.2): each canonical employer, written as it normalizes, over the
+# spellings filers use for it. A spelling is written as filers write it; it is normalized
+# (resolve.normalize: uppercased, punctuation deleted, legal form stripped) before it is matched,
+# so 'Tesla, Inc.' needs no entry beside 'TESLA'. A spelling under two employers fails the build.
+# Only the top employers by contribution count are here: linkage handles the long tail.
+
+SPACEX:
+  - Space Exploration Technologies
+  - Space Exploration Technologies Corp.
+  - Space X
+TESLA:
+  - Tesla Motors
+AMAZON:
+  - Amazon.com
+  - Amazon.com Services
+META:
+  - Meta Platforms
+  - Facebook
+IBM:
+  - International Business Machines
+GOLDMAN SACHS:
+  - Goldman Sachs Group
+JPMORGAN CHASE:
+  - JPMorgan
+  - JP Morgan Chase
+  - J.P. Morgan
+  - J.P. Morgan Chase
+WALMART:
+  - Wal-Mart Stores
+  - Walmart Stores
+UPS:
+  - United Parcel Service
+
+# The fixture cycle's stand-in for SPACEX (tests/fixtures/fec/2024): fictional, and harmless here,
+# since it rewrites only its own spelling.
+ASTRAX:
+  - Astra Exploration Technologies
