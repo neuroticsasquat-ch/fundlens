@@ -130,7 +130,9 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert committees["C00401224"]["is_conduit"] is True
     assert committees["C00401224"]["cycles"] == [2024]
 
-    # BRICKLAYERS' gifts, ranked by amount and then by candidate id, add up to its disbursements.
+    # BRICKLAYERS' gifts, ranked by amount and then by candidate id, add up to its
+    # total_to_candidates (its gift to the super PAC is credited to no candidate, so is in neither,
+    # NEU-2075).
     recipients = sorted(
         (
             row
@@ -140,7 +142,10 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         key=lambda row: row["rank"],
     )
     assert [row["rank"] for row in recipients] == list(range(1, len(recipients) + 1))
-    assert sum(dollars(row["amount"]) for row in recipients) == 17500
+    assert (
+        sum(dollars(row["amount"]) for row in recipients)
+        == expected["committees"]["C00800202"]["total_to_candidates"]
+    )
     assert [(row["amount"], row["recipient_id"]) for row in recipients] == sorted(
         ((row["amount"], row["recipient_id"]) for row in recipients),
         key=lambda pair: (-pair[0], pair[1]),
