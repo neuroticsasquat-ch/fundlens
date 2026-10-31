@@ -49,6 +49,8 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
     for build_id in (first, second):
         assert markers.exists("extracted", store, cycle=2024, build_id=build_id)
         assert markers.exists("transformed", store, cycle=2024, build_id=build_id)
+        assert markers.exists("resolved", store, cycle=2024, build_id=build_id)
+        assert store.exists(paths.resolution_model(build_id))
         assert markers.exists("loaded", store, cycle=2024, build_id=build_id)
         assert markers.exists("published", store, cycle=2024, build_id=build_id)
         # The second publish prunes nothing: the first build is the previous live one.

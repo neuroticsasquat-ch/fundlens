@@ -31,6 +31,10 @@ ResolutionTable = Literal["crosswalk", "adjudication"]
 BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 _BUILD_ID = re.compile(r"\d{8}T\d{6}Z")
 _BUILD_IN_KEY = re.compile(r"/build=(\d{8}T\d{6}Z)(?:/|$)")
+_CYCLE_IN_KEY = re.compile(r"/cycle=(\d+)/")
+
+# Every completion marker of every cycle lives under here (`markers_dir`).
+MARKERS_PREFIX = "markers/"
 
 # `silver/contribution` is split into donor_id % 256 buckets (spec §3.4).
 BUCKETS = 256
@@ -106,7 +110,7 @@ def resolution_snapshot(build_id: str, table: ResolutionTable) -> str:
 def markers_dir(cycle: int) -> str:
     """Every marker of every build of one cycle: `markers/cycle=<c>/`."""
     _check_cycle(cycle)
-    return f"markers/cycle={cycle}/"
+    return f"{MARKERS_PREFIX}cycle={cycle}/"
 
 
 def marker(cycle: int, build_id: str, step: Step) -> str:
@@ -125,6 +129,22 @@ def build_of(key: str) -> str | None:
     return match.group(1) if match else None
 
 
+def cycle_of(key: str) -> int | None:
+    """The cycle in a silver or marker key's `cycle=` segment, or None if it has none."""
+    match = _CYCLE_IN_KEY.search(key)
+    return int(match.group(1)) if match else None
+
+
+def resolution_model(version: str) -> str:
+    """The trained Splink model `version`, as JSON: `resolution/model/<version>.json`.
+
+    A model's version is the `build_id` of the `resolve --full` run that trained it, so key
+    order is training order.
+    """
+    _check_build_id(version)
+    return f"resolution/model/{version}.json"
+
+
 def local_path(data_dir: Path, key: str) -> Path:
     """Where the local cache keeps the object at `key`."""
     return data_dir / key
@@ -138,3 +158,9 @@ def scratch_dir(data_dir: Path) -> Path:
 def resolution_dir(data_dir: Path) -> Path:
     """The Splink model and DuckDB working file. Local only: R2 keeps the snapshots."""
     return data_dir / "resolution"
+
+
+def resolution_database(data_dir: Path) -> Path:
+    """Resolution's DuckDB working file: the `contributor` keys it linked and their `cluster`s,
+    which the crosswalk reads. Local only, rebuilt by every `resolve --full`."""
+    return resolution_dir(data_dir) / "resolve.duckdb"

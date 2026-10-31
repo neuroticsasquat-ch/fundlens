@@ -31,6 +31,7 @@ from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
+from fundlens.resolve import runner as resolution
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
 from fundlens.transform import runner
@@ -339,6 +340,52 @@ def transform(
         typer.echo(f"{table}: {rows} rows")
     for key in result.keys:
         typer.echo(f"wrote {key}")
+
+
+@app.command()
+# No family, like `extract`: `--full` is run by hand, and must not push the weekly monitor up.
+@step("resolve")
+def resolve(
+    full: Annotated[
+        bool,
+        typer.Option("--full", help="Retrain the model and re-cluster every cycle's contributors."),
+    ] = False,
+    build_id: Annotated[
+        str | None,
+        typer.Option(
+            help="The model version the trained model is saved under. Each cycle's `resolved`"
+            " marker goes under its newest transformed build. Default: a build starting now."
+        ),
+    ] = None,
+) -> None:
+    """Link every cycle's contributor keys into clusters of one person with Splink, save the
+    trained model, and write each cycle's `resolved` marker (spec §6.3–§6.4)."""
+    if not full:
+        # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
+        raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
+    settings = get_settings()
+    try:
+        result = resolution.resolve_full(
+            R2.from_settings(settings),
+            build_id=build_id or _new_build_id(),
+            data_dir=settings.data_dir,
+            limits=runner.Limits.from_settings(settings),
+            thresholds=resolution.Thresholds(
+                match=settings.resolve_match_threshold,
+                cluster=settings.resolve_cluster_threshold,
+            ),
+            min_training_keys=settings.resolve_min_training_keys,
+        )
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    for cycle, build in result.builds.items():
+        typer.echo(f"{cycle}: build {build}")
+    typer.echo(f"{result.contributor_keys} contributor keys in {result.clusters} clusters")
+    parameters = "trained" if result.trained else "priors (too few keys to train on)"
+    typer.echo(f"model {result.model_version}: {parameters}, wrote {result.model_key}")
+    typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
+    typer.echo(f"DuckDB memory limit: {result.memory_limit}")
 
 
 @app.command()

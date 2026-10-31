@@ -21,6 +21,9 @@ OPTIONAL = (
     "DUCKDB_MAX_TEMP_DIRECTORY_SIZE",
     "DUCKDB_THREADS",
     "LOG_LEVEL",
+    "RESOLVE_MATCH_THRESHOLD",
+    "RESOLVE_CLUSTER_THRESHOLD",
+    "RESOLVE_MIN_TRAINING_KEYS",
     "CLOUDFLARE_ZONE_ID",
     "CLOUDFLARE_API_TOKEN",
     "SENTRY_DSN",
@@ -54,6 +57,10 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.duckdb_max_temp_directory_size == "60GB"
     assert settings.duckdb_threads is None
     assert settings.log_level == "INFO"
+    # Spec §6.4's thresholds, until DIME tunes them.
+    assert settings.resolve_match_threshold == 0.9
+    assert settings.resolve_cluster_threshold == 0.95
+    assert settings.resolve_min_training_keys == 100_000
     # No zone in dev: publish skips the purge.
     assert settings.cloudflare_zone_id is None
     assert settings.cloudflare_api_token is None
