@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RACES } from "../test/fixtures";
-import { officeLabel, raceLabel, stateName } from "./states";
+import { officeLabel, raceLabel, raceSlugLabel, stateName } from "./states";
 
 describe("race labels", () => {
   it("labels the five fixture races within their office", () => {
@@ -28,5 +28,16 @@ describe("race labels", () => {
     expect(stateName("US")).toBe("United States");
     expect(stateName("ZZ")).toBe("ZZ");
     expect(officeLabel("S")).toBe("Senate");
+  });
+
+  it("labels a race from its slug, and shows a slug it cannot read as itself", () => {
+    expect(RACES.map((race) => raceSlugLabel(race.slug))).toEqual([
+      "President",
+      "Senate · Maryland",
+      "Senate · Nebraska special",
+      "House · Maryland 5th",
+      "House · Maryland 8th",
+    ]);
+    expect(raceSlugLabel("2024/governor/MD")).toBe("2024/governor/MD");
   });
 });

@@ -1,4 +1,6 @@
 import type { RouteObject } from "react-router";
+import CandidatePage from "./pages/CandidatePage";
+import CommitteePage from "./pages/CommitteePage";
 import ComingSoon from "./pages/ComingSoon";
 import CyclePage from "./pages/CyclePage";
 import HomePage from "./pages/HomePage";
@@ -41,8 +43,8 @@ export const routes: RouteObject[] = [
           cycleTarget: (cycle, params) => `/race/${cycle}/${params.office}/${params.place}`,
         } satisfies CycleHandle,
       },
-      { path: "/candidate/:id", element: <ComingSoon name="Candidate" />, handle: cycleRow },
-      { path: "/committee/:id", element: <ComingSoon name="Committee" />, handle: cycleRow },
+      { path: "/candidate/:id", element: <CandidatePage />, handle: cycleRow },
+      { path: "/committee/:id", element: <CommitteePage />, handle: cycleRow },
       { path: "/donor/:id", element: <ComingSoon name="Donor" /> },
       { path: "/search", element: <SearchPage /> },
       { path: "/dataset", element: <ComingSoon name="Dataset" /> },

@@ -90,3 +90,20 @@ export function raceLabel({ office, state, district, is_special }: RaceKey): str
       : `${stateName(state)} ${Number(district) === 0 ? "at-large" : ordinal(Number(district))}`;
   return is_special ? `${place} special` : place;
 }
+
+const SLUG_OFFICES: Record<string, Office> = { president: "P", senate: "S", house: "H" };
+
+// A race's slug (`gold.race.slug`): `2024/senate/MD`, `2024/house/MD-05`,
+// `2024/senate/NE-special`.
+const SLUG = /^\d{4}\/(president|senate|house)\/([A-Z]{2})(?:-(\d{2}))?(-special)?$/;
+
+/** A race named from its slug, without the cycle: "Senate · Maryland"; else the slug itself. */
+export function raceSlugLabel(slug: string): string {
+  const match = SLUG.exec(slug);
+  if (!match) return slug;
+  const [, segment, state, district = "00", special] = match;
+  const office = SLUG_OFFICES[segment];
+  if (office === "P") return "President";
+  const seat = raceLabel({ office, state, district, is_special: !!special });
+  return `${officeLabel(office)} · ${seat}`;
+}

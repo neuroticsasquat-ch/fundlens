@@ -7,10 +7,21 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import Providers from "../Providers";
 import { routes } from "../routes";
 import { http, server } from "./api";
-import { CYCLES, META, problem, RACE_PAGES, RACES, SEARCH_CALLOWAY } from "./fixtures";
+import {
+  CANDIDATE_OKAFOR,
+  COMMITTEES,
+  CONTRIBUTIONS,
+  CYCLES,
+  META,
+  problem,
+  RACE_PAGES,
+  RACES,
+  SEARCH_CALLOWAY,
+} from "./fixtures";
 
 /**
- * The fixture API: the 2024 cycle, its races and their pages, and hits for any query containing
+ * The fixture API: the 2024 cycle, its races and their pages, OKAFOR's candidate page, three
+ * committees' pages, their 2024 contributions on one page, and hits for any query containing
  * "calloway".
  */
 export const fixtureApi = (): HttpHandler[] => [
@@ -29,6 +40,31 @@ export const fixtureApi = (): HttpHandler[] => [
       ? response(200).json(race)
       : response(404).json(problem(404, "Not Found", `No race ${slug}.`));
   }),
+  http.get("/v1/candidates/{candidate_id}", ({ params, response }) =>
+    params.candidate_id === CANDIDATE_OKAFOR.candidate_id
+      ? response(200).json(CANDIDATE_OKAFOR)
+      : response(404).json(problem(404, "Not Found", `No candidate ${params.candidate_id}.`)),
+  ),
+  http.get("/v1/candidates/{candidate_id}/contributions", ({ params, response }) =>
+    response(200).json({
+      contributions: CONTRIBUTIONS.filter((row) => row.candidate_id === params.candidate_id),
+      next_cursor: null,
+    }),
+  ),
+  http.get("/v1/committees/{committee_id}", ({ params, response }) => {
+    const committee = COMMITTEES.find((c) => c.committee_id === params.committee_id);
+    return committee
+      ? response(200).json(committee)
+      : response(404).json(problem(404, "Not Found", `No committee ${params.committee_id}.`));
+  }),
+  http.get("/v1/committees/{committee_id}/contributions", ({ params, response }) =>
+    response(200).json({
+      contributions: CONTRIBUTIONS.filter(
+        (row) => row.recipient_committee_id === params.committee_id,
+      ),
+      next_cursor: null,
+    }),
+  ),
   http.get("/v1/search", ({ request, response }) => {
     const q = new URL(request.url).searchParams.get("q") ?? "";
     return response(200).json(q.toLowerCase().includes("calloway") ? SEARCH_CALLOWAY : []);
