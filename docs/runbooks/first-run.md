@@ -31,7 +31,7 @@ on real data. `fundlens run` (NEU-2061) chains them later.
 | Step order | `extract` → `seats --report` → `transform` → `load` → `publish` |
 | Race to check | `https://fundlens.org/race/2024/senate/MD` (API: `https://api.fundlens.org/v1/races/2024/senate/MD`) |
 | Earmark to check | `KELLER, CAREN`, $250.00 on 2024-12-31 to `C00840017` (Alsobrooks for Senate) through ActBlue `C00401224`. FEC lists it twice: the recipient's `15E` and ActBlue's `24T` (checked 2026-10-30) |
-| Reconciliation tolerance | ±2 % between fundlens's `total_individual` and FEC's `individual_itemized_contributions`, for each of the race's two largest candidates |
+| Reconciliation tolerance | ±2 %, for each of the race's two largest candidates: net `total_individual` against FEC's itemized contributions minus its refunds, and gross receipts against FEC's itemized contributions (step 9.3) |
 
 **Why `seats` comes before `transform`.** `transform` reads `app.unmatched_filing`, which `seats --report`
 writes, and `load` reads the `race` silver partition, which `seats` writes for one build. (The NEU-2046
@@ -286,32 +286,74 @@ which `/v1/…` request failed.
 
 ### 9.3 Totals reconcile with FEC.gov
 
-`total_individual` adds up the itemized individual contributions in FEC's bulk `indiv` file, so it is
-compared with FEC's itemized figure, not total receipts. The FEC query asks for the two-year period
-(`election_full=false`): a Senate candidate's default FEC total covers all six years of the term.
+`total_individual` adds up the itemized individual contributions in FEC's bulk `indiv` file, net of
+refunds: a refund (22Y) subtracts (NEU-2073). FEC reports the two apart, as gross itemized contributions
+and a separate refunds line. So the check runs twice, and each needs to pass:
+
+- **Net:** fundlens's `total_individual`, from the API, against FEC's itemized figure minus FEC's
+  refunds. This proves the netting.
+- **Gross:** fundlens's receipts with refunds left out, from silver, against FEC's itemized figure.
+  This proves nothing was lost on the way in.
+
+The FEC query asks for the two-year period (`election_full=false`): a Senate candidate's default FEC
+total covers all six years of the term.
 
 ```bash
-# laptop
+# laptop: net
 R=$(mktemp)
 curl -sS https://api.fundlens.org/v1/races/2024/senate/MD > "$R"
 jq -r '.candidates | sort_by(-.total_individual) | .[:2][] | .candidate_id' "$R" | while read -r C; do
-  F=$(curl -sS "https://api.open.fec.gov/v1/candidate/$C/totals/?cycle=2024&election_full=false&api_key=DEMO_KEY" | jq '.results[0].individual_itemized_contributions')
+  F=$(curl -sS "https://api.open.fec.gov/v1/candidate/$C/totals/?cycle=2024&election_full=false&api_key=DEMO_KEY" | jq -c 'if .results[0] then .results[0] | [.individual_itemized_contributions, .refunded_individual_contributions] else null end')
   if [ "$F" = null ]; then echo "$C: FEC sent no totals"; continue; fi
-  jq -r --arg c "$C" --argjson fec "$F" '.candidates[] | select(.candidate_id == $c) | "\(.candidate_id) \(.name): fundlens \(.total_individual)  FEC itemized \($fec)  diff \(((.total_individual - $fec) / $fec * 10000 | round) / 100) %"' "$R"
+  jq -r --arg c "$C" --argjson fec "$F" '.candidates[] | select(.candidate_id == $c) | ($fec[0] - $fec[1]) as $net | "\(.candidate_id) \(.name): fundlens net \(.total_individual)  FEC itemized \($fec[0]) - refunds \($fec[1]) = \($net)  diff \(((.total_individual - $net) / $net * 10000 | round) / 100) %"' "$R"
 done
 ```
 
-**Expected:** two lines, Alsobrooks and Hogan, each with a `diff` inside **±2 %**. FEC's figures on
-2026-10-30: $15,550,208.26 for `S4MD00327` and $4,729,854.29 for `S4MD00483`. On FEC.gov they are on the
-candidate's page → *Financial summary*, two-year period *2023–2024*, the itemized line under *Individual
-contributions*.
+```bash
+# VM: gross, from this build's silver
+docker exec -i "$(fl pipeline)" python - "$B" <<'PY'
+import sys
 
-FEC's figure comes from each report's summary page and fundlens's from the itemized rows, so they rarely
-match to the cent. Inside ±2 %: write both figures in the Log. Outside: write them in the Log and file a
-ticket with both figures and the candidate's committees (`https://api.fundlens.org/v1/candidates/<id>`).
-`FEC sent no totals` in place of a line is almost always `DEMO_KEY`'s rate limit, 40 calls an hour per
-IP address, shared with anyone else on it. This runbook makes three FEC calls in all, so wait an hour and
-run the block again.
+import duckdb
+
+path = f"/data/fundlens/silver/contribution/cycle=2024/build={sys.argv[1]}/**/*.parquet"
+refund = "regexp_matches(transaction_type, '^[24][0-9]Y$')"
+rows = duckdb.execute(
+    f"SELECT candidate_id, sum(amount) FILTER (WHERE NOT {refund}) AS gross,"
+    f" -sum(amount) FILTER (WHERE {refund}) AS refunds"
+    f" FROM read_parquet('{path}')"
+    " WHERE candidate_id IN ('S4MD00327', 'S4MD00483') AND NOT is_self_funding"
+    " GROUP BY 1 ORDER BY 1"
+).fetchall()
+for candidate_id, gross, refunds in rows:
+    print(f"{candidate_id}: gross {gross}  refunds {refunds}")
+PY
+```
+
+**Expected:**
+
+- **Net:** two lines, Alsobrooks and Hogan, each with a `diff` inside **±2 %**.
+- **Gross:** each gross figure within **±2 %** of FEC's itemized one.
+
+FEC's figures on 2026-10-31:
+
+| Candidate | Itemized | Refunds |
+| --- | --- | --- |
+| `S4MD00327` Alsobrooks | $15,550,208.26 | $503,954.71 |
+| `S4MD00483` Hogan | $4,729,854.29 | $54,311.49 |
+
+A dry run of this build's SQL on the same FEC files gave both candidates about −0.4 % on each check
+(NEU-2073). On FEC.gov the figures are on the candidate's page → *Financial summary*, two-year period
+*2023–2024*: the itemized line under *Individual contributions*, and *Refunds to individuals*.
+
+FEC's figures come from each report's summary page and fundlens's from the itemized rows, so they rarely
+match to the cent. FEC's refunds line also covers refunds of unitemized gifts, so the net check is the
+looser of the two. Inside ±2 %: write the figures in the Log. Outside: write them in the Log and file a
+ticket with the figures and the candidate's committees (`https://api.fundlens.org/v1/candidates/<id>`).
+
+`FEC sent no totals` in place of a line is almost always `DEMO_KEY`'s rate limit: 40 calls an hour per IP
+address, shared with anyone else on it. This runbook makes three FEC calls in all, so wait an hour and run
+the block again.
 
 ### 9.4 An ActBlue earmark counts once
 
