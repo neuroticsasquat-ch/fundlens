@@ -177,8 +177,9 @@ docker exec "$(fl pipeline)" sh -c "du -cb /data/fundlens/silver/*/cycle=2024/bu
 ```
 
 **Expected:** a `<table>: <n> rows` line each for `committee`, `candidate`, `candidate_committee_link`,
-`contribution` and `committee_transfer`, then `wrote …` lines; a `transformed` marker with the same row
-counts; R2 keys for those five tables and `race` under `build=$B`; a size per table and a silver total.
+`contribution`, `committee_transfer` and `contributor`, then `wrote …` lines; a `transformed` marker with
+the same row counts; R2 keys for those six tables and `race` under `build=$B`; a size per table and a
+silver total.
 `contribution` runs to tens of millions of rows. **Estimated:** 15–90 min.
 
 A failed check aborts before anything is uploaded: the traceback names the `sql/checks/silver_*.sql`
