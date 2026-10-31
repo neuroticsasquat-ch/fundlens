@@ -6,7 +6,7 @@ Bugsink crash reporting, the two Uptime Kuma push monitors and the nightly Postg
 top to bottom. Append to the [Log](#log) at the bottom; never rewrite it.
 
 **Not in this runbook:** the scheduled task (NEU-2063), Cloudflare DNS, R2 and tokens
-([cloudflare-setup.md](cloudflare-setup.md), NEU-2033), the first data run (NEU-2046).
+([cloudflare-setup.md](cloudflare-setup.md), NEU-2033), the first data run ([first-run.md](first-run.md), NEU-2046).
 
 ## Before you start
 
