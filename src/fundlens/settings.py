@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     )
     duckdb_threads: int | None = Field(default=None, alias="DUCKDB_THREADS")
 
+    # Resolution (spec §6.3–§6.4). A predicted pair below the match threshold is never written;
+    # pairs at or above the cluster threshold join their contributor keys into one cluster.
+    # Both are tuned against DIME (spec §6.9, §13).
+    resolve_match_threshold: float = Field(default=0.9, alias="RESOLVE_MATCH_THRESHOLD")
+    resolve_cluster_threshold: float = Field(default=0.95, alias="RESOLVE_CLUSTER_THRESHOLD")
+    # The fewest contributor keys `resolve --full` estimates u and m from (`resolve.model.train`);
+    # below it the model keeps its prior parameters. Real cycles hold millions of keys.
+    resolve_min_training_keys: int = Field(default=100_000, alias="RESOLVE_MIN_TRAINING_KEYS")
+
     # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
     fec_bulk_url: str = Field(
         default="https://www.fec.gov/files/bulk-downloads", alias="FEC_BULK_URL"

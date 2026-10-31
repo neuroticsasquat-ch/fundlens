@@ -40,6 +40,7 @@ BUILD = "20261102T030000Z"
             paths.resolution_snapshot(BUILD, "adjudication"),
             f"resolution/build={BUILD}/adjudication.parquet",
         ),
+        (paths.resolution_model(BUILD), f"resolution/model/{BUILD}.json"),
         *[
             (paths.marker(2026, BUILD, step), f"markers/cycle=2026/build={BUILD}/{step}.json")
             for step in ("extracted", "transformed", "resolved", "loaded", "published")
@@ -103,6 +104,24 @@ def test_rejects_a_cycle_that_is_not_an_even_year(cycle: int) -> None:
 )
 def test_build_of_reads_the_build_segment_of_a_key(key: str, build_id: str | None) -> None:
     assert paths.build_of(key) == build_id
+
+
+@pytest.mark.parametrize(
+    ("key", "cycle"),
+    [
+        (f"markers/cycle=2026/build={BUILD}/transformed.json", 2026),
+        (f"silver/contributor/cycle=1980/build={BUILD}/part-0000.parquet", 1980),
+        ("bronze/cycle=2024/indiv/2026-11-02.zip", 2024),
+        (paths.resolution_model(BUILD), None),
+    ],
+)
+def test_cycle_of_reads_the_cycle_segment_of_a_key(key: str, cycle: int | None) -> None:
+    assert paths.cycle_of(key) == cycle
+
+
+def test_a_model_version_is_a_build_id() -> None:
+    with pytest.raises(ValueError, match="not YYYYMMDDTHHMMSSZ"):
+        paths.resolution_model("latest")
 
 
 @pytest.mark.parametrize("bucket", [-1, 256])
