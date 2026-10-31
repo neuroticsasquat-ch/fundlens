@@ -445,3 +445,51 @@ NEU-2046.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-10-31 — First run (NEU-2046)
+
+Build `20261031T012553Z`, published at 03:59:41 UTC from `d67cec2`. Every check passed in the end. The
+figures are in [`docs/capacity.md`](../capacity.md):
+
+- extract 454 s (bronze 4.77 GB in R2);
+- seats 5 s, with 51 unmatched filings (bad district codes, early 2026 Senate filers, DC shadow senators);
+- transform 407 s (silver 0.91 GB, 51,014,276 contributions);
+- load 4.1 s (aggregates 0.84 s, `COPY` 2.21 s; gold 0.04 GB);
+- publish 75 s;
+- peak `pipeline` memory 27.2 GiB.
+
+Step 9.3, against FEC's 2023–2024 figures:
+
+| Candidate | Net | Gross |
+| --- | --- | --- |
+| Alsobrooks | $14,991,464 against $15,046,254 (−0.36 %) | $15,481,706 against $15,550,208 (−0.44 %) |
+| Hogan | $4,659,760 against $4,675,543 (−0.34 %) | $4,711,180 against $4,729,854 (−0.39 %) |
+
+Step 9.4: the Keller earmark appeared once in the API and once in silver.
+
+Deviations, each filed and fixed or ticketed before the run went on:
+
+- **Step 4, first try:** `File is not latin-1 encoded`. DuckDB 2.0's latin-1 reader refuses bytes
+  0x80–0x9F, and `cn24` holds a UTF-8 name. Fixed by transcoding to UTF-8 on unzip (NEU-2069, PR #32).
+- **Step 4, second try:** four silver checks failed.
+  - `oth` repeats every `pas2` row and holds disbursements, 15J JFC memo lines and candidate loans.
+  - ActBlue's own tips were tagged with ActBlue as their conduit, and its type-15 "EARMARKED FOR" lines were
+    the conduit's side of earmarks.
+  - A fringe committee is missing from `cm`.
+
+  Fixed in NEU-2070 (PR #33). Follow-ups: loans as self-funding (NEU-2071), 15J for resolution (NEU-2072).
+- **Before step 4's third try:** a dry run on FEC's public files found every 22Y refund *added*. Most filers
+  write refunds positive and some negative, and voided refund checks mirror a refund. Refunds now subtract
+  whatever their sign, and voids add back (NEU-2073, PR #34). 24I rows are left for NEU-2074. Step 9.3 now
+  checks net and gross.
+- **Step 5, first try:** `gold_committee_top_recipient_candidate` failed. Givers write stale candidate IDs on
+  24Ks (Ricketts, Sam Brown, Curtis's old House ID). A gift is now credited through its recipient's `ccl` link
+  (NEU-2075, PR #35). Step 4 was re-run on the same build before step 5.
+- **Step 5:** David Trone shows `self_funding` 0. His $62.9M is loans (16C), which M2 does not count. Recorded
+  on NEU-2071.
+- **Step 7:** `pruned 1 silver builds (1 objects)`, not 0. A stray object from an earlier build. The live
+  build's six objects were checked intact.
+- **Step 9.1:** `/v1/meta` was `HIT` on its first looped request, because the `jq` line before the loop had
+  already filled the cache. The race endpoint showed `MISS` then `HIT`.
+- **Not run in the dev container:** the full gold build over real data. Building `contribution` needs about
+  8–10 GB of DuckDB memory. Prod's `load` was the first full gold check, and it passed.
