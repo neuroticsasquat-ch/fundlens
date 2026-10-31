@@ -1,0 +1,15 @@
+# Manual merges and splits of donors, applied by every `fundlens resolve --full` after clustering and
+# before the crosswalk (spec §6.5, ADR-0005; `src/fundlens/resolve/overrides.py`). How to add one:
+# docs/runbooks/adding-an-override.md. Every entry is reviewed in a PR; git is its history.
+#
+#   - merge: ["<contributor_key>", "<contributor_key>"]  # every cluster these keys are in becomes one
+#     reason: <why, in a sentence: the evidence they are one donor>
+#     added: YYYY-MM-DD
+#
+#   - split: {contributor_key: "<contributor_key>", from: <donor_id>}  # the key gets a cluster of its own
+#     reason: <why the key is not that donor>
+#     added: YYYY-MM-DD
+#
+# A key appears in at most one entry. A key must be one the run knows and `from` a donor_id the
+# crosswalk gave, or the run stops before the crosswalk changes.
+[]

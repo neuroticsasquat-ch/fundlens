@@ -5,7 +5,8 @@ working file (`paths.resolution_database`) as one table, `contributor`: a key re
 cycles is one row, its attributes the variant of the cycle with the most contributions, its
 counts and totals summed. It trains the Splink model on that table (`resolve.model`), saves the
 model as JSON locally and in R2 under this run's `build_id`, writes the `cluster` table beside
-`contributor` (`resolve.cluster`), gives every key its persistent donor_id in `app.crosswalk`
+`contributor` (`resolve.cluster`), merges and splits it as `resolution/overrides.yaml` asserts
+(`resolve.overrides`), gives every key its persistent donor_id in `app.crosswalk`
 (`resolve.crosswalk`), rewrites each cycle's `contribution` and `contributor` partitions with it,
 and writes a `resolved` marker for each cycle's transformed build. DuckDB runs under the
 pipeline's memory limit and spills under `scratch/`, and each phase's wall time is logged.
@@ -26,7 +27,7 @@ from splink import DuckDBAPI
 
 from fundlens import markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import crosswalk, model
+from fundlens.resolve import crosswalk, model, overrides
 from fundlens.resolve.cluster import CLUSTER_TABLE, cluster
 from fundlens.transform.runner import Limits, literal
 
@@ -55,6 +56,7 @@ class Resolved:
     clusters: int
     # Each cycle resolved, and the transformed build its contributors came from.
     builds: dict[int, str]
+    overridden: overrides.Applied
     assigned: crosswalk.Assigned
     # DuckDB's memory limit as the run's connection had it.
     memory_limit: str
@@ -175,14 +177,19 @@ def resolve_full(
     limits: Limits,
     thresholds: Thresholds,
     min_training_keys: int,
+    overrides_path: Path,
     conn: Connection[TupleRow],
 ) -> Resolved:
-    """Train the model on every cycle's contributors and cluster them; write the model, the
-    `cluster` table, the crosswalk, each cycle's silver with its donor_ids and each cycle's
-    `resolved` marker (spec §6.3–§6.6, §5.1).
+    """Train the model on every cycle's contributors and cluster them, then apply the overrides
+    file at `overrides_path`; write the model, the `cluster` table, the crosswalk, each cycle's
+    silver with its donor_ids and each cycle's `resolved` marker (spec §6.3–§6.6, §5.1).
 
-    Raises `FileNotFoundError` when no cycle has been transformed.
+    Raises `FileNotFoundError` when no cycle has been transformed, and `OverridesError` when the
+    overrides file is malformed or names a key or donor_id the run does not know, before the run
+    trains anything.
     """
+    # Read first, so a malformed file stops the run before it trains anything.
+    asserted = overrides.load(overrides_path)
     started_at = datetime.now(UTC)
     builds = transformed_builds(store)
     if not builds:
@@ -204,6 +211,9 @@ def resolve_full(
             }
             keys = _load_contributors(con, list(partitions.values()))
             cycle_keys = {cycle: _count(con, part) for cycle, part in partitions.items()}
+            # Before training, so an entry naming a key or donor_id the run does not know costs
+            # minutes, not a full training run.
+            overrides.check(con, conn, asserted)
         linker = model.linker(DuckDBAPI(con), CONTRIBUTOR_TABLE, model.settings())
         with _phase("train", times):
             trained = model.train(linker, keys=keys, min_training_keys=min_training_keys)
@@ -211,9 +221,11 @@ def resolve_full(
             cluster(
                 linker, con, match_threshold=thresholds.match, cluster_threshold=thresholds.cluster
             )
-            [(clusters,)] = con.execute(
-                f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
-            ).fetchall()
+        with _phase("overrides", times):
+            overridden = overrides.rewrite(con, asserted)
+        [(clusters,)] = con.execute(
+            f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
+        ).fetchall()
         with _phase("save", times):
             linker.misc.save_model_to_json(str(model_path), overwrite=True)
             # Splink's working tables are a run's scratch; the file keeps the input and clusters.
@@ -251,5 +263,14 @@ def resolve_full(
         memory_limit,
     )
     return Resolved(
-        build_id, model_key, trained, keys, clusters, builds, assigned, memory_limit, times
+        build_id,
+        model_key,
+        trained,
+        keys,
+        clusters,
+        builds,
+        overridden,
+        assigned,
+        memory_limit,
+        times,
     )

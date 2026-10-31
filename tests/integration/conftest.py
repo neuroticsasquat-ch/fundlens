@@ -21,6 +21,8 @@ from fundlens.settings import get_settings
 TEST_BUCKET = "fundlens-test"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# The overrides the CLI resolves with unless a test says otherwise: none (`fixtures/resolution/`).
+NO_OVERRIDES = REPO_ROOT / "tests" / "fixtures" / "resolution" / "none.yaml"
 
 
 def empty_store() -> R2:
@@ -88,8 +90,8 @@ def migrated_db(scratch_db: str) -> str:
 def cli_env(
     monkeypatch: pytest.MonkeyPatch, store: R2, migrated_db: str, tmp_path: Path
 ) -> Iterator[Path]:
-    """Point the CLI's settings at the test bucket, a migrated database and a scratch
-    `DATA_DIR`; that `DATA_DIR`."""
+    """Point the CLI's settings at the test bucket, a migrated database, a scratch `DATA_DIR` and
+    no overrides; that `DATA_DIR`."""
 
     def leave_logging_alone(level: str) -> None:
         # The callback reconfigures the root logger, which would outlive the test.
@@ -99,6 +101,7 @@ def cli_env(
     monkeypatch.setenv("R2_BUCKET", TEST_BUCKET)
     monkeypatch.setenv("DATABASE_URL", migrated_db)
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
     get_settings.cache_clear()
     yield tmp_path / "data"
     get_settings.cache_clear()

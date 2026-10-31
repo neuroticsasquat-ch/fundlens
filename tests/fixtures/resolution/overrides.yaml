@@ -1,0 +1,11 @@
+# The fixture cycle's overrides (spec §6 hard cases, tests/fixtures/fec/2024/expected.yaml): the
+# merge joins KOWALCZYK, MARGARET and KOWALCZYK, PEGGY, whom linkage keeps apart, and the split takes
+# ABERNATHY, CHARLES JR out of his father's cluster. Donor 1 is the id a fresh crosswalk gives the
+# ABERNATHYs: their key sorts first of the fixture's clusters.
+- merge: ["KOWALCZYK, MARGARET|20910|MONTGOMERY COUNTY|LIBRARIAN", "KOWALCZYK, PEGGY|20910||"]
+  reason: PEGGY is MARGARET's nickname; one address, one librarian since retired.
+  added: 2026-10-31
+
+- split: {contributor_key: "ABERNATHY, CHARLES|21044||STUDENT", from: 1}
+  reason: The student is CHARLES JR, not his retired father CHARLES SR at the same address.
+  added: 2026-10-31
