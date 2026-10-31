@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch";
+import createQueryHooks from "openapi-react-query";
 import { apiBaseUrl } from "../config";
 import type { paths } from "./schema";
 
@@ -16,3 +17,10 @@ export const api = createClient<paths>({
   // `globalThis.fetch` after this module has loaded, sees every request.
   fetch: (request) => globalThis.fetch(request),
 });
+
+/**
+ * TanStack Query hooks over `api`, typed the same way and keyed by method, path and parameters:
+ * `$api.useQuery("get", "/v1/cycles/{cycle}/races", { params: { path: { cycle } } })`. A failed
+ * request's `error` is the API's problem document.
+ */
+export const $api = createQueryHooks(api);

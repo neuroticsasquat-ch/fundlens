@@ -1,6 +1,7 @@
 # fundlens frontend
 
-The SPA behind [fundlens.org](https://fundlens.org): React, Vite and TypeScript, served by a
+The SPA behind [fundlens.org](https://fundlens.org): React, Vite, TypeScript and
+[Mantine](https://mantine.dev) (ADR-0008), served by a
 static-assets Cloudflare Worker (`wrangler.jsonc`) that Workers Builds deploys from this
 directory (spec §8, ADR-0003). Like the backend, it runs only in a container: the `frontend`
 compose service (`node:24`, this directory bind-mounted). Run everything from the repo root.
@@ -39,6 +40,16 @@ const { data, error } = await api.GET("/v1/races/{cycle}/{office}/{place}", {
 });
 ```
 
+Pages read through `$api`, the [openapi-react-query](https://openapi-ts.dev/openapi-react-query/)
+hooks over the same client, and render inside `QueryStatus` for their loading and error states:
+
+```ts
+const races = $api.useQuery("get", "/v1/cycles/{cycle}/races", { params: { path: { cycle } } });
+```
+
+The shell, the shared components (`DataTable`, `QueryStatus`, `EChart`, `format.ts`) and the
+contract each page ticket inherits are in `docs/specs/NEU-2043-spa-shell-cycle-index-search.md`.
+
 Tests run against [MSW](https://mswjs.io): `src/test/api.ts` holds the server every test file
 starts (a request no handler answers fails the test) and `http`, handlers typed from the same
 document ([openapi-msw](https://github.com/christoph-fricke/openapi-msw)), so a mock cannot
@@ -47,6 +58,9 @@ return a body the API would not:
 ```ts
 server.use(http.get("/v1/meta", ({ response }) => response(200).json(meta)));
 ```
+
+`renderApp(path)` (`src/test/app.tsx`) renders the whole app at a path against the fixture API
+in `src/test/fixtures.ts`, and returns the router to assert where it went.
 
 The generator needs the TypeScript 5 compiler API, which the app's TypeScript 7 does not ship;
 `.pnpmfile.cjs` gives it a TypeScript 5 of its own.
