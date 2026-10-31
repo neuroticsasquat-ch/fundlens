@@ -17,6 +17,34 @@
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
+-- Each contribution carries its contributor key (spec §6.1): its reported name, ZIP, employer and
+-- occupation, each normalized by resolve.normalize. The normalizers are Python, so each distinct
+-- value is normalized once, not each row: a cycle reports far fewer of each than it has rows. One
+-- scan of `indiv` collects all four. The four `contributor_*` tables, each a reported value and its
+-- normalized form, outlive this file: 06_contributor.sql reads them too.
+CREATE TEMP TABLE contributor_value AS
+SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION
+FROM indiv
+GROUP BY GROUPING SETS ((NAME), (ZIP_CODE), (EMPLOYER), (OCCUPATION));
+
+CREATE TEMP TABLE contributor_name AS
+SELECT NAME AS raw, normalize_name(NAME) AS name FROM contributor_value WHERE NAME IS NOT NULL;
+
+CREATE TEMP TABLE contributor_zip AS
+SELECT ZIP_CODE AS raw, zip5(ZIP_CODE) AS zip5 FROM contributor_value WHERE ZIP_CODE IS NOT NULL;
+
+CREATE TEMP TABLE contributor_employer AS
+SELECT EMPLOYER AS raw, normalize_employer(EMPLOYER) AS employer_norm
+FROM contributor_value
+WHERE EMPLOYER IS NOT NULL;
+
+CREATE TEMP TABLE contributor_occupation AS
+SELECT OCCUPATION AS raw, normalize_occupation(OCCUPATION) AS occupation_norm
+FROM contributor_value
+WHERE OCCUPATION IS NOT NULL;
+
+DROP TABLE contributor_value;
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
@@ -103,6 +131,15 @@ SELECT
     kept.ZIP_CODE AS contributor_zip,
     kept.EMPLOYER AS contributor_employer,
     kept.OCCUPATION AS contributor_occupation,
+    -- resolve.normalize.contributor_key, spelled in SQL: the four normalized values joined by '|',
+    -- an absent one empty. A value `indiv` leaves blank normalizes to nothing, as a NULL does.
+    concat_ws(
+        '|',
+        coalesce(cname.name.norm, ''),
+        coalesce(czip.zip5, ''),
+        coalesce(cemployer.employer_norm, ''),
+        coalesce(coccupation.occupation_norm, '')
+    ) AS contributor_key,
     kept.CMTE_ID AS recipient_committee_id,
     linked.candidate_id,
     CASE
@@ -136,4 +173,8 @@ SELECT
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num
 FROM kept
-LEFT JOIN linked ON linked.committee_id = kept.CMTE_ID;
+LEFT JOIN linked ON linked.committee_id = kept.CMTE_ID
+LEFT JOIN contributor_name AS cname ON cname.raw = kept.NAME
+LEFT JOIN contributor_zip AS czip ON czip.raw = kept.ZIP_CODE
+LEFT JOIN contributor_employer AS cemployer ON cemployer.raw = kept.EMPLOYER
+LEFT JOIN contributor_occupation AS coccupation ON coccupation.raw = kept.OCCUPATION;

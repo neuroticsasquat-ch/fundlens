@@ -16,6 +16,7 @@ from fundlens import cli, markers, paths
 from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
+from fundlens.resolve import normalize
 from fundlens.transform.runner import ChecksFailed
 from tests import fec_fixture
 from tests.fake_fec import zipped
@@ -27,6 +28,7 @@ TABLES: tuple[SilverTable, ...] = (
     "candidate_committee_link",
     "contribution",
     "committee_transfer",
+    "contributor",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -44,6 +46,8 @@ OTH_NOT_RECEIPTS = {
     4240300000000000012,  # WHITLOCK's 16C loan to his campaign
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
+# The Musk case's first contribution, and the same contributor written again with a comma and a JR.
+MUSK, MUSK_AGAIN = 4240100000000000007, 4240100000000000011
 # 24K gifts whose giver wrote a stale candidate id, and whose recipient raises for no candidate.
 STALE_CAND_ID_GIFT, NO_CANDIDATE_GIFT = 4240200000000000017, 4240200000000000018
 
@@ -183,6 +187,7 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "contributor_zip",
         "contributor_employer",
         "contributor_occupation",
+        "contributor_key",
         "recipient_committee_id",
         "candidate_id",
         "amount",
@@ -211,6 +216,26 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "date",
         "transaction_type",
         "side",
+    ]
+
+    contributors = read_silver(store, "contributor", tmp_path)
+    assert list(contributors[0]) == [
+        "contributor_key",
+        "name_raw",
+        "name_first",
+        "name_last",
+        "name_suffix",
+        "zip5",
+        "city",
+        "state",
+        "employer_raw",
+        "employer_norm",
+        "occupation_raw",
+        "occupation_norm",
+        "contribution_count",
+        "amount_total",
+        "first_cycle",
+        "last_cycle",
     ]
 
 
@@ -409,6 +434,76 @@ def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
     rows = read_silver(store, "contribution", tmp_path)
     assert NORRIS_UNKNOWN_RECIPIENT not in {row["source_record_id"] for row in rows}
     assert "C00899999" not in {row["recipient_committee_id"] for row in rows}
+
+
+def key_of(row: Mapping[str, object]) -> str:
+    """A silver contribution's contributor key as resolve.normalize builds it."""
+
+    def reported(column: str) -> str | None:
+        return cast(str | None, row[f"contributor_{column}"])
+
+    return normalize.contributor_key(
+        normalize.normalize_name(reported("name")).norm,
+        normalize.zip5(reported("zip")),
+        normalize.normalize_employer(reported("employer")),
+        normalize.normalize_occupation(reported("occupation")),
+    )
+
+
+def test_contributions_reduce_to_contributor_keys_spelled_as_the_normalizers_spell_them(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    contributions = read_silver(store, "contribution", tmp_path)
+    contributors = {
+        row["contributor_key"]: row for row in read_silver(store, "contributor", tmp_path)
+    }
+    assert all(row["contributor_key"] == key_of(row) for row in contributions)
+    assert {row["contributor_key"] for row in contributions} == contributors.keys()
+    assert sum(cast(int, c["contribution_count"]) for c in contributors.values()) == len(
+        contributions
+    )
+    assert sum(cast(Decimal, c["amount_total"]) for c in contributors.values()) == sum(
+        cast(Decimal, row["amount"]) for row in contributions
+    )
+
+    by_id = {row["source_record_id"]: row for row in contributions}
+    musk = [by_id[sub_id] for sub_id in fec_fixture.expected()["donors"]["musk_case"]["sub_ids"]]
+    # 'MARLOWE, AUGUSTINE' written again as 'MARLOWE,AUGUSTINE JR.': one key. The other variants
+    # differ by more than punctuation and suffix, and are linkage's to group.
+    assert [row["contributor_name"] for row in (by_id[MUSK], by_id[MUSK_AGAIN])] == [
+        "MARLOWE, AUGUSTINE",
+        "MARLOWE,AUGUSTINE JR.",
+    ]
+    assert by_id[MUSK]["contributor_key"] == by_id[MUSK_AGAIN]["contributor_key"]
+    assert len({row["contributor_key"] for row in musk}) == 4
+    assert contributors[by_id[MUSK]["contributor_key"]] == {
+        "contributor_key": "MARLOWE, AUGUSTINE|90250|ASTRAX|CEO",
+        # Both spellings report one contribution of 3300: the first in order is the key's.
+        "name_raw": "MARLOWE, AUGUSTINE",
+        "name_first": "AUGUSTINE",
+        "name_last": "MARLOWE",
+        "name_suffix": None,
+        "zip5": "90250",
+        "city": "HAWTHORNE",
+        "state": "CA",
+        "employer_raw": "ASTRAX",
+        "employer_norm": "ASTRAX",
+        "occupation_raw": "CEO",
+        "occupation_norm": "CEO",
+        "contribution_count": 2,
+        "amount_total": 6600,
+        "first_cycle": 2024,
+        "last_cycle": 2024,
+    }
+    # DUBOIS's employer written two ways, one an alias of the other: one key.
+    dubois = fec_fixture.expected()["donors"]["employer_variant"]["sub_ids"]
+    assert {by_id[sub_id]["contributor_key"] for sub_id in dubois} == {
+        "DUBOIS, RAYMOND|20850|ASTRAX|ENGINEER"
+    }
 
 
 def test_the_race_check_fails_until_the_bad_district_is_an_unmatched_filing(

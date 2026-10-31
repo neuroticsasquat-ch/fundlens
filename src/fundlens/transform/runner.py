@@ -9,14 +9,17 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
-  --report`, which must therefore run first.
+  --report`, which must therefore run first;
+- the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
+  `normalize_employer`, `normalize_occupation`), from which the contributor key is built.
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
-`<table>`; `{cycle}`, `{build_id}`, `{bronze_dir}` and `{silver_dir}` in it are parameters (so a
-literal brace is written twice). Then it runs every `sql/checks/silver_*.sql`, each a query that
-must return no rows, and stops with `ChecksFailed` before anything is written if one returns
-any. Only then is each table written as one zstd Parquet part to the local silver path,
-uploaded to R2, and the `transformed` marker written.
+`<table>`, and may leave temporary tables a later file reads; `{cycle}`, `{build_id}`,
+`{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal brace is written twice).
+Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops
+with `ChecksFailed` before anything is written if one returns any. Only then is each table
+written as one zstd Parquet part to the local silver path, uploaded to R2, and the `transformed`
+marker written.
 """
 
 import csv
@@ -39,6 +42,7 @@ from fundlens import markers, paths
 from fundlens.fec.files import VARCHAR, BulkFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
+from fundlens.resolve import normalize
 from fundlens.settings import Settings
 from fundlens.transform import seats
 
@@ -295,6 +299,7 @@ def transform(
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
             _register_unmatched(con, conn, cycle)
+            normalize.register(con)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))

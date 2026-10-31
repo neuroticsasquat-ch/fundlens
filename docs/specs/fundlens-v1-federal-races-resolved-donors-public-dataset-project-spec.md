@@ -49,7 +49,7 @@ CLAUDE.md  CONTEXT.md  LICENSE  README.md
 docs/  adr/  specs/  plans/  campaign-finance-handover.md  dataset/  (schema docs published with the dataset)
 sql/
   silver/   01_committee.sql 02_candidate.sql 03_candidate_committee_link.sql 04_contribution.sql
-            05_contributor.sql 06_independent_expenditure.sql
+            05_committee_transfer.sql 06_contributor.sql 07_independent_expenditure.sql
   gold/     01_race.sql … (one file per gold table, numbered in dependency order)
   checks/   *.sql  (assertions run after silver and after gold; a failing check aborts the run)
 resolution/
@@ -74,6 +74,7 @@ src/fundlens/
     seats.py             # seat calendar generator + specials table loader
   resolve/
     normalize.py         # name parsing (nameparser), suffix/punct stripping, ZIP5, employer/occupation canon
+    aliases.yaml         # employer alias table for the top employers (§6.2)
     model.py             # Splink settings: blocking rules, comparisons, training
     cluster.py           # predict + connected components → clusters
     crosswalk.py         # contributor_key → donor_id assignment, merges/splits, redirects
@@ -222,7 +223,7 @@ One Coolify scheduled task on the `pipeline` service: Sunday 03:00 box time, `fu
 
 Only individuals are resolved; committees and candidates carry FEC IDs.
 
-1. **Contributor keys.** `sql/silver/05_contributor.sql` reduces ~400M contribution rows to unique `(name_norm, zip5, employer_norm, occupation_norm)` tuples (tens of millions), each with counts and totals. Resolution runs over these.
+1. **Contributor keys.** `sql/silver/04_contribution.sql` gives each contribution its key and `sql/silver/06_contributor.sql` reduces ~400M contribution rows to unique `(name_norm, zip5, employer_norm, occupation_norm)` tuples (tens of millions), each with counts and totals. Resolution runs over these.
 2. **Normalization (`resolve.normalize`).** `nameparser` → first/middle/last/suffix; uppercase, strip punctuation and suffixes (JR, SR, III, MD, ESQ); ZIP5; employer and occupation canonicalized by a rule table (`SELF-EMPLOYED`, `RETIRED`, `NOT EMPLOYED`, `N/A` → null; `INC`, `LLC`, `CORP` stripped; a small alias YAML for the top employers). `usaddress`/libpostal are not used in v1 (street is not in `indiv`).
 3. **Splink 4** (`resolve.model`), DuckDB backend, `link_type="dedupe_only"`. Blocking rules for prediction: `(last_name_soundex, zip3)`, `(last_name, first_initial, state)`, `(employer_norm, last_name)`. Comparisons: first name (Jaro-Winkler levels), last name (exact / JW), zip5 (exact / zip3), city+state, employer_norm (exact / JW), occupation_norm. `u` by random sampling; `m` by EM on each blocking rule; the trained model is saved as JSON under `resolution/` in R2 and reused by incremental runs.
 4. **Clustering.** `predict(threshold_match_probability=0.9)` → `cluster_pairwise_predictions_at_threshold(0.95)`; thresholds are settings with these defaults. Connected components give clusters of contributor keys.
