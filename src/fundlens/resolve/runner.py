@@ -5,9 +5,10 @@ working file (`paths.resolution_database`) as one table, `contributor`: a key re
 cycles is one row, its attributes the variant of the cycle with the most contributions, its
 counts and totals summed. It trains the Splink model on that table (`resolve.model`), saves the
 model as JSON locally and in R2 under this run's `build_id`, writes the `cluster` table beside
-`contributor` (`resolve.cluster`), and writes a `resolved` marker for each cycle's transformed
-build. The crosswalk reads `cluster` from the working file. DuckDB runs under the pipeline's
-memory limit and spills under `scratch/`, and each phase's wall time is logged.
+`contributor` (`resolve.cluster`), gives every key its persistent donor_id in `app.crosswalk`
+(`resolve.crosswalk`), rewrites each cycle's `contribution` and `contributor` partitions with it,
+and writes a `resolved` marker for each cycle's transformed build. DuckDB runs under the
+pipeline's memory limit and spills under `scratch/`, and each phase's wall time is logged.
 """
 
 import logging
@@ -19,11 +20,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
+from psycopg import Connection
+from psycopg.rows import TupleRow
 from splink import DuckDBAPI
 
 from fundlens import markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import model
+from fundlens.resolve import crosswalk, model
 from fundlens.resolve.cluster import CLUSTER_TABLE, cluster
 from fundlens.transform.runner import Limits, literal
 
@@ -52,6 +55,7 @@ class Resolved:
     clusters: int
     # Each cycle resolved, and the transformed build its contributors came from.
     builds: dict[int, str]
+    assigned: crosswalk.Assigned
     # DuckDB's memory limit as the run's connection had it.
     memory_limit: str
     # Wall time of each phase, in run order.
@@ -171,9 +175,11 @@ def resolve_full(
     limits: Limits,
     thresholds: Thresholds,
     min_training_keys: int,
+    conn: Connection[TupleRow],
 ) -> Resolved:
     """Train the model on every cycle's contributors and cluster them; write the model, the
-    `cluster` table and each cycle's `resolved` marker (spec §6.3–§6.4, §5.1).
+    `cluster` table, the crosswalk, each cycle's silver with its donor_ids and each cycle's
+    `resolved` marker (spec §6.3–§6.6, §5.1).
 
     Raises `FileNotFoundError` when no cycle has been transformed.
     """
@@ -212,7 +218,16 @@ def resolve_full(
             linker.misc.save_model_to_json(str(model_path), overwrite=True)
             # Splink's working tables are a run's scratch; the file keeps the input and clusters.
             linker.table_management.delete_tables_created_by_splink_from_db()
-    store.put(model_key, model_path)
+        store.put(model_key, model_path)
+        with _phase("crosswalk", times):
+            assigned = crosswalk.assign(con, conn, build_id=build_id, scratch=scratch)
+        with _phase("silver", times):
+            contributions = {
+                cycle: crosswalk.onto_silver(
+                    con, store, cycle=cycle, build_id=build, data_dir=data_dir
+                )
+                for cycle, build in builds.items()
+            }
     finished_at = datetime.now(UTC)
     for cycle, build in builds.items():
         markers.write(
@@ -223,7 +238,7 @@ def resolve_full(
             started_at=started_at,
             finished_at=finished_at,
             # The cycle's own keys, each in `cluster` (a key of several cycles counts in each).
-            row_counts={CLUSTER_TABLE: cycle_keys[cycle]},
+            row_counts={CLUSTER_TABLE: cycle_keys[cycle], "contribution": contributions[cycle]},
         )
     log.info(
         "resolved %d contributor keys into %d clusters across %d cycles (model %s, %s;"
@@ -235,4 +250,6 @@ def resolve_full(
         "trained" if trained else "priors",
         memory_limit,
     )
-    return Resolved(build_id, model_key, trained, keys, clusters, builds, memory_limit, times)
+    return Resolved(
+        build_id, model_key, trained, keys, clusters, builds, assigned, memory_limit, times
+    )

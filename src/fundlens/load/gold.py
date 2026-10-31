@@ -119,6 +119,12 @@ def _require_inputs(
                 f"no silver {table} partition for build {build_id} of {cycle}:"
                 f" run `fundlens {command} --cycle {cycle} --build-id {build_id}`"
             )
+        if paths.rewrite_sentinel(cycle, build_id) in keys:
+            # Its parts are a mix of two layouts, which would count every row twice.
+            raise FileNotFoundError(
+                f"the donor_id rewrite of silver {table} for build {build_id} of {cycle} died"
+                " part way: run `fundlens resolve --full` again"
+            )
         for key in keys:
             local = paths.local_path(data_dir, key)
             if not local.exists():
@@ -134,9 +140,10 @@ def _register_silver(
     con.execute("CREATE SCHEMA silver")
     for table, local in local_dirs.items():
         # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path.
+        # `**` reaches into a resolved `contribution`'s `bucket=` directories too (spec §3.4).
         con.execute(
             f"CREATE VIEW silver.{table} AS SELECT * FROM"
-            f" read_parquet({literal(local / '*.parquet')}, hive_partitioning = false)"
+            f" read_parquet({literal(local / '**' / '*.parquet')}, hive_partitioning = false)"
         )
     # DuckDB's CSV writer prints a list as `[…]`; Postgres reads an array as `{…}`.
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")

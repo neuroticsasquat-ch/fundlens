@@ -96,6 +96,12 @@ def silver_bucket(cycle: int, build_id: str, bucket: int) -> str:
     return f"{silver_partition('contribution', cycle, build_id)}/bucket={bucket:02x}"
 
 
+def rewrite_sentinel(cycle: int, build_id: str) -> str:
+    """The object a donor_id rewrite of a `silver/contribution` build holds while it replaces the
+    build's parts in R2 (`resolve.crosswalk`): while it exists, the parts are not to be read."""
+    return f"{silver_partition('contribution', cycle, build_id)}/_rewriting"
+
+
 def part(index: int) -> str:
     """The file name of the `index`th Parquet part in a partition or bucket."""
     return f"part-{index:04d}.parquet"

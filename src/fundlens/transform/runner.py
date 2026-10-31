@@ -20,8 +20,8 @@ A model or check puts the larger input on the left of each join: DuckDB builds t
 right side as written (`connect`).
 Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops
 with `ChecksFailed` before anything is written if one returns any. Only then is each table
-written as one zstd Parquet part to the local silver path, uploaded to R2, and the `transformed`
-marker written.
+written as one zstd Parquet part to the local silver path, uploaded to R2 (replacing whatever
+else the partition held), and the `transformed` marker written.
 """
 
 import csv
@@ -270,9 +270,14 @@ def check(
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
-    """Write `table` as one zstd Parquet part to the local silver path; its key, path and rows."""
+    """Write `table` as one zstd Parquet part to the local silver path; its key, path and rows.
+
+    The local partition is replaced whole, so a build transformed again holds none of the parts
+    a donor_id rewrite (`resolve.crosswalk`) put there.
+    """
     key = f"{paths.silver_partition(table, cycle, build_id)}/{paths.part(0)}"
     local = paths.local_path(data_dir, key)
+    shutil.rmtree(local.parent, ignore_errors=True)
     local.parent.mkdir(parents=True, exist_ok=True)
     con.execute(
         f"COPY {table} TO {literal(local)}"
@@ -327,7 +332,12 @@ def transform(
     finally:
         shutil.rmtree(work, ignore_errors=True)
     for key, local, _ in written:
+        prefix = key.rsplit("/", 1)[0] + "/"
+        stale = set(store.list_keys(prefix)) - {key}
         store.put(key, local)
+        # A build transformed again: whatever else its partition held is gone, the rewrite
+        # sentinel of a donor_id rewrite that died among it.
+        store.delete_keys(sorted(stale))
     row_counts = {table: rows for (table, _), (_, _, rows) in zip(models, written, strict=True)}
     markers.write(
         "transformed",
