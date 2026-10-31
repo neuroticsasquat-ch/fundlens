@@ -8,7 +8,12 @@ export const PARTY_COLOURS = { DEM: "blue.6", REP: "red.6", other: "gray.6" } as
 
 export type PartyColourKey = keyof typeof PARTY_COLOURS;
 
+/** The `PARTY_COLOURS` key for an FEC party code (`DEM`, `REP`, anything else). */
+export function partyKey(party: string | null): PartyColourKey {
+  return party === "DEM" || party === "REP" ? party : "other";
+}
+
 /** The `PARTY_COLOURS` entry for an FEC party code (`DEM`, `REP`, anything else). */
 export function partyColour(party: string | null): string {
-  return party === "DEM" || party === "REP" ? PARTY_COLOURS[party] : PARTY_COLOURS.other;
+  return PARTY_COLOURS[partyKey(party)];
 }

@@ -4,8 +4,6 @@ import { renderApp } from "./test/app";
 
 describe("routes", () => {
   it.each([
-    ["/race/2024/senate/MD", "Race"],
-    ["/race/2024/senate/NE?special=1", "Race"],
     ["/candidate/H4MD05106", "Candidate"],
     ["/committee/C00800106", "Committee"],
     ["/donor/d-1", "Donor"],
@@ -21,6 +19,8 @@ describe("routes", () => {
   it.each([
     ["/", "Who funds federal races."],
     ["/cycles/2024", "2024 races"],
+    ["/race/2024/senate/MD", "2024 Senate · Maryland"],
+    ["/race/2024/senate/NE?special=1", "2024 Senate · Nebraska"],
     ["/search?q=calloway", "Search: calloway"],
   ])("%s renders its page", async (path, heading) => {
     renderApp(path);

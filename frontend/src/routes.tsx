@@ -3,6 +3,7 @@ import ComingSoon from "./pages/ComingSoon";
 import CyclePage from "./pages/CyclePage";
 import HomePage from "./pages/HomePage";
 import NotFound from "./pages/NotFound";
+import RacePage from "./pages/RacePage";
 import SearchPage from "./pages/SearchPage";
 import Layout from "./shell/Layout";
 import type { CycleHandle } from "./shell/cycleTarget";
@@ -34,7 +35,7 @@ export const routes: RouteObject[] = [
       {
         // `?special=1` is the special race; switching cycle goes to the regular one.
         path: "/race/:cycle/:office/:place",
-        element: <ComingSoon name="Race" />,
+        element: <RacePage />,
         handle: {
           cycle: routeCycle,
           cycleTarget: (cycle, params) => `/race/${cycle}/${params.office}/${params.place}`,
