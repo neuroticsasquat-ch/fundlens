@@ -5,7 +5,12 @@
 -- `indiv` holds individuals' contributions, and older cycles and paper filings would otherwise
 -- count none. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
 -- MEMO_CD = 'X' memo line and the conduit's 24T row are dropped, and the conduit is kept on the
--- counted row as conduit_committee_id. Refunds are negative amounts, kept so they net out.
+-- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain
+-- 15 whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'):
+-- dropped as its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE')
+-- is an ordinary contribution, with no conduit. A gift to a committee missing from `cm` (a few
+-- fringe filers) is dropped: it would belong to no committee (NEU-2070). Refunds are negative
+-- amounts, kept so they net out.
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -37,20 +42,29 @@ individual AS (
     WHERE coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN')
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND NOT (
+            CMTE_ID IN (SELECT committee_id FROM conduit)
+            AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
+        )
+        AND CMTE_ID IN (SELECT committee_id FROM committee)
 ),
 kept AS (
     SELECT
         individual.*,
         -- An earmark whose OTHER_ID is blank names its conduit only in MEMO_TEXT ('EARMARKED
         -- THROUGH WINRED'), by name or by FEC id; one naming two takes the lower id. A memo that
-        -- says EARMARK but names no conduit gives none: there is no committee to record.
-        coalesce(
-            by_id.committee_id,
-            list_filter(
-                conduits.named,
-                lambda c: contains(individual.memo_key, c.name)
-                    OR contains(individual.memo_key, c.committee_id)
-            )[1].committee_id
+        -- says EARMARK but names no conduit gives none: there is no committee to record. Nor is
+        -- a committee ever the conduit of a gift to itself.
+        nullif(
+            coalesce(
+                by_id.committee_id,
+                list_filter(
+                    conduits.named,
+                    lambda c: contains(individual.memo_key, c.name)
+                        OR contains(individual.memo_key, c.committee_id)
+                )[1].committee_id
+            ),
+            individual.CMTE_ID
         ) AS conduit_committee_id
     FROM individual
     CROSS JOIN conduits

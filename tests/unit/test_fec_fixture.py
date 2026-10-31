@@ -49,14 +49,38 @@ def linked_candidates() -> dict[str, str]:
     return {row["CMTE_ID"]: row["CAND_ID"] for row in rows("ccl") if row["CMTE_DSGN"] in ("P", "A")}
 
 
+def is_conduit_side(row: dict[str, str]) -> bool:
+    """A conduit's own line for an earmark it passed on, filed as a 15 naming the recipient."""
+    return (
+        row["CMTE_ID"] in CONDUITS.values()
+        and re.search(r"EARMARKED FOR .*\(C\d{8}\)", row["MEMO_TEXT"]) is not None
+    )
+
+
 def counted() -> list[dict[str, str]]:
-    """The `indiv` rows the contribution table keeps: individuals and candidates, earmarks once."""
+    """The `indiv` rows the contribution table keeps: individuals and candidates, earmarks once,
+    to committees of the cycle."""
+    committees = {row["CMTE_ID"] for row in rows("cm")}
     return [
         row
         for row in rows("indiv")
         if row["ENTITY_TP"] in ("IND", "CAN")
         and row["MEMO_CD"] != "X"
         and row["TRANSACTION_TP"] != "24T"
+        and not is_conduit_side(row)
+        and row["CMTE_ID"] in committees
+    ]
+
+
+def committee_receipts() -> list[dict[str, str]]:
+    """The `oth` rows that are receipts from another committee: a receipt type (1x, or 3x for a
+    party's accounts), not a memo line, from a giver whose id is a committee's."""
+    return [
+        row
+        for row in rows("oth")
+        if row["TRANSACTION_TP"][:1] in ("1", "3")
+        and row["MEMO_CD"] != "X"
+        and row["OTHER_ID"].startswith("C")
     ]
 
 
@@ -67,12 +91,16 @@ def is_self_funding(row: dict[str, str]) -> bool:
 
 
 def conduit(row: dict[str, str]) -> str | None:
+    """The conduit an earmark came through; never the recipient itself (a gift to ActBlue)."""
+    found = None
     if row["OTHER_ID"] in CONDUITS.values():
-        return row["OTHER_ID"]
-    for name, committee_id in CONDUITS.items():
-        if re.search(rf"\b{name}\b", row["MEMO_TEXT"]):
-            return committee_id
-    return None
+        found = row["OTHER_ID"]
+    else:
+        for name, committee_id in CONDUITS.items():
+            if re.search(rf"\b{name}\b", row["MEMO_TEXT"]):
+                found = committee_id
+                break
+    return None if found == row["CMTE_ID"] else found
 
 
 def race_ids() -> dict[str, str | None]:
@@ -102,7 +130,7 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     contributions = counted()
     individual = sum_by((r["CMTE_ID"], amount(r)) for r in contributions if not is_self_funding(r))
     self_funding = sum_by((r["CMTE_ID"], amount(r)) for r in contributions if is_self_funding(r))
-    from_committees = sum_by((r["CMTE_ID"], amount(r)) for r in rows("oth"))
+    from_committees = sum_by((r["CMTE_ID"], amount(r)) for r in committee_receipts())
     pas2 = rows("pas2")
     to_candidates = sum_by(
         (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION
@@ -243,13 +271,18 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "candidate_committee_link": len(rows("ccl")),
         "contribution": len(contributions),
         "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
-        "committee_transfer": len(rows("oth"))
+        "committee_transfer": len(committee_receipts())
         + sum(r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION for r in pas2),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
+    committees = {row["CMTE_ID"] for row in rows("cm")}
     assert EXPECTED["contributions"] == {
         "dropped_memo": sum(r["MEMO_CD"] == "X" for r in indiv),
         "dropped_conduit_24t": sum(r["TRANSACTION_TP"] == "24T" for r in indiv),
+        "dropped_conduit_side": sum(
+            is_conduit_side(r) and r["TRANSACTION_TP"] != "24T" for r in indiv
+        ),
+        "dropped_unknown_recipient": sum(r["CMTE_ID"] not in committees for r in indiv),
         "dropped_not_individual": sum(r["ENTITY_TP"] not in ("IND", "CAN") for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),
         "earmarked": dict(sorted(conduits.items())),
@@ -257,8 +290,10 @@ def test_the_expected_counts_match_the_fixture() -> None:
     }
 
 
-def test_no_conduit_is_ever_a_counted_recipient() -> None:
-    assert not [r for r in counted() if r["CMTE_ID"] in CONDUITS.values()]
+def test_a_conduit_is_a_counted_recipient_only_of_gifts_to_itself() -> None:
+    to_conduits = [r for r in counted() if r["CMTE_ID"] in CONDUITS.values()]
+    assert to_conduits
+    assert all(conduit(r) is None and "EARMARK" not in r["MEMO_TEXT"] for r in to_conduits)
 
 
 def dime_rows() -> list[dict[str, str]]:
