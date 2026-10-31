@@ -18,6 +18,10 @@ _Avoid_: IE spend, outside money, super PAC money
 A contribution routed through a conduit (ActBlue, WinRed) to its final recipient. The regulator reports it twice, on the conduit side and the recipient side; fundlens counts it once.
 _Avoid_: conduit contribution, pass-through
 
+**JFC attribution**:
+A joint fundraising committee participant's memo line (FEC type 15J) naming the individual behind part of a JFC transfer and the share attributed to that participant. Evidence that the individual's money reached the participant; never a contribution, and never counted in a total.
+_Avoid_: JFC contribution, attributed contribution
+
 **Self-funding**:
 A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 
@@ -28,7 +32,7 @@ A resolved individual: the persistent identity behind many contributor-name, emp
 _Avoid_: contributor (that is the raw, unresolved name on a record), person, entity
 
 **Contributor**:
-The raw name, employer, occupation and address as reported on a single contribution, before resolution.
+The raw name, employer, occupation and address as reported on a single contribution (or JFC attribution), before resolution.
 
 **Committee**:
 A regulator-registered fundraising entity (candidate committee, PAC, party committee, super PAC) identified by its regulator ID.
