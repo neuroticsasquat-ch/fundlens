@@ -34,8 +34,10 @@ Resolution (M3), the backfill (NEU-2060) and the weekly run (M5) add their own f
   the whole bulk file. With NEU-2047's four lookup joins the 2024 transform ran out of memory. The transform now
   disables that optimizer (`transform.runner.connect`). On a synthetic 10M-row `indiv`, the contribution build's
   minimum `memory_limit` fell from 4 GB to 800 MB (300 MB without the lookup joins). On real data the 2024
-  transform now completes, but `pipeline` still peaked at 24.34 GiB. Neither the step that peaked nor the least
-  memory the real build needs was measured; the in-memory database holds every silver table until it is written,
+  transform now completes, but `pipeline` still peaked at 24.34 GiB, at 17:45:03 UTC: after
+  `04_contribution.sql`, 51 s into `06_contributor.sql`. The runner logs no time for the silver checks and
+  Parquet writes that follow, so the peak is in one of those three. The least memory the real build needs was
+  not measured; the in-memory database holds every silver table until it is written,
   and DuckDB moves data to disk only under pressure. So before the backfill (NEU-2060) runs a cycle whose `indiv`
   is larger than 2024's, raise `DUCKDB_MEMORY_LIMIT` within the container, or measure that cycle first.
 - **Gold is small.** The whole `fundlens` database was 49 MB after publish: contributions stay in silver Parquet
