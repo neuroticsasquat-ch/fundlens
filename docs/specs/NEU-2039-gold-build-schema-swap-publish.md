@@ -195,7 +195,7 @@ Fixture-sized, so these are floors on overhead, not a forecast: 11 gold tables, 
 | Where | Rows (contribution) | DuckDB aggregates + CSV | `COPY` + indexes + `ANALYZE` | Whole `load` |
 |---|---|---|---|---|
 | Fixture 2024, dev container (Apple Silicon, Docker Desktop, 2026-10-30) | 275 | 0.14 s | 0.04 s | 0.21 s (`loaded` marker `duration_s`; `publish` 0.005 s before its wait) |
-| Real 2024 on the Robot box | | see `docs/capacity.md` (NEU-2046) | | |
+| Real 2024 on the Robot box (2026-10-31, build `20261031T012553Z`) | 51,014,276 | 0.84 s | 2.21 s | 4.07 s (`loaded` marker; `docs/capacity.md`, NEU-2046) |
 
 ## 9. Open items left to later tickets
 
