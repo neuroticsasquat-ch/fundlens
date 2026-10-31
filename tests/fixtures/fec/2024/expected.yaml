@@ -26,7 +26,7 @@ rows:
   cm: 17
   cn: 12
   ccl: 12
-  indiv: 303
+  indiv: 308
   pas2: 16
   oth: 15
 
@@ -38,7 +38,7 @@ silver:
   committee: 17
   candidate: 12
   candidate_committee_link: 12
-  contribution: 276
+  contribution: 281
   independent_expenditure: 9
   committee_transfer: 18
 
@@ -58,7 +58,7 @@ contributions:
     C00401224: 5
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2244780
+  total_amount: 2245280
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
@@ -270,7 +270,7 @@ committees:
     total_to_candidates: 0
     ie_total: 0
   C00800201: # MARYLAND FORWARD PAC: the super PAC
-    total_individual: 250375
+    total_individual: 250875
     self_funding: 0
     total_from_committees: 50000
     total_to_candidates: 0
@@ -369,4 +369,4 @@ donors:
     sub_ids: [4240100000000000030]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 101
+distinct_donors: 103

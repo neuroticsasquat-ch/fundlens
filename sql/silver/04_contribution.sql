@@ -10,9 +10,10 @@
 -- dropped as its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE')
 -- is an ordinary contribution, with no conduit. A gift to a committee missing from `cm` (a few
 -- fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or 4nY
--- type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) is written by FEC as a positive amount; it is
--- kept with its sign turned, so it nets out of every total and a correction reversing a refund
--- (a negative one) adds back (NEU-2073).
+-- type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total. Most
+-- filers write a refund positive, some negative, so its sign is not trusted: every refund counts
+-- as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which reverses
+-- it and adds back (NEU-2073).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -72,6 +73,22 @@ kept AS (
     CROSS JOIN conduits
     LEFT JOIN committee AS by_id
         ON by_id.committee_id = individual.OTHER_ID AND by_id.is_conduit
+),
+reversal AS (
+    -- A negative refund that mirrors a positive one (same committee, donor and size) reverses it: a
+    -- voided or uncashed refund check. It adds back, so the pair nets to nothing. Built from its own
+    -- narrow scan of the refunds alone: a second reference to `individual` would make DuckDB
+    -- materialize every contribution row, and run out of memory on a real cycle.
+    WITH refund AS (
+        SELECT SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT
+        FROM indiv
+        WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND MEMO_CD IS DISTINCT FROM 'X'
+    )
+    SELECT DISTINCT n.SUB_ID
+    FROM refund AS n
+    JOIN refund AS p
+        ON p.CMTE_ID = n.CMTE_ID AND p.NAME = n.NAME AND p.TRANSACTION_AMT = -n.TRANSACTION_AMT
+    WHERE n.TRANSACTION_AMT < 0
 )
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
@@ -89,8 +106,9 @@ SELECT
     kept.CMTE_ID AS recipient_committee_id,
     linked.candidate_id,
     CASE
-        WHEN regexp_matches(kept.TRANSACTION_TP, '^[24][0-9]Y$') THEN -kept.TRANSACTION_AMT
-        ELSE kept.TRANSACTION_AMT
+        WHEN NOT regexp_matches(kept.TRANSACTION_TP, '^[24][0-9]Y$') THEN kept.TRANSACTION_AMT
+        WHEN kept.SUB_ID IN (SELECT SUB_ID FROM reversal) THEN -kept.TRANSACTION_AMT
+        ELSE -abs(kept.TRANSACTION_AMT)
     END AS amount,
     -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
     CAST(try_strptime(kept.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,

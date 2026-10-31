@@ -44,10 +44,24 @@ def amount(row: dict[str, str]) -> int:
     return int(value)
 
 
+def is_refund(row: dict[str, str]) -> bool:
+    return re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) is not None
+
+
 def signed(row: dict[str, str]) -> int:
-    """A contribution's amount as it counts: a refund (22Y, or any 2nY or 4nY type), written
-    positive by FEC, subtracts."""
-    return -amount(row) if re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) else amount(row)
+    """A contribution's amount as it counts. A refund (22Y, or any 2nY or 4nY type) subtracts
+    whichever sign its filer wrote, unless it is negative and mirrors a positive refund to the same
+    donor at the same committee: then it voids that refund and adds back."""
+    if not is_refund(row):
+        return amount(row)
+    reverses = amount(row) < 0 and any(
+        is_refund(other)
+        and other["CMTE_ID"] == row["CMTE_ID"]
+        and other["NAME"] == row["NAME"]
+        and amount(other) == -amount(row)
+        for other in rows("indiv")
+    )
+    return -amount(row) if reverses else -abs(amount(row))
 
 
 def linked_candidates() -> dict[str, str]:

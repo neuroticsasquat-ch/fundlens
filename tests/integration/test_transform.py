@@ -378,6 +378,23 @@ def test_a_file_mixing_encodings_is_read_whole(store: R2, cli_env: Path, tmp_pat
     ]
 
 
+def test_a_refund_subtracts_whichever_sign_its_filer_wrote_and_a_void_adds_back(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # The fixture's OSEI and LINDQVIST rows (NEU-2073): a gift and its refund written negative;
+    # a gift, its refund written positive, and the refund check voided by a mirroring negative.
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    osei, osei_refund, lindqvist, lindqvist_refund, lindqvist_void = (
+        by_id[4240100000000000300 + n]["amount"] for n in (4, 5, 6, 7, 8)
+    )
+    assert (osei, osei_refund) == (300, -300)
+    assert (lindqvist, lindqvist_refund, lindqvist_void) == (500, -200, 200)
+
+
 def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
