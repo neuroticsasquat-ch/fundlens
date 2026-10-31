@@ -2,16 +2,19 @@
 # against the fixture CSVs by tests/unit/test_fec_fixture.py: change a row, then this file.
 #
 # Rules the totals follow (spec §4, ADR-0004):
-# - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, MEMO_CD not X and
-#   TRANSACTION_TP not 24T. Refunds (negative 22Y rows) are counted and net out.
+# - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, MEMO_CD not X,
+#   TRANSACTION_TP not 24T, not a conduit's own line for an earmark it passed on (a 15 whose
+#   MEMO_TEXT is 'EARMARKED FOR … (C########)'), and to a committee in `cm`. Refunds (negative 22Y
+#   rows) are counted and net out. A gift to a conduit itself is counted, with no conduit.
 # - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
 #   committee is linked to. It is never in total_individual: it is its own total.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
 #   authorized (A). A leadership PAC (D) is not the candidate's.
 # - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows.
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
-#   total_from_committees: `oth` rows, by the receiving committee (CMTE_ID). A committee's gift to
-#   a candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
+#   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
+#   TRANSACTION_TP 1x or 3x, MEMO_CD not X, OTHER_ID a committee's id. A committee's gift to a
+#   candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
 # - A race's totals are the sums over the candidates attached to it.
 # All amounts are whole dollars.
 
@@ -22,26 +25,30 @@ rows:
   cm: 17
   cn: 12
   ccl: 12
-  indiv: 300
+  indiv: 303
   pas2: 16
-  oth: 10
+  oth: 15
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
-# every `oth` row (a receipt, recorded by the receiving committee) plus every `pas2` 24K row (a
-# disbursement, recorded by the giver): the one gift on both sides, each side its own row.
+# every `oth` receipt from a committee (recorded by the receiving committee) plus every `pas2` 24K
+# row (a disbursement, recorded by the giver): the one gift on both sides, each side its own row.
 silver:
   committee: 17
   candidate: 12
   candidate_committee_link: 12
-  contribution: 275
+  contribution: 276
   independent_expenditure: 9
-  committee_transfer: 17
+  committee_transfer: 18
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
   dropped_memo: 12
   dropped_conduit_24t: 12
+  # ActBlue's own line for an earmark, filed as a 15 rather than a 24T.
+  dropped_conduit_side: 1
+  # A gift to a committee missing from `cm`.
+  dropped_unknown_recipient: 1
   dropped_not_individual: 1
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
@@ -50,7 +57,7 @@ contributions:
     C00401224: 5
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2244775
+  total_amount: 2244780
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
@@ -177,8 +184,8 @@ candidates:
     ie_oppose: 0
 
 committees:
-  C00401224: # ACTBLUE: a conduit, never a counted recipient
-    total_individual: 0
+  C00401224: # ACTBLUE: a conduit, a counted recipient only of gifts to itself (PARK's tip)
+    total_individual: 5
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -276,7 +283,7 @@ committees:
   C00800203: # OLD LINE REPUBLICAN COMMITTEE
     total_individual: 14300
     self_funding: 0
-    total_from_committees: 15000
+    total_from_committees: 17000
     total_to_candidates: 6000
     ie_total: 45000
 
@@ -361,4 +368,4 @@ donors:
     sub_ids: [4240100000000000030]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 100
+distinct_donors: 101

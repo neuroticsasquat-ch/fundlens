@@ -31,6 +31,19 @@ TABLES: tuple[SilverTable, ...] = (
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
 ACTBLUE, WINRED = "C00401224", "C00694323"
+# The fixture rows for what real files hold that the first fixture did not (NEU-2070).
+PARK_TIP, PARK_EARMARK_CONDUIT_SIDE, NORRIS_UNKNOWN_RECIPIENT = (
+    4240100000000000301,
+    4240100000000000302,
+    4240100000000000303,
+)
+OTH_NOT_RECEIPTS = {
+    4240200000000000010,  # pas2's 24K, repeated in oth
+    4240200000000000003,  # pas2's 24A, repeated in oth
+    4240300000000000011,  # a 15J memo line
+    4240300000000000012,  # WHITLOCK's 16C loan to his campaign
+}
+OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
 
 
 def put_bronze(
@@ -234,8 +247,13 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
     assert (reyes["recipient_committee_id"], reyes["candidate_id"]) == ("C00800103", "S4MD00103")
     earmarked = sum_by([row | {"amount": 1} for row in rows], "conduit_committee_id")
     assert earmarked == expected["contributions"]["earmarked"]
-    # A conduit is never a recipient (CONTEXT.md).
-    assert {ACTBLUE, WINRED} & {row["recipient_committee_id"] for row in rows} == set()
+    # A conduit is a recipient only of gifts to itself (PARK's tip to ActBlue), with no conduit;
+    # ActBlue's own line for an earmark, filed as a 15, is dropped like its 24T (NEU-2070).
+    to_conduits = [row for row in rows if row["recipient_committee_id"] in (ACTBLUE, WINRED)]
+    assert [(row["source_record_id"], row["conduit_committee_id"]) for row in to_conduits] == [
+        (PARK_TIP, None)
+    ]
+    assert PARK_EARMARK_CONDUIT_SIDE not in by_id
 
     individual = [row for row in rows if not row["is_self_funding"]]
     self_funding = [row for row in rows if row["is_self_funding"]]
@@ -360,22 +378,18 @@ def test_a_file_mixing_encodings_is_read_whole(store: R2, cli_env: Path, tmp_pat
     ]
 
 
-def test_a_recipient_missing_from_the_committee_file_aborts_the_run(
-    store: R2, cli_env: Path
+def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
+    store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
-    stray = (
-        "C00999999|N|Q1|P2024|1|15|IND|DOE, JOHN|BALTIMORE|MD|21201|ACME|CLERK|01022024|100|"
-        "|SA.1|1|||4249999999999999999\n"
-    )
-    put_bronze(store, texts={"indiv": fec_fixture.bulk_text("indiv") + stray})
+    # The fixture's NORRIS row: a few fringe filers report gifts to a committee FEC's `cm` lacks,
+    # which would belong to no committee (NEU-2070).
+    put_bronze(store)
     seats_report()
 
-    result = transform()
-
-    assert isinstance(result.exception, ChecksFailed)
-    assert "silver_contribution_recipient.sql" in str(result.exception)
-    assert "C00999999" in str(result.exception)
-    assert uploaded_silver(store) == []
+    assert transform().exit_code == 0
+    rows = read_silver(store, "contribution", tmp_path)
+    assert NORRIS_UNKNOWN_RECIPIENT not in {row["source_record_id"] for row in rows}
+    assert "C00899999" not in {row["recipient_committee_id"] for row in rows}
 
 
 def test_the_race_check_fails_until_the_bad_district_is_an_unmatched_filing(
@@ -513,8 +527,13 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     receipts = [row for row in rows if row["side"] == "receipt"]
     disbursements = [row for row in rows if row["side"] == "disbursement"]
 
-    # Every `oth` row is a receipt; every 24K `pas2` row a disbursement; nothing else is here.
-    assert len(receipts) == expected["rows"]["oth"]
+    # Every `oth` receipt from a committee is a receipt; every 24K `pas2` row a disbursement;
+    # nothing else is here. `oth`'s repeat of a pas2 24K and 24A, its 15J memo line and the 16C
+    # candidate loan are none of those (NEU-2070); the 31K party-account receipt is one.
+    receipt_ids = {row["source_record_id"] for row in receipts}
+    assert receipt_ids & OTH_NOT_RECEIPTS == set()
+    assert OTH_PARTY_ACCOUNT_RECEIPT in receipt_ids
+    assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS)
     assert len(disbursements) == len(rows) - len(receipts)
     assert len(rows) == expected["silver"]["committee_transfer"]
     assert {row["transaction_type"] for row in disbursements} == {"24K"}
