@@ -1,5 +1,6 @@
 """`fundlens resolve --full` on the fixture cycle: its contributor keys into clusters, the model
-into MinIO, under a DuckDB memory limit (spec §6.3–§6.4, §12)."""
+into MinIO, under a DuckDB memory limit, and the fixture's overrides applied (spec §6.3–§6.5,
+§12)."""
 
 import json
 import logging
@@ -20,14 +21,17 @@ from fundlens.resolve import crosswalk, model
 from fundlens.resolve.cluster import cluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
+from tests.integration.conftest import REPO_ROOT
 from tests.integration.test_transform import BUILD, put_bronze, seats_report, transform
 
 MODEL = "20261031T040000Z"
 AGAIN = "20261107T040000Z"
 # Well under what DuckDB would take by itself: the run has to fit, or spill, inside it.
 MEMORY_LIMIT = "256MB"
-# The hard cases linkage leaves alone: resolution/overrides.yaml merges and splits these.
+# The hard cases linkage leaves alone: the fixture's overrides merge and split these.
 FOR_OVERRIDES = frozenset({"merge_override", "split_override"})
+FIXTURE_OVERRIDES = REPO_ROOT / "tests" / "fixtures" / "resolution" / "overrides.yaml"
+RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "adding-an-override.md"
 
 
 def resolve(*args: str) -> Result:
@@ -148,7 +152,7 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
         "contribution": silver["contribution"],
     }
     logged = [record.getMessage() for record in caplog.records]
-    for phase in ("load", "train", "cluster", "save", "crosswalk", "silver"):
+    for phase in ("load", "train", "cluster", "overrides", "save", "crosswalk", "silver"):
         assert any(message.startswith(f"resolve {phase}: ") for message in logged), phase
     # The run's connection had the limit, and kept to it: DuckDB fails a query that exceeds it.
     assert "DuckDB memory limit: 244.1 MiB" in result.output
@@ -315,3 +319,116 @@ def test_a_rewrite_that_died_in_r2_stops_load_and_a_new_transform_recovers_it(
     recovered = resolve("--full", "--build-id", AGAIN)
     assert recovered.exit_code == 0, recovered.output
     assert len(keys_by_sub_id(transformed)) == fec_fixture.expected()["silver"]["contribution"]
+
+
+def donor_keys(data_dir: Path, name: str) -> set[str]:
+    """The contributor keys of one of the fixture's planted donors (`expected.yaml`)."""
+    key_of = keys_by_sub_id(data_dir)
+    return {key_of[sub_id] for sub_id in fec_fixture.expected()["donors"][name]["sub_ids"]}
+
+
+def redirects(conninfo: str) -> dict[int, int]:
+    with psycopg.connect(conninfo) as conn:
+        return dict(
+            conn.execute("SELECT old_donor_id, donor_id FROM app.donor_redirect").fetchall()
+        )
+
+
+def test_the_fixture_overrides_merge_and_split_donors_in_the_crosswalk(
+    transformed: Path, migrated_db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = resolve("--full", "--build-id", MODEL)
+    assert first.exit_code == 0, first.output
+    margaret, peggy = sorted(donor_keys(transformed, "merge_override"))
+    [junior] = donor_keys(transformed, "split_override_jr")
+    [senior] = donor_keys(transformed, "split_override_sr")
+    before = {key: donor_id for key, donor_id, *_ in crosswalk_rows(migrated_db)}
+    # What the overrides are for: linkage keeps the KOWALCZYKs apart and joins the ABERNATHYs, as
+    # the donor_id the fixture's split names (`from: 1`).
+    assert before[margaret] != before[peggy]
+    assert before[junior] == before[senior] == 1
+    monkeypatch.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
+    get_settings.cache_clear()
+
+    again = resolve("--full", "--build-id", AGAIN)
+
+    assert again.exit_code == 0, again.output
+    assert "overrides: 1 merges joining 1 clusters into others, 1 splits" in again.output
+    after = {key: donor_id for key, donor_id, *_ in crosswalk_rows(migrated_db)}
+    # The merge keeps PEGGY's id, which carries more dollars, and redirects MARGARET's.
+    assert after[margaret] == after[peggy] == before[peggy]
+    assert redirects(migrated_db) == {before[margaret]: before[peggy]}
+    # The split leaves the father, with more dollars, the donor's id, and gives the son a new one.
+    assert after[senior] == 1
+    assert after[junior] not in before.values()
+    changed = {key for key in after if after[key] != before[key]}
+    assert changed == {margaret, junior}
+    # A further run with the same overrides changes nothing more.
+    third = resolve("--full", "--build-id", "20261114T040000Z")
+    assert third.exit_code == 0, third.output
+    assert "crosswalk: 0 new donors, 0 keys re-pointed, 0 redirects" in third.output
+
+
+def test_overrides_naming_what_the_run_does_not_know_stop_it_before_training(
+    store: R2, transformed: Path, migrated_db: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A bad copy of the fixture's overrides: a key no cycle has, beside the real split. The
+    # crosswalk is empty, so the split's `from: 1` is no donor_id either.
+    bad = tmp_path / "overrides.yaml"
+    bad.write_text(
+        FIXTURE_OVERRIDES.read_text().replace(
+            "KOWALCZYK, PEGGY|20910||", "KOWALCZYK, PEGGY|99999||"
+        )
+    )
+    monkeypatch.setenv("OVERRIDES_PATH", str(bad))
+    get_settings.cache_clear()
+
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 1
+    assert (
+        "overrides: 'KOWALCZYK, PEGGY|99999||' is no contributor key of this run;"
+        " split from 1: no such donor_id"
+    ) in result.output
+    assert not store.exists(paths.resolution_model(MODEL))
+    assert crosswalk_rows(migrated_db) == []
+    assert drawn(migrated_db) == (1, False)
+
+
+def test_a_malformed_overrides_file_stops_the_run_before_it_reads_anything(
+    cli_env: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bad = tmp_path / "overrides.yaml"
+    bad.write_text(FIXTURE_OVERRIDES.read_text() + FIXTURE_OVERRIDES.read_text())
+    monkeypatch.setenv("OVERRIDES_PATH", str(bad))
+    get_settings.cache_clear()
+
+    result = resolve("--full")
+
+    assert result.exit_code == 1
+    assert "is in merge 1 and merge 2" in result.output
+    assert "split twice" in result.output
+
+
+def runbook_query() -> str:
+    """The SQL of the override runbook's step 1, as written there."""
+    [query] = re.findall(
+        r"rq \"\$SURNAME\" <<'SQL'\n(.*?)\nSQL\n", RUNBOOK.read_text(), flags=re.DOTALL
+    )
+    return query
+
+
+def test_the_runbook_query_finds_the_keys_of_a_fixture_donor(transformed: Path) -> None:
+    result = resolve("--full", "--build-id", MODEL)
+    assert result.exit_code == 0, result.output
+
+    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+        # As `rq` runs it, with the runbook's own `SURNAME`.
+        rows = con.execute(runbook_query(), {"surname": "ABERNATHY"}).fetchall()
+
+    # ABERNATHY, CHARLES JR and SR: the two keys linkage put under one donor_id.
+    keys = donor_keys(transformed, "split_override_jr") | donor_keys(
+        transformed, "split_override_sr"
+    )
+    assert {row[1] for row in rows} == keys
+    assert {row[0] for row in rows} == {1}

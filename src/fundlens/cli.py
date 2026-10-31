@@ -31,6 +31,7 @@ from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
+from fundlens.resolve import overrides
 from fundlens.resolve import runner as resolution
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
@@ -359,8 +360,8 @@ def resolve(
     ] = None,
 ) -> None:
     """Link every cycle's contributor keys into clusters of one person with Splink, save the
-    trained model, give each cluster its persistent donor_id, write it onto each cycle's silver
-    and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
+    trained model, apply `resolution/overrides.yaml`, give each cluster its persistent donor_id,
+    write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
     if not full:
         # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
         raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
@@ -378,14 +379,20 @@ def resolve(
                     cluster=settings.resolve_cluster_threshold,
                 ),
                 min_training_keys=settings.resolve_min_training_keys,
+                overrides_path=settings.overrides_path,
                 conn=conn,
             )
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, overrides.OverridesError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     for cycle, build in result.builds.items():
         typer.echo(f"{cycle}: build {build}")
     typer.echo(f"{result.contributor_keys} contributor keys in {result.clusters} clusters")
+    overridden = result.overridden
+    typer.echo(
+        f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
+        f" into others, {overridden.splits} splits"
+    )
     assigned = result.assigned
     typer.echo(
         f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"

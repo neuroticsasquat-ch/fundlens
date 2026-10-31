@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # The SQL the pipeline runs (spec §3.1): the repo's `sql/`, which the image copies to /app.
     sql_dir: Path = Field(default=Path("/app/sql"), alias="SQL_DIR")
 
+    # The manual merges and splits `fundlens resolve` applies (spec §6.5, ADR-0005): the repo's
+    # `resolution/overrides.yaml`, which the image copies to /app.
+    overrides_path: Path = Field(
+        default=Path("/app/resolution/overrides.yaml"), alias="OVERRIDES_PATH"
+    )
+
     # DuckDB's limits in transform (spec §3.2, §3.4). The memory limit and thread count are set
     # on the pipeline service alone (docker-compose.prod.yml), so the API's in-process DuckDB
     # never inherits them; unset, DuckDB picks its own. Spill under `scratch/` stops at 60 GB.
