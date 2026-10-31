@@ -19,13 +19,14 @@ clusters writes nothing and draws no id. Ids are never reused: a merged-away id 
 again, and a key this run did not cluster keeps its row.
 
 `onto_silver` then rewrites a cycle's `contribution` partition with each row's `donor_id`, in
-`bucket=<hex2>` directories of `donor_id % 256` (the itemized reader scans one), and then its
-`contributor` partition with the `donor_id` column, both in place under the same build. A cycle
-whose `contributor` already carries every key's id is left alone: its contribution was rewritten
-first, with the same ids. R2 is written first and the local cache swapped last. While R2's
-contribution parts are being replaced the partition holds `paths.rewrite_sentinel`, and nothing
-reads past it: a run that dies there leaves the cache in its old layout, which the next run reads
-in place of R2's half-written one, and with no cache the cycle must be transformed again.
+`bucket=<hex2>` directories of `donor_id % 256` (the itemized reader scans one), then its
+`jfc_attribution` partition and last its `contributor` partition with the `donor_id` column, all
+in place under the same build. A cycle whose `contributor` already carries every key's id is left
+alone: the others were rewritten first, with the same ids. R2 is written first and the local
+cache swapped last. While R2's contribution parts are being replaced the partition holds
+`paths.rewrite_sentinel`, and nothing reads past it: a run that dies there leaves the cache in its
+old layout, which the next run reads in place of R2's half-written one, and with no cache the
+cycle must be transformed again.
 Swapping the cache is two renames, not one: an itemized request that lands between them, on a
 build already live, fails once.
 
@@ -370,9 +371,9 @@ def _current(con: duckdb.DuckDBPyConnection, contributors: Path) -> bool:
 def onto_silver(
     con: duckdb.DuckDBPyConnection, store: R2, *, cycle: int, build_id: str, data_dir: Path
 ) -> int:
-    """Rewrite the `contribution` and then the `contributor` partition of one build of `cycle`
-    with each row's donor_id from the working file's `crosswalk`, contribution in `bucket=<hex2>`
-    directories, unless `contributor` already carries them; the contribution rows.
+    """Rewrite the `contribution`, `jfc_attribution` and then `contributor` partitions of one
+    build of `cycle` with each row's donor_id from the working file's `crosswalk`, contribution in
+    `bucket=<hex2>` directories, unless `contributor` already carries them; the contribution rows.
 
     Raises `RuntimeError`, before anything is uploaded, if a row's key has no donor_id, or if a
     rewrite that died left R2 unreadable and no local copy (`_local_partition`).
@@ -401,7 +402,7 @@ def onto_silver(
         log.info("donor_id onto silver %d build %s: already current", cycle, build_id)
         return rows
     rows = 0
-    for table in ("contribution", "contributor"):
+    for table in ("contribution", "jfc_attribution", "contributor"):
         prefix = paths.silver_partition(table, cycle, build_id)
         local = _local_partition(store, prefix, cycle=cycle, build_id=build_id, data_dir=data_dir)
         files = literal(local / "**" / "*.parquet")

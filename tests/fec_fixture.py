@@ -103,6 +103,11 @@ class Donor(TypedDict):
     sub_ids: list[int]
 
 
+class Attributions(TypedDict):
+    jfc_committee: dict[int, str | None]
+    attribution_only: list[int]
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
@@ -114,6 +119,7 @@ class Expected(TypedDict):
     committees: dict[str, CommitteeTotals]
     donors: dict[str, Donor]
     distinct_donors: int
+    attributions: Attributions
 
 
 def expected(cycle: int = CYCLE) -> Expected:

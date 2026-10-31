@@ -19,6 +19,7 @@ SilverTable = Literal[
     "contributor",
     "contribution",
     "committee_transfer",
+    "jfc_attribution",
     "independent_expenditure",
 ]
 

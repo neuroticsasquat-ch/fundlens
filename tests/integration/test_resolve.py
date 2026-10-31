@@ -88,9 +88,11 @@ def test_resolve_full_clusters_the_fixture_as_its_donors(transformed: Path) -> N
     }
     found = clusters(transformed)
     # Every key is one donor's, so a key outside the planted donors is a donor of its own: the
-    # keys less those the planted donors share make the fixture's distinct donors.
+    # keys less those the planted donors share make the fixture's distinct donors, and the people
+    # known only from JFC attributions, whom DIME (counting contributions) does not know.
     shared = sum(len(keys) - 1 for keys in donor_keys.values())
-    assert len(found) - shared == expected["distinct_donors"]
+    attribution_only = len(expected["attributions"]["attribution_only"])
+    assert len(found) - shared == expected["distinct_donors"] + attribution_only
     reserved = {
         key
         for name, keys in donor_keys.items()
@@ -164,6 +166,19 @@ def test_resolve_full_with_nothing_transformed_says_to_transform(cli_env: Path) 
 
     assert result.exit_code == 1
     assert "run `fundlens transform`" in result.output
+
+
+def test_a_build_transformed_before_jfc_attributions_says_to_transform_it_again(
+    store: R2, transformed: Path
+) -> None:
+    # A build transformed before NEU-2078 has no jfc_attribution partition.
+    store.delete_prefix(paths.silver_partition("jfc_attribution", 2024, BUILD) + "/")
+
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 1
+    assert f"no silver jfc_attribution partition for build {BUILD} of 2024" in result.output
+    assert f"run `fundlens transform --cycle 2024 --build-id {BUILD}`" in result.output
 
 
 def test_resolve_without_full_is_a_usage_error(cli_env: Path) -> None:
@@ -291,6 +306,44 @@ def test_resolve_full_writes_donor_ids_onto_bucketed_silver(
     assert all(donor_id == donor_of[key] for _, key, donor_id, _ in rows)
     assert all(bucket == f"{donor_id % paths.BUCKETS:02x}" for *_, donor_id, bucket in rows)
     assert dict(contributors) == donor_of
+
+
+def test_jfc_attributions_carry_donor_ids_and_a_person_known_only_from_one_is_a_donor(
+    store: R2, transformed: Path, migrated_db: str
+) -> None:
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 0, result.output
+    expected = fec_fixture.expected()
+    donor_of = {key: donor_id for key, donor_id, *_ in crosswalk_rows(migrated_db)}
+    prefix = paths.silver_partition("jfc_attribution", 2024, BUILD)
+    assert store.list_keys(prefix + "/") == [f"{prefix}/{paths.part(0)}"]
+    with duckdb.connect() as con:
+        attributions = con.execute(
+            "SELECT source_record_id, contributor_key, donor_id"
+            " FROM read_parquet(?, hive_partitioning = false)",
+            [str(paths.local_path(transformed, prefix) / "*.parquet")],
+        ).fetchall()
+    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+        contributors = {
+            key: totals
+            for key, *totals in con.execute(
+                "SELECT contributor_key, contribution_count, amount_total, attribution_count"
+                " FROM contributor"
+            ).fetchall()
+        }
+    assert len(attributions) == expected["silver"]["jfc_attribution"]
+    assert all(donor_id == donor_of[key] for _, key, donor_id in attributions)
+    only = [
+        (key, donor_id)
+        for sub_id, key, donor_id in attributions
+        if sub_id in expected["attributions"]["attribution_only"]
+    ]
+    assert only
+    for key, donor_id in only:
+        # A donor of their own, with no counted money: the crosswalk ranks them at $0.
+        assert contributors[key] == [0, 0, 1]
+        assert [k for k, d in donor_of.items() if d == donor_id] == [key]
 
 
 def test_a_rewrite_that_died_in_r2_stops_load_and_a_new_transform_recovers_it(

@@ -175,7 +175,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert search[("race", "2024-S-NE-00-special")]["name"] == "2024 Senate NE special"
     assert search[("candidate", "S4MD00103")]["aliases"] == "OKAFOR FOR MARYLAND"
     assert dollars(search[("candidate", "S4MD00103")]["weight"]) == 49700 + 5000
-    assert dollars(search[("committee", "C00800103")]["weight"]) == 37550 + 25000
+    assert dollars(search[("committee", "C00800103")]["weight"]) == 37550 + 31500
     assert {kind for kind, _ in search} == {"candidate", "committee", "race"}
 
     [meta] = rows(migrated_db, "meta")
@@ -213,6 +213,43 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     # The work directory is gone; the silver partitions it read stay cached.
     assert not (cli_env / "scratch" / f"load-2024-{BUILD}").exists()
     assert (cli_env / "silver" / "contribution").exists()
+
+
+def test_a_jfc_attribution_adds_nothing_to_its_participants_or_its_races_totals(
+    store: R2, cli_env: Path, migrated_db: str
+) -> None:
+    # Evidence, never money (spec §6.11): the participant's share is the JFC's 18J transfer.
+    def totals() -> list[dict[str, Any]]:
+        return [
+            next(r for r in rows(migrated_db, table) if r[column] == value)
+            for table, column, value in (
+                ("committee_cycle", "committee_id", "C00800103"),
+                ("candidate_cycle", "candidate_id", "S4MD00103"),
+                ("race", "race_id", "2024-S-MD-00"),
+                ("cycle", "cycle", 2024),
+            )
+        ]
+
+    put_bronze(store)
+    seats_report()
+    assert transform().exit_code == 0
+    assert load().exit_code == 0
+    before = totals()
+    oth = fec_fixture.bulk_text("oth") + (
+        "C00800103|N|12G|G2024|1|15J|IND|HARTWELL, EUGENIA|BALTIMORE|MD|21210|RETIRED|RETIRED|"
+        "10202024|1000000||SA.1|1900123|X|* OKAFOR VICTORY FUND|4249999999999999961\n"
+    )
+    put_bronze(store, texts={"oth": oth})
+    assert run("seats", "--cycle", "2024", build_id=NEWER).exit_code == 0
+    transformed = run("transform", "--cycle", "2024", build_id=NEWER)
+    assert transformed.exit_code == 0, transformed.output
+    attributions = fec_fixture.expected()["silver"]["jfc_attribution"] + 1
+    assert f"jfc_attribution: {attributions} rows" in transformed.output
+
+    result = load(NEWER)
+
+    assert result.exit_code == 0, result.output
+    assert totals() == before
 
 
 def test_load_without_a_build_id_takes_the_newest_transformed_build(

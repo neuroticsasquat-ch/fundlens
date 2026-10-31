@@ -28,6 +28,7 @@ TABLES: tuple[SilverTable, ...] = (
     "candidate_committee_link",
     "contribution",
     "committee_transfer",
+    "jfc_attribution",
     "contributor",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
@@ -44,8 +45,17 @@ OTH_NOT_RECEIPTS = {
     4240200000000000003,  # pas2's 24A, repeated in oth
     4240300000000000011,  # a 15J memo line
     4240300000000000012,  # WHITLOCK's 16C loan to his campaign
+    # More 15J memo lines (spec §6.11): JFC attributions, an organization's, one to no committee.
+    *range(4240300000000000015, 4240300000000000020),
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
+# OKAFOR VICTORY FUND's 18J transfer to OKAFOR, and the 15J lines of the people behind it: one known
+# from no contribution, and VANTERPOOL, who gave to the super PAC. An organization's 15J line and
+# one to a committee missing from `cm` are no attribution.
+JFC, JFC_TRANSFER = "C00800115", 4240300000000000014
+ACHTERBERG, VANTERPOOL_LINE = 4240300000000000015, 4240300000000000016
+VANTERPOOL = 4240100000000000030
+NOT_ATTRIBUTIONS = {4240300000000000018, 4240300000000000019}
 # The Musk case's first contribution, and the same contributor written again with a comma and a JR.
 MUSK, MUSK_AGAIN = 4240100000000000007, 4240100000000000011
 # 24K gifts whose giver wrote a stale candidate id, and whose recipient raises for no candidate.
@@ -234,8 +244,29 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "occupation_norm",
         "contribution_count",
         "amount_total",
+        "attribution_count",
         "first_cycle",
         "last_cycle",
+    ]
+
+    attributions = read_silver(store, "jfc_attribution", tmp_path)
+    assert list(attributions[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "contributor_name",
+        "contributor_city",
+        "contributor_state",
+        "contributor_zip",
+        "contributor_employer",
+        "contributor_occupation",
+        "contributor_key",
+        "participant_committee_id",
+        "jfc_committee_id",
+        "candidate_id",
+        "amount",
+        "date",
     ]
 
 
@@ -461,10 +492,16 @@ def test_contributions_reduce_to_contributor_keys_spelled_as_the_normalizers_spe
     contributors = {
         row["contributor_key"]: row for row in read_silver(store, "contributor", tmp_path)
     }
-    assert all(row["contributor_key"] == key_of(row) for row in contributions)
-    assert {row["contributor_key"] for row in contributions} == contributors.keys()
+    attributions = read_silver(store, "jfc_attribution", tmp_path)
+    assert all(row["contributor_key"] == key_of(row) for row in [*contributions, *attributions])
+    assert {row["contributor_key"] for row in [*contributions, *attributions]} == (
+        contributors.keys()
+    )
     assert sum(cast(int, c["contribution_count"]) for c in contributors.values()) == len(
         contributions
+    )
+    assert sum(cast(int, c["attribution_count"]) for c in contributors.values()) == len(
+        attributions
     )
     assert sum(cast(Decimal, c["amount_total"]) for c in contributors.values()) == sum(
         cast(Decimal, row["amount"]) for row in contributions
@@ -496,6 +533,7 @@ def test_contributions_reduce_to_contributor_keys_spelled_as_the_normalizers_spe
         "occupation_norm": "CEO",
         "contribution_count": 2,
         "amount_total": 6600,
+        "attribution_count": 0,
         "first_cycle": 2024,
         "last_cycle": 2024,
     }
@@ -561,7 +599,7 @@ def test_a_zip_is_read_by_its_member_name_not_as_its_only_file(store: R2, cli_en
     result = transform()
 
     assert result.exit_code == 0, result.output
-    assert "committee: 17 rows" in result.output
+    assert f"committee: {fec_fixture.expected()['silver']['committee']} rows" in result.output
 
 
 def test_a_filing_for_a_seat_with_a_special_beside_it_joins_the_regular_race(
@@ -712,3 +750,111 @@ def test_a_duplicated_committee_receipt_aborts_the_run_before_any_upload(
     assert "4240300000000000001" in str(result.exception)
     assert uploaded_silver(store) == []
     assert not markers.exists("transformed", store, cycle=2024, build_id=BUILD)
+
+
+def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    expected = fec_fixture.expected()
+    rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
+
+    # Each line's JFC is the committee its MEMO_TEXT names ('* OKAFOR VICTORY FUND', or after
+    # '2024 AGGREGATE; JFC ATTRIB:'), else its filing's only 18J sender, else none (spec §6.11).
+    assert {sub_id: row["jfc_committee_id"] for sub_id, row in rows.items()} == (
+        expected["attributions"]["jfc_committee"]
+    )
+    assert rows.keys().isdisjoint(NOT_ATTRIBUTIONS)
+    assert len(rows) == expected["silver"]["jfc_attribution"]
+    # The filer is the participant, and its candidate the one `ccl` links it to. An amount is
+    # kept as filed, a negative one too.
+    assert {(r["participant_committee_id"], r["candidate_id"]) for r in rows.values()} == {
+        ("C00800103", "S4MD00103")
+    }
+    assert [r["amount"] for r in rows.values() if cast(Decimal, r["amount"]) < 0] == [-100]
+    assert rows[ACHTERBERG]["date"] == date(2024, 10, 20)
+    assert {(r["source"], r["jurisdiction"], r["cycle"]) for r in rows.values()} == {
+        ("fec", "US", 2024)
+    }
+
+    # A person known only from a 15J line is a contributor with no money; VANTERPOOL's line joins
+    # her contribution's key, a line more and not a dollar more.
+    contributors = {
+        row["contributor_key"]: row for row in read_silver(store, "contributor", tmp_path)
+    }
+    only = contributors[cast(str, rows[ACHTERBERG]["contributor_key"])]
+    assert (
+        only["name_raw"],
+        only["contribution_count"],
+        only["amount_total"],
+        only["attribution_count"],
+    ) == ("ACHTERBERG, LIESBETH", 0, 0, 1)
+    [gift] = [
+        row
+        for row in read_silver(store, "contribution", tmp_path)
+        if row["source_record_id"] == VANTERPOOL
+    ]
+    assert rows[VANTERPOOL_LINE]["contributor_key"] == gift["contributor_key"]
+    vanterpool = contributors[cast(str, gift["contributor_key"])]
+    assert (
+        vanterpool["contribution_count"],
+        vanterpool["amount_total"],
+        vanterpool["attribution_count"],
+    ) == (1, 250000, 1)
+
+    # The money is the JFC's 18J transfer, a receipt like any other.
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    transfer = transfers[JFC_TRANSFER]
+    assert (
+        transfer["from_committee_id"],
+        transfer["to_committee_id"],
+        transfer["amount"],
+        transfer["side"],
+    ) == (JFC, "C00800103", 6500, "receipt")
+
+
+def test_a_jfc_named_in_memo_text_is_the_joint_fundraising_committee_of_that_name(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # A committee of a lower id sharing the JFC's name, as FEC's `cm` has: the JFC is the one of
+    # designation J.
+    cm = fec_fixture.bulk_text("cm") + (
+        "C00800099|OKAFOR VICTORY FUND||||ROCKVILLE|MD|20850|U|Q||Q|||\n"
+    )
+    put_bronze(store, texts={"cm": cm})
+    seats_report()
+
+    assert transform().exit_code == 0
+    rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
+    assert rows[ACHTERBERG]["jfc_committee_id"] == JFC
+
+
+def test_a_key_with_no_contributions_shows_the_variant_most_of_its_attributions_report(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # ACHTERBERG written again twice without the space: one key, which no contribution reports,
+    # so the spelling of most of its lines is the key's.
+    oth = fec_fixture.bulk_text("oth") + "".join(
+        "C00800103|N|12G|G2024|1|15J|IND|ACHTERBERG,LIESBETH|ANNAPOLIS|MD|21402|US NAVAL ACADEMY|"
+        f"PROFESSOR|10202024|50||SA.{n}|1900123|X||424999999999999997{n}\n"
+        for n in (1, 2)
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    assert transform().exit_code == 0
+    rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
+    key = rows[ACHTERBERG]["contributor_key"]
+    assert {rows[4249999999999999970 + n]["contributor_key"] for n in (1, 2)} == {key}
+    [contributor] = [
+        row for row in read_silver(store, "contributor", tmp_path) if row["contributor_key"] == key
+    ]
+    assert (contributor["name_raw"], contributor["attribution_count"]) == (
+        "ACHTERBERG,LIESBETH",
+        3,
+    )

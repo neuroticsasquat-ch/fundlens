@@ -20,11 +20,28 @@
 -- Each contribution carries its contributor key (spec §6.1): its reported name, ZIP, employer and
 -- occupation, each normalized by resolve.normalize. The normalizers are Python, so each distinct
 -- value is normalized once, not each row: a cycle reports far fewer of each than it has rows. One
--- scan of `indiv` collects all four. The four `contributor_*` tables, each a reported value and its
--- normalized form, outlive this file: 06_contributor.sql reads them too.
+-- scan of `indiv` and the JFC attribution lines collects all four. The four `contributor_*` tables,
+-- each a reported value and its normalized form, outlive this file: 06_jfc_attribution.sql and
+-- 07_contributor.sql read them too.
+--
+-- `jfc_line` is every `oth` line 06_jfc_attribution.sql builds a JFC attribution from (spec §6.11):
+-- a 15J memo line, where a joint fundraising committee's participant itemizes an individual (IND,
+-- or blank as in `indiv`) behind its share of a JFC transfer, filed by a committee in `cm`.
+CREATE TEMP VIEW jfc_line AS
+SELECT *
+FROM oth
+WHERE TRANSACTION_TP = '15J'
+    AND MEMO_CD = 'X'
+    AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') = 'IND'
+    AND CMTE_ID IN (SELECT committee_id FROM committee);
+
 CREATE TEMP TABLE contributor_value AS
 SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION
-FROM indiv
+FROM (
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM indiv
+    UNION ALL
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM jfc_line
+)
 GROUP BY GROUPING SETS ((NAME), (ZIP_CODE), (EMPLOYER), (OCCUPATION));
 
 CREATE TEMP TABLE contributor_name AS
