@@ -8,6 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     UV_PYTHON_DOWNLOADS=never
 
+# opentelemetry-distro defaults the OTLP protocol to gRPC, but only the HTTP exporter is
+# installed. Pin http/protobuf so the absent gRPC one is never looked up. The endpoint and the
+# resource attributes come from the deploy env (spec §10.1).
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
@@ -41,6 +46,11 @@ FROM base AS prod
 RUN uv sync --locked --inexact --no-cache --no-dev --no-install-project
 
 COPY src/ src/
+# What `fundlens transform` runs (`SQL_DIR`, spec §3.1).
+COPY sql/ sql/
+# `alembic upgrade head` runs from /app in the pipeline container (spec §7.3).
+COPY alembic.ini ./
+COPY migrations/ migrations/
 
 RUN uv sync --locked --inexact --no-cache --no-dev --no-editable
 

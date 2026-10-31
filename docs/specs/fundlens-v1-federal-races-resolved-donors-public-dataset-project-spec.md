@@ -49,7 +49,7 @@ CLAUDE.md  CONTEXT.md  LICENSE  README.md
 docs/  adr/  specs/  plans/  campaign-finance-handover.md  dataset/  (schema docs published with the dataset)
 sql/
   silver/   01_committee.sql 02_candidate.sql 03_candidate_committee_link.sql 04_contribution.sql
-            05_contributor.sql 06_independent_expenditure.sql
+            05_committee_transfer.sql 06_contributor.sql 07_independent_expenditure.sql
   gold/     01_race.sql … (one file per gold table, numbered in dependency order)
   checks/   *.sql  (assertions run after silver and after gold; a failing check aborts the run)
 resolution/
@@ -74,6 +74,7 @@ src/fundlens/
     seats.py             # seat calendar generator + specials table loader
   resolve/
     normalize.py         # name parsing (nameparser), suffix/punct stripping, ZIP5, employer/occupation canon
+    aliases.yaml         # employer alias table for the top employers (§6.2)
     model.py             # Splink settings: blocking rules, comparisons, training
     cluster.py           # predict + connected components → clusters
     crosswalk.py         # contributor_key → donor_id assignment, merges/splits, redirects
@@ -97,7 +98,7 @@ tests/
   fixtures/fec/2024/     # synthetic mini-cycle in FEC bulk format (§12)
   fixtures/dime/         # tiny DIME-shaped file for the validator
 frontend/
-  package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  wrangler.jsonc  oxlint.json
+  package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  wrangler.jsonc  .oxlintrc.json
   src/  api/ (generated types + client)  routes/  components/  charts/
 ```
 
@@ -105,7 +106,7 @@ frontend/
 
 | Service | Image | Role |
 |---|---|---|
-| `api` | fundlens (prod target) | `uvicorn fundlens.api.app:app --proxy-headers --forwarded-allow-ips="*"`. Mounts the silver volume read-only. |
+| `api` | fundlens (prod target) | `fundlens api`: uvicorn serving the `fundlens.api.app:create_app` factory with `--proxy-headers --forwarded-allow-ips="*"`. Mounts the silver volume read-only. |
 | `pipeline` | fundlens (prod target) | Idle (`sleep infinity`). Coolify scheduled tasks `docker exec` the CLI in it. Mounts silver + scratch + bronze volumes read-write. Memory limit 40 GB; DuckDB `memory_limit` 28 GB. |
 | `postgres` | postgres:18 | Schemas `app` (authored, migrated), `gold` (live, rebuilt), `gold_prev` (rollback), `gold_build` (in progress). |
 | Worker | Cloudflare | Serves the SPA at `fundlens.org`. |
@@ -154,7 +155,7 @@ Source-agnostic from day one: every table carries `source` (`fec`) and `jurisdic
 | `candidate_committee_link` | `(cycle, candidate_id, committee_id)` | `committee_type, designation, linkage_id` |
 | `race` | `race_id` | `cycle, jurisdiction, office, state, district, is_special, slug` (from the seat calendar, §5.2) |
 | `contributor` | `contributor_key` | `name_raw, name_first, name_last, name_suffix, zip5, city, state, employer_raw, employer_norm, occupation_raw, occupation_norm, contribution_count, amount_total, first_cycle, last_cycle` |
-| `contribution` | `(cycle, source, source_record_id)` | `jurisdiction, contributor_key, donor_id, recipient_committee_id, candidate_id (via ccl, nullable), amount, date, transaction_type, entity_type, report_type, amendment_indicator, memo_text, conduit_committee_id (nullable), is_self_funding, image_num, file_num` |
+| `contribution` | `(cycle, source, source_record_id)` | `jurisdiction, contributor_name, contributor_city, contributor_state, contributor_zip, contributor_employer, contributor_occupation, contributor_key, donor_id, recipient_committee_id, candidate_id (via ccl, nullable), amount, date, transaction_type, entity_type, report_type, amendment_indicator, memo_text, conduit_committee_id (nullable), is_self_funding, image_num, file_num` (the six `contributor_*` columns are the contributor as reported, NEU-2041: the itemized list shows them, and `contributor` is derived from them) |
 | `committee_transfer` | `(cycle, source, source_record_id)` | from `oth`: `from_committee_id, to_committee_id, amount, date, transaction_type` |
 | `independent_expenditure` | `(cycle, source, source_record_id)` | from `pas2` types 24A/24E (and 24C/24F/24N retained with `kind`): `committee_id, candidate_id, race_id, support_oppose (S/O), amount, date, transaction_type, kind` |
 
@@ -198,7 +199,7 @@ fundlens health                                      # exit 0 iff Postgres + R2 
 
 Every step writes a completion marker to R2 (`markers/...`) with `build_id`, row counts and timing. `run` skips a step whose marker exists for this `build_id`; a crashed run is resumed by re-running `run` with `--build-id`. The idempotency check for extract is "does the silver partition for this cycle exist and is the bronze download date unchanged", never "is the zip on disk". Each step is also a Python function so tests call it without the CLI.
 
-Every CLI entry is wrapped: Kuma push `/start` and `/` on success, `/fail` on exception; the exception is reported to Bugsink with `pipeline_mode=<step>` and re-raised (crash, not items).
+Every CLI entry is wrapped: Kuma push `status=up` on success, `status=down` on exception (Kuma has no start signal, so a run that hangs or never starts is caught by the monitor's interval expiring); the exception is reported to Bugsink with `pipeline_mode=<step>` and re-raised (crash, not items).
 
 ### 5.2 Seat calendar (`fundlens seats`)
 
@@ -212,7 +213,7 @@ For a cycle: all House districts under the apportionment in force (a vendored `a
 
 ### 5.5 Load and publish
 
-`load.gold` creates `gold_build`, runs `sql/gold/*.sql` (DuckDB computes the aggregates from silver and writes CSV/Parquet; Postgres `COPY`s them; or DuckDB's postgres extension writes directly, decided in the ticket), creates indexes, runs `sql/checks/gold_*.sql`, writes `gold_build.meta`. `publish` then, in one transaction: `DROP SCHEMA IF EXISTS gold_prev CASCADE; ALTER SCHEMA gold RENAME TO gold_prev; ALTER SCHEMA gold_build RENAME TO gold;` then purges the Cloudflare zone, writes the `published` marker, snapshots `app.crosswalk` and `app.adjudication` to R2, prunes old silver builds, and (with `--dataset`) runs the dataset snapshot (§9). Readers never see a half-loaded state. `gold_prev` is the rollback: `fundlens publish --rollback` swaps it back.
+`load.gold` creates `gold_build`, runs `sql/gold/*.sql` (DuckDB computes the aggregates from silver and writes CSV/Parquet; Postgres `COPY`s them; or DuckDB's postgres extension writes directly, decided in the ticket), creates indexes, runs `sql/checks/gold_*.sql`, writes `gold_build.meta`. `publish` then, in one transaction: `DROP SCHEMA IF EXISTS gold_prev CASCADE; ALTER SCHEMA gold RENAME TO gold_prev; ALTER SCHEMA gold_build RENAME TO gold;` then, at least 60 s after the swap commits (the API reads `gold.meta.build_id` for its `ETag` at most once a minute, `api/cache.py`; a purge inside that window lets the edge keep a new body under the old `ETag` for a week), purges the Cloudflare zone, writes the `published` marker, snapshots `app.crosswalk` and `app.adjudication` to R2, prunes old silver builds, and (with `--dataset`) runs the dataset snapshot (§9). Readers never see a half-loaded state. `gold_prev` is the rollback: `fundlens publish --rollback` swaps it back.
 
 ### 5.6 Schedule
 
@@ -222,7 +223,7 @@ One Coolify scheduled task on the `pipeline` service: Sunday 03:00 box time, `fu
 
 Only individuals are resolved; committees and candidates carry FEC IDs.
 
-1. **Contributor keys.** `sql/silver/05_contributor.sql` reduces ~400M contribution rows to unique `(name_norm, zip5, employer_norm, occupation_norm)` tuples (tens of millions), each with counts and totals. Resolution runs over these.
+1. **Contributor keys.** `sql/silver/04_contribution.sql` gives each contribution its key and `sql/silver/06_contributor.sql` reduces ~400M contribution rows to unique `(name_norm, zip5, employer_norm, occupation_norm)` tuples (tens of millions), each with counts and totals. Resolution runs over these.
 2. **Normalization (`resolve.normalize`).** `nameparser` → first/middle/last/suffix; uppercase, strip punctuation and suffixes (JR, SR, III, MD, ESQ); ZIP5; employer and occupation canonicalized by a rule table (`SELF-EMPLOYED`, `RETIRED`, `NOT EMPLOYED`, `N/A` → null; `INC`, `LLC`, `CORP` stripped; a small alias YAML for the top employers). `usaddress`/libpostal are not used in v1 (street is not in `indiv`).
 3. **Splink 4** (`resolve.model`), DuckDB backend, `link_type="dedupe_only"`. Blocking rules for prediction: `(last_name_soundex, zip3)`, `(last_name, first_initial, state)`, `(employer_norm, last_name)`. Comparisons: first name (Jaro-Winkler levels), last name (exact / JW), zip5 (exact / zip3), city+state, employer_norm (exact / JW), occupation_norm. `u` by random sampling; `m` by EM on each blocking rule; the trained model is saved as JSON under `resolution/` in R2 and reused by incremental runs.
 4. **Clustering.** `predict(threshold_match_probability=0.9)` → `cluster_pairwise_predictions_at_threshold(0.95)`; thresholds are settings with these defaults. Connected components give clusters of contributor keys.
@@ -251,14 +252,14 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 | `candidate_cycle` | `candidate_id, cycle, race_id, total_individual, total_committee, self_funding, ie_support, ie_oppose, contributor_count` |
 | `candidate_top_donor` | `candidate_id, cycle, rank, donor_id, display_name, amount` |
 | `committee` | `committee_id, name, type, designation, party, connected_org, is_conduit, cycles int[]` |
-| `committee_cycle` | `committee_id, cycle, total_individual, total_from_committees, total_to_candidates, ie_total` |
+| `committee_cycle` | `committee_id, cycle, total_individual, self_funding, total_from_committees, total_to_candidates, ie_total` (`self_funding` added by NEU-2039: a candidate committee's own-money receipts, kept out of `total_individual`) |
 | `committee_top_donor` | `committee_id, cycle, rank, donor_id, display_name, amount` |
 | `committee_top_recipient` | `committee_id, cycle, rank, recipient_kind (candidate/committee), recipient_id, name, amount` |
 | `donor` | `donor_id, display_name, employer, occupation, city, state, zip5, total_all_cycles, first_cycle, last_cycle, contributor_key_count` |
 | `donor_cycle` | `donor_id, cycle, amount, contribution_count` |
 | `donor_top_recipient` | `donor_id, rank, recipient_kind, recipient_id, name, amount` (all cycles) |
 | `donor_redirect` | `old_donor_id, donor_id` |
-| `search_entity` | `kind (donor/candidate/committee/race), id, name, aliases text, weight numeric`; `GIN (name gin_trgm_ops)` |
+| `search_entity` | `kind (donor/candidate/committee/race), id, name, aliases text, weight numeric`; `GIN (name gin_trgm_ops)`, `GIN (aliases gin_trgm_ops)` (NEU-2040: search matches either) |
 
 Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation": every endpoint is a primary-key or indexed lookup on these tables, or a single-partition DuckDB row scan.
 
@@ -284,7 +285,7 @@ psycopg 3 with a small pool; `prepare_threshold=None` so no server-side prepared
 
 ## 8. Frontend (`frontend/`)
 
-Routes mirror the API: `/`, `/cycles/{cycle}` (race index by office and state), `/race/{cycle}/{office}/{state}[-{district}]`, `/candidate/{id}`, `/committee/{id}`, `/donor/{id}`, `/search?q=`, `/dataset`, `/methodology`. Each page is one or two TanStack queries against the API; tables sort client-side; ECharts for the per-cycle totals and the race split. Visual baseline: port closinglineup's Vite/TS/oxlint/vitest config and layout shell; no component library beyond what closinglineup uses. `wrangler.jsonc` declares a static-assets Worker with SPA fallback; Workers Builds: root directory `frontend`, build command `pnpm install --frozen-lockfile && pnpm build`, watch paths `frontend/**`, production branch `main`, preview deployments on PRs; `VITE_API_BASE_URL` = `https://api.fundlens.org`. Dark/light per system preference. No analytics in v1.
+Routes mirror the API: `/`, `/cycles/{cycle}` (race index by office and state), `/race/{cycle}/{office}/{state}[-{district}]`, `/candidate/{id}`, `/committee/{id}`, `/donor/{id}`, `/search?q=`, `/dataset`, `/methodology`. Each page is one or two TanStack queries against the API; tables sort client-side; ECharts for the per-cycle totals and the race split. Toolchain baseline: port closinglineup's Vite/TS/oxlint/vitest config and its ECharts wrapper. Visual baseline (amended 2026-10-30 by `NEU-2043-spa-shell-cycle-index-search.md`, ADR-0008): Mantine (`@mantine/core`, `@mantine/hooks`) with its default theme, `primaryColor: "blue"`, `defaultColorScheme="auto"`; responsive, phone up; our own `DataTable`, `QueryStatus` and `EChart` over it; `openapi-react-query` as the query layer; no icon package. The cycle switcher is context-aware through a per-route `handle.cycleTarget`; search is a header typeahead plus `/search?q=`. Both are specified in the NEU-2043 spec, which the page tickets inherit. `wrangler.jsonc` declares a static-assets Worker with SPA fallback; Workers Builds: root directory `frontend`, build command `pnpm install --frozen-lockfile && pnpm build`, watch paths `frontend/**`, production branch `main`, preview deployments on PRs; `VITE_API_BASE_URL` = `https://api.fundlens.org`. Dark/light per system preference. No analytics in v1.
 
 ## 9. Public dataset (`data.fundlens.org`)
 
@@ -345,7 +346,7 @@ The backfill milestone records in `docs/capacity.md`: per-cycle transform time, 
 
 ## 13. Open items deferred (not blockers for v1 tickets)
 
-- Whether gold loads via DuckDB's postgres extension or `COPY` from Parquet: decided in the load ticket by measuring on the fixture and one real cycle.
+- ~~Whether gold loads via DuckDB's postgres extension or `COPY` from Parquet~~: decided 2026-10-30 in ADR-0007 (DuckDB → CSV → `COPY`); fixture timing in the NEU-2039 spec, real-cycle timing in `docs/capacity.md` (NEU-2046).
 - Trained Splink thresholds: defaults above; tuned in the DIME validation ticket.
 - Exact MinIO-vs-R2 parity edge cases (multipart rename semantics): handled in the R2 client ticket with an integration test against MinIO.
 - Hetzner Cloud ephemeral runner: out of v1; the capacity record decides.

@@ -1,9 +1,15 @@
+import json
 import tomllib
 from pathlib import Path
+from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
+from fundlens import cli
+from fundlens.api.app import create_app
 from fundlens.cli import app
+from fundlens.settings import get_settings
 
 PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
@@ -21,3 +27,45 @@ def test_no_arguments_prints_help() -> None:
     result = CliRunner().invoke(app, [])
 
     assert "--version" in result.output
+
+
+def test_api_serves_the_app_factory_behind_the_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_run(target: str, **kwargs: Any) -> None:
+        calls.append((target, kwargs))
+
+    def leave_logging_alone(level: str) -> None:
+        # The callback reconfigures the root logger, which would outlive the test.
+        pass
+
+    monkeypatch.setattr(cli.uvicorn, "run", fake_run)
+    monkeypatch.setattr(cli, "configure_logging", leave_logging_alone)
+
+    result = CliRunner().invoke(app, ["api", "--port", "8123"])
+
+    assert result.exit_code == 0, result.output
+    [(target, kwargs)] = calls
+    assert target == "fundlens.api.app:create_app"
+    assert kwargs["factory"] is True
+    assert kwargs["port"] == 8123
+    assert kwargs["proxy_headers"] is True
+    assert kwargs["forwarded_allow_ips"] == "*"
+
+
+def test_api_export_openapi_prints_the_document_and_serves_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_run(target: str, **kwargs: Any) -> None:
+        raise AssertionError("uvicorn.run called")
+
+    def leave_logging_alone(level: str) -> None:
+        pass
+
+    monkeypatch.setattr(cli.uvicorn, "run", fail_run)
+    monkeypatch.setattr(cli, "configure_logging", leave_logging_alone)
+
+    result = CliRunner().invoke(app, ["api", "--export-openapi"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == create_app(get_settings()).openapi()

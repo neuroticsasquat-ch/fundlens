@@ -10,6 +10,31 @@ permissions:
   contents: read
 
 jobs:
+  # Which parts of the tree a change touches. A job-level `if:` on its output rather than a
+  # workflow-level `paths:`, which would gate the backend's required `test` job too.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The frontend job runs through the compose service and the Taskfile, so a change to
+      # either can break it as surely as one under frontend/.
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/ci.yml"
+              - "docker-compose.yml"
+              - "Taskfile.yml"
+
   # The job name is the required status check in scripts/github-rulesets.sh; rename both together.
   test:
     runs-on: ubuntu-latest
@@ -20,6 +45,10 @@ jobs:
       - uses: arduino/setup-task@v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Coolify deploys docker-compose.prod.yml; a typo in it would otherwise surface only there.
+      - name: Validate the prod compose file
+        run: task prod:check
 
       # The same stack as local dev: the dev image built from uv.lock, plus the Postgres 18 and
       # MinIO services from docker-compose.yml. Compose rather than Actions `services:`, which
@@ -37,9 +66,69 @@ jobs:
       - name: Typecheck
         run: task typecheck
 
+      # Spec §7.3: the `app` schema is built by its migrations, and `alembic check` fails when
+      # they and `fundlens.app_schema` disagree.
+      - name: Migrate
+        run: task db:migrate
+
+      - name: Migration drift check
+        run: task db:check
+
       - name: Test (unit + integration)
         run: task test
+
+      # Spec §7.2: the SPA's client types are generated from the API's OpenAPI document, and both
+      # are committed. Regenerating them here must change nothing, so a contract change that lands
+      # without its regenerated client fails the build (ADR-0003). In this job rather than
+      # `frontend`, which a backend-only change skips.
+      - name: Start the frontend service (pnpm install --frozen-lockfile)
+        run: task fe:dev
+
+      - name: OpenAPI drift check
+        run: |
+          task fe:generate
+          # `status`, not `diff`: it also catches a generated file that is new and untracked.
+          if [ -n "$(git status --porcelain -- openapi.json frontend/src/api/)" ]; then
+            git status --short -- openapi.json frontend/src/api/
+            git diff -- openapi.json frontend/src/api/
+            echo "::error::openapi.json or frontend/src/api/ is stale: run \`task fe:generate\` and commit the result"
+            exit 1
+          fi
 
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --no-color
+
+  # Also a required status check (scripts/github-rulesets.sh); rename both together.
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: arduino/setup-task@v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The compose frontend service, as in local dev: it starts with
+      # `pnpm install --frozen-lockfile`, and `--wait` holds until Vite is serving.
+      - name: Start the frontend service (pnpm install --frozen-lockfile)
+        run: task fe:dev
+
+      # The Taskfile targets the pre-commit hooks call, as in the test job.
+      - name: Typecheck (tsc -b)
+        run: task fe:typecheck
+
+      - name: Lint (oxlint)
+        run: task fe:lint
+
+      - name: Test (vitest)
+        run: task fe:test
+
+      - name: Build
+        run: task fe:build
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose --profile frontend logs --no-color frontend

@@ -42,6 +42,10 @@ A person seeking an office in a cycle, identified by their regulator ID.
 The two-year federal election period, named by its even year (2024). Historical cycles are frozen; the current cycle is rebuilt weekly.
 _Avoid_: election year, period
 
+**Current cycle**:
+The newest cycle gold holds, which is what the home page summarises and the cycle switcher shows when the page's URL names no cycle. Usually the cycle being rebuilt weekly, but defined by what is published, not by the calendar.
+_Avoid_: latest cycle, this cycle, active cycle
+
 **Race**:
 One contest for one seat in one cycle, keyed by cycle, jurisdiction, office, state and district. Keyed by cycle because district boundaries change.
 _Avoid_: seat, contest, election
@@ -86,6 +90,17 @@ Pre-aggregated serving tables in Postgres that every page reads from. No page ag
 
 **Publish**:
 The atomic swap that makes a freshly built gold schema live, followed by the cache purge.
+
+**Build**:
+One run of the pipeline for one cycle, named by its `build_id` (`YYYYMMDDTHHMMSSZ` of the run start). Every step of a run writes under the same build; `seats`, `transform`, `load` and `publish` must be given the same one.
+_Avoid_: run id, version
+
+**Live build**:
+The build `gold.meta.cycles` names for a cycle: the one gold was built from and the one the API resolves silver partitions from. The build it replaced sits in `gold_prev` and is the rollback target.
+_Avoid_: current build, latest build (the newest build in R2 need not be live)
+
+**Rollback**:
+`fundlens publish --rollback`: swapping `gold_prev` back in as `gold` and purging again. A second rollback swaps forward again.
 
 **Snapshot**:
 One dated release of the public dataset: the resolved silver tables, crosswalk and overrides as published to data.fundlens.org. `latest` always points at the newest snapshot.

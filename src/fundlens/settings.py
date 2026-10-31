@@ -12,7 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # A blank variable is an unset one: Coolify can hand a service an empty entry for a variable
+    # the compose file only gives another service, and '' is no value for an int or a path.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     database_url: str = Field(..., alias="DATABASE_URL")
 
@@ -26,7 +28,50 @@ class Settings(BaseSettings):
     # Root of the local cache volumes (bronze/, silver/, scratch/, resolution/; spec §3.4).
     data_dir: Path = Field(default=Path("/data/fundlens"), alias="DATA_DIR")
 
+    # The SQL the pipeline runs (spec §3.1): the repo's `sql/`, which the image copies to /app.
+    sql_dir: Path = Field(default=Path("/app/sql"), alias="SQL_DIR")
+
+    # DuckDB's limits in transform (spec §3.2, §3.4). The memory limit and thread count are set
+    # on the pipeline service alone (docker-compose.prod.yml), so the API's in-process DuckDB
+    # never inherits them; unset, DuckDB picks its own. Spill under `scratch/` stops at 60 GB.
+    duckdb_memory_limit: str | None = Field(default=None, alias="DUCKDB_MEMORY_LIMIT")
+    duckdb_max_temp_directory_size: str = Field(
+        default="60GB", alias="DUCKDB_MAX_TEMP_DIRECTORY_SIZE"
+    )
+    duckdb_threads: int | None = Field(default=None, alias="DUCKDB_THREADS")
+
+    # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
+    fec_bulk_url: str = Field(
+        default="https://www.fec.gov/files/bulk-downloads", alias="FEC_BULK_URL"
+    )
+
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    # Zone purge at publish (spec §5.5, §10.2). Both unset in dev and CI, where there is no zone
+    # and `publish` skips the purge. The token is the purge-only `fundlens-purge` token of
+    # docs/runbooks/cloudflare-setup.md; secret because it clears the whole edge cache.
+    cloudflare_zone_id: str | None = Field(default=None, alias="CLOUDFLARE_ZONE_ID")
+    cloudflare_api_token: SecretStr | None = Field(default=None, alias="CLOUDFLARE_API_TOKEN")
+
+    # Origins the API's CORS headers allow (spec §7.2): the SPA in prod, plus its local servers
+    # in dev. A JSON list in the environment; the first is the one a request without an
+    # `Origin` is answered for (`api.cors`).
+    cors_origins: list[str] = Field(default=["https://fundlens.org"], alias="CORS_ORIGINS")
+
+    # Telemetry (spec §10.3). All unset in dev and CI, where Sentry stays off and every Kuma push
+    # is a no-op.
+    # Secret because its key is what Bugsink accepts events on.
+    sentry_dsn: SecretStr | None = Field(default=None, alias="SENTRY_DSN")
+    # OTel reads these itself inside `opentelemetry-instrument`; they are read here only so
+    # Sentry can report the same release and environment (`telemetry.resolve_telemetry`).
+    otel_resource_attributes: str = Field(default="", alias="OTEL_RESOURCE_ATTRIBUTES")
+    otel_exporter_otlp_endpoint: str | None = Field(
+        default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT"
+    )
+    # One Uptime Kuma push monitor per job family. Secret because the token in the URL is the
+    # monitor's only credential (see `logging.redact_push_token`).
+    kuma_push_weekly: SecretStr | None = Field(default=None, alias="KUMA_PUSH_WEEKLY")
+    kuma_push_publish: SecretStr | None = Field(default=None, alias="KUMA_PUSH_PUBLISH")
 
 
 @lru_cache

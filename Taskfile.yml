@@ -7,7 +7,13 @@ version: '3'
 vars:
   COMPOSE: docker compose
   SVC: app
-  EXEC: "{{.COMPOSE}} exec {{.SVC}}"
+  # `-T`: no TTY. A pre-commit hook has a terminal on stdout but not on stdin, and without it
+  # `docker compose exec` refuses with "cannot attach stdin to a TTY-enabled container". The
+  # interactive targets (`shell`, `api`, `fe:worker`) use the `_TTY` forms instead.
+  EXEC: "{{.COMPOSE}} exec -T {{.SVC}}"
+  FE_EXEC: "{{.COMPOSE}} exec -T frontend"
+  EXEC_TTY: "{{.COMPOSE}} exec {{.SVC}}"
+  FE_EXEC_TTY: "{{.COMPOSE}} exec frontend"
 
 tasks:
   up:
@@ -16,10 +22,21 @@ tasks:
     # accepting connections, and `task up && task test` on a fresh clone would otherwise race them.
     cmds:
       - "{{.COMPOSE}} up -d --wait"
-  down:
-    desc: Stop the stack (volumes are kept)
+      - task: buckets
+  buckets:
+    internal: true
+    desc: Create the R2 buckets in MinIO, which starts empty (idempotent)
+    # The two the pipeline reads and writes by default (`R2_BUCKET`, `R2_PUBLIC_BUCKET` in
+    # settings.py); the integration tests make their own. `MC_HOST_<alias>` gives `mc` the
+    # compose file's throwaway root credentials without `mc alias set` state in the container.
     cmds:
-      - "{{.COMPOSE}} down"
+      - "{{.COMPOSE}} exec -T -e MC_HOST_local=http://fundlens:fundlens-dev-secret@localhost:9000 minio mc mb --ignore-existing local/fundlens-data local/fundlens-public"
+  down:
+    desc: Stop the stack, frontend included (volumes are kept)
+    # The frontend sits behind a compose profile, and `down` leaves a profiled service running
+    # unless the profile is named.
+    cmds:
+      - "{{.COMPOSE}} --profile frontend down"
   restart:
     desc: Restart the app container
     cmds:
@@ -29,6 +46,7 @@ tasks:
     cmds:
       - "{{.COMPOSE}} build"
       - "{{.COMPOSE}} up -d --wait"
+      - task: buckets
   logs:
     desc: Follow app logs
     cmds:
@@ -36,7 +54,7 @@ tasks:
   shell:
     desc: Open a bash shell inside the app container
     cmds:
-      - "{{.EXEC}} bash"
+      - "{{.EXEC_TTY}} bash"
   ps:
     desc: Show compose service status
     cmds:
@@ -66,12 +84,44 @@ tasks:
     cmds:
       - docker run --rm -v "$PWD":/app -w /app ghcr.io/astral-sh/uv:python3.13-bookworm-slim uv lock {{.CLI_ARGS}}
 
+  api:
+    desc: Serve the API on app:8000, the frontend's /v1 proxy target (Ctrl-C stops it)
+    cmds:
+      - "{{.EXEC_TTY}} fundlens api"
+
+  api:openapi:
+    desc: Write openapi.json, the API's contract, from the app (task fe:generate also regenerates the client)
+    # Stdout only: the CLI logs to stderr, so the redirect captures nothing but the document.
+    # Through a temporary file, so a failed export leaves the committed one as it was.
+    cmds:
+      - "{{.EXEC}} fundlens api --export-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json || { rm -f openapi.json.tmp; exit 1; }"
+
+  fec:headers:
+    desc: 'Refresh the vendored FEC header files from FEC (task fec:headers -- --check to compare only)'
+    cmds:
+      - "{{.EXEC}} python -m fundlens.fec.refresh_headers {{.CLI_ARGS}}"
+
+  prod:check:
+    desc: Validate docker-compose.prod.yml (warnings about unset secrets are expected)
+    cmds:
+      - "{{.COMPOSE}} -f docker-compose.prod.yml config --quiet"
+
   db:migrate:
     desc: Apply Alembic migrations to the `app` schema
-    # Alembic and migrations/ arrive with the `app` schema ticket (NEU-2031); until then this
-    # fails with "alembic: not found".
     cmds:
       - "{{.EXEC}} alembic upgrade head"
+  db:check:
+    desc: Fail if the migrated `app` schema and `fundlens.app_schema` disagree (run db:migrate first)
+    cmds:
+      - "{{.EXEC}} alembic check"
+  db:seed:
+    desc: Run the synthetic 2024 fixture cycle through every pipeline step that exists, into MinIO and Postgres (re-runnable)
+    # The fixture zips are served by the tests' fake FEC server from inside the app container, so
+    # nothing reaches fec.gov. `buckets` and `db:migrate` first: a fresh `task up` has neither.
+    cmds:
+      - task: buckets
+      - task: db:migrate
+      - "{{.EXEC}} python -m tests.seed"
 
   test:
     desc: Run the whole pytest suite (task test -- <path> for one file)
@@ -88,16 +138,49 @@ tasks:
   lint:
     desc: Run ruff check
     cmds:
-      - "{{.EXEC}} ruff check src tests"
+      - "{{.EXEC}} ruff check src tests migrations"
   format:
     desc: Run ruff format
     cmds:
-      - "{{.EXEC}} ruff format src tests"
+      - "{{.EXEC}} ruff format src tests migrations"
   format:check:
     desc: Check ruff formatting without writing
     cmds:
-      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests"}}'
+      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests migrations"}}'
   typecheck:
-    desc: Run pyright (strict) over src and tests
+    desc: Run pyright (strict) over src, tests and migrations
     cmds:
-      - "{{.EXEC}} pyright src tests"
+      - "{{.EXEC}} pyright src tests migrations"
+
+  # The frontend service sits behind a compose profile (see docker-compose.yml), so `fe:dev`
+  # starts it and every other fe: target runs in it.
+  fe:dev:
+    desc: Start the frontend service; Vite serves http://localhost:5180 (waits for pnpm install)
+    cmds:
+      - "{{.COMPOSE}} --profile frontend up -d --wait frontend"
+  fe:test:
+    desc: Run vitest once
+    cmds:
+      - "{{.FE_EXEC}} pnpm test {{.CLI_ARGS}}"
+  fe:lint:
+    desc: Run oxlint (warnings fail)
+    cmds:
+      - "{{.FE_EXEC}} pnpm lint"
+  fe:typecheck:
+    desc: Run tsc -b over the app and the Vite config
+    cmds:
+      - "{{.FE_EXEC}} pnpm typecheck"
+  fe:generate:
+    desc: Regenerate openapi.json and, from it, frontend/src/api/schema.d.ts (commit both; CI fails on drift)
+    # The document goes in on stdin: the frontend service mounts only frontend/, not the repo root.
+    cmds:
+      - task: api:openapi
+      - "{{.FE_EXEC}} sh scripts/generate-api.sh < openapi.json"
+  fe:build:
+    desc: Build the SPA into frontend/dist/
+    cmds:
+      - "{{.FE_EXEC}} pnpm build"
+  fe:worker:
+    desc: Serve frontend/dist/ through wrangler dev, as the Worker will (http://localhost:8780)
+    cmds:
+      - "{{.FE_EXEC_TTY}} pnpm exec wrangler dev --ip 0.0.0.0 --port 8787"

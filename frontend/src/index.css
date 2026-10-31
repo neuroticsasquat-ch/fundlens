@@ -1,0 +1,6 @@
+/* Light or dark follows the system preference (spec §8); this paints the page before Mantine,
+   which owns everything after, mounts. */
+:root {
+  color-scheme: light dark;
+  background: light-dark(#fff, #242424);
+}

@@ -6,21 +6,38 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.20.1",
     "boto3>=1.43.122",
     "duckdb>=2.0.0",
     "fastapi>=0.162.0",
+    "nameparser>=2.8.0",
+    # Imported by nothing here: DuckDB needs it to run the Python UDFs of resolve.normalize.
+    "numpy>=2.5.4",
+    "opentelemetry-distro>=0.66b2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-botocore>=0.66b2",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "opentelemetry-instrumentation-logging>=0.66b2",
+    "opentelemetry-instrumentation-psycopg>=0.66b2",
     "psycopg[binary,pool]>=3.3.6",
     "pyarrow>=26.0.0",
     "pydantic-settings>=2.16.2",
+    "pyyaml>=6.0.3",
+    "sentry-sdk[fastapi]>=2.73.0",
+    "sqlalchemy>=2.1.6",
     "typer>=0.27.3",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "boto3-stubs-lite[s3]>=1.43.122",
+    "httpx2>=2.16.0",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.3",
+    "types-pyyaml>=6.0.12.20261030",
 ]
 
 [project.scripts]
@@ -47,7 +64,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["B008"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "migrations"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 

@@ -1,0 +1,148 @@
+# Production: the Coolify compose resource in project `fundlens`, built from `main` (spec §3.2,
+# §10.1). Set up by docs/runbooks/coolify-setup.md. Local dev is docker-compose.yml.
+#
+# Coolify gotcha (ops `docs/runbooks/backend-telemetry-env.md`): Coolify reads each `${NAME:-default}`
+# once, stores it as a UI entry, and from then on the UI entry is what reaches the container.
+# Editing a fallback here does not change a running deployment; change the value in the Coolify UI
+# and confirm it with `printenv` in the container. Secrets are bare `${NAME}` (no fallback): the
+# runbook sets each one by hand. Anything that must not drift from this file is a literal.
+#
+# Coolify names each container `<service>-<resource uuid>`, plus a `-<deploy timestamp>` that is
+# new on every deploy, so find one with `docker ps --format '{{.Names}}' | grep '^<service>-<uuid>'`.
+services:
+  api:
+    build:
+      context: .
+      target: prod
+    # Under `opentelemetry-instrument`, whose logging handler ships the records (spec §10.3).
+    command: ["opentelemetry-instrument", "fundlens", "api"]
+    # Tells Traefik where uvicorn listens. Coolify adds a port label only when the domain carries one
+    # (`https://api.fundlens.org:8000`); without either, Traefik logs "port is missing" and answers 503,
+    # and no certificate is requested (first run, 2026-10-30).
+    expose:
+      - "8000"
+    environment:
+      # Built from the one password the database is initialised with, so the two cannot
+      # disagree. The host is the service name below, which is unique on Coolify's shared
+      # `coolify` network (a bare `postgres` there could resolve to another stack's database).
+      DATABASE_URL: "postgresql://fundlens:${POSTGRES_PASSWORD}@fundlens-postgres:5432/fundlens"
+      # `fundlens health`, the healthcheck below, reaches R2 too.
+      R2_ENDPOINT: "${R2_ENDPOINT}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY}"
+      R2_BUCKET: "${R2_BUCKET:-fundlens-data}"
+      R2_PUBLIC_BUCKET: "${R2_PUBLIC_BUCKET:-fundlens-public}"
+      # A literal: it has to match the volume mount paths below.
+      DATA_DIR: "/data/fundlens"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # Bugsink, which speaks the Sentry protocol.
+      SENTRY_DSN: "${SENTRY_DSN}"
+      # SigNoz's collector, reachable by name only on the `coolify` network ("Connect to
+      # Predefined Network" in the runbook).
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector-b144lcfm2xe4mxo73dg7b8z9:4318}"
+      # The instrumentation contract: Sentry's release and environment are read back from these
+      # (`fundlens.telemetry`), so Bugsink and SigNoz name the same build. A literal rather than
+      # `${OTEL_RESOURCE_ATTRIBUTES:-…}` so it never becomes a seeded UI entry. SOURCE_COMMIT is
+      # the deployed SHA only with "Source commit availability: Available during build" on;
+      # otherwise it is the literal `unknown`.
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=fundlens-api,deployment.environment=production,service.version=${SOURCE_COMMIT:-unknown}"
+      # Coolify magic variable: routes the domain set in the UI (api.fundlens.org) to this
+      # service on container port 8000.
+      SERVICE_FQDN_API_8000: "${SERVICE_FQDN_API_8000:-}"
+    volumes:
+      # Itemized rows are read from silver Parquet by DuckDB (ADR-0006); the API never writes.
+      - silver:/data/fundlens/silver:ro
+    depends_on:
+      fundlens-postgres:
+        condition: service_healthy
+    healthcheck:
+      # Postgres and R2 reachable (spec §10.3). Two 5 s probes, hence the timeout.
+      test: ["CMD", "fundlens", "health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
+  pipeline:
+    build:
+      context: .
+      target: prod
+    # Idle: Coolify scheduled tasks and the runbooks `docker exec` the CLI in it (spec §3.2).
+    command: ["sleep", "infinity"]
+    # So `sleep`, which ignores SIGTERM as PID 1, stops at once on a redeploy.
+    init: true
+    # Spec §3.2: 40 GB of the box's 62 GB, with DuckDB held to 28 GB inside it.
+    mem_limit: 40g
+    environment:
+      DATABASE_URL: "postgresql://fundlens:${POSTGRES_PASSWORD}@fundlens-postgres:5432/fundlens"
+      R2_ENDPOINT: "${R2_ENDPOINT}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY}"
+      R2_BUCKET: "${R2_BUCKET:-fundlens-data}"
+      R2_PUBLIC_BUCKET: "${R2_PUBLIC_BUCKET:-fundlens-public}"
+      DATA_DIR: "/data/fundlens"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # Zone purge on publish (spec §5.5). The token is scoped to purge only.
+      CLOUDFLARE_ZONE_ID: "${CLOUDFLARE_ZONE_ID:-}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN}"
+      # Batch adjudication (spec §6). Time a model before changing it.
+      DEEPINFRA_API_KEY: "${DEEPINFRA_API_KEY}"
+      ADJUDICATE_MODEL: "${ADJUDICATE_MODEL:-deepseek-ai/DeepSeek-V4-Flash}"
+      # Pipeline only: the API's in-process DuckDB must not inherit a 28 GB limit.
+      DUCKDB_MEMORY_LIMIT: "${DUCKDB_MEMORY_LIMIT:-28GB}"
+      # The box has 8 cores (`nproc`, 2026-10-29); two stay with the API and the other apps.
+      DUCKDB_THREADS: "${DUCKDB_THREADS:-6}"
+      SENTRY_DSN: "${SENTRY_DSN}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector-b144lcfm2xe4mxo73dg7b8z9:4318}"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=fundlens-pipeline,deployment.environment=production,service.version=${SOURCE_COMMIT:-unknown}"
+      # One Uptime Kuma push monitor per job family: `fundlens/weekly`, `fundlens/publish`.
+      KUMA_PUSH_WEEKLY: "${KUMA_PUSH_WEEKLY}"
+      KUMA_PUSH_PUBLISH: "${KUMA_PUSH_PUBLISH}"
+    # The local cache volumes (spec §3.4); R2 is the copy of record (ADR-0002).
+    volumes:
+      - bronze:/data/fundlens/bronze
+      - silver:/data/fundlens/silver
+      - scratch:/data/fundlens/scratch
+      - resolution:/data/fundlens/resolution
+    depends_on:
+      fundlens-postgres:
+        condition: service_healthy
+
+  # Schemas `app` (Alembic), `gold`, `gold_prev`, `gold_build` (spec §3.2). Only `app` needs the
+  # nightly backup; gold is rebuilt from silver.
+  fundlens-postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: fundlens
+      POSTGRES_DB: fundlens
+      # Read only when the volume is first initialised: changing it afterwards changes the
+      # services' DATABASE_URL but not the role's password (see the runbook).
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    # Spec §10.1 tuning.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=4GB
+      - -c
+      - work_mem=256MB
+      - -c
+      - maintenance_work_mem=2GB
+      - -c
+      - max_wal_size=4GB
+    # Parallel query workers share memory through /dev/shm, which Docker caps at 64 MB.
+    shm_size: 1g
+    # Postgres 18's image keeps PGDATA in a versioned subdirectory under /var/lib/postgresql.
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fundlens -d fundlens"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bronze:
+  silver:
+  scratch:
+  resolution:
+  postgres:

@@ -1,0 +1,5 @@
+# pnpm runs no dependency's install script unless it is listed here.
+allowBuilds:
+  # The platform binaries behind Vite (esbuild) and wrangler dev (workerd).
+  esbuild: true
+  workerd: true
