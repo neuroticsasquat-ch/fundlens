@@ -16,6 +16,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
 `<table>`, and may leave temporary tables a later file reads; `{cycle}`, `{build_id}`,
 `{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal brace is written twice).
+A model or check puts the larger input on the left of each join: DuckDB builds the join on its
+right side as written (`connect`).
 Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops
 with `ChecksFailed` before anything is written if one returns any. Only then is each table
 written as one zstd Parquet part to the local silver path, uploaded to R2, and the `transformed`
@@ -103,6 +105,20 @@ class Transformed:
 def literal(value: str | Path) -> str:
     """`value` as a SQL string literal."""
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def connect(limits: Limits, temp_directory: Path) -> duckdb.DuckDBPyConnection:
+    """The transform's DuckDB connection, with `limits` and spilling under `temp_directory`.
+
+    DuckDB has no row count for a `read_csv` view and guesses a few dozen rows, so its build-side
+    optimizer turns `indiv LEFT JOIN committee` around and builds the join's hash table on the
+    whole bulk file instead of the small table: every row held in memory at once. That ran the
+    2024 transform out of memory (NEU-2076). So the optimizer is off and each join builds on its
+    right side as written, which the silver SQL keeps the smaller.
+    """
+    config = limits.duckdb_config(temp_directory)
+    config["disabled_optimizers"] = "build_side_probe_side"
+    return duckdb.connect(config=config)
 
 
 def _newest_bronze(store: R2, cycle: int, file: BulkFile) -> str:
@@ -293,7 +309,7 @@ def transform(
         "silver_dir": paths.local_path(data_dir, "silver"),
     }
     try:
-        with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
+        with connect(limits, scratch) as con:
             for file in files_for(cycle):
                 _register_bulk(con, file, _unzip(store, cycle, file, data_dir=data_dir, work=work))
             seats.load_races(con, seats.races_for(cycle))

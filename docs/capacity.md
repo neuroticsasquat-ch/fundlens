@@ -25,11 +25,17 @@ Resolution (M3), the backfill (NEU-2060) and the weekly run (M5) add their own f
 ## Findings
 
 - **Memory, not time, is the limit (2024 first run).** The transform peaked at 27.2 GiB in `pipeline`, against a
-  40 GiB container and DuckDB's 28 GB `memory_limit`: `04_contribution.sql` builds the cycle's whole
-  `contribution` table (51,014,276 rows in 2024) in an in-memory DuckDB. In the dev container the same SQL
-  failed at 6 GB and 8 GB and completed at 10 GB. Before the backfill (NEU-2060) runs a cycle whose `indiv` is
-  larger than 2024's, raise `DUCKDB_MEMORY_LIMIT` within the container or move the transform to a disk-backed
-  DuckDB file under `scratch/`. A transform killed for memory uploads nothing, so it fails safe.
+  40 GiB container and DuckDB's 28 GB `memory_limit`, in `04_contribution.sql` (51,014,276 `contribution` rows
+  in 2024). In the dev container the same SQL failed at 6 GB and 8 GB and completed at 10 GB. A transform killed
+  for memory uploads nothing, so it fails safe.
+- **Most of that memory was a misplaced join (NEU-2076).** DuckDB estimates a `read_csv` view at a few dozen
+  rows, so its build-side optimizer built each `indiv LEFT JOIN <small table>` hash table on the whole bulk
+  file. With NEU-2047's four lookup joins the 2024 transform ran out of memory. The transform now disables that
+  optimizer (`transform.runner.connect`). On a synthetic 10M-row `indiv`, the contribution build's minimum
+  `memory_limit` fell from 4 GB to 800 MB (300 MB without the lookup joins). Until a 2024 row in the table
+  above measures it on real data, the earlier advice stands: before the backfill (NEU-2060) runs a cycle whose
+  `indiv` is larger than 2024's, check that row, and if memory is still close, raise `DUCKDB_MEMORY_LIMIT`
+  within the container.
 - **Gold is small.** The whole `fundlens` database was 49 MB after publish: contributions stay in silver Parquet
   (ADR-0006), and gold holds aggregates only. Load is seconds, not the spec's 10–30 GB estimate (§3.4); that
   estimate assumed donor tables, which arrive in M3.
