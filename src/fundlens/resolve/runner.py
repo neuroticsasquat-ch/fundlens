@@ -2,14 +2,15 @@
 
 Resolution reads the newest transformed `contributor` partition of every cycle into its DuckDB
 working file (`paths.resolution_database`) as one table, `contributor`: a key reported in several
-cycles is one row, its attributes the variant of the cycle with the most contributions, its
-counts and totals summed. It trains the Splink model on that table (`resolve.model`), saves the
-model as JSON locally and in R2 under this run's `build_id`, writes the `cluster` table beside
-`contributor` (`resolve.cluster`), merges and splits it as `resolution/overrides.yaml` asserts
-(`resolve.overrides`), gives every key its persistent donor_id in `app.crosswalk`
-(`resolve.crosswalk`), rewrites each cycle's `contribution` and `contributor` partitions with it,
-and writes a `resolved` marker for each cycle's transformed build. DuckDB runs under the
-pipeline's memory limit and spills under `scratch/`, and each phase's wall time is logged.
+cycles is one row, its attributes the variant of the cycle with the most contributions (for a key
+with none, the most JFC attributions), its counts and totals summed. It trains the Splink model
+on that table (`resolve.model`), saves the model as JSON locally and in R2 under this run's
+`build_id`, writes the `cluster` table beside `contributor` (`resolve.cluster`), merges and
+splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`), gives every key its
+persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycle's
+`contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
+marker for each cycle's transformed build. DuckDB runs under the pipeline's memory limit and
+spills under `scratch/`, and each phase's wall time is logged.
 """
 
 import logging
@@ -77,14 +78,21 @@ def transformed_builds(store: R2) -> dict[int, str]:
 
 
 def _local_partition(store: R2, cycle: int, build_id: str, *, data_dir: Path) -> Path:
-    """The cycle's `contributor` partition on local disk, downloaded first if not cached."""
+    """The cycle's `contributor` partition on local disk, downloaded first if not cached.
+
+    Raises `FileNotFoundError` when the build has no `contributor` partition, or no
+    `jfc_attribution` one: a build transformed before JFC attributions (NEU-2078) has neither
+    that table nor `contributor.attribution_count`, and must be transformed again.
+    """
     prefix = paths.silver_partition("contributor", cycle, build_id)
     keys = store.list_keys(prefix + "/")
-    if not keys:
-        raise FileNotFoundError(
-            f"no silver contributor partition for build {build_id} of {cycle}:"
-            f" run `fundlens transform --cycle {cycle} --build-id {build_id}`"
-        )
+    attributions = store.list_keys(paths.silver_partition("jfc_attribution", cycle, build_id) + "/")
+    for table, present in (("contributor", keys), ("jfc_attribution", attributions)):
+        if not present:
+            raise FileNotFoundError(
+                f"no silver {table} partition for build {build_id} of {cycle}:"
+                f" run `fundlens transform --cycle {cycle} --build-id {build_id}`"
+            )
     for key in keys:
         local = paths.local_path(data_dir, key)
         if not local.exists():
@@ -115,13 +123,18 @@ def _load_contributors(con: duckdb.DuckDBPyConnection, partitions: list[Path]) -
                 *,
                 sum(contribution_count) OVER by_key AS contributions,
                 sum(amount_total) OVER by_key AS amount,
+                sum(attribution_count) OVER by_key AS attributions,
                 min(first_cycle) OVER by_key AS first_seen,
                 max(last_cycle) OVER by_key AS last_seen
             FROM reported
             WINDOW by_key AS (PARTITION BY contributor_key)
             QUALIFY row_number() OVER (
                 PARTITION BY contributor_key
-                ORDER BY contribution_count DESC, amount_total DESC, last_cycle DESC
+                ORDER BY
+                    contribution_count DESC,
+                    amount_total DESC,
+                    attribution_count DESC,
+                    last_cycle DESC
             ) = 1
         ),
         surname AS (
@@ -142,6 +155,7 @@ def _load_contributors(con: duckdb.DuckDBPyConnection, partitions: list[Path]) -
             chosen.occupation_norm,
             chosen.contributions AS contribution_count,
             chosen.amount AS amount_total,
+            chosen.attributions AS attribution_count,
             chosen.first_seen AS first_cycle,
             chosen.last_seen AS last_cycle
         FROM chosen

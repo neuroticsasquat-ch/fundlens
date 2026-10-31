@@ -25,27 +25,30 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded.
 rows:
-  cm: 17
+  cm: 18
   cn: 12
   ccl: 12
   indiv: 308
   pas2: 18
-  oth: 15
+  oth: 21
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
 # every `oth` receipt from a committee (recorded by the receiving committee) plus every `pas2` 24K
 # row (a disbursement, recorded by the giver): the one gift on both sides, each side its own row.
 silver:
-  committee: 17
+  committee: 18
   candidate: 12
   candidate_committee_link: 12
   contribution: 281
   independent_expenditure: 9
-  committee_transfer: 20
-  # One row per contributor key among the counted contributions (spec §6.1): more than the donors
-  # below, since a key is a spelling and a donor may have several; fewer than the contributions.
-  contributor: 107
+  committee_transfer: 21
+  # One row per `attributions` line below.
+  jfc_attribution: 4
+  # One row per contributor key among the counted contributions and the JFC attributions (spec
+  # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
+  # several; fewer than the contributions.
+  contributor: 108
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -214,14 +217,20 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C00800103: # OKAFOR FOR MARYLAND
+  C00800103: # OKAFOR FOR MARYLAND: its JFC's 18J is in total_from_committees, its 15J lines nowhere
     total_individual: 37550
     self_funding: 5000
-    total_from_committees: 25000
+    total_from_committees: 31500
     total_to_candidates: 0
     ie_total: 0
   C00800113: # FRIENDS OF DIANA OKAFOR (authorized)
     total_individual: 12150
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800115: # OKAFOR VICTORY FUND: a JFC, its transfer recorded by its participant
+    total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -376,3 +385,16 @@ donors:
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
 distinct_donors: 103
+
+# JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank) filed by a
+# committee in `cm`. Evidence about people, never money: no total above reads them. Each line by
+# SUB_ID, with its JFC: the committee its MEMO_TEXT names, else its filing's only 18J sender, else
+# none.
+attributions:
+  jfc_committee:
+    4240300000000000011: null # REYES: no MEMO_TEXT, and no 18J in its filing
+    4240300000000000015: C00800115 # ACHTERBERG: '* OKAFOR VICTORY FUND'
+    4240300000000000016: C00800115 # VANTERPOOL: the filing's only 18J sender
+    4240300000000000017: C00800115 # HOLLOWAY: '2024 AGGREGATE; JFC ATTRIB: OKAFOR VICTORY FUND'
+  # The lines of a person in no counted contribution: a donor all the same, with no money.
+  attribution_only: [4240300000000000015]

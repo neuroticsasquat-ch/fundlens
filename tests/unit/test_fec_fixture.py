@@ -105,6 +105,20 @@ def committee_receipts() -> list[dict[str, str]]:
     ]
 
 
+def attributions() -> list[dict[str, str]]:
+    """The `oth` rows that are JFC attributions (spec §6.11): 15J memo lines from an individual
+    (IND, or blank) filed by a committee of the cycle."""
+    committees = {row["CMTE_ID"] for row in rows("cm")}
+    return [
+        row
+        for row in rows("oth")
+        if row["TRANSACTION_TP"] == "15J"
+        and row["MEMO_CD"] == "X"
+        and row["ENTITY_TP"] in ("IND", "")
+        and row["CMTE_ID"] in committees
+    ]
+
+
 def is_self_funding(row: dict[str, str]) -> bool:
     names = {r["CAND_ID"]: r["CAND_NAME"] for r in rows("cn")}
     candidate = linked_candidates().get(row["CMTE_ID"])
@@ -303,7 +317,8 @@ def test_the_expected_totals_match_a_tally_of_the_fixture() -> None:
 
 
 def contributor_key(row: dict[str, str]) -> str:
-    """The contributor key of an `indiv` row (spec §6.1), from the normalizers it is built from."""
+    """The contributor key of an `indiv` or `oth` row (spec §6.1), from the normalizers it is
+    built from."""
     return normalize.contributor_key(
         normalize.normalize_name(row["NAME"]).norm,
         normalize.zip5(row["ZIP_CODE"]),
@@ -324,7 +339,8 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
         "committee_transfer": len(committee_receipts())
         + sum(r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION for r in pas2),
-        "contributor": len({contributor_key(r) for r in contributions}),
+        "jfc_attribution": len(attributions()),
+        "contributor": len({contributor_key(r) for r in [*contributions, *attributions()]}),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}
@@ -340,6 +356,17 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "earmarked": dict(sorted(conduits.items())),
         "total_amount": sum(signed(r) for r in contributions),
     }
+
+
+def test_the_expected_attributions_are_the_fixtures_and_one_is_of_no_contributor() -> None:
+    lines = attributions()
+    assert sorted(EXPECTED["attributions"]["jfc_committee"]) == sorted(
+        int(r["SUB_ID"]) for r in lines
+    )
+    counted_keys = {contributor_key(r) for r in counted()}
+    assert EXPECTED["attributions"]["attribution_only"] == [
+        int(r["SUB_ID"]) for r in lines if contributor_key(r) not in counted_keys
+    ]
 
 
 def test_a_conduit_is_a_counted_recipient_only_of_gifts_to_itself() -> None:
