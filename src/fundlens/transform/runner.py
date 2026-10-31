@@ -5,7 +5,7 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - one view per FEC bulk file published for the cycle, named for it (`cm`, `cn`, `ccl`, …): the
   newest bronze zip's text file read with the vendored column names, as VARCHAR and then cast to
   the catalogue's types (`fec.files`). DuckDB cannot read a zip, so the text is unpacked under
-  `scratch/` for the run and deleted after it;
+  `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
 from pathlib import Path
-from typing import Literal, get_args
+from typing import IO, Literal, get_args
 
 import duckdb
 from psycopg import Connection
@@ -109,8 +109,47 @@ def _newest_bronze(store: R2, cycle: int, file: BulkFile) -> str:
     return keys[-1]
 
 
+def _decode_line(line: bytes) -> str:
+    for encoding in ("utf-8", "cp1252"):
+        try:
+            return line.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    # Decodes any byte, the five Windows-1252 leaves undefined among them.
+    return line.decode("latin-1")
+
+
+def _write_utf8(block: bytes, out: IO[bytes]) -> None:
+    try:
+        block.decode("utf-8")
+    except UnicodeDecodeError:
+        block = b"".join(
+            _decode_line(line).encode("utf-8") for line in block.splitlines(keepends=True)
+        )
+    out.write(block)
+
+
+def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYTES) -> None:
+    """Copy FEC bulk text from `src` to `out`, rewritten as UTF-8 where it is not already.
+
+    FEC's bulk text is not in one encoding: a newer filing writes UTF-8 and an older or
+    Windows-made one latin-1 or Windows-1252, side by side in one file. DuckDB reads one
+    encoding, and its latin-1 refuses the bytes 0x80-0x9F, so a single UTF-8 name fails the whole
+    file (NEU-2069). Each line is decoded as UTF-8, else Windows-1252, else latin-1, so no line
+    can fail and no row is dropped. The copy runs in blocks cut after a newline, so a character
+    is never split; a block that is valid UTF-8 already, nearly every one, is written as it is.
+    """
+    tail = b""
+    while chunk := src.read(chunk_bytes):
+        block = tail + chunk
+        cut = block.rfind(b"\n") + 1
+        _write_utf8(block[:cut], out)
+        tail = block[cut:]
+    _write_utf8(tail, out)
+
+
 def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
-    """The newest bronze zip of `file` unpacked under `work`; the text file's path.
+    """The newest bronze zip of `file` unpacked under `work` as UTF-8; the text file's path.
 
     The current cycle's zip is on local disk already (`fec.extract` keeps it there); any other is
     fetched into `work`, so a historical zip never outlives the run (spec §3.4).
@@ -122,7 +161,7 @@ def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path)
     text = work / f"{file.name}.txt"
     with zipfile.ZipFile(local) as archive:
         with archive.open(file.member) as src, text.open("wb") as out:
-            shutil.copyfileobj(src, out, CHUNK_BYTES)
+            copy_as_utf8(src, out)
     log.info("%s %d read from %s", file.name, cycle, key)
     return text
 
@@ -138,11 +177,11 @@ def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -
         for name, kind in file.columns.items()
     )
     # Pipe-delimited and unquoted (a quote in a name is just a character), with no header row.
-    # FEC's bulk text is not UTF-8 throughout; latin-1 decodes any byte.
+    # UTF-8 throughout, since `_unzip` rewrote it so.
     con.execute(
         f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
         f" delim = '|', quote = '', escape = '', header = false, auto_detect = false,"
-        f" columns = {{{columns}}}, encoding = 'latin-1')"
+        f" columns = {{{columns}}}, encoding = 'utf-8')"
     )
 
 

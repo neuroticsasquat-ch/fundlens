@@ -33,7 +33,9 @@ BAD = "H4MD09109"
 ACTBLUE, WINRED = "C00401224", "C00694323"
 
 
-def put_bronze(store: R2, cycle: int = 2024, texts: Mapping[FecFile, str] | None = None) -> None:
+def put_bronze(
+    store: R2, cycle: int = 2024, texts: Mapping[FecFile, str | bytes] | None = None
+) -> None:
     """Every file of `cycle` in bronze: the fixture's, or the text `texts` gives for it."""
     texts = texts or {}
     for bulk in files_for(cycle):
@@ -333,6 +335,29 @@ def test_a_blank_entity_type_is_an_individual_and_self_funding_is_never_an_earma
     )
     assert variant["is_self_funding"]
     assert (earmarked["conduit_committee_id"], earmarked["is_self_funding"]) == (WINRED, False)
+
+
+def test_a_file_mixing_encodings_is_read_whole(store: R2, cli_env: Path, tmp_path: Path) -> None:
+    # The names as filers sent them: UTF-8, a Windows-1252 apostrophe, and a byte Windows-1252
+    # leaves undefined. DuckDB's own latin-1 reader refused all three (NEU-2069).
+    names = [b"SOLAGES, CARRI\xc3\x89", b"O\x92BRIEN, PAT", b"X\x81Y, ZED"]
+    indiv = fec_fixture.bulk_text("indiv").encode() + b"".join(
+        b"C00800105|N|Q2|P2024|1|15|IND|" + name + b"|TOWSON|MD|21204|ACME|CLERK|05012024|100|"
+        b"|SA.%d|1|||424999999999999998%d\n" % (n, n)
+        for n, name in enumerate(names, start=1)
+    )
+    put_bronze(store, texts={"indiv": indiv})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    assert [by_id[4249999999999999980 + n]["contributor_name"] for n in (1, 2, 3)] == [
+        "SOLAGES, CARRIÉ",
+        "O’BRIEN, PAT",
+        "X\x81Y, ZED",
+    ]
 
 
 def test_a_recipient_missing_from_the_committee_file_aborts_the_run(

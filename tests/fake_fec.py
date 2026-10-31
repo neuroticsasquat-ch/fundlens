@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 LAST_MODIFIED = "Fri, 30 Oct 2026 05:43:50 GMT"
 
 
-def zipped(member: str, text: str) -> bytes:
+def zipped(member: str, text: str | bytes) -> bytes:
     """A zip holding one file, as FEC's bulk zips do."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
