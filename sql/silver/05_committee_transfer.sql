@@ -15,7 +15,24 @@
 -- campaigns (16C). A receipt here is a receipt type (TRANSACTION_TP 1x, or 3x for a party's
 -- convention, headquarters and recount accounts), not a memo line, from a giver whose id is a
 -- committee's.
+--
+-- A 24K's candidate is the one its recipient committee is linked to (NEU-2075), the rule
+-- contribution follows: givers often write a stale or wrong CAND_ID (a senator's old House id, an
+-- id from an earlier race). Only when the recipient has no principal or authorized link to a
+-- candidate of the cycle does the giver's CAND_ID stand, and only if it is one; otherwise the gift is
+-- credited to no candidate, and is in neither a candidate's total_committee nor the giver's
+-- total_to_candidates.
 CREATE TABLE committee_transfer AS
+WITH linked AS (
+    -- As in 04_contribution.sql: the principal link, then the lower candidate_id, so one each. Only
+    -- to a candidate of the cycle: `ccl` also links a few committees to candidates `cn` lacks.
+    SELECT committee_id, candidate_id
+    FROM candidate_committee_link
+    WHERE designation IN ('P', 'A') AND candidate_id IN (SELECT candidate_id FROM candidate)
+    QUALIFY row_number() OVER (
+        PARTITION BY committee_id ORDER BY designation = 'P' DESC, candidate_id
+    ) = 1
+)
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
     'fec' AS source,
@@ -39,12 +56,16 @@ SELECT
     'fec' AS source,
     SUB_ID AS source_record_id,
     'US' AS jurisdiction,
-    CMTE_ID AS from_committee_id,
-    nullif(trim(OTHER_ID), '') AS to_committee_id,
-    CAND_ID AS candidate_id,
-    TRANSACTION_AMT AS amount,
-    CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
-    TRANSACTION_TP AS transaction_type,
+    pas2.CMTE_ID AS from_committee_id,
+    nullif(trim(pas2.OTHER_ID), '') AS to_committee_id,
+    coalesce(
+        linked.candidate_id,
+        CASE WHEN pas2.CAND_ID IN (SELECT candidate_id FROM candidate) THEN pas2.CAND_ID END
+    ) AS candidate_id,
+    pas2.TRANSACTION_AMT AS amount,
+    CAST(try_strptime(pas2.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    pas2.TRANSACTION_TP AS transaction_type,
     'disbursement' AS side
 FROM pas2
-WHERE TRANSACTION_TP = '24K';
+LEFT JOIN linked ON linked.committee_id = nullif(trim(pas2.OTHER_ID), '')
+WHERE pas2.TRANSACTION_TP = '24K';

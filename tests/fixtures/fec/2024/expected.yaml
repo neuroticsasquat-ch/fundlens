@@ -11,7 +11,9 @@
 #   committee is linked to. It is never in total_individual: it is its own total.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
 #   authorized (A). A leadership PAC (D) is not the candidate's.
-# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows.
+# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows, credited
+#   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
+#   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, OTHER_ID a committee's id. A committee's gift to a
@@ -27,7 +29,7 @@ rows:
   cn: 12
   ccl: 12
   indiv: 308
-  pas2: 16
+  pas2: 18
   oth: 15
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
@@ -40,7 +42,7 @@ silver:
   candidate_committee_link: 12
   contribution: 281
   independent_expenditure: 9
-  committee_transfer: 18
+  committee_transfer: 20
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -73,7 +75,7 @@ races:
   2024-S-MD-00:
     candidate_count: 4
     total_individual: 91975
-    total_committee: 10000
+    total_committee: 11000
     ie_support: 150000
     ie_oppose: 125000
   2024-H-MD-05:
@@ -130,7 +132,7 @@ candidates:
   S4MD00104: # WHITLOCK: the self-funder, with a loan
     race_id: 2024-S-MD-00
     total_individual: 31850
-    total_committee: 5000
+    total_committee: 6000
     self_funding: 1750000
     ie_support: 0
     ie_oppose: 80000
@@ -279,7 +281,7 @@ committees:
     total_individual: 4050
     self_funding: 0
     total_from_committees: 0
-    total_to_candidates: 17500
+    total_to_candidates: 18500
     ie_total: 3000
   C00800203: # OLD LINE REPUBLICAN COMMITTEE
     total_individual: 14300

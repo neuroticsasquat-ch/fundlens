@@ -153,7 +153,9 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     from_committees = sum_by((r["CMTE_ID"], amount(r)) for r in committee_receipts())
     pas2 = rows("pas2")
     to_candidates = sum_by(
-        (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION
+        (r["CMTE_ID"], amount(r))
+        for r in pas2
+        if r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION and gift_candidate(r) is not None
     )
     ie = sum_by(
         (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
@@ -170,14 +172,32 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     }
 
 
+def gift_candidate(row: dict[str, str]) -> str | None:
+    """The candidate a 24K is credited to: the one its recipient committee is linked to, else the
+    giver's CAND_ID when that is a candidate of the cycle, else none."""
+    candidates = {r["CAND_ID"] for r in rows("cn")}
+    linked = linked_candidates().get(row["OTHER_ID"])
+    if linked in candidates:
+        return linked
+    return row["CAND_ID"] if row["CAND_ID"] in candidates else None
+
+
+def ie_candidate(row: dict[str, str]) -> str | None:
+    """The candidate an independent expenditure is for or against: the one it names."""
+    return row["CAND_ID"]
+
+
 def tally_candidates() -> dict[str, CandidateTotals]:
     links = linked_candidates()
     committees = tally_committees()
     pas2 = rows("pas2")
 
     def by_type(transaction_type: str) -> dict[str, int]:
+        candidate = gift_candidate if transaction_type == COMMITTEE_CONTRIBUTION else ie_candidate
         return sum_by(
-            (r["CAND_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] == transaction_type
+            (c, amount(r))
+            for r in pas2
+            if r["TRANSACTION_TP"] == transaction_type and (c := candidate(r)) is not None
         )
 
     from_committees, support, oppose = (

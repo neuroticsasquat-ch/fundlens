@@ -44,6 +44,8 @@ OTH_NOT_RECEIPTS = {
     4240300000000000012,  # WHITLOCK's 16C loan to his campaign
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
+# 24K gifts whose giver wrote a stale candidate id, and whose recipient raises for no candidate.
+STALE_CAND_ID_GIFT, NO_CANDIDATE_GIFT = 4240200000000000017, 4240200000000000018
 
 
 def put_bronze(
@@ -555,7 +557,13 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     assert len(rows) == expected["silver"]["committee_transfer"]
     assert {row["transaction_type"] for row in disbursements} == {"24K"}
     assert {row["candidate_id"] for row in receipts} == {None}
-    assert None not in {row["candidate_id"] for row in disbursements}
+    # A gift is credited to the candidate its recipient is linked to, whatever CAND_ID the giver
+    # wrote, and to none when its recipient raises for no candidate of the cycle (NEU-2075).
+    by_sub_id = {row["source_record_id"]: row for row in disbursements}
+    assert by_sub_id[STALE_CAND_ID_GIFT]["candidate_id"] == "S4MD00104"
+    assert [r["source_record_id"] for r in disbursements if r["candidate_id"] is None] == [
+        NO_CANDIDATE_GIFT
+    ]
     assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
         ("fec", "US", 2024)
     }
@@ -581,7 +589,8 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         for committee_id, totals in committees.items()
         if totals["total_from_committees"]
     }
-    assert sum_by(disbursements, "from_committee_id") == {
+    credited = [row for row in disbursements if row["candidate_id"] is not None]
+    assert sum_by(credited, "from_committee_id") == {
         committee_id: totals["total_to_candidates"]
         for committee_id, totals in committees.items()
         if totals["total_to_candidates"]

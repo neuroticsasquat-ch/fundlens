@@ -3,8 +3,10 @@
 -- total_individual and self_funding are the counted contributions it received, the candidate's own
 -- money kept apart (a candidate committee's receipts would otherwise hide or include it).
 -- total_from_committees is the receipt side of committee_transfer (what it recorded receiving);
--- total_to_candidates the disbursement side (what it recorded giving): one side each, never both,
--- so a gift on both sides is counted once in each figure. ie_total is 0 until NEU-2057.
+-- total_to_candidates the disbursement side credited to a candidate (what it recorded giving; a 24K
+-- whose recipient raises for no candidate of the cycle is to none, NEU-2075): one side each, never
+-- both, so a gift on both sides is counted once in each figure, and a committee's top recipients
+-- add up to its total_to_candidates. ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -23,7 +25,7 @@ from_committees AS (
 to_candidates AS (
     SELECT from_committee_id AS committee_id, sum(amount) AS total_to_candidates
     FROM silver.committee_transfer
-    WHERE side = 'disbursement'
+    WHERE side = 'disbursement' AND candidate_id IS NOT NULL
     GROUP BY from_committee_id
 )
 SELECT
