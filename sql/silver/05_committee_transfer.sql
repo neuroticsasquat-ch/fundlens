@@ -18,15 +18,17 @@
 --
 -- A 24K's candidate is the one its recipient committee is linked to (NEU-2075), the rule
 -- contribution follows: givers often write a stale or wrong CAND_ID (a senator's old House id, an
--- id from an earlier race). Only when the recipient has no principal or authorized link does the
--- giver's CAND_ID stand, and only if it is a candidate of the cycle; otherwise the gift is for no
--- candidate, still counted in the giver's total_to_candidates.
+-- id from an earlier race). Only when the recipient has no principal or authorized link to a
+-- candidate of the cycle does the giver's CAND_ID stand, and only if it is one; otherwise the gift is
+-- credited to no candidate, and is in neither a candidate's total_committee nor the giver's
+-- total_to_candidates.
 CREATE TABLE committee_transfer AS
 WITH linked AS (
-    -- As in 04_contribution.sql: the principal link, then the lower candidate_id, so one each.
+    -- As in 04_contribution.sql: the principal link, then the lower candidate_id, so one each. Only
+    -- to a candidate of the cycle: `ccl` also links a few committees to candidates `cn` lacks.
     SELECT committee_id, candidate_id
     FROM candidate_committee_link
-    WHERE designation IN ('P', 'A')
+    WHERE designation IN ('P', 'A') AND candidate_id IN (SELECT candidate_id FROM candidate)
     QUALIFY row_number() OVER (
         PARTITION BY committee_id ORDER BY designation = 'P' DESC, candidate_id
     ) = 1

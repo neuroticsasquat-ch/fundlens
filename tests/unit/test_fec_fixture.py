@@ -175,10 +175,11 @@ def tally_committees() -> dict[str, CommitteeTotals]:
 def gift_candidate(row: dict[str, str]) -> str | None:
     """The candidate a 24K is credited to: the one its recipient committee is linked to, else the
     giver's CAND_ID when that is a candidate of the cycle, else none."""
+    candidates = {r["CAND_ID"] for r in rows("cn")}
     linked = linked_candidates().get(row["OTHER_ID"])
-    if linked is not None:
+    if linked in candidates:
         return linked
-    return row["CAND_ID"] if row["CAND_ID"] in {r["CAND_ID"] for r in rows("cn")} else None
+    return row["CAND_ID"] if row["CAND_ID"] in candidates else None
 
 
 def ie_candidate(row: dict[str, str]) -> str | None:
