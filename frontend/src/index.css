@@ -1,21 +1,6 @@
-/* Light or dark follows the system preference (spec §8). */
+/* Light or dark follows the system preference (spec §8); this paints the page before Mantine,
+   which owns everything after, mounts. */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-  color: light-dark(#1a1a1a, #e6e6e6);
-  background: light-dark(#fafafa, #141414);
-}
-
-body {
-  margin: 0;
-}
-
-.shell {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.build {
-  color: light-dark(#666, #999);
+  background: light-dark(#fff, #242424);
 }

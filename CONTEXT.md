@@ -42,6 +42,10 @@ A person seeking an office in a cycle, identified by their regulator ID.
 The two-year federal election period, named by its even year (2024). Historical cycles are frozen; the current cycle is rebuilt weekly.
 _Avoid_: election year, period
 
+**Current cycle**:
+The newest cycle gold holds, which is what the home page summarises and the cycle switcher shows when the page's URL names no cycle. Usually the cycle being rebuilt weekly, but defined by what is published, not by the calendar.
+_Avoid_: latest cycle, this cycle, active cycle
+
 **Race**:
 One contest for one seat in one cycle, keyed by cycle, jurisdiction, office, state and district. Keyed by cycle because district boundaries change.
 _Avoid_: seat, contest, election
