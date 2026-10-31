@@ -7,7 +7,7 @@
 -- only: receipts by to_committee_id, disbursements by from_committee_id or candidate_id. Adding
 -- the two sides would count the gift twice (expected.yaml's rule). The other `pas2` types
 -- (24A/24E independent expenditures, 24C coordinated) are NEU-2057's independent_expenditure.
--- Refunds are negative amounts, kept so they net out.
+-- A negative amount is a correction, kept so it nets out.
 --
 -- `oth` is not only receipts (NEU-2070). It also repeats every `pas2` row under the same SUB_ID,
 -- holds the filer's own disbursements (24G, 22Z), the memo lines itemizing individuals' gifts

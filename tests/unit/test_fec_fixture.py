@@ -44,6 +44,12 @@ def amount(row: dict[str, str]) -> int:
     return int(value)
 
 
+def signed(row: dict[str, str]) -> int:
+    """A contribution's amount as it counts: a refund (22Y, or any 2nY or 4nY type), written
+    positive by FEC, subtracts."""
+    return -amount(row) if re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) else amount(row)
+
+
 def linked_candidates() -> dict[str, str]:
     """Committee → candidate, for the principal and authorized committees `ccl` links (spec §4)."""
     return {row["CMTE_ID"]: row["CAND_ID"] for row in rows("ccl") if row["CMTE_DSGN"] in ("P", "A")}
@@ -128,8 +134,8 @@ def sum_by(pairs: Iterable[tuple[str, int]]) -> dict[str, int]:
 
 def tally_committees() -> dict[str, CommitteeTotals]:
     contributions = counted()
-    individual = sum_by((r["CMTE_ID"], amount(r)) for r in contributions if not is_self_funding(r))
-    self_funding = sum_by((r["CMTE_ID"], amount(r)) for r in contributions if is_self_funding(r))
+    individual = sum_by((r["CMTE_ID"], signed(r)) for r in contributions if not is_self_funding(r))
+    self_funding = sum_by((r["CMTE_ID"], signed(r)) for r in contributions if is_self_funding(r))
     from_committees = sum_by((r["CMTE_ID"], amount(r)) for r in committee_receipts())
     pas2 = rows("pas2")
     to_candidates = sum_by(
@@ -286,7 +292,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "dropped_not_individual": sum(r["ENTITY_TP"] not in ("IND", "CAN") for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),
         "earmarked": dict(sorted(conduits.items())),
-        "total_amount": sum(amount(r) for r in contributions),
+        "total_amount": sum(signed(r) for r in contributions),
     }
 
 
@@ -313,7 +319,7 @@ def dime_cids() -> dict[int, str]:
         d = row["TRANSACTION_DT"]
         key = (
             f"{d[4:]}-{d[:2]}-{d[2:4]}",
-            row["TRANSACTION_AMT"],
+            str(signed(row)),
             row["CMTE_ID"],
             row["NAME"].lower(),
         )
@@ -333,7 +339,7 @@ def test_each_donor_grouping_is_its_contributions_and_one_dime_donor() -> None:
     cids = dime_cids()
     for label, donor in EXPECTED["donors"].items():
         assert set(donor["sub_ids"]) <= by_sub_id.keys(), label
-        assert donor["amount"] == sum(amount(by_sub_id[s]) for s in donor["sub_ids"]), label
+        assert donor["amount"] == sum(signed(by_sub_id[s]) for s in donor["sub_ids"]), label
         assert {cids[s] for s in donor["sub_ids"]} == {str(donor["bonica_cid"])}, label
         # A grouping is all of that donor's counted contributions, not a sample of them.
         assert sorted(donor["sub_ids"]) == sorted(

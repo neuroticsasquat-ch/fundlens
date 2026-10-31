@@ -4,8 +4,9 @@
 # Rules the totals follow (spec §4, ADR-0004):
 # - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, MEMO_CD not X,
 #   TRANSACTION_TP not 24T, not a conduit's own line for an earmark it passed on (a 15 whose
-#   MEMO_TEXT is 'EARMARKED FOR … (C########)'), and to a committee in `cm`. Refunds (negative 22Y
-#   rows) are counted and net out. A gift to a conduit itself is counted, with no conduit.
+#   MEMO_TEXT is 'EARMARKED FOR … (C########)'), and to a committee in `cm`. A refund (22Y, or
+#   any 2nY or 4nY type) is written positive and counted with its sign turned, so it nets out. A
+#   gift to a conduit itself is counted, with no conduit.
 # - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
 #   committee is linked to. It is never in total_individual: it is its own total.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or

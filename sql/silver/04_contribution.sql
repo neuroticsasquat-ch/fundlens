@@ -9,8 +9,10 @@
 -- 15 whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'):
 -- dropped as its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE')
 -- is an ordinary contribution, with no conduit. A gift to a committee missing from `cm` (a few
--- fringe filers) is dropped: it would belong to no committee (NEU-2070). Refunds are negative
--- amounts, kept so they net out.
+-- fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or 4nY
+-- type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) is written by FEC as a positive amount; it is
+-- kept with its sign turned, so it nets out of every total and a correction reversing a refund
+-- (a negative one) adds back (NEU-2073).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -86,7 +88,10 @@ SELECT
     kept.OCCUPATION AS contributor_occupation,
     kept.CMTE_ID AS recipient_committee_id,
     linked.candidate_id,
-    kept.TRANSACTION_AMT AS amount,
+    CASE
+        WHEN regexp_matches(kept.TRANSACTION_TP, '^[24][0-9]Y$') THEN -kept.TRANSACTION_AMT
+        ELSE kept.TRANSACTION_AMT
+    END AS amount,
     -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
     CAST(try_strptime(kept.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
     kept.TRANSACTION_TP AS transaction_type,
