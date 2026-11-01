@@ -22,6 +22,9 @@ import splink.comparison_library as cl
 from duckdb.func import FunctionNullHandling
 from splink import DuckDBAPI, Linker, SettingsCreator, block_on
 
+from fundlens import paths
+from fundlens.r2 import R2
+
 log = logging.getLogger(__name__)
 
 # The pairs prediction scores (spec §6.3): a surname that sounds alike in one three-digit ZIP
@@ -224,3 +227,17 @@ def train(linker: Linker, *, keys: int, min_training_keys: int) -> bool:
     for rule in BLOCKING_RULES:
         linker.training.estimate_parameters_using_expectation_maximisation(rule)
     return True
+
+
+def latest_version(store: R2) -> str | None:
+    """The newest model saved in R2 (`paths.resolution_model`), or None if none is.
+
+    Versions are `build_id`s, so the newest is the most recently trained: the model the live
+    crosswalk was built with, and the one `validate` scores and `load` reports.
+    """
+    versions = [
+        version
+        for key in store.list_keys(paths.MODEL_PREFIX)
+        if (version := paths.model_version_of(key)) is not None
+    ]
+    return max(versions) if versions else None

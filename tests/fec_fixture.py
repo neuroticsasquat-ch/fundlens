@@ -108,6 +108,23 @@ class Attributions(TypedDict):
     attribution_only: list[int]
 
 
+class Scores(TypedDict):
+    precision: float
+    recall: float
+
+
+class TopScores(Scores):
+    limit: int
+
+
+class Validation(TypedDict):
+    dime_version: str
+    matched_rows: int
+    labelled_keys: int
+    overall: Scores
+    top: TopScores
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
@@ -120,6 +137,7 @@ class Expected(TypedDict):
     donors: dict[str, Donor]
     distinct_donors: int
     attributions: Attributions
+    validation: Validation
 
 
 def expected(cycle: int = CYCLE) -> Expected:

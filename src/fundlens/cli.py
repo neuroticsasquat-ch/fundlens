@@ -10,6 +10,7 @@ import functools
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import boto3
@@ -33,6 +34,7 @@ from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
 from fundlens.resolve import overrides
 from fundlens.resolve import runner as resolution
+from fundlens.resolve import validate as validation
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import init_sentry, pipeline_integrations
 from fundlens.transform import runner
@@ -404,6 +406,105 @@ def resolve(
     typer.echo(f"DuckDB memory limit: {result.memory_limit}")
 
 
+def _figure(value: object | None) -> str:
+    """A precision or recall as printed: four decimals, or `n/a` when it is undefined."""
+    return "n/a" if value is None else f"{float(str(value)):.4f}"
+
+
+@app.command()
+# No family, like `resolve`: run by hand, once per DIME release and cycle.
+@step("dime")
+def dime(
+    cycle: Annotated[int, typer.Option(help="The cycle the DIME file is for, by its even year.")],
+    import_path: Annotated[
+        Path,
+        typer.Option(
+            "--import", help="The downloaded DIME contribution file (contribDB_<cycle>.csv.gz)."
+        ),
+    ],
+) -> None:
+    """Archive a downloaded DIME contribution file in R2 and write the slim Parquet of its FEC
+    individual rows that `fundlens validate` reads (ADR-0009)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    try:
+        result = validation.import_dime(
+            R2.from_settings(settings),
+            cycle=cycle,
+            path=import_path,
+            data_dir=settings.data_dir,
+            limits=runner.Limits.from_settings(settings),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"rows read: {result.rows_read}")
+    typer.echo(f"rows kept: {result.rows_kept}")
+    typer.echo(f"distinct cids: {result.cids}")
+    typer.echo(f"rows dropped (bad amount, date or cid): {result.rows_dropped}")
+    typer.echo(f"wrote {result.parquet_key}")
+    typer.echo(f"wrote {result.raw_key}")
+
+
+@app.command()
+# No family, like `resolve`: run by hand, and not a step `run` resumes.
+@step("validate")
+def validate(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    model_version: Annotated[
+        str | None,
+        typer.Option(help="The model the figures are recorded under. Default: the newest saved."),
+    ] = None,
+    top: Annotated[
+        int, typer.Option(help="How many DIME donors, by matched dollars, the top scope scores.")
+    ] = validation.DEFAULT_TOP,
+) -> None:
+    """Score the cycle's resolved donors against DIME: pairwise precision and recall, overall and
+    over the top donors, written to app.resolution_quality and printed (ADR-0009)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    if top < 1:
+        raise typer.BadParameter("must be at least 1", param_hint="--top")
+    settings = get_settings()
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = validation.validate(
+                R2.from_settings(settings),
+                cycle=cycle,
+                model_version=model_version,
+                top=top,
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+            )
+    except (FileNotFoundError, validation.NotResolved) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        f"{'scope':<8} {'precision':>9} {'recall':>9} {'keys':>10}"
+        f" {'correct':>12} {'predicted':>12} {'true':>12}"
+    )
+    for scope, scored in (("overall", result.overall), (f"top {result.top_limit}", result.top)):
+        typer.echo(
+            f"{scope:<8} {_figure(scored.precision):>9} {_figure(scored.recall):>9}"
+            f" {scored.labelled_keys:>10} {scored.correct_pairs:>12}"
+            f" {scored.predicted_pairs:>12} {scored.true_pairs:>12}"
+        )
+    share = 100 * result.matched_rows / result.contribution_rows if result.contribution_rows else 0
+    typer.echo(
+        f"matched {result.matched_rows} of {result.contribution_rows} counted contributions"
+        f" ({share:.1f}%)"
+    )
+    typer.echo(
+        f"model {result.model_version}, DIME v{validation.DIME_VERSION}, build {result.build_id}"
+    )
+
+
 @app.command()
 # No family, like `extract`: a hand backfill must not push the weekly monitor up.
 @step("load")
@@ -437,6 +538,15 @@ def load(
             raise typer.Exit(1) from exc
     for table, rows in result.row_counts.items():
         typer.echo(f"{table}: {rows} rows")
+    quality = result.quality
+    if quality.validated:
+        typer.echo(
+            f"quality: precision {_figure(quality.precision)} recall {_figure(quality.recall)}"
+            f" (top {_figure(quality.precision_top)}/{_figure(quality.recall_top)}),"
+            f" {quality.matched_rows} matched rows, DIME v{quality.dime_version}"
+        )
+    else:
+        typer.echo(f"quality: not validated for model {quality.model_version or '(none saved)'}")
     typer.echo(
         f"loaded build {result.build_id} into gold_build"
         f" (aggregates {result.aggregate_s:.2f} s, copy {result.copy_s:.2f} s)"

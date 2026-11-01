@@ -1,282 +1,282 @@
-cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,contributor.lname,contributor.fname,contributor.type,contributor.city,contributor.state,contributor.zipcode,contributor.occupation,contributor.employer,recipient.name,bonica.rid
-2024,dime00001,15E,250,2024-03-04,100000001,"reyes, carmen",reyes,carmen,I,baltimore,MD,21218,teacher,baltimore city schools,okafor for maryland,C00800103
-2024,dime00002,15E,500,2024-08-19,100000002,"holloway, dean",holloway,dean,I,frederick,MD,21701,owner,holloway farms,whitlock for senate,C00800104
-2024,dime00003,15,3300,2023-09-12,100000003,"marlowe, augustine",marlowe,augustine,I,hawthorne,CA,902501234,ceo,astrax,stratton 2024,C00800102
-2024,dime00004,15,3300,2024-02-01,100000003,"marlowe, augustine r.",marlowe,augustine,I,austin,TX,78701,chief engineer,astra exploration technologies,whitlock for senate,C00800104
-2024,dime00005,15,3300,2024-04-22,100000003,"marlowe, augustine reeve",marlowe,augustine,I,austin,TX,787254321,ceo,voltaic motors,driscoll for congress,C00800107
-2024,dime00006,15,10000,2024-07-30,100000003,"marlowe, augustine mr.",marlowe,augustine,I,brownsville,TX,78521,entrepreneur,self-employed,old line republican committee,C00800203
-2024,dime00007,15,3300,2024-06-03,100000003,"marlowe,augustine jr.",marlowe,augustine,I,hawthorne,CA,902501234,ceo,astrax,stratton 2024,C00800102
-2024,dime00008,15,1000,2023-11-08,100000004,"dubois, raymond",dubois,raymond,I,rockville,MD,20850,engineer,astrax,okafor for maryland,C00800103
-2024,dime00009,15,1500,2024-09-09,100000004,"dubois, raymond",dubois,raymond,I,rockville,MD,208502210,engineer,astra exploration technologies,okafor for maryland,C00800103
-2024,dime00010,15,500,2024-01-15,100000005,"smith, john",smith,john,I,baltimore,MD,21201,retired,retired,calloway for congress,C00800106
-2024,dime00011,15,250,2024-10-02,100000005,"smith, john",smith,john,I,baltimore,MD,21201,retired,retired,calloway for congress,C00800106
-2024,dime00012,15,1000,2024-05-20,100000006,"smith, john",smith,john,I,dallas,TX,75201,attorney,smith & cole llp,stratton 2024,C00800102
-2024,dime00013,15,4300,2024-02-14,100000007,"prescott, vivian",prescott,vivian,I,chevy chase,MD,20815,physician,chesapeake health,calloway for congress,C00800106
-2024,dime00014,22Y,-1000,2024-03-01,100000007,"prescott, vivian",prescott,vivian,I,chevy chase,MD,20815,physician,chesapeake health,calloway for congress,C00800106
-2024,dime00015,15,500,2024-06-11,100000008,"tanaka, hiro",tanaka,hiro,I,bowie,MD,20716,analyst,naval air systems,driscoll for congress,C00800107
-2024,dime00016,22Y,-500,2024-07-02,100000008,"tanaka, hiro",tanaka,hiro,I,bowie,MD,20716,analyst,naval air systems,driscoll for congress,C00800107
-2024,dime00017,15C,250000,2023-10-02,100000009,"whitlock, gordon",whitlock,gordon,I,potomac,MD,20854,executive,whitlock holdings,whitlock for senate,C00800104
-2024,dime00018,16C,1500000,2024-01-05,100000009,"whitlock, gordon",whitlock,gordon,I,potomac,MD,20854,executive,whitlock holdings,whitlock for senate,C00800104
-2024,dime00019,15C,5000,2023-12-01,100000010,"okafor, diana",okafor,diana,I,baltimore,MD,21218,state senator,state of maryland,okafor for maryland,C00800103
-2024,dime00020,15,2000,2024-04-03,100000010,"okafor, diana",okafor,diana,I,baltimore,MD,21218,state senator,state of maryland,calloway for congress,C00800106
-2024,dime00021,15,500,2024-02-20,100000011,"kowalczyk, margaret",kowalczyk,margaret,I,silver spring,MD,20910,librarian,montgomery county,okafor for maryland,C00800103
-2024,dime00022,15,750,2024-09-30,100000011,"kowalczyk, peggy",kowalczyk,peggy,I,silver spring,MD,20910,retired,retired,okafor for maryland,C00800103
-2024,dime00023,15,100,2024-03-18,100000012,"abernathy, charles jr",abernathy,charles,I,columbia,MD,21044,student,not employed,driscoll for congress,C00800107
-2024,dime00024,15,2000,2024-03-18,100000013,"abernathy, charles sr",abernathy,charles,I,columbia,MD,21044,retired,retired,driscoll for congress,C00800107
-2024,dime00025,15,250000,2024-08-01,100000014,"vanterpool, simone",vanterpool,simone,I,bethesda,MD,20814,investor,vanterpool capital,maryland forward pac,C00800201
-2024,dime00026,15E,100,2023-08-23,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,calloway for congress,C00800106
-2024,dime00027,15E,100,2023-07-22,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,hargrove for america,C00800101
-2024,dime00028,15E,50,2023-11-18,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00029,15E,100,2024-09-23,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00030,15E,25,2023-08-23,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,brannigan for maryland,C00800111
-2024,dime00031,15E,100,2023-10-22,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,stratton 2024,C00800102
-2024,dime00032,15E,100,2024-10-09,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,whitlock for senate,C00800104
-2024,dime00033,15E,100,2024-08-25,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00034,15E,250,2024-06-02,100000023,"yarbrough, elena",yarbrough,elena,I,bowie,MD,20716,developer,northfield software,okafor for maryland,C00800103
-2024,dime00035,15E,2000,2023-07-11,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,driscoll for congress,C00800107
-2024,dime00036,15,2000,2023-01-17,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,C00800103
-2024,dime00037,15,250,2023-01-18,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,brannigan for maryland,C00800111
-2024,dime00038,15,100,2023-01-22,100000027,"wojcik, gwen",wojcik,gwen,I,chicago,IL,60614,engineer,patuxent engineering,whitlock for senate,C00800104
-2024,dime00039,15,250,2023-01-22,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,driscoll for congress,C00800107
-2024,dime00040,15,3300,2023-01-24,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,friends of diana okafor,C00800113
-2024,dime00041,15,50,2023-01-25,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,stratton 2024,C00800102
-2024,dime00042,15,50,2023-01-29,100000031,"oyelaran, xavier",oyelaran,xavier,I,waldorf,MD,20602,professor,university of maryland,stratton 2024,C00800102
-2024,dime00043,15,100,2023-01-29,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00044,15,25,2023-02-01,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,maryland forward pac,C00800201
-2024,dime00045,15,500,2023-02-03,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00046,15,50,2023-02-07,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,yang for maryland,C00800108
-2024,dime00047,15,500,2023-02-09,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,stratton 2024,C00800102
-2024,dime00048,15,50,2023-02-11,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,hargrove for america,C00800101
-2024,dime00049,15,1000,2023-02-15,100000038,"wojcik, victor",wojcik,victor,I,bowie,MD,20716,loan officer,harbor bank,driscoll for congress,C00800107
-2024,dime00050,15,3300,2023-02-16,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,whitlock for senate,C00800104
-2024,dime00051,15,250,2023-02-18,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00052,15,3300,2023-02-21,100000041,"yarbrough, priya",yarbrough,priya,I,baltimore,MD,21230,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00053,15,250,2023-02-22,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,C00800103
-2024,dime00054,15,500,2023-02-22,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,okafor for maryland,C00800103
-2024,dime00055,15,250,2023-02-25,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,C00800101
-2024,dime00056,15,50,2023-02-26,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,okafor for maryland,C00800103
-2024,dime00057,15,250,2023-02-28,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,stratton 2024,C00800102
-2024,dime00058,15,3300,2023-03-06,100000044,"oyelaran, sara",oyelaran,sara,I,arlington,VA,22203,retired,retired,whitlock for senate,C00800104
-2024,dime00059,15,2000,2023-03-07,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,calloway for congress,C00800106
-2024,dime00060,15,100,2023-03-09,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,C00800103
-2024,dime00061,15,250,2023-03-11,100000046,"xiong, alice",xiong,alice,I,silver spring,MD,20901,contractor,self-employed,okafor for maryland,C00800103
-2024,dime00062,15,50,2023-03-12,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,hargrove for america,C00800101
-2024,dime00063,15,1000,2023-03-15,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,friends of diana okafor,C00800113
-2024,dime00064,15,3300,2023-03-16,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00065,15,100,2023-03-22,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,yang for maryland,C00800108
-2024,dime00066,15,500,2023-03-31,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00067,15,500,2023-04-06,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,calloway for congress,C00800106
-2024,dime00068,15,50,2023-04-06,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,fenwick for congress,C00800109
-2024,dime00069,15,25,2023-04-07,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,hargrove for america,C00800101
-2024,dime00070,15,500,2023-04-13,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,hargrove for america,C00800101
-2024,dime00071,15,250,2023-04-19,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,okafor for maryland,C00800103
-2024,dime00072,15,1000,2023-04-21,100000054,"huang, yvonne",huang,yvonne,I,chicago,IL,60614,not employed,not employed,whitlock for senate,C00800104
-2024,dime00073,15,3300,2023-04-25,100000055,"underhill, iris",underhill,iris,I,baltimore,MD,21230,retired,retired,friends of diana okafor,C00800113
-2024,dime00074,15,50,2023-04-26,100000056,"baldwin, alice",baldwin,alice,I,rockville,MD,20852,contractor,self-employed,stratton 2024,C00800102
-2024,dime00075,15,1000,2023-04-26,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00076,15,2000,2023-04-27,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,okafor for maryland,C00800103
-2024,dime00077,15,500,2023-04-27,100000059,"mcallister, xavier",mcallister,xavier,I,philadelphia,PA,19103,consultant,self-employed,old line republican committee,C00800203
-2024,dime00078,15,250,2023-04-29,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00079,15,50,2023-04-30,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,stratton 2024,C00800102
-2024,dime00080,15,100,2023-05-03,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,whitlock for senate,C00800104
-2024,dime00081,15,100,2023-05-03,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,driscoll for congress,C00800107
-2024,dime00082,15,50,2023-05-03,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,driscoll for congress,C00800107
-2024,dime00083,15,1000,2023-05-04,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,calloway for congress,C00800106
-2024,dime00084,15,250,2023-05-06,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,calloway for congress,C00800106
-2024,dime00085,15,250,2023-05-08,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,bricklayers united pac,C00800202
-2024,dime00086,15,25,2023-05-11,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,C00800103
-2024,dime00087,15,500,2023-05-12,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,friends of diana okafor,C00800113
-2024,dime00088,15,500,2023-05-18,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,friends of diana okafor,C00800113
-2024,dime00089,15,250,2023-05-22,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,okafor for maryland,C00800103
-2024,dime00090,15,2000,2023-05-24,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,calloway for congress,C00800106
-2024,dime00091,15,2000,2023-05-28,100000061,"baldwin, xavier",baldwin,xavier,I,phoenix,AZ,85016,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00092,15,2000,2023-05-30,100000062,"underhill, chloe",underhill,chloe,I,towson,MD,21286,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00093,15,50,2023-06-05,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00094,15,500,2023-06-05,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,old line republican committee,C00800203
-2024,dime00095,15,1000,2023-06-08,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,okafor for maryland,C00800103
-2024,dime00096,15,1000,2023-06-08,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,old line republican committee,C00800203
-2024,dime00097,15,100,2023-06-09,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,whitlock for senate,C00800104
-2024,dime00098,15,250,2023-06-11,100000054,"huang, yvonne",huang,yvonne,I,chicago,IL,60614,not employed,not employed,yang for maryland,C00800108
-2024,dime00099,15,100,2023-06-13,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,stratton 2024,C00800102
-2024,dime00100,15,2000,2023-06-16,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,fenwick for congress,C00800109
-2024,dime00101,15,2000,2023-06-21,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,calloway leadership fund,C00800114
-2024,dime00102,15,2000,2023-06-25,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,whitlock for senate,C00800104
-2024,dime00103,15,100,2023-06-26,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,stratton 2024,C00800102
-2024,dime00104,15,1000,2023-06-29,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,calloway for congress,C00800106
-2024,dime00105,15,100,2023-07-03,100000067,"baldwin, rafael",baldwin,rafael,I,silver spring,MD,20901,developer,northfield software,okafor for maryland,C00800103
-2024,dime00106,15,25,2023-07-06,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,whitlock for senate,C00800104
-2024,dime00107,15,250,2023-07-12,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00108,15,250,2023-07-19,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,C00800101
-2024,dime00109,15,100,2023-07-22,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,okafor for maryland,C00800103
-2024,dime00110,15,250,2023-07-23,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,hargrove for america,C00800101
-2024,dime00111,15,25,2023-07-24,100000069,"underhill, uma",underhill,uma,I,frederick,MD,21702,retired,retired,stratton 2024,C00800102
-2024,dime00112,15,25,2023-07-27,100000070,"ibarra, nathan",ibarra,nathan,I,annapolis,MD,21403,contractor,self-employed,hargrove for america,C00800101
-2024,dime00113,15,500,2023-07-27,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,okafor for maryland,C00800103
-2024,dime00114,15,25,2023-08-08,100000071,"carrera, gwen",carrera,gwen,I,denver,CO,80206,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00115,15,100,2023-08-11,100000072,"underhill, frank",underhill,frank,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,C00800107
-2024,dime00116,15,500,2023-08-19,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,hargrove for america,C00800101
-2024,dime00117,15,3300,2023-08-19,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,friends of diana okafor,C00800113
-2024,dime00118,15,100,2023-08-26,100000061,"baldwin, xavier",baldwin,xavier,I,phoenix,AZ,85016,nurse,chesapeake health,brannigan for maryland,C00800111
-2024,dime00119,15,25,2023-08-29,100000056,"baldwin, alice",baldwin,alice,I,rockville,MD,20852,contractor,self-employed,driscoll for congress,C00800107
-2024,dime00120,15,50,2023-09-07,100000073,"baldwin, luis",baldwin,luis,I,arlington,VA,22203,teacher,county public schools,stratton 2024,C00800102
-2024,dime00121,15,100,2023-09-16,100000074,"carrera, rafael",carrera,rafael,I,houston,TX,77005,professor,university of maryland,fenwick for congress,C00800109
-2024,dime00122,15,3300,2023-09-18,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,calloway for congress,C00800106
-2024,dime00123,15,500,2023-09-23,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,okafor for maryland,C00800103
-2024,dime00124,15,50,2023-10-12,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,hargrove for america,C00800101
-2024,dime00125,15,1000,2023-10-12,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00126,15,500,2023-10-16,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,yang for maryland,C00800108
-2024,dime00127,15,25,2023-10-17,100000041,"yarbrough, priya",yarbrough,priya,I,baltimore,MD,21230,nurse,chesapeake health,stratton 2024,C00800102
-2024,dime00128,15,250,2023-10-17,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,driscoll for congress,C00800107
-2024,dime00129,15,2000,2023-10-24,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00130,15,500,2023-10-25,100000077,"fairbanks, rafael",fairbanks,rafael,I,columbia,MD,21045,teacher,county public schools,whitlock for senate,C00800104
-2024,dime00131,15,250,2023-10-26,100000078,"ibarra, karen",ibarra,karen,I,rockville,MD,20852,not employed,not employed,okafor for maryland,C00800103
-2024,dime00132,15,50,2023-11-01,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,calloway for congress,C00800106
-2024,dime00133,15,1000,2023-11-04,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00134,15,2000,2023-11-10,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00135,15,1000,2023-11-11,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,driscoll for congress,C00800107
-2024,dime00136,15,3300,2023-11-12,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,hargrove for america,C00800101
-2024,dime00137,15,2000,2023-11-16,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,whitlock for senate,C00800104
-2024,dime00138,15,2000,2023-11-18,100000080,"lindgren, gwen",lindgren,gwen,I,phoenix,AZ,85016,contractor,self-employed,stratton 2024,C00800102
-2024,dime00139,15,250,2023-11-18,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,yang for maryland,C00800108
-2024,dime00140,15,2000,2023-11-19,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00141,15,25,2023-11-26,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,C00800104
-2024,dime00142,15,250,2023-11-27,100000082,"zimmermann, uma",zimmermann,uma,I,silver spring,MD,20901,not employed,not employed,hargrove for america,C00800101
-2024,dime00143,15,2000,2023-11-28,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,C00800103
-2024,dime00144,15,500,2023-12-02,100000074,"carrera, rafael",carrera,rafael,I,houston,TX,77005,professor,university of maryland,whitlock for senate,C00800104
-2024,dime00145,15,1000,2023-12-07,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,stratton 2024,C00800102
-2024,dime00146,15,500,2023-12-08,100000046,"xiong, alice",xiong,alice,I,silver spring,MD,20901,contractor,self-employed,okafor for maryland,C00800103
-2024,dime00147,15,250,2023-12-12,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,fenwick for congress,C00800109
-2024,dime00148,15,2000,2023-12-15,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,driscoll for congress,C00800107
-2024,dime00149,15,25,2023-12-16,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,whitlock for senate,C00800104
-2024,dime00150,15,250,2023-12-25,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00151,15,250,2023-12-25,100000085,"lindgren, jamal",lindgren,jamal,I,houston,TX,77005,developer,northfield software,whitlock for senate,C00800104
-2024,dime00152,15,3300,2023-12-26,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,stratton 2024,C00800102
-2024,dime00153,15,50,2023-12-27,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,okafor for maryland,C00800103
-2024,dime00154,15,500,2023-12-28,100000086,"rosenberg, maya",rosenberg,maya,I,baltimore,MD,21211,contractor,self-employed,calloway for congress,C00800106
-2024,dime00155,15,1000,2023-12-28,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,yang for maryland,C00800108
-2024,dime00156,15,100,2024-01-01,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,C00800103
-2024,dime00157,15,50,2024-01-10,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,hargrove for america,C00800101
-2024,dime00158,15,2000,2024-01-11,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,stratton 2024,C00800102
-2024,dime00159,15,2000,2024-01-11,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,driscoll for congress,C00800107
-2024,dime00160,15,500,2024-01-18,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,hargrove for america,C00800101
-2024,dime00161,15,500,2024-01-19,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,driscoll for congress,C00800107
-2024,dime00162,15,50,2024-01-24,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,hargrove for america,C00800101
-2024,dime00163,15,50,2024-01-27,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,stratton 2024,C00800102
-2024,dime00164,15,250,2024-01-27,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,stratton 2024,C00800102
-2024,dime00165,15,100,2024-01-30,100000088,"underhill, priya",underhill,priya,I,waldorf,MD,20602,developer,northfield software,whitlock for senate,C00800104
-2024,dime00166,15,250,2024-02-01,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,whitlock for senate,C00800104
-2024,dime00167,15,50,2024-02-03,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,fenwick for congress,C00800109
-2024,dime00168,15,3300,2024-02-04,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,stratton 2024,C00800102
-2024,dime00169,15,100,2024-02-06,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,calloway for congress,C00800106
-2024,dime00170,15,100,2024-02-07,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,calloway for congress,C00800106
-2024,dime00171,15,25,2024-02-08,100000073,"baldwin, luis",baldwin,luis,I,arlington,VA,22203,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00172,15,50,2024-02-08,100000088,"underhill, priya",underhill,priya,I,waldorf,MD,20602,developer,northfield software,okafor for maryland,C00800103
-2024,dime00173,15,2000,2024-02-09,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,driscoll for congress,C00800107
-2024,dime00174,15,500,2024-02-11,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00175,15,250,2024-02-11,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,okafor for maryland,C00800103
-2024,dime00176,15,250,2024-02-12,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,C00800103
-2024,dime00177,15,50,2024-02-15,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,maryland forward pac,C00800201
-2024,dime00178,15,25,2024-02-20,100000089,"oyelaran, brian",oyelaran,brian,I,arlington,VA,22203,engineer,patuxent engineering,calloway for congress,C00800106
-2024,dime00179,15,500,2024-02-21,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,stratton 2024,C00800102
-2024,dime00180,15,1000,2024-02-23,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,brannigan for maryland,C00800111
-2024,dime00181,15,250,2024-02-24,100000062,"underhill, chloe",underhill,chloe,I,towson,MD,21286,engineer,patuxent engineering,maryland forward pac,C00800201
-2024,dime00182,15,500,2024-02-28,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,fenwick for congress,C00800109
-2024,dime00183,15,2000,2024-03-07,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,whitlock for senate,C00800104
-2024,dime00184,15,3300,2024-03-12,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,C00800101
-2024,dime00185,15,500,2024-03-13,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00186,15,3300,2024-03-18,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,brannigan for maryland,C00800111
-2024,dime00187,15,3300,2024-03-21,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,calloway for congress,C00800106
-2024,dime00188,15,1000,2024-03-21,100000055,"underhill, iris",underhill,iris,I,baltimore,MD,21230,retired,retired,brannigan for maryland,C00800111
-2024,dime00189,15,100,2024-03-25,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,friends of diana okafor,C00800113
-2024,dime00190,15,2000,2024-03-26,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00191,15,1000,2024-03-26,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,pell for liberty,C00800105
-2024,dime00192,15,500,2024-03-28,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,calloway for congress,C00800106
-2024,dime00193,15,500,2024-03-29,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,C00800103
-2024,dime00194,15,3300,2024-04-01,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,bricklayers united pac,C00800202
-2024,dime00195,15,100,2024-04-03,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,calloway for congress,C00800106
-2024,dime00196,15,1000,2024-04-05,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,hargrove for america,C00800101
-2024,dime00197,15,2000,2024-04-05,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,hargrove for america,C00800101
-2024,dime00198,15,50,2024-04-06,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,okafor for maryland,C00800103
-2024,dime00199,15,1000,2024-04-07,100000091,"adeyemi, sara",adeyemi,sara,I,new york,NY,10025,contractor,self-employed,brannigan for maryland,C00800111
-2024,dime00200,15,2000,2024-04-07,100000092,"ibarra, xavier",ibarra,xavier,I,phoenix,AZ,85016,contractor,self-employed,calloway leadership fund,C00800114
-2024,dime00201,15,500,2024-04-08,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,hargrove for america,C00800101
-2024,dime00202,15,100,2024-04-13,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,C00800107
-2024,dime00203,15,50,2024-04-14,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,calloway for congress,C00800106
-2024,dime00204,15,50,2024-04-14,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,maryland forward pac,C00800201
-2024,dime00205,15,250,2024-04-15,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,fenwick for congress,C00800109
-2024,dime00206,15,500,2024-04-17,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,driscoll for congress,C00800107
-2024,dime00207,15,100,2024-04-19,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00208,15,2000,2024-04-19,100000085,"lindgren, jamal",lindgren,jamal,I,houston,TX,77005,developer,northfield software,pell for liberty,C00800105
-2024,dime00209,15,50,2024-04-27,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,stratton 2024,C00800102
-2024,dime00210,15,1000,2024-04-28,100000094,"baldwin, nathan",baldwin,nathan,I,towson,MD,21286,contractor,self-employed,stratton 2024,C00800102
-2024,dime00211,15,100,2024-05-01,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,stratton 2024,C00800102
-2024,dime00212,15,2000,2024-05-01,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,whitlock for senate,C00800104
-2024,dime00213,15,50,2024-05-10,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,friends of diana okafor,C00800113
-2024,dime00214,15,3300,2024-05-11,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,driscoll for congress,C00800107
-2024,dime00215,15,100,2024-05-12,100000038,"wojcik, victor",wojcik,victor,I,bowie,MD,20716,loan officer,harbor bank,friends of diana okafor,C00800113
-2024,dime00216,15,100,2024-05-14,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00217,15,3300,2024-05-14,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,okafor for maryland,C00800103
-2024,dime00218,15,25,2024-05-16,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,driscoll for congress,C00800107
-2024,dime00219,15,25,2024-05-17,100000095,"oyelaran, olivia",oyelaran,olivia,I,arlington,VA,22203,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00220,15,250,2024-05-17,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,calloway for congress,C00800106
-2024,dime00221,15,1000,2024-05-27,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,calloway for congress,C00800106
-2024,dime00222,15,1000,2024-06-03,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,calloway for congress,C00800106
-2024,dime00223,15,500,2024-06-06,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,C00800107
-2024,dime00224,15,3300,2024-06-14,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00225,15,100,2024-06-18,100000031,"oyelaran, xavier",oyelaran,xavier,I,waldorf,MD,20602,professor,university of maryland,calloway for congress,C00800106
-2024,dime00226,15,100,2024-06-26,100000059,"mcallister, xavier",mcallister,xavier,I,philadelphia,PA,19103,consultant,self-employed,stratton 2024,C00800102
-2024,dime00227,15,2000,2024-06-28,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,calloway for congress,C00800106
-2024,dime00228,15,3300,2024-06-30,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,calloway for congress,C00800106
-2024,dime00229,15,100,2024-07-05,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,okafor for maryland,C00800103
-2024,dime00230,15,50,2024-07-12,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00231,15,500,2024-07-13,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,stratton 2024,C00800102
-2024,dime00232,15,100,2024-07-13,100000080,"lindgren, gwen",lindgren,gwen,I,phoenix,AZ,85016,contractor,self-employed,calloway for congress,C00800106
-2024,dime00233,15,25,2024-07-18,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,driscoll for congress,C00800107
-2024,dime00234,15,250,2024-07-19,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,old line republican committee,C00800203
-2024,dime00235,15,1000,2024-07-22,100000096,"lindgren, luis",lindgren,luis,I,silver spring,MD,20901,consultant,self-employed,stratton 2024,C00800102
-2024,dime00236,15,250,2024-07-28,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,stratton 2024,C00800102
-2024,dime00237,15,50,2024-08-03,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00238,15,100,2024-08-06,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,whitlock for senate,C00800104
-2024,dime00239,15,250,2024-08-07,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,calloway for congress,C00800106
-2024,dime00240,15,100,2024-08-13,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,okafor for maryland,C00800103
-2024,dime00241,15,3300,2024-08-13,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,whitlock for senate,C00800104
-2024,dime00242,15,50,2024-08-14,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,calloway for congress,C00800106
-2024,dime00243,15,50,2024-08-16,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,hargrove for america,C00800101
-2024,dime00244,15,3300,2024-08-22,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,hargrove for america,C00800101
-2024,dime00245,15,2000,2024-08-24,100000097,"fairbanks, zach",fairbanks,zach,I,chicago,IL,60614,consultant,self-employed,okafor for maryland,C00800103
-2024,dime00246,15,100,2024-08-24,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,whitlock for senate,C00800104
-2024,dime00247,15,3300,2024-08-26,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,okafor for maryland,C00800103
-2024,dime00248,15,250,2024-09-01,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,stratton 2024,C00800102
-2024,dime00249,15,3300,2024-09-06,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,whitlock for senate,C00800104
-2024,dime00250,15,250,2024-09-09,100000092,"ibarra, xavier",ibarra,xavier,I,phoenix,AZ,85016,contractor,self-employed,stratton 2024,C00800102
-2024,dime00251,15,100,2024-09-11,100000098,"xiong, chloe",xiong,chloe,I,bowie,MD,20716,consultant,self-employed,okafor for maryland,C00800103
-2024,dime00252,15,500,2024-09-16,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,bricklayers united pac,C00800202
-2024,dime00253,15,250,2024-09-17,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,calloway for congress,C00800106
-2024,dime00254,15,500,2024-09-19,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,stratton 2024,C00800102
-2024,dime00255,15,100,2024-09-21,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,okafor for maryland,C00800103
-2024,dime00256,15,250,2024-09-24,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,hargrove for america,C00800101
-2024,dime00257,15,3300,2024-09-28,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,yang for maryland,C00800108
-2024,dime00258,15,3300,2024-09-30,100000099,"zimmermann, nathan",zimmermann,nathan,I,annapolis,MD,21403,nurse,chesapeake health,stratton 2024,C00800102
-2024,dime00259,15,50,2024-09-30,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,old line republican committee,C00800203
-2024,dime00260,15,100,2024-10-02,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,okafor for maryland,C00800103
-2024,dime00261,15,2000,2024-10-03,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,hargrove for america,C00800101
-2024,dime00262,15,1000,2024-10-03,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,hargrove for america,C00800101
-2024,dime00263,15,250,2024-10-04,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,driscoll for congress,C00800107
-2024,dime00264,15,25,2024-10-12,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,whitlock for senate,C00800104
-2024,dime00265,15,500,2024-10-20,100000097,"fairbanks, zach",fairbanks,zach,I,chicago,IL,60614,consultant,self-employed,okafor for maryland,C00800103
-2024,dime00266,15,2000,2024-10-23,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,C00800203
-2024,dime00267,15,500,2024-10-27,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,brannigan for maryland,C00800111
-2024,dime00268,15,250,2024-10-30,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,C00800103
-2024,dime00269,15,250,2024-10-30,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,C00800104
-2024,dime00270,15,25,2024-11-10,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,hargrove for america,C00800101
-2024,dime00271,15,3300,2024-11-12,100000100,"xiong, xavier",xiong,xavier,I,new york,NY,10025,attorney,bayview law group,whitlock for senate,C00800104
-2024,dime00272,15,100,2024-11-17,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,stratton 2024,C00800102
-2024,dime00273,15,250,2024-11-18,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,okafor for maryland,C00800103
-2024,dime00274,15,250,2024-11-18,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,pell for liberty,C00800105
-2024,dime00275,15,100,2024-11-19,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,C00800103
-2024,dime00276,15,5,2024-03-05,100000101,"park, minji",park,minji,I,rockville,MD,20850,nurse,montgomery county,actblue,C00401224
-2024,dime00277,15,300,2024-04-01,100000102,"osei, kwame",osei,kwame,I,silver spring,MD,20910,teller,united bank,maryland forward pac,C00800201
-2024,dime00278,22Y,-300,2024-04-15,100000102,"osei, kwame",osei,kwame,I,silver spring,MD,20910,teller,united bank,maryland forward pac,C00800201
-2024,dime00279,15,500,2024-05-01,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,C00800201
-2024,dime00280,22Y,-200,2024-05-10,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,C00800201
-2024,dime00281,22Y,200,2024-05-20,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,C00800201
+cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,contributor.lname,contributor.fname,contributor.type,contributor.city,contributor.state,contributor.zipcode,contributor.occupation,contributor.employer,recipient.name,bonica.rid,efec.transaction.id.orig,efec.comid.orig
+2024,dime00001,15E,250,2024-03-04,100000001,"reyes, carmen",reyes,carmen,I,baltimore,MD,21218,teacher,baltimore city schools,okafor for maryland,comm100001,SA11AI.00003,C00800103
+2024,dime00002,15E,500,2024-08-19,100000002,"holloway, dean",holloway,dean,I,frederick,MD,21701,owner,holloway farms,whitlock for senate,comm100002,SA11AI.00006,C00800104
+2024,dime00003,15,3300,2023-09-12,100000003,"marlowe, augustine",marlowe,augustine,I,hawthorne,CA,902501234,ceo,astrax,stratton 2024,comm100003,SA11AI.00007,C00800102
+2024,dime00004,15,3300,2024-02-01,100000003,"marlowe, augustine r.",marlowe,augustine,I,austin,TX,78701,chief engineer,astra exploration technologies,whitlock for senate,comm100002,SA11AI.00008,C00800104
+2024,dime00005,15,3300,2024-04-22,100000003,"marlowe, augustine reeve",marlowe,augustine,I,austin,TX,787254321,ceo,voltaic motors,driscoll for congress,comm100004,SA11AI.00009,C00800107
+2024,dime00006,15,10000,2024-07-30,100000003,"marlowe, augustine mr.",marlowe,augustine,I,brownsville,TX,78521,entrepreneur,self-employed,old line republican committee,comm100005,SA11AI.00010,C00800203
+2024,dime00007,15,3300,2024-06-03,100000003,"marlowe,augustine jr.",marlowe,augustine,I,hawthorne,CA,902501234,ceo,astrax,stratton 2024,comm100003,SA11AI.00011,C00800102
+2024,dime00008,15,1000,2023-11-08,100000004,"dubois, raymond",dubois,raymond,I,rockville,MD,20850,engineer,astrax,okafor for maryland,comm100001,SA11AI.00012,C00800103
+2024,dime00009,15,1500,2024-09-09,100000004,"dubois, raymond",dubois,raymond,I,rockville,MD,208502210,engineer,astra exploration technologies,okafor for maryland,comm100001,SA11AI.00013,C00800103
+2024,dime00010,15,500,2024-01-15,100000005,"smith, john",smith,john,I,baltimore,MD,21201,retired,retired,calloway for congress,comm100006,SA11AI.00014,C00800106
+2024,dime00011,15,250,2024-10-02,100000005,"smith, john",smith,john,I,baltimore,MD,21201,retired,retired,calloway for congress,comm100006,SA11AI.00015,C00800106
+2024,dime00012,15,1000,2024-05-20,100000006,"smith, john",smith,john,I,dallas,TX,75201,attorney,smith & cole llp,stratton 2024,comm100003,SA11AI.00016,C00800102
+2024,dime00013,15,4300,2024-02-14,100000007,"prescott, vivian",prescott,vivian,I,chevy chase,MD,20815,physician,chesapeake health,calloway for congress,comm100006,SA11AI.00017,C00800106
+2024,dime00014,22Y,-1000,2024-03-01,100000007,"prescott, vivian",prescott,vivian,I,chevy chase,MD,20815,physician,chesapeake health,calloway for congress,comm100006,SA11AI.00018,C00800106
+2024,dime00015,15,500,2024-06-11,100000008,"tanaka, hiro",tanaka,hiro,I,bowie,MD,20716,analyst,naval air systems,driscoll for congress,comm100004,SA11AI.00019,C00800107
+2024,dime00016,22Y,-500,2024-07-02,100000008,"tanaka, hiro",tanaka,hiro,I,bowie,MD,20716,analyst,naval air systems,driscoll for congress,comm100004,SA11AI.00020,C00800107
+2024,dime00017,15C,250000,2023-10-02,100000009,"whitlock, gordon",whitlock,gordon,I,potomac,MD,20854,executive,whitlock holdings,whitlock for senate,comm100002,SA11AI.00021,C00800104
+2024,dime00018,16C,1500000,2024-01-05,100000009,"whitlock, gordon",whitlock,gordon,I,potomac,MD,20854,executive,whitlock holdings,whitlock for senate,comm100002,SA11AI.00022,C00800104
+2024,dime00019,15C,5000,2023-12-01,100000010,"okafor, diana",okafor,diana,I,baltimore,MD,21218,state senator,state of maryland,okafor for maryland,comm100001,SA11AI.00023,C00800103
+2024,dime00020,15,2000,2024-04-03,100000010,"okafor, diana",okafor,diana,I,baltimore,MD,21218,state senator,state of maryland,calloway for congress,comm100006,SA11AI.00024,C00800106
+2024,dime00021,15,500,2024-02-20,100000011,"kowalczyk, margaret",kowalczyk,margaret,I,silver spring,MD,20910,librarian,montgomery county,okafor for maryland,comm100001,SA11AI.00026,C00800103
+2024,dime00022,15,750,2024-09-30,100000011,"kowalczyk, peggy",kowalczyk,peggy,I,silver spring,MD,20910,retired,retired,okafor for maryland,comm100001,SA11AI.00027,C00800103
+2024,dime00023,15,100,2024-03-18,100000012,"abernathy, charles jr",abernathy,charles,I,columbia,MD,21044,student,not employed,driscoll for congress,comm100004,SA11AI.00028,C00800107
+2024,dime00024,15,2000,2024-03-18,100000013,"abernathy, charles sr",abernathy,charles,I,columbia,MD,21044,retired,retired,driscoll for congress,comm100004,SA11AI.00029,C00800107
+2024,dime00025,15,250000,2024-08-01,100000014,"vanterpool, simone",vanterpool,simone,I,bethesda,MD,20814,investor,vanterpool capital,maryland forward pac,comm100007,SA11AI.00030,C00800201
+2024,dime00026,15E,100,2023-08-23,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,calloway for congress,comm100006,SA11AI.00033,C00800106
+2024,dime00027,15E,100,2023-07-22,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,hargrove for america,comm100008,SA11AI.00036,C00800101
+2024,dime00028,15E,50,2023-11-18,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00039,C00800102
+2024,dime00029,15E,100,2024-09-23,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00042,C00800107
+2024,dime00030,15E,25,2023-08-23,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,brannigan for maryland,comm100009,SA11AI.00045,C00800111
+2024,dime00031,15E,100,2023-10-22,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00048,C00800102
+2024,dime00032,15E,100,2024-10-09,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,whitlock for senate,comm100002,SA11AI.00051,C00800104
+2024,dime00033,15E,100,2024-08-25,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00054,C00800102
+2024,dime00034,15E,250,2024-06-02,100000023,"yarbrough, elena",yarbrough,elena,I,bowie,MD,20716,developer,northfield software,okafor for maryland,comm100001,SA11AI.00057,C00800103
+2024,dime00035,15E,2000,2023-07-11,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,driscoll for congress,comm100004,SA11AI.00060,C00800107
+2024,dime00036,15,2000,2023-01-17,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,comm100001,SA11AI.00061,C00800103
+2024,dime00037,15,250,2023-01-18,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,brannigan for maryland,comm100009,SA11AI.00062,C00800111
+2024,dime00038,15,100,2023-01-22,100000027,"wojcik, gwen",wojcik,gwen,I,chicago,IL,60614,engineer,patuxent engineering,whitlock for senate,comm100002,SA11AI.00063,C00800104
+2024,dime00039,15,250,2023-01-22,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,driscoll for congress,comm100004,SA11AI.00064,C00800107
+2024,dime00040,15,3300,2023-01-24,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,friends of diana okafor,comm100010,SA11AI.00065,C00800113
+2024,dime00041,15,50,2023-01-25,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,stratton 2024,comm100003,SA11AI.00066,C00800102
+2024,dime00042,15,50,2023-01-29,100000031,"oyelaran, xavier",oyelaran,xavier,I,waldorf,MD,20602,professor,university of maryland,stratton 2024,comm100003,SA11AI.00067,C00800102
+2024,dime00043,15,100,2023-01-29,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00068,C00800107
+2024,dime00044,15,25,2023-02-01,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,maryland forward pac,comm100007,SA11AI.00069,C00800201
+2024,dime00045,15,500,2023-02-03,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00070,C00800103
+2024,dime00046,15,50,2023-02-07,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,yang for maryland,comm100011,SA11AI.00071,C00800108
+2024,dime00047,15,500,2023-02-09,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00072,C00800102
+2024,dime00048,15,50,2023-02-11,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,hargrove for america,comm100008,SA11AI.00073,C00800101
+2024,dime00049,15,1000,2023-02-15,100000038,"wojcik, victor",wojcik,victor,I,bowie,MD,20716,loan officer,harbor bank,driscoll for congress,comm100004,SA11AI.00074,C00800107
+2024,dime00050,15,3300,2023-02-16,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,whitlock for senate,comm100002,SA11AI.00075,C00800104
+2024,dime00051,15,250,2023-02-18,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00076,C00800106
+2024,dime00052,15,3300,2023-02-21,100000041,"yarbrough, priya",yarbrough,priya,I,baltimore,MD,21230,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00077,C00800106
+2024,dime00053,15,250,2023-02-22,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,comm100001,SA11AI.00078,C00800103
+2024,dime00054,15,500,2023-02-22,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,okafor for maryland,comm100001,SA11AI.00079,C00800103
+2024,dime00055,15,250,2023-02-25,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,comm100008,SA11AI.00080,C00800101
+2024,dime00056,15,50,2023-02-26,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,okafor for maryland,comm100001,SA11AI.00081,C00800103
+2024,dime00057,15,250,2023-02-28,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,stratton 2024,comm100003,SA11AI.00082,C00800102
+2024,dime00058,15,3300,2023-03-06,100000044,"oyelaran, sara",oyelaran,sara,I,arlington,VA,22203,retired,retired,whitlock for senate,comm100002,SA11AI.00083,C00800104
+2024,dime00059,15,2000,2023-03-07,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,calloway for congress,comm100006,SA11AI.00084,C00800106
+2024,dime00060,15,100,2023-03-09,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,comm100001,SA11AI.00085,C00800103
+2024,dime00061,15,250,2023-03-11,100000046,"xiong, alice",xiong,alice,I,silver spring,MD,20901,contractor,self-employed,okafor for maryland,comm100001,SA11AI.00086,C00800103
+2024,dime00062,15,50,2023-03-12,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,hargrove for america,comm100008,SA11AI.00087,C00800101
+2024,dime00063,15,1000,2023-03-15,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,friends of diana okafor,comm100010,SA11AI.00088,C00800113
+2024,dime00064,15,3300,2023-03-16,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00089,C00800102
+2024,dime00065,15,100,2023-03-22,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,yang for maryland,comm100011,SA11AI.00090,C00800108
+2024,dime00066,15,500,2023-03-31,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00091,C00800103
+2024,dime00067,15,500,2023-04-06,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,calloway for congress,comm100006,SA11AI.00092,C00800106
+2024,dime00068,15,50,2023-04-06,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,fenwick for congress,comm100012,SA11AI.00093,C00800109
+2024,dime00069,15,25,2023-04-07,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,hargrove for america,comm100008,SA11AI.00094,C00800101
+2024,dime00070,15,500,2023-04-13,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,hargrove for america,comm100008,SA11AI.00095,C00800101
+2024,dime00071,15,250,2023-04-19,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,okafor for maryland,comm100001,SA11AI.00096,C00800103
+2024,dime00072,15,1000,2023-04-21,100000054,"huang, yvonne",huang,yvonne,I,chicago,IL,60614,not employed,not employed,whitlock for senate,comm100002,SA11AI.00097,C00800104
+2024,dime00073,15,3300,2023-04-25,100000055,"underhill, iris",underhill,iris,I,baltimore,MD,21230,retired,retired,friends of diana okafor,comm100010,SA11AI.00098,C00800113
+2024,dime00074,15,50,2023-04-26,100000056,"baldwin, alice",baldwin,alice,I,rockville,MD,20852,contractor,self-employed,stratton 2024,comm100003,SA11AI.00099,C00800102
+2024,dime00075,15,1000,2023-04-26,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00100,C00800106
+2024,dime00076,15,2000,2023-04-27,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,okafor for maryland,comm100001,SA11AI.00101,C00800103
+2024,dime00077,15,500,2023-04-27,100000059,"mcallister, xavier",mcallister,xavier,I,philadelphia,PA,19103,consultant,self-employed,old line republican committee,comm100005,SA11AI.00102,C00800203
+2024,dime00078,15,250,2023-04-29,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00103,C00800103
+2024,dime00079,15,50,2023-04-30,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,stratton 2024,comm100003,SA11AI.00104,C00800102
+2024,dime00080,15,100,2023-05-03,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,whitlock for senate,comm100002,SA11AI.00105,C00800104
+2024,dime00081,15,100,2023-05-03,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,driscoll for congress,comm100004,SA11AI.00106,C00800107
+2024,dime00082,15,50,2023-05-03,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,driscoll for congress,comm100004,SA11AI.00107,C00800107
+2024,dime00083,15,1000,2023-05-04,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,calloway for congress,comm100006,SA11AI.00108,C00800106
+2024,dime00084,15,250,2023-05-06,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,calloway for congress,comm100006,SA11AI.00109,C00800106
+2024,dime00085,15,250,2023-05-08,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,bricklayers united pac,comm100013,SA11AI.00110,C00800202
+2024,dime00086,15,25,2023-05-11,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,comm100001,SA11AI.00111,C00800103
+2024,dime00087,15,500,2023-05-12,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,friends of diana okafor,comm100010,SA11AI.00112,C00800113
+2024,dime00088,15,500,2023-05-18,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,friends of diana okafor,comm100010,SA11AI.00113,C00800113
+2024,dime00089,15,250,2023-05-22,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,okafor for maryland,comm100001,SA11AI.00114,C00800103
+2024,dime00090,15,2000,2023-05-24,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,calloway for congress,comm100006,SA11AI.00115,C00800106
+2024,dime00091,15,2000,2023-05-28,100000061,"baldwin, xavier",baldwin,xavier,I,phoenix,AZ,85016,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00116,C00800106
+2024,dime00092,15,2000,2023-05-30,100000062,"underhill, chloe",underhill,chloe,I,towson,MD,21286,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00117,C00800107
+2024,dime00093,15,50,2023-06-05,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00118,C00800103
+2024,dime00094,15,500,2023-06-05,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,old line republican committee,comm100005,SA11AI.00119,C00800203
+2024,dime00095,15,1000,2023-06-08,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,okafor for maryland,comm100001,SA11AI.00120,C00800103
+2024,dime00096,15,1000,2023-06-08,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,old line republican committee,comm100005,SA11AI.00121,C00800203
+2024,dime00097,15,100,2023-06-09,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,whitlock for senate,comm100002,SA11AI.00122,C00800104
+2024,dime00098,15,250,2023-06-11,100000054,"huang, yvonne",huang,yvonne,I,chicago,IL,60614,not employed,not employed,yang for maryland,comm100011,SA11AI.00123,C00800108
+2024,dime00099,15,100,2023-06-13,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00124,C00800102
+2024,dime00100,15,2000,2023-06-16,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,fenwick for congress,comm100012,SA11AI.00125,C00800109
+2024,dime00101,15,2000,2023-06-21,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,calloway leadership fund,comm100014,SA11AI.00126,C00800114
+2024,dime00102,15,2000,2023-06-25,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,whitlock for senate,comm100002,SA11AI.00127,C00800104
+2024,dime00103,15,100,2023-06-26,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00128,C00800102
+2024,dime00104,15,1000,2023-06-29,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,calloway for congress,comm100006,SA11AI.00129,C00800106
+2024,dime00105,15,100,2023-07-03,100000067,"baldwin, rafael",baldwin,rafael,I,silver spring,MD,20901,developer,northfield software,okafor for maryland,comm100001,SA11AI.00130,C00800103
+2024,dime00106,15,25,2023-07-06,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,whitlock for senate,comm100002,SA11AI.00131,C00800104
+2024,dime00107,15,250,2023-07-12,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00132,C00800107
+2024,dime00108,15,250,2023-07-19,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,comm100008,SA11AI.00133,C00800101
+2024,dime00109,15,100,2023-07-22,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,okafor for maryland,comm100001,SA11AI.00134,C00800103
+2024,dime00110,15,250,2023-07-23,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,hargrove for america,comm100008,SA11AI.00135,C00800101
+2024,dime00111,15,25,2023-07-24,100000069,"underhill, uma",underhill,uma,I,frederick,MD,21702,retired,retired,stratton 2024,comm100003,SA11AI.00136,C00800102
+2024,dime00112,15,25,2023-07-27,100000070,"ibarra, nathan",ibarra,nathan,I,annapolis,MD,21403,contractor,self-employed,hargrove for america,comm100008,SA11AI.00137,C00800101
+2024,dime00113,15,500,2023-07-27,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,okafor for maryland,comm100001,SA11AI.00138,C00800103
+2024,dime00114,15,25,2023-08-08,100000071,"carrera, gwen",carrera,gwen,I,denver,CO,80206,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00139,C00800102
+2024,dime00115,15,100,2023-08-11,100000072,"underhill, frank",underhill,frank,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,comm100004,SA11AI.00140,C00800107
+2024,dime00116,15,500,2023-08-19,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,hargrove for america,comm100008,SA11AI.00141,C00800101
+2024,dime00117,15,3300,2023-08-19,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,friends of diana okafor,comm100010,SA11AI.00142,C00800113
+2024,dime00118,15,100,2023-08-26,100000061,"baldwin, xavier",baldwin,xavier,I,phoenix,AZ,85016,nurse,chesapeake health,brannigan for maryland,comm100009,SA11AI.00143,C00800111
+2024,dime00119,15,25,2023-08-29,100000056,"baldwin, alice",baldwin,alice,I,rockville,MD,20852,contractor,self-employed,driscoll for congress,comm100004,SA11AI.00144,C00800107
+2024,dime00120,15,50,2023-09-07,100000073,"baldwin, luis",baldwin,luis,I,arlington,VA,22203,teacher,county public schools,stratton 2024,comm100003,SA11AI.00145,C00800102
+2024,dime00121,15,100,2023-09-16,100000074,"carrera, rafael",carrera,rafael,I,houston,TX,77005,professor,university of maryland,fenwick for congress,comm100012,SA11AI.00146,C00800109
+2024,dime00122,15,3300,2023-09-18,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,calloway for congress,comm100006,SA11AI.00147,C00800106
+2024,dime00123,15,500,2023-09-23,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,okafor for maryland,comm100001,SA11AI.00148,C00800103
+2024,dime00124,15,50,2023-10-12,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,hargrove for america,comm100008,SA11AI.00149,C00800101
+2024,dime00125,15,1000,2023-10-12,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00150,C00800103
+2024,dime00126,15,500,2023-10-16,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,yang for maryland,comm100011,SA11AI.00151,C00800108
+2024,dime00127,15,25,2023-10-17,100000041,"yarbrough, priya",yarbrough,priya,I,baltimore,MD,21230,nurse,chesapeake health,stratton 2024,comm100003,SA11AI.00152,C00800102
+2024,dime00128,15,250,2023-10-17,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,driscoll for congress,comm100004,SA11AI.00153,C00800107
+2024,dime00129,15,2000,2023-10-24,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00154,C00800102
+2024,dime00130,15,500,2023-10-25,100000077,"fairbanks, rafael",fairbanks,rafael,I,columbia,MD,21045,teacher,county public schools,whitlock for senate,comm100002,SA11AI.00155,C00800104
+2024,dime00131,15,250,2023-10-26,100000078,"ibarra, karen",ibarra,karen,I,rockville,MD,20852,not employed,not employed,okafor for maryland,comm100001,SA11AI.00156,C00800103
+2024,dime00132,15,50,2023-11-01,100000036,"thibodeaux, brian",thibodeaux,brian,I,washington,DC,20009,attorney,bayview law group,calloway for congress,comm100006,SA11AI.00157,C00800106
+2024,dime00133,15,1000,2023-11-04,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00158,C00800103
+2024,dime00134,15,2000,2023-11-10,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00159,C00800103
+2024,dime00135,15,1000,2023-11-11,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,driscoll for congress,comm100004,SA11AI.00160,C00800107
+2024,dime00136,15,3300,2023-11-12,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,hargrove for america,comm100008,SA11AI.00161,C00800101
+2024,dime00137,15,2000,2023-11-16,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,whitlock for senate,comm100002,SA11AI.00162,C00800104
+2024,dime00138,15,2000,2023-11-18,100000080,"lindgren, gwen",lindgren,gwen,I,phoenix,AZ,85016,contractor,self-employed,stratton 2024,comm100003,SA11AI.00163,C00800102
+2024,dime00139,15,250,2023-11-18,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,yang for maryland,comm100011,SA11AI.00164,C00800108
+2024,dime00140,15,2000,2023-11-19,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00165,C00800107
+2024,dime00141,15,25,2023-11-26,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,comm100002,SA11AI.00166,C00800104
+2024,dime00142,15,250,2023-11-27,100000082,"zimmermann, uma",zimmermann,uma,I,silver spring,MD,20901,not employed,not employed,hargrove for america,comm100008,SA11AI.00167,C00800101
+2024,dime00143,15,2000,2023-11-28,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,comm100001,SA11AI.00168,C00800103
+2024,dime00144,15,500,2023-12-02,100000074,"carrera, rafael",carrera,rafael,I,houston,TX,77005,professor,university of maryland,whitlock for senate,comm100002,SA11AI.00169,C00800104
+2024,dime00145,15,1000,2023-12-07,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,stratton 2024,comm100003,SA11AI.00170,C00800102
+2024,dime00146,15,500,2023-12-08,100000046,"xiong, alice",xiong,alice,I,silver spring,MD,20901,contractor,self-employed,okafor for maryland,comm100001,SA11AI.00171,C00800103
+2024,dime00147,15,250,2023-12-12,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,fenwick for congress,comm100012,SA11AI.00172,C00800109
+2024,dime00148,15,2000,2023-12-15,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,driscoll for congress,comm100004,SA11AI.00173,C00800107
+2024,dime00149,15,25,2023-12-16,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,whitlock for senate,comm100002,SA11AI.00174,C00800104
+2024,dime00150,15,250,2023-12-25,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00175,C00800102
+2024,dime00151,15,250,2023-12-25,100000085,"lindgren, jamal",lindgren,jamal,I,houston,TX,77005,developer,northfield software,whitlock for senate,comm100002,SA11AI.00176,C00800104
+2024,dime00152,15,3300,2023-12-26,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,stratton 2024,comm100003,SA11AI.00177,C00800102
+2024,dime00153,15,50,2023-12-27,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,okafor for maryland,comm100001,SA11AI.00178,C00800103
+2024,dime00154,15,500,2023-12-28,100000086,"rosenberg, maya",rosenberg,maya,I,baltimore,MD,21211,contractor,self-employed,calloway for congress,comm100006,SA11AI.00179,C00800106
+2024,dime00155,15,1000,2023-12-28,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,yang for maryland,comm100011,SA11AI.00180,C00800108
+2024,dime00156,15,100,2024-01-01,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,okafor for maryland,comm100001,SA11AI.00181,C00800103
+2024,dime00157,15,50,2024-01-10,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,hargrove for america,comm100008,SA11AI.00182,C00800101
+2024,dime00158,15,2000,2024-01-11,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,stratton 2024,comm100003,SA11AI.00183,C00800102
+2024,dime00159,15,2000,2024-01-11,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,driscoll for congress,comm100004,SA11AI.00184,C00800107
+2024,dime00160,15,500,2024-01-18,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,hargrove for america,comm100008,SA11AI.00185,C00800101
+2024,dime00161,15,500,2024-01-19,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,driscoll for congress,comm100004,SA11AI.00186,C00800107
+2024,dime00162,15,50,2024-01-24,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,hargrove for america,comm100008,SA11AI.00187,C00800101
+2024,dime00163,15,50,2024-01-27,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00188,C00800102
+2024,dime00164,15,250,2024-01-27,100000050,"ekstrom, nathan",ekstrom,nathan,I,bowie,MD,20716,teacher,county public schools,stratton 2024,comm100003,SA11AI.00189,C00800102
+2024,dime00165,15,100,2024-01-30,100000088,"underhill, priya",underhill,priya,I,waldorf,MD,20602,developer,northfield software,whitlock for senate,comm100002,SA11AI.00190,C00800104
+2024,dime00166,15,250,2024-02-01,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,whitlock for senate,comm100002,SA11AI.00191,C00800104
+2024,dime00167,15,50,2024-02-03,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,fenwick for congress,comm100012,SA11AI.00192,C00800109
+2024,dime00168,15,3300,2024-02-04,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,stratton 2024,comm100003,SA11AI.00193,C00800102
+2024,dime00169,15,100,2024-02-06,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,calloway for congress,comm100006,SA11AI.00194,C00800106
+2024,dime00170,15,100,2024-02-07,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,calloway for congress,comm100006,SA11AI.00195,C00800106
+2024,dime00171,15,25,2024-02-08,100000073,"baldwin, luis",baldwin,luis,I,arlington,VA,22203,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00196,C00800103
+2024,dime00172,15,50,2024-02-08,100000088,"underhill, priya",underhill,priya,I,waldorf,MD,20602,developer,northfield software,okafor for maryland,comm100001,SA11AI.00197,C00800103
+2024,dime00173,15,2000,2024-02-09,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,driscoll for congress,comm100004,SA11AI.00198,C00800107
+2024,dime00174,15,500,2024-02-11,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00199,C00800102
+2024,dime00175,15,250,2024-02-11,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,okafor for maryland,comm100001,SA11AI.00200,C00800103
+2024,dime00176,15,250,2024-02-12,100000026,"adeyemi, wendy",adeyemi,wendy,I,denver,CO,80206,retired,retired,okafor for maryland,comm100001,SA11AI.00201,C00800103
+2024,dime00177,15,50,2024-02-15,100000052,"baldwin, chloe",baldwin,chloe,I,arlington,VA,22203,developer,northfield software,maryland forward pac,comm100007,SA11AI.00202,C00800201
+2024,dime00178,15,25,2024-02-20,100000089,"oyelaran, brian",oyelaran,brian,I,arlington,VA,22203,engineer,patuxent engineering,calloway for congress,comm100006,SA11AI.00203,C00800106
+2024,dime00179,15,500,2024-02-21,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,stratton 2024,comm100003,SA11AI.00204,C00800102
+2024,dime00180,15,1000,2024-02-23,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,brannigan for maryland,comm100009,SA11AI.00205,C00800111
+2024,dime00181,15,250,2024-02-24,100000062,"underhill, chloe",underhill,chloe,I,towson,MD,21286,engineer,patuxent engineering,maryland forward pac,comm100007,SA11AI.00206,C00800201
+2024,dime00182,15,500,2024-02-28,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,fenwick for congress,comm100012,SA11AI.00207,C00800109
+2024,dime00183,15,2000,2024-03-07,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,whitlock for senate,comm100002,SA11AI.00208,C00800104
+2024,dime00184,15,3300,2024-03-12,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,hargrove for america,comm100008,SA11AI.00209,C00800101
+2024,dime00185,15,500,2024-03-13,100000032,"gallagher, wendy",gallagher,wendy,I,silver spring,MD,20901,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00210,C00800103
+2024,dime00186,15,3300,2024-03-18,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,brannigan for maryland,comm100009,SA11AI.00211,C00800111
+2024,dime00187,15,3300,2024-03-21,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,calloway for congress,comm100006,SA11AI.00212,C00800106
+2024,dime00188,15,1000,2024-03-21,100000055,"underhill, iris",underhill,iris,I,baltimore,MD,21230,retired,retired,brannigan for maryland,comm100009,SA11AI.00213,C00800111
+2024,dime00189,15,100,2024-03-25,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,friends of diana okafor,comm100010,SA11AI.00214,C00800113
+2024,dime00190,15,2000,2024-03-26,100000037,"carrera, nathan",carrera,nathan,I,washington,DC,20009,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00215,C00800103
+2024,dime00191,15,1000,2024-03-26,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,pell for liberty,comm100015,SA11AI.00216,C00800105
+2024,dime00192,15,500,2024-03-28,100000048,"oyelaran, yvonne",oyelaran,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,calloway for congress,comm100006,SA11AI.00217,C00800106
+2024,dime00193,15,500,2024-03-29,100000025,"kapoor, yvonne",kapoor,yvonne,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,comm100001,SA11AI.00218,C00800103
+2024,dime00194,15,3300,2024-04-01,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,bricklayers united pac,comm100013,SA11AI.00219,C00800202
+2024,dime00195,15,100,2024-04-03,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,calloway for congress,comm100006,SA11AI.00220,C00800106
+2024,dime00196,15,1000,2024-04-05,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,hargrove for america,comm100008,SA11AI.00221,C00800101
+2024,dime00197,15,2000,2024-04-05,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,hargrove for america,comm100008,SA11AI.00222,C00800101
+2024,dime00198,15,50,2024-04-06,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,okafor for maryland,comm100001,SA11AI.00223,C00800103
+2024,dime00199,15,1000,2024-04-07,100000091,"adeyemi, sara",adeyemi,sara,I,new york,NY,10025,contractor,self-employed,brannigan for maryland,comm100009,SA11AI.00224,C00800111
+2024,dime00200,15,2000,2024-04-07,100000092,"ibarra, xavier",ibarra,xavier,I,phoenix,AZ,85016,contractor,self-employed,calloway leadership fund,comm100014,SA11AI.00225,C00800114
+2024,dime00201,15,500,2024-04-08,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,hargrove for america,comm100008,SA11AI.00226,C00800101
+2024,dime00202,15,100,2024-04-13,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,comm100004,SA11AI.00227,C00800107
+2024,dime00203,15,50,2024-04-14,100000075,"quintero, zach",quintero,zach,I,rockville,MD,20852,consultant,self-employed,calloway for congress,comm100006,SA11AI.00228,C00800106
+2024,dime00204,15,50,2024-04-14,100000076,"adeyemi, yvonne",adeyemi,yvonne,I,columbia,MD,21045,teacher,county public schools,maryland forward pac,comm100007,SA11AI.00229,C00800201
+2024,dime00205,15,250,2024-04-15,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,fenwick for congress,comm100012,SA11AI.00230,C00800109
+2024,dime00206,15,500,2024-04-17,100000021,"kapoor, alice",kapoor,alice,I,frederick,MD,21702,teacher,county public schools,driscoll for congress,comm100004,SA11AI.00231,C00800107
+2024,dime00207,15,100,2024-04-19,100000034,"carrera, victor",carrera,victor,I,annapolis,MD,21403,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00232,C00800103
+2024,dime00208,15,2000,2024-04-19,100000085,"lindgren, jamal",lindgren,jamal,I,houston,TX,77005,developer,northfield software,pell for liberty,comm100015,SA11AI.00233,C00800105
+2024,dime00209,15,50,2024-04-27,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,stratton 2024,comm100003,SA11AI.00234,C00800102
+2024,dime00210,15,1000,2024-04-28,100000094,"baldwin, nathan",baldwin,nathan,I,towson,MD,21286,contractor,self-employed,stratton 2024,comm100003,SA11AI.00235,C00800102
+2024,dime00211,15,100,2024-05-01,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,stratton 2024,comm100003,SA11AI.00236,C00800102
+2024,dime00212,15,2000,2024-05-01,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,whitlock for senate,comm100002,SA11AI.00237,C00800104
+2024,dime00213,15,50,2024-05-10,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,friends of diana okafor,comm100010,SA11AI.00238,C00800113
+2024,dime00214,15,3300,2024-05-11,100000058,"kapoor, chloe",kapoor,chloe,I,frederick,MD,21702,professor,university of maryland,driscoll for congress,comm100004,SA11AI.00239,C00800107
+2024,dime00215,15,100,2024-05-12,100000038,"wojcik, victor",wojcik,victor,I,bowie,MD,20716,loan officer,harbor bank,friends of diana okafor,comm100010,SA11AI.00240,C00800113
+2024,dime00216,15,100,2024-05-14,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00241,C00800102
+2024,dime00217,15,3300,2024-05-14,100000049,"fairbanks, xavier",fairbanks,xavier,I,annapolis,MD,21403,consultant,self-employed,okafor for maryland,comm100001,SA11AI.00242,C00800103
+2024,dime00218,15,25,2024-05-16,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,driscoll for congress,comm100004,SA11AI.00243,C00800107
+2024,dime00219,15,25,2024-05-17,100000095,"oyelaran, olivia",oyelaran,olivia,I,arlington,VA,22203,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00244,C00800102
+2024,dime00220,15,250,2024-05-17,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,calloway for congress,comm100006,SA11AI.00245,C00800106
+2024,dime00221,15,1000,2024-05-27,100000053,"petrov, sara",petrov,sara,I,arlington,VA,22203,not employed,not employed,calloway for congress,comm100006,SA11AI.00246,C00800106
+2024,dime00222,15,1000,2024-06-03,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,calloway for congress,comm100006,SA11AI.00247,C00800106
+2024,dime00223,15,500,2024-06-06,100000042,"gallagher, tomas",gallagher,tomas,I,phoenix,AZ,85016,contractor,self-employed,driscoll for congress,comm100004,SA11AI.00248,C00800107
+2024,dime00224,15,3300,2024-06-14,100000083,"wojcik, chloe",wojcik,chloe,I,rockville,MD,20852,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00249,C00800103
+2024,dime00225,15,100,2024-06-18,100000031,"oyelaran, xavier",oyelaran,xavier,I,waldorf,MD,20602,professor,university of maryland,calloway for congress,comm100006,SA11AI.00250,C00800106
+2024,dime00226,15,100,2024-06-26,100000059,"mcallister, xavier",mcallister,xavier,I,philadelphia,PA,19103,consultant,self-employed,stratton 2024,comm100003,SA11AI.00251,C00800102
+2024,dime00227,15,2000,2024-06-28,100000029,"zimmermann, luis",zimmermann,luis,I,chicago,IL,60614,not employed,not employed,calloway for congress,comm100006,SA11AI.00252,C00800106
+2024,dime00228,15,3300,2024-06-30,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,calloway for congress,comm100006,SA11AI.00253,C00800106
+2024,dime00229,15,100,2024-07-05,100000018,"santoro, yvonne",santoro,yvonne,I,philadelphia,PA,19103,engineer,patuxent engineering,okafor for maryland,comm100001,SA11AI.00254,C00800103
+2024,dime00230,15,50,2024-07-12,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00255,C00800102
+2024,dime00231,15,500,2024-07-13,100000047,"vasquez, tomas",vasquez,tomas,I,washington,DC,20009,administrator,state of maryland,stratton 2024,comm100003,SA11AI.00256,C00800102
+2024,dime00232,15,100,2024-07-13,100000080,"lindgren, gwen",lindgren,gwen,I,phoenix,AZ,85016,contractor,self-employed,calloway for congress,comm100006,SA11AI.00257,C00800106
+2024,dime00233,15,25,2024-07-18,100000087,"huang, uma",huang,uma,I,columbia,MD,21045,teacher,county public schools,driscoll for congress,comm100004,SA11AI.00258,C00800107
+2024,dime00234,15,250,2024-07-19,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,old line republican committee,comm100005,SA11AI.00259,C00800203
+2024,dime00235,15,1000,2024-07-22,100000096,"lindgren, luis",lindgren,luis,I,silver spring,MD,20901,consultant,self-employed,stratton 2024,comm100003,SA11AI.00260,C00800102
+2024,dime00236,15,250,2024-07-28,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,stratton 2024,comm100003,SA11AI.00261,C00800102
+2024,dime00237,15,50,2024-08-03,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00262,C00800106
+2024,dime00238,15,100,2024-08-06,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,whitlock for senate,comm100002,SA11AI.00263,C00800104
+2024,dime00239,15,250,2024-08-07,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,calloway for congress,comm100006,SA11AI.00264,C00800106
+2024,dime00240,15,100,2024-08-13,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,okafor for maryland,comm100001,SA11AI.00265,C00800103
+2024,dime00241,15,3300,2024-08-13,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,whitlock for senate,comm100002,SA11AI.00266,C00800104
+2024,dime00242,15,50,2024-08-14,100000066,"oyelaran, rafael",oyelaran,rafael,I,annapolis,MD,21403,attorney,bayview law group,calloway for congress,comm100006,SA11AI.00267,C00800106
+2024,dime00243,15,50,2024-08-16,100000035,"adeyemi, gwen",adeyemi,gwen,I,new york,NY,10025,retired,retired,hargrove for america,comm100008,SA11AI.00268,C00800101
+2024,dime00244,15,3300,2024-08-22,100000016,"carrera, wendy",carrera,wendy,I,new york,NY,10025,administrator,state of maryland,hargrove for america,comm100008,SA11AI.00269,C00800101
+2024,dime00245,15,2000,2024-08-24,100000097,"fairbanks, zach",fairbanks,zach,I,chicago,IL,60614,consultant,self-employed,okafor for maryland,comm100001,SA11AI.00270,C00800103
+2024,dime00246,15,100,2024-08-24,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,whitlock for senate,comm100002,SA11AI.00271,C00800104
+2024,dime00247,15,3300,2024-08-26,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,okafor for maryland,comm100001,SA11AI.00272,C00800103
+2024,dime00248,15,250,2024-09-01,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,stratton 2024,comm100003,SA11AI.00273,C00800102
+2024,dime00249,15,3300,2024-09-06,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,whitlock for senate,comm100002,SA11AI.00274,C00800104
+2024,dime00250,15,250,2024-09-09,100000092,"ibarra, xavier",ibarra,xavier,I,phoenix,AZ,85016,contractor,self-employed,stratton 2024,comm100003,SA11AI.00275,C00800102
+2024,dime00251,15,100,2024-09-11,100000098,"xiong, chloe",xiong,chloe,I,bowie,MD,20716,consultant,self-employed,okafor for maryland,comm100001,SA11AI.00276,C00800103
+2024,dime00252,15,500,2024-09-16,100000020,"thibodeaux, tomas",thibodeaux,tomas,I,frederick,MD,21702,attorney,bayview law group,bricklayers united pac,comm100013,SA11AI.00277,C00800202
+2024,dime00253,15,250,2024-09-17,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,calloway for congress,comm100006,SA11AI.00278,C00800106
+2024,dime00254,15,500,2024-09-19,100000079,"ibarra, quinn",ibarra,quinn,I,silver spring,MD,20901,retired,retired,stratton 2024,comm100003,SA11AI.00279,C00800102
+2024,dime00255,15,100,2024-09-21,100000015,"thibodeaux, sara",thibodeaux,sara,I,columbia,MD,21045,developer,northfield software,okafor for maryland,comm100001,SA11AI.00280,C00800103
+2024,dime00256,15,250,2024-09-24,100000028,"thibodeaux, karen",thibodeaux,karen,I,denver,CO,80206,professor,university of maryland,hargrove for america,comm100008,SA11AI.00281,C00800101
+2024,dime00257,15,3300,2024-09-28,100000024,"fairbanks, uma",fairbanks,uma,I,washington,DC,20009,not employed,not employed,yang for maryland,comm100011,SA11AI.00282,C00800108
+2024,dime00258,15,3300,2024-09-30,100000099,"zimmermann, nathan",zimmermann,nathan,I,annapolis,MD,21403,nurse,chesapeake health,stratton 2024,comm100003,SA11AI.00283,C00800102
+2024,dime00259,15,50,2024-09-30,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,old line republican committee,comm100005,SA11AI.00284,C00800203
+2024,dime00260,15,100,2024-10-02,100000033,"zimmermann, jamal",zimmermann,jamal,I,rockville,MD,20852,developer,northfield software,okafor for maryland,comm100001,SA11AI.00285,C00800103
+2024,dime00261,15,2000,2024-10-03,100000043,"ibarra, rafael",ibarra,rafael,I,phoenix,AZ,85016,loan officer,harbor bank,hargrove for america,comm100008,SA11AI.00286,C00800101
+2024,dime00262,15,1000,2024-10-03,100000022,"zimmermann, zach",zimmermann,zach,I,waldorf,MD,20602,loan officer,harbor bank,hargrove for america,comm100008,SA11AI.00287,C00800101
+2024,dime00263,15,250,2024-10-04,100000084,"zimmermann, frank",zimmermann,frank,I,phoenix,AZ,85016,consultant,self-employed,driscoll for congress,comm100004,SA11AI.00288,C00800107
+2024,dime00264,15,25,2024-10-12,100000068,"mcallister, gwen",mcallister,gwen,I,phoenix,AZ,85016,engineer,patuxent engineering,whitlock for senate,comm100002,SA11AI.00289,C00800104
+2024,dime00265,15,500,2024-10-20,100000097,"fairbanks, zach",fairbanks,zach,I,chicago,IL,60614,consultant,self-employed,okafor for maryland,comm100001,SA11AI.00290,C00800103
+2024,dime00266,15,2000,2024-10-23,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,comm100005,SA11AI.00291,C00800203
+2024,dime00267,15,500,2024-10-27,100000039,"baldwin, sara",baldwin,sara,I,new york,NY,10025,developer,northfield software,brannigan for maryland,comm100009,SA11AI.00292,C00800111
+2024,dime00268,15,250,2024-10-30,100000045,"mcallister, uma",mcallister,uma,I,bowie,MD,20716,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00293,C00800103
+2024,dime00269,15,250,2024-10-30,100000060,"mcallister, frank",mcallister,frank,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,comm100002,SA11AI.00294,C00800104
+2024,dime00270,15,25,2024-11-10,100000093,"santoro, sara",santoro,sara,I,towson,MD,21286,nurse,chesapeake health,hargrove for america,comm100008,SA11AI.00295,C00800101
+2024,dime00271,15,3300,2024-11-12,100000100,"xiong, xavier",xiong,xavier,I,new york,NY,10025,attorney,bayview law group,whitlock for senate,comm100002,SA11AI.00296,C00800104
+2024,dime00272,15,100,2024-11-17,100000040,"fairbanks, karen",fairbanks,karen,I,new york,NY,10025,nurse,chesapeake health,stratton 2024,comm100003,SA11AI.00297,C00800102
+2024,dime00273,15,250,2024-11-18,100000017,"fairbanks, chloe",fairbanks,chloe,I,rockville,MD,20852,administrator,state of maryland,okafor for maryland,comm100001,SA11AI.00298,C00800103
+2024,dime00274,15,250,2024-11-18,100000019,"baldwin, hector",baldwin,hector,I,bowie,MD,20716,contractor,self-employed,pell for liberty,comm100015,SA11AI.00299,C00800105
+2024,dime00275,15,100,2024-11-19,100000090,"baldwin, quinn",baldwin,quinn,I,chicago,IL,60614,loan officer,harbor bank,okafor for maryland,comm100001,SA11AI.00300,C00800103
+2024,dime00276,15,5,2024-03-05,100000101,"park, minji",park,minji,I,rockville,MD,20850,nurse,montgomery county,actblue,comm100016,SA11AI.00301,C00401224
+2024,dime00277,15,300,2024-04-01,100000102,"osei, kwame",osei,kwame,I,silver spring,MD,20910,teller,united bank,maryland forward pac,comm100007,SA11AI.00304,C00800201
+2024,dime00278,22Y,-300,2024-04-15,100000102,"osei, kwame",osei,kwame,I,silver spring,MD,20910,teller,united bank,maryland forward pac,comm100007,SB28A.00305,C00800201
+2024,dime00279,15,500,2024-05-01,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SA11AI.00306,C00800201
+2024,dime00280,22Y,-200,2024-05-10,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SB28A.00307,C00800201
+2024,dime00281,22Y,200,2024-05-20,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SB28A.00308,C00800201

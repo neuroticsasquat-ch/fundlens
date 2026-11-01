@@ -381,22 +381,14 @@ def dime_rows() -> list[dict[str, str]]:
 
 
 def dime_cids() -> dict[int, str]:
-    """Each counted contribution's DIME `bonica.cid`, joined as the validator will join them:
-    on date, amount, recipient committee and name (spec §6.9)."""
-    labels: dict[tuple[str, str, str, str], set[str]] = defaultdict(set)
+    """Each counted contribution's DIME `bonica.cid`, joined as the validator joins them: on the
+    filer's committee and transaction ids (ADR-0009)."""
+    labels: dict[tuple[str, str], set[str]] = defaultdict(set)
     for row in dime_rows():
-        key = (row["date"], row["amount"], row["bonica.rid"], row["contributor.name"])
-        labels[key].add(row["bonica.cid"])
+        labels[row["efec.comid.orig"], row["efec.transaction.id.orig"]].add(row["bonica.cid"])
     cids: dict[int, str] = {}
     for row in counted():
-        d = row["TRANSACTION_DT"]
-        key = (
-            f"{d[4:]}-{d[:2]}-{d[2:4]}",
-            str(signed(row)),
-            row["CMTE_ID"],
-            row["NAME"].lower(),
-        )
-        [cids[int(row["SUB_ID"])]] = labels[key]
+        [cids[int(row["SUB_ID"])]] = labels[row["CMTE_ID"], row["TRAN_ID"]]
     return cids
 
 
@@ -420,3 +412,13 @@ def test_each_donor_grouping_is_its_contributions_and_one_dime_donor() -> None:
         ), label
     cids_listed = [donor["bonica_cid"] for donor in EXPECTED["donors"].values()]
     assert len(cids_listed) == len(set(cids_listed))
+
+
+def test_the_expected_validation_labels_every_counted_contribution_and_its_keys() -> None:
+    validation = EXPECTED["validation"]
+    contributions = counted()
+    assert validation["matched_rows"] == len(dime_cids()) == len(contributions)
+    cids = dime_cids()
+    assert validation["labelled_keys"] == len(
+        {(contributor_key(r), cids[int(r["SUB_ID"])]) for r in contributions}
+    )
