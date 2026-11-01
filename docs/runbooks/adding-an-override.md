@@ -196,3 +196,16 @@ lines of the run.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-01 — Elon Musk's Hawthorne key (NEU-2121, PR #52)
+
+A merge of `MUSK, ELON|90250|SPACE X TESLA MOTORS|CEO CHIEF TECHNOLOGY OFFICER` (donor `2441074`, alone, $825,000)
+with `MUSK, ELON|78734|SPACEX|CEO` (donor `2441073`), applied from `bad9c28` by a `resolve --full` (model
+`20261101T205049Z`, 9 m 55 s) and then 2024's load and publish of build `20261031T202003Z`:
+
+- `overrides: 1 merges joining 1 clusters into others, 0 splits`
+- `crosswalk: 0 new donors, 1 keys re-pointed, 1 redirects`
+
+5,620,495 contributor keys in 3,816,140 clusters, one fewer than the first resolved run. Search for `musk elon` lists one
+donor, `2441073`, with `contributor_key_count` 11 and `total_all_cycles` 213055236, and `/v1/donors/2441074` answers
+`301` to `/v1/donors/2441073`. The publish's `fundlens/publish` Kuma push answered `404`; the publish itself succeeded.
