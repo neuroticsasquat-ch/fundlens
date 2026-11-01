@@ -31,6 +31,7 @@ function twoCycles() {
       return response(200).json({
         contributions: [
           {
+            cycle: Number(cycle),
             source_record_id: cycle,
             date: `${cycle}-06-01`,
             amount: 100,

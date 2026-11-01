@@ -303,6 +303,7 @@ export const contribution = (
   row: Pick<Contribution, "source_record_id" | "date" | "amount" | "contributor_name"> &
     Partial<Contribution>,
 ): Contribution => ({
+  cycle: 2024,
   recipient_committee_id: "C00800103",
   candidate_id: "S4MD00103",
   contributor_city: null,

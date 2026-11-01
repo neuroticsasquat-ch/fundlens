@@ -289,6 +289,8 @@ Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation":
 | `GET /v1/dataset` | list of snapshots from the public bucket manifest |
 | `GET /healthz` | Postgres + silver volume reachable |
 
+Donor routes, built by NEU-2052 (`api/routers/donors.py`): a `donor_id` in `gold.donor_redirect` answers `GET /v1/donors/{id}` and `…/contributions` with a cacheable 301 to the id it became, the rest of the path and the query kept. `…/contributions` takes `cycle` optionally: without it the walk reads the donor's bucket of every live cycle, one directory per cycle, newest cycle first, and the cursor carries the cycle of its last row, so a page may end one cycle and start the next. Every `/contributions` row carries its `cycle`.
+
 Responses carry `Cache-Control: public, max-age=3600, s-maxage=604800` and `ETag: <build_id>`; Cloudflare caches everything under `api.fundlens.org` and `publish` purges the zone. Cursor pagination on row lists (page size 100). Errors are RFC 9457 problem details. CORS allows `https://fundlens.org`. A Cloudflare rate-limiting rule (ops setting, not code) caps `/v1/*` per IP. The OpenAPI document is the contract: `frontend/src/api/` is generated from it in CI and a drift check fails the build.
 
 ### 7.3 Postgres access

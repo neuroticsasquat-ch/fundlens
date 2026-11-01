@@ -2,14 +2,16 @@
 
 Postgres holds only aggregates; "what did this committee or candidate actually receive" is a row
 list scanned out of one silver partition, `silver/contribution/cycle=<c>/build=<b>/`, where
-`<b>` is the cycle's live build in `gold.meta.cycles`. Every request is a filtered, ordered,
-limited scan: never an aggregate.
+`<b>` is the cycle's live build in `gold.meta.cycles`. "What did this donor give" is scanned out of
+one `bucket=<donor_id % 256>` directory of that partition, in one cycle or, one bucket per cycle,
+in all of them. Every request is a filtered, ordered, limited scan: never an aggregate.
 
-Rows come newest first, ties broken by `source_record_id`, and are paged by an opaque cursor
-holding the last row's `(date, source_record_id)` and the build it was read from. A cursor keeps
-reading its own build after a publish swaps a newer one in, so a walk through the pages neither
-skips nor repeats a row; once that build is pruned the cursor is gone (`BuildGone`) and the walk
-must start again from the first page.
+Rows come newest cycle first, then newest first, ties broken by `source_record_id`, and are paged
+by an opaque cursor holding the last row's `(cycle, date, source_record_id)` and the build it was
+read from. A cursor keeps reading its own build after a publish swaps a newer one in, so a walk
+through the pages neither skips nor repeats a row; once that build is pruned the cursor is gone
+(`BuildGone`) and the walk must start again from the first page. A donor's walk reads each older
+cycle from the build live when it gets there.
 
 The partitions are read from `DATA_DIR/silver`, the silver volume the `api` service mounts
 read-only. Reading R2 over httpfs instead, for a runner with no volume, is a change to where
@@ -20,7 +22,7 @@ import base64
 import binascii
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -41,6 +43,7 @@ THREADS = 2
 type Recipient = Literal["candidate_id", "recipient_committee_id"]
 
 COLUMNS: tuple[str, ...] = (
+    "cycle",
     "source_record_id",
     "date",
     "amount",
@@ -81,10 +84,17 @@ class Cursor:
     build_id: str
     date: date | None
     source_record_id: int
+    # None only in a cursor issued before a donor's walk could cross cycles: one cycle's.
+    cycle: int | None = None
 
     def encode(self) -> str:
         raw = json.dumps(
-            [self.build_id, self.date and self.date.isoformat(), str(self.source_record_id)],
+            [
+                self.build_id,
+                self.date and self.date.isoformat(),
+                str(self.source_record_id),
+                self.cycle,
+            ],
             separators=(",", ":"),
         )
         return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
@@ -93,11 +103,18 @@ class Cursor:
     def decode(cls, token: str) -> "Cursor":
         try:
             raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
-            build_id, day, record = json.loads(raw)
+            build_id, day, record, *rest = json.loads(raw)
+            [cycle] = rest or [None]
             paths.parse_build_id(build_id)
-            return cls(build_id, None if day is None else date.fromisoformat(day), int(record))
+            return cls(
+                build_id,
+                None if day is None else date.fromisoformat(day),
+                int(record),
+                None if cycle is None else int(cycle),
+            )
         except (binascii.Error, UnicodeDecodeError, TypeError, ValueError) as exc:
-            # json.JSONDecodeError is a ValueError, as is a malformed build id or date.
+            # json.JSONDecodeError is a ValueError, as is a malformed build id or date, or a
+            # cursor of the wrong length.
             raise BadCursor(token) from exc
 
 
@@ -105,6 +122,50 @@ class Cursor:
 class Page:
     rows: list[dict[str, Any]]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class Scan:
+    """One page's DuckDB read: the Parquet files, the rows of them wanted, and where it starts."""
+
+    files: list[str]
+    # A predicate on `$value`.
+    where: str
+    value: object
+    after: Cursor | None
+    # Each cycle read, newest first, and the build its files are.
+    builds: Mapping[int, str]
+    limit: int
+
+    def query(self) -> tuple[str, dict[str, object]]:
+        """The SQL and its parameters."""
+        # `date DESC` puts nulls last; the keyset predicate below follows the same order.
+        where = [self.where]
+        params: dict[str, object] = {
+            "files": self.files,
+            "value": self.value,
+            "limit": self.limit + 1,
+        }
+        if self.after is not None:
+            params["after_cycle"] = self.after.cycle
+            params["after_id"] = self.after.source_record_id
+            if self.after.date is None:
+                within = "date IS NULL AND source_record_id > $after_id"
+            else:
+                params["after_date"] = self.after.date
+                within = (
+                    "(date < $after_date OR date IS NULL"
+                    " OR (date = $after_date AND source_record_id > $after_id))"
+                )
+            where.append(f"(cycle < $after_cycle OR (cycle = $after_cycle AND {within}))")
+        query = (
+            f"SELECT {', '.join(COLUMNS)}"
+            " FROM read_parquet($files, hive_partitioning = false)"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY cycle DESC, date DESC NULLS LAST, source_record_id"
+            " LIMIT $limit"
+        )
+        return query, params
 
 
 def read_live_builds(pool: Pool) -> dict[int, str]:
@@ -159,55 +220,122 @@ class ItemizedReader:
         Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
         """
         after = None if cursor is None else Cursor.decode(cursor)
-        if after is None:
-            build_id = self._live_builds().get(cycle)
-            if build_id is None:
-                raise CycleNotLive(cycle)
+        if after is not None:
+            if after.cycle is None:
+                after = replace(after, cycle=cycle)
+            elif after.cycle != cycle:
+                raise BadCursor(cursor)
+        builds = self._builds([cycle], after)
+        partition = self._partition(cycle, builds[cycle], after)
+        return self.read(
+            Scan(
+                files=[str(partition / "**" / "*.parquet")],
+                where=f"{recipient} = $value",
+                value=recipient_id,
+                after=after,
+                builds=builds,
+                limit=limit,
+            )
+        )
+
+    def donor_scan(
+        self, donor_id: int, *, cycle: int | None, cursor: str | None, limit: int = PAGE_SIZE
+    ) -> Scan:
+        """The scan for one page of the donor's contributions, in `cycle` or else in every live
+        cycle, after `cursor` if given: each cycle's `donor_id % 256` bucket, and nothing else.
+
+        Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
+        """
+        after = None if cursor is None else Cursor.decode(cursor)
+        if after is not None and (after.cycle is None or cycle not in (None, after.cycle)):
+            # A recipient's cursor of the old format, or another cycle's.
+            raise BadCursor(cursor)
+        if cycle is not None:
+            cycles = [cycle]
         else:
-            build_id = after.build_id
+            cycles = list(self._live_builds())
+            if after is not None and after.cycle is not None:
+                # Read on, even if that cycle is no longer live.
+                cycles.append(after.cycle)
+        builds = self._builds(cycles, after)
+        files: list[str] = []
+        for each, build_id in builds.items():
+            self._partition(each, build_id, after)
+            bucket = paths.local_path(
+                self._data_dir, paths.silver_bucket(each, build_id, donor_id % paths.BUCKETS)
+            )
+            # A cycle none of the bucket's donors gave in has no directory for it.
+            files += sorted(str(part) for part in bucket.glob("*.parquet"))
+        return Scan(
+            files=files,
+            where="donor_id = $value",
+            value=donor_id,
+            after=after,
+            builds=builds,
+            limit=limit,
+        )
+
+    def donor_contributions(
+        self, donor_id: int, *, cycle: int | None, cursor: str | None, limit: int = PAGE_SIZE
+    ) -> Page:
+        """One page of the donor's contributions (`donor_scan`)."""
+        return self.read(self.donor_scan(donor_id, cycle=cycle, cursor=cursor, limit=limit))
+
+    def _builds(self, cycles: list[int], after: Cursor | None) -> dict[int, str]:
+        """The build to read each of `cycles` from, newest cycle first: the cursor's own for its
+        cycle, none for a cycle newer than it (the walk is past those), else the live one.
+
+        Raises `CycleNotLive` for a cycle no published build covers.
+        """
+        live = self._live_builds()
+        builds: dict[int, str] = {}
+        for cycle in sorted(set(cycles), reverse=True):
+            if after is not None and after.cycle is not None:
+                if cycle > after.cycle:
+                    continue
+                if cycle == after.cycle:
+                    builds[cycle] = after.build_id
+                    continue
+            if cycle not in live:
+                raise CycleNotLive(cycle)
+            builds[cycle] = live[cycle]
+        return builds
+
+    def _partition(self, cycle: int, build_id: str, after: Cursor | None) -> Path:
+        """The partition of `cycle`'s `build_id`, which must be on the volume.
+
+        Raises `BuildGone` when it is the cursor's and has been pruned.
+        """
         partition = self.partition(cycle, build_id)
         if not partition.is_dir():
-            if after is not None:
+            if after is not None and (after.cycle, after.build_id) == (cycle, build_id):
                 raise BuildGone(build_id)
             # gold.meta names a build the volume does not hold: not the caller's doing.
             raise FileNotFoundError(f"live silver partition missing: {partition}")
-        # `date DESC` puts nulls last; the keyset predicate below follows the same order.
-        where = [f"{recipient} = $recipient_id"]
-        params: dict[str, object] = {
-            "files": str(partition / "**" / "*.parquet"),
-            "recipient_id": recipient_id,
-            "limit": limit + 1,
-        }
-        if after is not None:
-            params["after_id"] = after.source_record_id
-            if after.date is None:
-                where.append("date IS NULL AND source_record_id > $after_id")
-            else:
-                params["after_date"] = after.date
-                where.append(
-                    "(date < $after_date OR date IS NULL"
-                    " OR (date = $after_date AND source_record_id > $after_id))"
-                )
-        query = (
-            f"SELECT {', '.join(COLUMNS)}"
-            " FROM read_parquet($files, hive_partitioning = false)"
-            f" WHERE {' AND '.join(where)}"
-            " ORDER BY date DESC NULLS LAST, source_record_id"
-            " LIMIT $limit"
-        )
+        return partition
+
+    def read(self, scan: Scan) -> Page:
+        """The page `scan` reads."""
+        if not scan.files:
+            return Page([], None)
+        query, params = scan.query()
         try:
             with self._db.cursor() as con:
                 result = con.execute(query, params)
                 rows = [dict(zip(COLUMNS, row, strict=True)) for row in result.fetchall()]
         except duckdb.IOException:
             # Pruned between the check above and the read.
-            if after is not None and not partition.is_dir():
-                raise BuildGone(build_id) from None
+            after = scan.after
+            if after is not None and after.cycle is not None:
+                if not self.partition(after.cycle, after.build_id).is_dir():
+                    raise BuildGone(after.build_id) from None
             raise
-        more = len(rows) > limit
-        rows = rows[:limit]
+        more = len(rows) > scan.limit
+        rows = rows[: scan.limit]
         next_cursor = None
         if more:
             last = rows[-1]
-            next_cursor = Cursor(build_id, last["date"], last["source_record_id"]).encode()
+            next_cursor = Cursor(
+                scan.builds[last["cycle"]], last["date"], last["source_record_id"], last["cycle"]
+            ).encode()
         return Page(rows, next_cursor)
