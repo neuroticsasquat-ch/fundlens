@@ -21,6 +21,7 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | 2024 | 2026-10-31 | `20261031T012553Z` | `d67cec2` | 454 | 5 | 407 | 4.1 (0.84 + 2.21) | 75 | 4.77 | 0.91 | 0.04 | 27.2 GiB | First run: committee-level gold, no resolution ([first-run.md](runbooks/first-run.md), NEU-2046). Publish includes its deliberate 75 s wait before the purge. |
 | 2024 | 2026-10-31 | `20261031T164731Z` | `27e1bd0` | — | — | 1871 | — | — | — | — | — | 24.34 GiB | Transform only, with contributor keys (NEU-2047) and the join-side fix (NEU-2076), `DUCKDB_THREADS=6`. 1,602 s of it in `04_contribution.sql`. Six silver tables; `contributor` 5,185,485 rows. |
 | 2024 | 2026-10-31 | `20261031T202003Z` | `47e3dd5` | — | — | 1343 | — | — | — | — | — | 23.46 GiB | Transform only, with JFC attributions (NEU-2078). 1,088 s of it in `04_contribution.sql`, 14 s in `06_jfc_attribution.sql`. Seven silver tables; `jfc_attribution` 17,037,819 rows, `contributor` 5,620,495 (435,010 more than NEU-2047's build). |
+| 2024 | 2026-11-01 | `20261031T202003Z` | `a4c82b8` | — | 6 | — | 169 (73.08 + 93.51) | 91 | — | 2.03 | 2.61 | 24.54 GiB | First resolved build: donor tables live ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Resolved, loaded and published NEU-2078's build; `seats` ran only to add the `race` partition its transform-only run lacked. Silver is after resolution's bucketed rewrite. Peak memory is resolve's; load and publish stayed below it. |
 
 The backfill (NEU-2060) and the weekly run (M5) add their own figures here.
 
@@ -33,6 +34,7 @@ file is `/data/fundlens/resolution/resolve.duckdb` after the run.
 
 | Date | Model | Cycles (build) | SHA | Contributor keys | Clusters | Load / train / cluster / overrides / save / crosswalk / silver s | Wall s | Peak `pipeline` memory | Working file GB | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 
 ## Findings
 
@@ -63,3 +65,13 @@ file is `/data/fundlens/resolution/resolve.duckdb` after the run.
   NEU-2047's 31 minutes although `04_contribution.sql` now also normalizes the 15J lines' values. The difference
   is not explained: neither run recorded the box's other load. The 435,010 new `contributor` rows match the
   spec's measured 434,469 new 15J keys (§6.11) to within 0.2%.
+- **Resolution costs less than a transform (NEU-2079).** `resolve --full` linked 2024's 5,620,495 contributor keys into
+  3,816,141 donors in 12.7 minutes, and `pipeline` peaked at 24.54 GiB, below the transform's 27.2 GiB. Splink itself,
+  train and cluster, took 5 minutes. The longest phase was `silver` (346 s), which rewrote 51,014,276 contributions into
+  256 buckets and uploaded them, and the peak came early in it. The working file is 9.91 GB. `--full` loads every
+  cycle's keys into one table (spec §6.10), so the backfill (NEU-2060) resolves the union of every cycle's keys at once,
+  and its memory follows that count, not one cycle's. Measure a few cycles together before resolving them all.
+- **Donors are most of gold now (NEU-2079).** With 3.8M donors and 7.0M `donor_top_recipient` rows, gold grew from 0.04 GB
+  to 2.61 GB and the database from 49 MB to 3.68 GB (with `app.crosswalk`'s 5.6M rows). Load took 169 s (aggregates
+  73 s, `COPY` 94 s), against 4 s without donors. The spec's 10–30 GB gold estimate (§3.4) is for every cycle; one cycle
+  is 2.6 GB.

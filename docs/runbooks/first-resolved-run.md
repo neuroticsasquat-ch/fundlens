@@ -587,3 +587,42 @@ ticket and link it from NEU-2079.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-01 — First resolved run (NEU-2079)
+
+Build `20261031T202003Z`, model `20261101T024736Z`, published at 03:15:31 UTC from `a4c82b8`. Every check passed, and
+nothing was rolled back. The figures are in [`docs/capacity.md`](../capacity.md):
+
+- seats 6 s (step 2 ran: NEU-2078's transform-only build had no `race` partition), with 441 + 35 + 1 races and 51
+  unmatched filings, as in NEU-2046;
+- resolve 762 s: 5,620,495 contributor keys in 3,816,141 clusters, trained, with no overrides. Phases: load 10.08 s,
+  train 190.33 s, cluster 111.11 s, overrides 0.00 s, save 0.12 s, crosswalk 101.13 s, silver 346.49 s. Peak `pipeline`
+  memory 24.54 GiB at 02:55:01, in `silver`. Working file 9.91 GB. 256 buckets in the volume and in R2;
+- load 169 s (aggregates 73.08 s, `COPY` 93.51 s): 3,816,141 donors, 3,816,003 donor search rows (138 donors have no
+  display name), gold 2.61 GB;
+- publish 91 s. NEU-2046's `20261031T012553Z` is now `gold_prev`; 0 silver builds pruned;
+- free space on `/` went from 231 GB to 215 GB.
+
+Step 5: `race`, `race_candidate`, `committee_cycle` and `cycle` were identical in the two builds. Alsobrooks
+$14,991,464 and Hogan $4,659,760, NEU-2046's figures, and the API served the same in step 9.5.
+
+Steps 3.1 and 9: Elon Musk is donor `2441073`, with 10 of his 11 contributor keys. That is $212,230,236 net over 24
+counted contributions, in eight name and employer spellings, all in Austin or Lakeway, TX. Five of the ten keys are known
+only from 15J lines and carry $0. His top recipient is America PAC (`C00879510`), $197,662,036. Search finds him first.
+`/v1/donors/2441073` gave `MISS` then `HIT` with the build in its `etag`, and `contributor_key_count` 10. His
+`/contributions` page lists the 24 rows, which sum to his total.
+
+Findings, none of them a deviation from the spec:
+
+- **One Musk key sat apart.** `MUSK, ELON|90250|SPACE X TESLA MOTORS|CEO CHIEF TECHNOLOGY OFFICER` (Hawthorne, CA,
+  $825,000) is donor `2441074`, so search shows two `MUSK, ELON` donors. Its ZIP, state and employer all differ, so
+  linkage kept it apart; joining it is an override's job ([adding-an-override.md](adding-an-override.md)), filed as
+  NEU-2121.
+- **FEC lists more Musk money to America PAC than fundlens counts, all of it memo lines.** FEC's API lists 26 rows from
+  him to `C00879510`. fundlens counts the 16 that are not memos, $197,662,036, matching row for row. The other 10 are
+  in-kind "ATTRIBUTION" memo lines, $52,092,950, which silver leaves out by its memo rule.
+- **Cents are gone before fundlens reads the bulk file.** His in-kind travel row is $112,036.50 in FEC's API and
+  $112,036 in fundlens. Silver reads `TRANSACTION_AMT` as `DECIMAL(14,2)` (`fec/files.py`), so the bulk file carried
+  whole dollars. That fits NEU-2046's race totals, which also came out to whole dollars.
+- **The ticket's `resolve --full --build-id <B>`** is run as `--build-id <model version>`, for the reason in
+  [Facts](#facts).
