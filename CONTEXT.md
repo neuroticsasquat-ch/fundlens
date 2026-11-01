@@ -81,6 +81,17 @@ A manual merge or split assertion applied after linkage, authored data that surv
 **Adjudication**:
 A model's judgment on an ambiguous high-value cluster, recorded as an override with its provenance.
 
+**Reference label**:
+The contributor id DIME (Bonica, Stanford) assigns to an FEC contribution, `bonica.cid`: the ground truth resolution is scored against. Never shown on the site and never a `donor_id`.
+_Avoid_: DIME id, true donor, gold label
+
+**Labelled key**:
+One `(contributor key, reference label)` pair among the contributions DIME and fundlens both know: the record precision and recall count pairs of. A key DIME gives two labels is two labelled keys.
+
+**Validation**:
+`fundlens validate`: scoring a resolved build's `donor_id`s against the reference labels, as pairwise precision and recall, overall and for the top contributors by dollars. A report, not a pipeline step: it writes `app.resolution_quality`, and `load` copies the live model's figures into `gold.meta`.
+_Avoid_: evaluation, benchmark, accuracy (the figures are precision and recall, not accuracy)
+
 ### Data tiers
 
 **Bronze**:

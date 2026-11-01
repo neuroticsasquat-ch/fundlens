@@ -138,6 +138,8 @@ silver/<table>/cycle=<cycle>/build=<build_id>/part-0000.parquet   zstd, row grou
 silver/contribution/cycle=<cycle>/build=<build_id>/bucket=<00..ff>/part-*.parquet   bucket = donor_id % 256, zero-padded hex
 resolution/build=<build_id>/{crosswalk,adjudication}.parquet       snapshot taken at publish
 markers/cycle=<cycle>/build=<build_id>/{extracted,transformed,resolved,loaded,published}.json
+reference/dime/v<version>/contribDB_<cycle>.csv.gz                  DIME as downloaded, archived (NEU-2054, ADR-0009)
+reference/dime/v<version>/cycle=<cycle>/fec_individual.parquet      its FEC individual rows, slimmed: what `validate` reads
 ```
 
 `build_id` = `YYYYMMDDTHHMMSSZ` of the run start. Only the rebuilt cycle gets a new build directory; `gold.meta` records the live `build_id` per cycle, and the API resolves silver paths from it. Builds older than the previous live one are pruned at the end of a successful publish.
@@ -195,6 +197,8 @@ fundlens publish   --cycle 2026 [--dataset]          # dataset snapshot only on 
 fundlens run       --cycle 2026 [--dataset]          # extract → transform → resolve → load → publish
 fundlens seats     --cycle 2026                      # regenerate the seat calendar
 fundlens dataset   --snapshot                        # publish a dataset snapshot from the live build
+fundlens dime      --cycle 2024 --import PATH        # archive a DIME file and slim it for the validator (NEU-2054)
+fundlens validate  --cycle 2024 [--top 10000]        # precision/recall of the resolved build against DIME (§6.9)
 fundlens health                                      # exit 0 iff Postgres + R2 reachable
 ```
 
@@ -232,7 +236,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 6. **Crosswalk (`app.crosswalk`: `contributor_key PK, donor_id bigint, assigned_at, build_id`).** For each cluster: if its members already carry donor_ids, the cluster takes the one covering the most contribution dollars; members carrying a different id are re-pointed (a merge) and `app.donor_redirect(old_id → new_id)` records it; a never-seen key gets `nextval(app.donor_id_seq)`. A cluster that splits keeps the id on the larger-dollar half; the other half gets a new id. `donor_id`s are never reused. Built by NEU-2049 (`resolve/crosswalk.py`): `resolve --full` assigns after clustering, writes only rows whose id changed, and points an existing redirect on when its target is merged away, so every redirect resolves in one hop; it then rewrites each cycle's `contribution` (into `bucket=` directories) and `contributor` partitions with `donor_id`, in place under the transformed build.
 7. **Canonical display.** `gold.donor.display_name` = the most frequent `name_raw` variant weighted by amount; employer/occupation/city/state likewise.
 8. **Adjudication (`resolve.adjudicate`).** Candidates: clusters (or pairs of clusters that share last name + zip3) whose total ≥ `ADJUDICATE_MIN_AMOUNT` (default $50,000) and whose match probability lies in `[0.6, 0.95)` or whose members disagree on employer. Batched to DeepInfra (OpenAI-compatible; `ADJUDICATE_MODEL` default `deepseek-ai/DeepSeek-V4-Flash`; time a model before changing it) with `resolution/prompts/adjudicate_v1.md`, structured JSON reply `{decision: merge|split|unsure, confidence, reason}`. Results go to `app.adjudication (cluster_fingerprint, model, prompt_version, decision, confidence, reason, decided_at)` and are applied like overrides when `confidence ≥ 0.8`. Never called from the API.
-9. **Validation (`resolve.validate`).** Join DIME contributor records (Bonica, Stanford; `bonica.cid`) to FEC `SUB_ID`s by (date, amount, recipient committee, normalized name) and compute pairwise precision/recall of fundlens clusters against `bonica.cid` on the matched subset, overall and for the top 10k contributors by dollars. The report is written to `gold.meta` and shown on the methodology page. DIME covers through 2024; check its terms of use before download.
+9. **Validation (`resolve.validate`).** Join DIME contributor records (Bonica, Stanford; `bonica.cid`) to FEC `SUB_ID`s by (date, amount, recipient committee, normalized name) and compute pairwise precision/recall of fundlens clusters against `bonica.cid` on the matched subset, overall and for the top 10k contributors by dollars. The report is written to `gold.meta` and shown on the methodology page. DIME covers through 2024; check its terms of use before download. Amended by NEU-2054 (ADR-0009): the reference is DIME Public version 4.0 (ODC-BY 1.0), one `contribDB_<cycle>.csv.gz` per cycle, imported by `fundlens dime --cycle C --import PATH` into R2 `reference/dime/v4.0/` (the raw file archived, a slim Parquet of its FEC individual rows read); the join is exact, on DIME's `efec.comid.orig` and `efec.transaction.id.orig` (the filer's `CMTE_ID` and `TRAN_ID`) plus amount and date against the cycle's bronze `indiv`, then `SUB_ID` to silver; the record scored is the labelled contributor key, one per `(contributor_key, bonica.cid)`; the top scope is the 10,000 `cid`s with the most matched dollars; `fundlens validate --cycle C` writes both scopes to `app.resolution_quality(model_version, cycle, scope, …)` with their pair counts, and `load` copies the live model's figures into `gold.meta` (`precision`, `recall`, `precision_top`, `recall_top`, `matched_rows`, `dime_version`). Per-ticket spec: `docs/specs/NEU-2054-dime-validation.md`.
 10. **Incremental weekly.** Only the current cycle's new contributor keys are linked (against the full contributor table, using the saved model); existing keys keep their donor_id. `--full` re-trains and re-clusters everything and is only run when the model or normalization changes.
 11. **JFC attribution lines (NEU-2072).** A joint fundraising committee's participant itemizes the individuals behind each JFC transfer as `oth` 15J memo lines (`MEMO_CD = 'X'`), each the share of one person's gift attributed to that participant. They are evidence about people, never money: the participant's share reaches it as the JFC's 18J transfer in `committee_transfer`, and the JFC's own `indiv` row counts the person's gift wherever the JFC itemized it. Measured 2026-10-31 on FEC's public 2024 `oth`, `indiv` and `cm` files, keys built by `resolve.normalize`, and `indiv` filtered by `04_contribution.sql`'s entity-type, memo and 24T rules (not its conduit-side, committee-in-`cm` or refund-sign rules, so the overlaps run slightly high):
     - **The lines.** 17,037,819 memo lines with an individual's entity type, $2,165,892,334. Left out: 1,950 memo lines with another entity type (ORG, PAC, COM, CCM, PTY, CAN) and 762 15J lines not marked memo. Every line has a blank `OTHER_ID`, so none names its JFC by id. `MEMO_TEXT` names a committee in `cm` on 35.0% of lines (`* HARRIS VICTORY FUND`, `JFC ATTRIB: …`, `TRANSFER FROM …`), the filing's only 18J sender identifies it on 5.8% more, and 59.2% name none. 15.7M of the lines are under $200: participants itemize attributions far below the JFC's own itemization threshold.
@@ -252,7 +256,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 
 | Table | Content |
 |---|---|
-| `meta` | one row: `build_id, published_at, resolver_version, model_version, precision, recall, cycles jsonb (cycle → live build_id, source download dates)` |
+| `meta` | one row: `build_id, published_at, resolver_version, model_version, precision, recall, precision_top, recall_top, matched_rows, dime_version, cycles jsonb (cycle → live build_id, source download dates)` (the quality columns since NEU-2054: `precision`/`recall` are the overall scope, `_top` the top-10k scope) |
 | `cycle` | `cycle, race_count, contribution_count, total_amount` |
 | `race` | `race_id, cycle, office, state, district, is_special, slug, candidate_count, total_individual, total_committee, ie_support, ie_oppose` |
 | `race_candidate` | `race_id, candidate_id, name, party, incumbent_challenger_open, principal_committee_id, total_individual, total_committee, self_funding, ie_support, ie_oppose` |
@@ -334,7 +338,7 @@ Postgres: the ops `backup-postgres.sh` loop picks up the new container (`REQUIRE
 
 ### 10.5 Runbooks (in `docs/runbooks/`, written by their tickets)
 
-Cloudflare setup (zone, R2, tokens, Worker domain), Coolify project setup, first backfill, rollback (`publish --rollback`), re-resolving with `--full`, adding an override, rotating the DIME file.
+Cloudflare setup (zone, R2, tokens, Worker domain), Coolify project setup, first backfill, rollback (`publish --rollback`), re-resolving with `--full`, adding an override, refreshing the DIME file (`refreshing-dime.md`, NEU-2054).
 
 ### 10.6 Capacity record
 
@@ -361,7 +365,7 @@ The backfill milestone records in `docs/capacity.md`: per-cycle transform time, 
 ## 13. Open items deferred (not blockers for v1 tickets)
 
 - ~~Whether gold loads via DuckDB's postgres extension or `COPY` from Parquet~~: decided 2026-10-30 in ADR-0007 (DuckDB → CSV → `COPY`); fixture timing in the NEU-2039 spec, real-cycle timing in `docs/capacity.md` (NEU-2046).
-- Trained Splink thresholds: defaults above; tuned in the DIME validation ticket.
+- Trained Splink thresholds: defaults above. NEU-2054 produces the precision/recall figure (2026-11-01: tuning was taken out of its scope); tuning against it is a follow-up ticket once the first real validation has run.
 - Exact MinIO-vs-R2 parity edge cases (multipart rename semantics): handled in the R2 client ticket with an integration test against MinIO.
 - Hetzner Cloud ephemeral runner: out of v1; the capacity record decides.
 
