@@ -133,7 +133,23 @@ describe("CommitteePage", () => {
     expect(
       within(section("Top recipients")).getByRole("link", { name: "OKAFOR, DIANA" }),
     ).toHaveAttribute("href", "/candidate/S4MD00103");
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+    expect(
+      within(section("Top donors")).getByText("No resolved individual donors in 2024."),
+    ).toBeInTheDocument();
+  });
+
+  it("lists the cycle's top donors, linked to their donor pages", async () => {
+    renderApp("/committee/C00800103");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "$3,300"],
+      ["2", "DUBOIS, RAYMOND", "$2,500"],
+      ["3", "GALLAGHER, TOMAS", "$500"],
+    ]);
+    expect(
+      within(section("Top donors")).getByRole("link", { name: "DUBOIS, RAYMOND" }),
+    ).toHaveAttribute("href", "/donor/236");
   });
 
   it("says when the committee gave to no one in the cycle", async () => {

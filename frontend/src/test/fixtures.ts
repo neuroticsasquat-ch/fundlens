@@ -4,12 +4,14 @@ import type {
   CommitteeCycle,
   Contribution,
   Cycle,
+  Donor,
   Meta,
   Problem,
   Race,
   RaceCandidate,
   RaceSummary,
   SearchResult,
+  TopDonor,
 } from "../api/client";
 
 // The fixture cycle as the API serves it, from tests/fixtures/fec/2024/expected.yaml.
@@ -110,6 +112,27 @@ const candidate = (
   ...candidate,
 });
 
+// The resolved donors the fixture pages name, by `donor_id`. Gold numbers donors itself; these are
+// stand-ins, fixed so links can be asserted.
+export const DONOR_IDS = {
+  marlowe: 412,
+  zimmermann: 518,
+  dubois: 236,
+  gallagher: 305,
+  /** An id a merge retired: the API answers it with a 301 to MARLOWE's. */
+  mergedIntoMarlowe: 77,
+} as const;
+
+/**
+ * Who gave most to OKAFOR in 2024, as indiv.csv has it: the top of `gold.candidate_top_donor`,
+ * also her principal committee's `committee_top_donor`. Her own $5,000 is not in it.
+ */
+const OKAFOR_TOP_DONORS: TopDonor[] = [
+  { rank: 1, donor_id: DONOR_IDS.zimmermann, display_name: "ZIMMERMANN, ZACH", amount: 3300 },
+  { rank: 2, donor_id: DONOR_IDS.dubois, display_name: "DUBOIS, RAYMOND", amount: 2500 },
+  { rank: 3, donor_id: DONOR_IDS.gallagher, display_name: "GALLAGHER, TOMAS", amount: 500 },
+];
+
 /**
  * `/v1/races/2024/senate/MD`: four candidates, most money first (the API's order), and the two
  * committees that gave to them. WHITLOCK is the self-funder: his loan is self-funding, not in
@@ -170,7 +193,45 @@ export const RACE_SENATE_MD: Race = {
       kind: "contribution",
     },
   ],
-  top_donors: [],
+  // Four of the race's donors, as indiv.csv has their gifts: ZIMMERMANN split between two
+  // candidates, GALLAGHER among three. WHITLOCK's loan to himself makes him no donor here.
+  top_donors: [
+    {
+      rank: 1,
+      donor_id: DONOR_IDS.zimmermann,
+      display_name: "ZIMMERMANN, ZACH",
+      amount: 6600,
+      candidates: [
+        { candidate_id: "S4MD00103", amount: 3300 },
+        { candidate_id: "S4MD00111", amount: 3300 },
+      ],
+    },
+    {
+      rank: 2,
+      donor_id: DONOR_IDS.marlowe,
+      display_name: "MARLOWE, AUGUSTINE MR.",
+      amount: 3300,
+      candidates: [{ candidate_id: "S4MD00104", amount: 3300 }],
+    },
+    {
+      rank: 3,
+      donor_id: DONOR_IDS.dubois,
+      display_name: "DUBOIS, RAYMOND",
+      amount: 2500,
+      candidates: [{ candidate_id: "S4MD00103", amount: 2500 }],
+    },
+    {
+      rank: 4,
+      donor_id: DONOR_IDS.gallagher,
+      display_name: "GALLAGHER, TOMAS",
+      amount: 1750,
+      candidates: [
+        { candidate_id: "S4MD00103", amount: 500 },
+        { candidate_id: "S4MD00104", amount: 250 },
+        { candidate_id: "S4MD00111", amount: 1000 },
+      ],
+    },
+  ],
 };
 
 /**
@@ -226,8 +287,8 @@ export const CANDIDATE_OKAFOR: Candidate = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
-      contributor_count: null,
-      top_donors: [],
+      contributor_count: 61,
+      top_donors: OKAFOR_TOP_DONORS,
     },
   ],
 };
@@ -266,7 +327,12 @@ export const COMMITTEE_OKAFOR: Committee = {
   connected_org: null,
   is_conduit: false,
   cycles: [
-    committeeCycle({ total_individual: 37550, self_funding: 5000, total_from_committees: 25000 }),
+    committeeCycle({
+      total_individual: 37550,
+      self_funding: 5000,
+      total_from_committees: 25000,
+      top_donors: OKAFOR_TOP_DONORS,
+    }),
   ],
 };
 
@@ -345,6 +411,7 @@ export const CONTRIBUTIONS: Contribution[] = [
     amount: 1500,
     contributor_name: "DUBOIS, RAYMOND",
     contributor_employer: "ASTRA EXPLORATION TECHNOLOGIES",
+    donor_id: DONOR_IDS.dubois,
   }),
   contribution({
     source_record_id: "4240100000000000057",
@@ -382,6 +449,159 @@ export const CONTRIBUTIONS: Contribution[] = [
     contributor_name: "ZIMMERMANN, LUIS",
     contributor_employer: "NOT EMPLOYED",
     recipient_committee_id: "C00800113",
+  }),
+];
+
+/**
+ * `/v1/donors/412`: the fixture's Musk, MARLOWE, AUGUSTINE, five spellings over four contributor
+ * keys resolved into one donor. His 2024 gifts are indiv.csv's; 2022's two are invented, so the
+ * page has two cycles to cross. The display columns are those of the most money: his $10,000 as
+ * "MARLOWE, AUGUSTINE MR.".
+ */
+export const DONOR_MARLOWE: Donor = {
+  donor_id: DONOR_IDS.marlowe,
+  display_name: "MARLOWE, AUGUSTINE MR.",
+  employer: "SELF-EMPLOYED",
+  occupation: "ENTREPRENEUR",
+  city: "BROWNSVILLE",
+  state: "TX",
+  zip5: "78521",
+  total_all_cycles: 29000,
+  first_cycle: 2022,
+  last_cycle: 2024,
+  contributor_key_count: 4,
+  cycles: [
+    { cycle: 2024, amount: 23200, contribution_count: 5 },
+    { cycle: 2022, amount: 5800, contribution_count: 2 },
+  ],
+  top_recipients: [
+    ["committee", "C00800203", "OLD LINE REPUBLICAN COMMITTEE", 12900],
+    ["candidate", "P40000102", "STRATTON, BLAKE", 6600],
+    ["candidate", "S4MD00104", "WHITLOCK, GORDON", 6200],
+    ["candidate", "H4MD05107", "DRISCOLL, PETER", 3300],
+  ].map(([recipient_kind, recipient_id, name, amount], index) => ({
+    rank: index + 1,
+    recipient_kind: recipient_kind as "candidate" | "committee",
+    recipient_id: String(recipient_id),
+    name: String(name),
+    amount: Number(amount),
+  })),
+};
+
+const marlowe = (
+  row: Pick<
+    Contribution,
+    | "source_record_id"
+    | "date"
+    | "amount"
+    | "contributor_name"
+    | "recipient_committee_id"
+    | "candidate_id"
+  > &
+    Partial<Contribution>,
+): Contribution =>
+  contribution({
+    donor_id: DONOR_IDS.marlowe,
+    contributor_city: "AUSTIN",
+    contributor_state: "TX",
+    ...row,
+  });
+
+/**
+ * MARLOWE's seven counted contributions, newest first: 2024's five, then 2022's two, the older
+ * a WinRed earmark counted once at WHITLOCK FOR SENATE.
+ */
+export const MARLOWE_CONTRIBUTIONS: Contribution[] = [
+  marlowe({
+    source_record_id: "4240100000000000010",
+    date: "2024-07-30",
+    amount: 10000,
+    contributor_name: "MARLOWE, AUGUSTINE MR.",
+    contributor_city: "BROWNSVILLE",
+    contributor_zip: "78521",
+    contributor_employer: "SELF-EMPLOYED",
+    contributor_occupation: "ENTREPRENEUR",
+    recipient_committee_id: "C00800203",
+    candidate_id: null,
+  }),
+  marlowe({
+    source_record_id: "4240100000000000011",
+    date: "2024-06-03",
+    amount: 3300,
+    contributor_name: "MARLOWE,AUGUSTINE JR.",
+    contributor_city: "HAWTHORNE",
+    contributor_state: "CA",
+    contributor_zip: "902501234",
+    contributor_employer: "ASTRAX",
+    contributor_occupation: "CEO",
+    recipient_committee_id: "C00800102",
+    candidate_id: "P40000102",
+  }),
+  marlowe({
+    source_record_id: "4240100000000000009",
+    date: "2024-04-22",
+    amount: 3300,
+    contributor_name: "MARLOWE, AUGUSTINE REEVE",
+    contributor_zip: "787254321",
+    contributor_employer: "VOLTAIC MOTORS",
+    contributor_occupation: "CEO",
+    recipient_committee_id: "C00800107",
+    candidate_id: "H4MD05107",
+  }),
+  marlowe({
+    source_record_id: "4240100000000000008",
+    date: "2024-02-01",
+    amount: 3300,
+    contributor_name: "MARLOWE, AUGUSTINE R.",
+    contributor_zip: "78701",
+    contributor_employer: "ASTRA EXPLORATION TECHNOLOGIES",
+    contributor_occupation: "CHIEF ENGINEER",
+    recipient_committee_id: "C00800104",
+    candidate_id: "S4MD00104",
+  }),
+  marlowe({
+    source_record_id: "4240100000000000007",
+    date: "2023-09-12",
+    amount: 3300,
+    contributor_name: "MARLOWE, AUGUSTINE",
+    contributor_city: "HAWTHORNE",
+    contributor_state: "CA",
+    contributor_zip: "902501234",
+    contributor_employer: "ASTRAX",
+    contributor_occupation: "CEO",
+    recipient_committee_id: "C00800102",
+    candidate_id: "P40000102",
+  }),
+  marlowe({
+    cycle: 2022,
+    source_record_id: "4220100000000000002",
+    date: "2022-10-14",
+    amount: 2900,
+    contributor_name: "MARLOWE, AUGUSTINE",
+    contributor_city: "HAWTHORNE",
+    contributor_state: "CA",
+    contributor_zip: "902501234",
+    contributor_employer: "ASTRAX",
+    contributor_occupation: "CEO",
+    recipient_committee_id: "C00800203",
+    candidate_id: null,
+  }),
+  marlowe({
+    cycle: 2022,
+    source_record_id: "4220100000000000001",
+    date: "2022-03-08",
+    amount: 2900,
+    contributor_name: "MARLOWE, AUGUSTINE",
+    contributor_city: "HAWTHORNE",
+    contributor_state: "CA",
+    contributor_zip: "902501234",
+    contributor_employer: "ASTRAX",
+    contributor_occupation: "CEO",
+    recipient_committee_id: "C00800104",
+    candidate_id: "S4MD00104",
+    transaction_type: "15E",
+    conduit_committee_id: "C00694323",
+    memo_text: "EARMARKED THROUGH WINRED",
   }),
 ];
 

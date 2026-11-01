@@ -4,7 +4,6 @@ import { renderApp } from "./test/app";
 
 describe("routes", () => {
   it.each([
-    ["/donor/d-1", "Donor"],
     ["/dataset", "Dataset"],
     ["/methodology", "Methodology"],
   ])("%s renders the %s stub until its page is built", async (path, name) => {
@@ -21,6 +20,7 @@ describe("routes", () => {
     ["/race/2024/senate/NE?special=1", "2024 Senate · Nebraska"],
     ["/candidate/S4MD00103", "OKAFOR, DIANA"],
     ["/committee/C00401224", "ACTBLUE"],
+    ["/donor/412", "MARLOWE, AUGUSTINE MR."],
     ["/search?q=calloway", "Search: calloway"],
   ])("%s renders its page", async (path, heading) => {
     renderApp(path);
