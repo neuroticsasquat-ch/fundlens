@@ -47,7 +47,7 @@ describe("the shell", () => {
     ["/race/2024/senate/NE?special=1", "/race/2022/senate/NE", ""],
     ["/candidate/H4MD05106", "/candidate/H4MD05106", "#cycle-2022"],
     ["/committee/C00800106", "/committee/C00800106", "#cycle-2022"],
-    ["/donor/d-1", "/cycles/2022", ""],
+    ["/donor/412", "/cycles/2022", ""],
     ["/search?q=calloway", "/cycles/2022", ""],
     ["/dataset", "/cycles/2022", ""],
     ["/methodology", "/cycles/2022", ""],

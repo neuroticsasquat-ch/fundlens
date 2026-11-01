@@ -12,6 +12,9 @@ import {
   COMMITTEES,
   CONTRIBUTIONS,
   CYCLES,
+  DONOR_IDS,
+  DONOR_MARLOWE,
+  MARLOWE_CONTRIBUTIONS,
   META,
   problem,
   RACE_PAGES,
@@ -21,8 +24,9 @@ import {
 
 /**
  * The fixture API: the 2024 cycle, its races and their pages, OKAFOR's candidate page, three
- * committees' pages, their 2024 contributions on one page, and hits for any query containing
- * "calloway".
+ * committees' pages, their 2024 contributions on one page, MARLOWE's donor page and his
+ * contributions on one page (the id a merge retired redirecting to his), and hits for any query
+ * containing "calloway".
  */
 export const fixtureApi = (): HttpHandler[] => [
   http.get("/v1/cycles", ({ response }) => response(200).json(CYCLES)),
@@ -65,6 +69,23 @@ export const fixtureApi = (): HttpHandler[] => [
       next_cursor: null,
     }),
   ),
+  http.get("/v1/donors/{donor_id}", ({ params, response }) => {
+    if (params.donor_id === String(DONOR_IDS.mergedIntoMarlowe))
+      return response(301).empty({ headers: { Location: `/v1/donors/${DONOR_IDS.marlowe}` } });
+    return params.donor_id === String(DONOR_IDS.marlowe)
+      ? response(200).json(DONOR_MARLOWE)
+      : response(404).json(problem(404, "Not Found", `No donor ${params.donor_id}.`));
+  }),
+  http.get("/v1/donors/{donor_id}/contributions", ({ params, request, response }) => {
+    const cycle = new URL(request.url).searchParams.get("cycle");
+    return response(200).json({
+      contributions: MARLOWE_CONTRIBUTIONS.filter(
+        (row) =>
+          String(row.donor_id) === params.donor_id && (!cycle || String(row.cycle) === cycle),
+      ),
+      next_cursor: null,
+    });
+  }),
   http.get("/v1/search", ({ request, response }) => {
     const q = new URL(request.url).searchParams.get("q") ?? "";
     return response(200).json(q.toLowerCase().includes("calloway") ? SEARCH_CALLOWAY : []);

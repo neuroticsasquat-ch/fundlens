@@ -75,7 +75,35 @@ describe("RacePage", () => {
     expect(
       within(section("Top committees")).getByRole("link", { name: "BRICKLAYERS UNITED PAC" }),
     ).toHaveAttribute("href", "/committee/C00800202");
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+  });
+
+  it("lists the top donors with what each gave each candidate, and no self-funder", async () => {
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "OKAFOR, DIANA $3,300BRANNIGAN, TESS $3,300", "$6,600"],
+      ["2", "MARLOWE, AUGUSTINE MR.", "WHITLOCK, GORDON $3,300", "$3,300"],
+      ["3", "DUBOIS, RAYMOND", "OKAFOR, DIANA $2,500", "$2,500"],
+      [
+        "4",
+        "GALLAGHER, TOMAS",
+        "BRANNIGAN, TESS $1,000OKAFOR, DIANA $500WHITLOCK, GORDON $250",
+        "$1,750",
+      ],
+    ]);
+    const donors = section("Top donors");
+    expect(within(donors).getByRole("link", { name: "MARLOWE, AUGUSTINE MR." })).toHaveAttribute(
+      "href",
+      "/donor/412",
+    );
+    const [zimmermann] = rows("Top donors");
+    expect(within(zimmermann).getByRole("link", { name: "BRANNIGAN, TESS" })).toHaveAttribute(
+      "href",
+      "/candidate/S4MD00111",
+    );
+    // WHITLOCK's $1.75M of his own money makes him no donor to his race.
+    expect(rows("Top donors").map((row) => cells(row)[1])).not.toContain("WHITLOCK, GORDON");
   });
 
   it("draws each candidate's total as a bar in their party's colour", async () => {

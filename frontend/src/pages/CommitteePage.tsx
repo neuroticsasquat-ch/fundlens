@@ -1,13 +1,14 @@
 import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
-import type { Committee, CommitteeCycle, CommitteeTopRecipient } from "../api/client";
+import type { Committee, CommitteeCycle } from "../api/client";
 import { CONTRIBUTION_PAGES } from "../api/contributions";
 import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
-import { count, money } from "../components/format";
+import TopDonorsTable from "../components/TopDonorsTable";
+import { money } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { committeeDesignation, committeeType } from "../domain/committees";
 import { partyColour } from "../theme";
@@ -15,6 +16,7 @@ import CycleHeading from "./CycleHeading";
 import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
 import { useScrollToHash, useShownCycle } from "./entityCycle";
+import { RECIPIENT_COLUMNS } from "./recipientColumns";
 
 const CYCLE_COLUMNS: Column<CommitteeCycle>[] = [
   {
@@ -57,46 +59,6 @@ const CYCLE_SERIES: CycleSeries<CommitteeCycle>[] = [
   { name: "From individuals", value: (row) => row.total_individual },
   { name: "From committees", value: (row) => row.total_from_committees },
   { name: "Self-funding", value: (row) => row.self_funding },
-];
-
-const RECIPIENT_KINDS: Record<CommitteeTopRecipient["recipient_kind"], string> = {
-  candidate: "Candidate",
-  committee: "Committee",
-};
-
-const RECIPIENT_COLUMNS: Column<CommitteeTopRecipient>[] = [
-  {
-    key: "rank",
-    header: "Rank",
-    align: "right",
-    render: (row) => count(row.rank),
-    sortValue: (row) => row.rank,
-  },
-  {
-    key: "name",
-    header: "Recipient",
-    render: (row) => (
-      <Anchor component={Link} to={`/${row.recipient_kind}/${row.recipient_id}`}>
-        {row.name ?? row.recipient_id}
-      </Anchor>
-    ),
-  },
-  {
-    key: "kind",
-    header: "Kind",
-    render: (row) => (
-      <Badge variant="outline" color="gray">
-        {RECIPIENT_KINDS[row.recipient_kind]}
-      </Badge>
-    ),
-  },
-  {
-    key: "amount",
-    header: "Amount",
-    align: "right",
-    render: (row) => money(row.amount),
-    sortValue: (row) => row.amount,
-  },
 ];
 
 /** `/committee/:id`: a committee's money in every cycle; whom it gave to and got from in one. */
@@ -203,7 +165,11 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
               <Title order={3} id="top-donors" mb="sm">
                 Top donors
               </Title>
-              <Text c="dimmed">Top donors are coming.</Text>
+              <TopDonorsTable
+                key={shown.cycle}
+                rows={shown.top_donors}
+                emptyMessage={`No resolved individual donors in ${shown.cycle}.`}
+              />
             </section>
             <section aria-labelledby="contributions">
               <Title order={3} id="contributions" mb="sm">

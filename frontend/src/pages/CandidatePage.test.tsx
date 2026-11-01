@@ -110,8 +110,27 @@ describe("CandidatePage", () => {
     const contributions = section("Contributions");
     expect(within(contributions).getByText("6 contributions, newest first")).toBeVisible();
     expect(within(contributions).queryByRole("button", { name: "Load more" })).toBeNull();
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+    expect(
+      within(contributions).getByRole("link", { name: "DUBOIS, RAYMOND" }),
+    ).toHaveAttribute("href", "/donor/236");
+    // A contribution no resolution has named a donor for is not a link.
+    expect(within(contributions).queryByRole("link", { name: "KOWALCZYK, PEGGY" })).toBeNull();
     expect(screen.getByRole("heading", { level: 2, name: "In 2024" })).toBeInTheDocument();
+  });
+
+  it("lists the cycle's top donors without the candidate's own money", async () => {
+    renderApp("/candidate/S4MD00103");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "$3,300"],
+      ["2", "DUBOIS, RAYMOND", "$2,500"],
+      ["3", "GALLAGHER, TOMAS", "$500"],
+    ]);
+    expect(
+      within(section("Top donors")).getByRole("link", { name: "ZIMMERMANN, ZACH" }),
+    ).toHaveAttribute("href", "/donor/518");
+    expect(within(section("Top donors")).queryByText("OKAFOR, DIANA")).toBeNull();
   });
 
   it("shows the newest cycle's contributions by default", async () => {
