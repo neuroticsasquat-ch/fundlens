@@ -81,9 +81,11 @@ def test_a_key_in_two_merges_is_rejected() -> None:
 
 def test_the_committed_file_with_a_key_in_two_merges_is_rejected() -> None:
     # A bad copy of the committed file itself: what CI says when a PR lists a key twice.
-    bad = COMMITTED.read_text().replace("[]\n", "") + MERGE + MERGE.replace("A|1||", "E|1||")
+    committed = COMMITTED.read_text()
+    before = len(overrides.parse(committed).merges)
+    bad = committed.replace("[]\n", "") + MERGE + MERGE.replace("A|1||", "E|1||")
 
-    assert problems(bad) == ["'B|1||' is in merge 1 and merge 2"]
+    assert problems(bad) == [f"'B|1||' is in merge {before + 1} and merge {before + 2}"]
 
 
 def test_a_key_twice_in_one_merge_is_rejected() -> None:
