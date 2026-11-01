@@ -131,6 +131,61 @@ def test_a_dime_file_missing_a_column_is_refused_naming_it(tmp_path: Path) -> No
         )
 
 
+# The real file's 45 columns (NEU-2054 §1.3): the reader's memory grows with the width of what it
+# decompresses, so a narrow file would not show it.
+DIME_HEADER = (
+    "cycle, transaction.id, transaction.type, amount, date, bonica.cid, contributor.name,"
+    " contributor.lname, contributor.fname, contributor.mname, contributor.suffix,"
+    " contributor.title, contributor.ffname, contributor.type, contributor.gender,"
+    " contributor.address, contributor.city, contributor.state, contributor.zipcode,"
+    " contributor.occupation, contributor.employer, occ.standardized, is.corp, recipient.name,"
+    " bonica.rid, recipient.party, recipient.type, recipient.state, seat, election.type,"
+    " latitude, longitude, gis.confidence, contributor.district, censustract, efec.memo,"
+    " efec.memo2, efec.transaction.id.orig, bk.ref.transaction.id, efec.org.orig,"
+    " efec.comid.orig, efec.form.type, excluded.from.scaling, contributor.cfscore,"
+    " candidate.cfscore"
+).split(", ")
+
+
+FILLER = "'v' || (i % 100)::VARCHAR"
+
+
+def test_a_gzip_larger_than_the_memory_limit_imports_within_it(tmp_path: Path) -> None:
+    # DuckDB's `read_csv(..., parallel = false)` held what it decompressed: the 2024 file ran a
+    # 26 GiB limit out of memory four minutes in. Two million rows decompress to well over 256MB.
+    rows = 2_000_000
+    source = tmp_path / "contribDB_2024.csv.gz"
+    values = {
+        "amount": "'100'",
+        "date": "'2024-03-04'",
+        "bonica.cid": "(i // 3)::VARCHAR",
+        "contributor.type": "'I'",
+        "efec.comid.orig": "'C00000001'",
+        "efec.transaction.id.orig": "'SA11AI.' || i::VARCHAR",
+    }
+
+    def quoted(name: str) -> str:
+        return '"' + name + '"'
+
+    columns = ", ".join(f"{values.get(name, FILLER)} AS {quoted(name)}" for name in DIME_HEADER)
+    with duckdb.connect() as con:
+        con.execute(
+            f"COPY (SELECT {columns} FROM range({rows}) AS t(i)) TO '{source}'"
+            " (HEADER, COMPRESSION gzip)"
+        )
+    limits = Limits(memory_limit="256MB", max_temp_directory_size="1GB", threads=None)
+
+    result = validate.import_dime(
+        RecordingStore(),  # pyright: ignore[reportArgumentType]
+        cycle=2024,
+        path=source,
+        data_dir=tmp_path / "data",
+        limits=limits,
+    )
+
+    assert (result.rows_read, result.rows_kept) == (rows, rows)
+
+
 class ListingStore:
     def __init__(self, keys: list[str]) -> None:
         self.keys = keys

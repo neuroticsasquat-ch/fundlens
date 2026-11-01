@@ -166,7 +166,7 @@ def import_dime(store: R2, *, cycle: int, path: Path, data_dir: Path, limits: Li
                 f"COPY (SELECT is_truth, {kept} FROM ("
                 f" SELECT *, coalesce({truth}, false) AS is_truth FROM read_csv({literal(path)},"
                 " header = true, all_varchar = true, quote = '\"', escape = '\"',"
-                " nullstr = ['', '\\N'], parallel = false)"
+                " nullstr = ['', '\\N'])"
                 f")) TO {literal(staged)} (FORMAT parquet, COMPRESSION zstd)"
             )
             [(rows_read, truth_rows)] = con.execute(
