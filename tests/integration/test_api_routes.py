@@ -12,6 +12,7 @@ import pytest
 from alembic import command
 from fastapi.testclient import TestClient
 from httpx2 import Response
+from typer.testing import CliRunner
 
 from fundlens import cli
 from fundlens.api.app import create_app
@@ -22,12 +23,14 @@ from fundlens.publish import gold as gold_publish
 from fundlens.settings import get_settings
 from tests import fec_fixture
 from tests.integration.conftest import (
+    NO_OVERRIDES,
     TEST_BUCKET,
     alembic_config,
     empty_store,
     scratch_database,
 )
 from tests.integration.test_publish import load, transform
+from tests.integration.test_resolve import MODEL
 from tests.integration.test_transform import put_bronze
 
 BUILD = "20261030T030000Z"
@@ -42,9 +45,10 @@ def leave_logging_alone(level: str) -> None:
 
 
 @contextmanager
-def published_fixture_cycle(data_dir: Path) -> Generator[str]:
+def published_fixture_cycle(data_dir: Path, *, resolved: bool = False) -> Generator[str]:
     """A database whose live `gold` is the fixture cycle's, as `publish` leaves it, with that
-    build's silver under `data_dir`; the database's conninfo."""
+    build's silver under `data_dir`; the database's conninfo. `resolved`, its donors resolved
+    (with no overrides) before the load, so gold has its donor tables and silver its buckets."""
     with scratch_database() as conninfo:
         command.upgrade(alembic_config(conninfo), "head")
         store = empty_store()
@@ -53,10 +57,14 @@ def published_fixture_cycle(data_dir: Path) -> Generator[str]:
             env.setenv("R2_BUCKET", TEST_BUCKET)
             env.setenv("DATABASE_URL", conninfo)
             env.setenv("DATA_DIR", str(data_dir))
+            env.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
             get_settings.cache_clear()
             try:
                 put_bronze(store)
                 transform(BUILD)
+                if resolved:
+                    result = CliRunner().invoke(cli.app, ["resolve", "--full", "--build-id", MODEL])
+                    assert result.exit_code == 0, result.output
                 load(BUILD)
             finally:
                 store.delete_prefix("")

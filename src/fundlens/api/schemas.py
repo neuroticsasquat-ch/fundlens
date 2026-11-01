@@ -190,6 +190,7 @@ class Contribution(BaseModel):
     """One counted contribution from silver `contribution` (spec §4), the contributor as
     reported."""
 
+    cycle: int
     # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
     source_record_id: str
     # None for a filing whose date FEC could not parse.
@@ -213,6 +214,47 @@ class Contribution(BaseModel):
     is_self_funding: bool
     # The filing image FEC shows this contribution on.
     image_num: str | None
+
+
+class DonorCycle(BaseModel):
+    """`gold.donor_cycle`: a donor's counted money in one cycle."""
+
+    cycle: int
+    amount: float
+    contribution_count: int
+
+
+class DonorTopRecipient(BaseModel):
+    """`gold.donor_top_recipient`: one of the 100 a donor gave most to, over every cycle: a
+    candidate, for a gift to a committee raising for one, else the committee."""
+
+    rank: int
+    recipient_kind: Literal["candidate", "committee"]
+    recipient_id: str
+    name: str | None
+    amount: float
+
+
+class Donor(BaseModel):
+    """A donor page: `gold.donor`, every name, employer and address variant resolved into one
+    (spec §6), a row per cycle, newest first, and whom they gave most to."""
+
+    donor_id: int
+    # Each the variant with the most counted money (spec §6.7).
+    display_name: str | None
+    employer: str | None
+    occupation: str | None
+    city: str | None
+    state: str | None
+    zip5: str | None
+    # Their own money as a candidate included; a donor known only from JFC attributions has $0.
+    total_all_cycles: float
+    first_cycle: int
+    last_cycle: int
+    # How many name/address/employer variants were resolved into this donor.
+    contributor_key_count: int
+    cycles: list[DonorCycle]
+    top_recipients: list[DonorTopRecipient]
 
 
 class ContributionPage(BaseModel):

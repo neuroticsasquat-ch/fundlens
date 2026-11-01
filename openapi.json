@@ -431,6 +431,10 @@
             ],
             "title": "Contributor Zip"
           },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
           "date": {
             "anyOf": [
               {
@@ -512,6 +516,7 @@
           }
         },
         "required": [
+          "cycle",
           "source_record_id",
           "date",
           "amount",
@@ -590,6 +595,197 @@
           "total_amount"
         ],
         "title": "Cycle",
+        "type": "object"
+      },
+      "Donor": {
+        "description": "A donor page: `gold.donor`, every name, employer and address variant resolved into one\n(spec \u00a76), a row per cycle, newest first, and whom they gave most to.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "contributor_key_count": {
+            "title": "Contributor Key Count",
+            "type": "integer"
+          },
+          "cycles": {
+            "items": {
+              "$ref": "#/components/schemas/DonorCycle"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "donor_id": {
+            "title": "Donor Id",
+            "type": "integer"
+          },
+          "employer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employer"
+          },
+          "first_cycle": {
+            "title": "First Cycle",
+            "type": "integer"
+          },
+          "last_cycle": {
+            "title": "Last Cycle",
+            "type": "integer"
+          },
+          "occupation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupation"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "top_recipients": {
+            "items": {
+              "$ref": "#/components/schemas/DonorTopRecipient"
+            },
+            "title": "Top Recipients",
+            "type": "array"
+          },
+          "total_all_cycles": {
+            "title": "Total All Cycles",
+            "type": "number"
+          },
+          "zip5": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zip5"
+          }
+        },
+        "required": [
+          "donor_id",
+          "display_name",
+          "employer",
+          "occupation",
+          "city",
+          "state",
+          "zip5",
+          "total_all_cycles",
+          "first_cycle",
+          "last_cycle",
+          "contributor_key_count",
+          "cycles",
+          "top_recipients"
+        ],
+        "title": "Donor",
+        "type": "object"
+      },
+      "DonorCycle": {
+        "description": "`gold.donor_cycle`: a donor's counted money in one cycle.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "contribution_count": {
+            "title": "Contribution Count",
+            "type": "integer"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cycle",
+          "amount",
+          "contribution_count"
+        ],
+        "title": "DonorCycle",
+        "type": "object"
+      },
+      "DonorTopRecipient": {
+        "description": "`gold.donor_top_recipient`: one of the 100 a donor gave most to, over every cycle: a\ncandidate, for a gift to a committee raising for one, else the committee.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "recipient_id": {
+            "title": "Recipient Id",
+            "type": "string"
+          },
+          "recipient_kind": {
+            "enum": [
+              "candidate",
+              "committee"
+            ],
+            "title": "Recipient Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "recipient_kind",
+          "recipient_id",
+          "name",
+          "amount"
+        ],
+        "title": "DonorTopRecipient",
         "type": "object"
       },
       "Health": {
@@ -1756,6 +1952,233 @@
           }
         },
         "summary": "List Races"
+      }
+    },
+    "/v1/donors/{donor_id}": {
+      "get": {
+        "operationId": "get_donor_v1_donors__donor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "donor_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Donor Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Donor"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "301": {
+            "description": "The donor was merged into another: `Location` names the id it became."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Donor"
+      }
+    },
+    "/v1/donors/{donor_id}/contributions": {
+      "get": {
+        "description": "Every contribution the donor made under each of their name, employer and address\nvariants, in `cycle` or in every cycle, newest cycle first and newest first within it.",
+        "operationId": "get_donor_contributions_v1_donors__donor_id__contributions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "donor_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Donor Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Every cycle, newest first, if left out.",
+            "in": "query",
+            "name": "cycle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1980,
+                  "multipleOf": 2,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Every cycle, newest first, if left out.",
+              "title": "Cycle"
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContributionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "301": {
+            "description": "The donor was merged into another: `Location` names the id it became."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Donor Contributions"
       }
     },
     "/v1/meta": {

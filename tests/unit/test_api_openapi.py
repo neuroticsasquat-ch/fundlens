@@ -19,6 +19,8 @@ ROUTES = {
     "/v1/candidates/{candidate_id}/contributions",
     "/v1/committees/{committee_id}",
     "/v1/committees/{committee_id}/contributions",
+    "/v1/donors/{donor_id}",
+    "/v1/donors/{donor_id}/contributions",
     "/v1/search",
 }
 

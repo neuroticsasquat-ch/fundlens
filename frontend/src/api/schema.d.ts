@@ -136,6 +136,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/donors/{donor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Donor */
+        get: operations["get_donor_v1_donors__donor_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/donors/{donor_id}/contributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Donor Contributions
+         * @description Every contribution the donor made under each of their name, employer and address
+         *     variants, in `cycle` or in every cycle, newest cycle first and newest first within it.
+         */
+        get: operations["get_donor_contributions_v1_donors__donor_id__contributions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/meta": {
         parameters: {
             query?: never;
@@ -319,6 +357,8 @@ export interface components {
             contributor_state: string | null;
             /** Contributor Zip */
             contributor_zip: string | null;
+            /** Cycle */
+            cycle: number;
             /** Date */
             date: string | null;
             /** Entity Type */
@@ -361,6 +401,71 @@ export interface components {
             race_count: number;
             /** Total Amount */
             total_amount: number;
+        };
+        /**
+         * Donor
+         * @description A donor page: `gold.donor`, every name, employer and address variant resolved into one
+         *     (spec §6), a row per cycle, newest first, and whom they gave most to.
+         */
+        Donor: {
+            /** City */
+            city: string | null;
+            /** Contributor Key Count */
+            contributor_key_count: number;
+            /** Cycles */
+            cycles: components["schemas"]["DonorCycle"][];
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Employer */
+            employer: string | null;
+            /** First Cycle */
+            first_cycle: number;
+            /** Last Cycle */
+            last_cycle: number;
+            /** Occupation */
+            occupation: string | null;
+            /** State */
+            state: string | null;
+            /** Top Recipients */
+            top_recipients: components["schemas"]["DonorTopRecipient"][];
+            /** Total All Cycles */
+            total_all_cycles: number;
+            /** Zip5 */
+            zip5: string | null;
+        };
+        /**
+         * DonorCycle
+         * @description `gold.donor_cycle`: a donor's counted money in one cycle.
+         */
+        DonorCycle: {
+            /** Amount */
+            amount: number;
+            /** Contribution Count */
+            contribution_count: number;
+            /** Cycle */
+            cycle: number;
+        };
+        /**
+         * DonorTopRecipient
+         * @description `gold.donor_top_recipient`: one of the 100 a donor gave most to, over every cycle: a
+         *     candidate, for a gift to a committee raising for one, else the committee.
+         */
+        DonorTopRecipient: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string | null;
+            /** Rank */
+            rank: number;
+            /** Recipient Id */
+            recipient_id: string;
+            /**
+             * Recipient Kind
+             * @enum {string}
+             */
+            recipient_kind: "candidate" | "committee";
         };
         /** Health */
         Health: {
@@ -586,6 +691,9 @@ export type CommitteeTopRecipient = components['schemas']['CommitteeTopRecipient
 export type Contribution = components['schemas']['Contribution'];
 export type ContributionPage = components['schemas']['ContributionPage'];
 export type Cycle = components['schemas']['Cycle'];
+export type Donor = components['schemas']['Donor'];
+export type DonorCycle = components['schemas']['DonorCycle'];
+export type DonorTopRecipient = components['schemas']['DonorTopRecipient'];
 export type Health = components['schemas']['Health'];
 export type Meta = components['schemas']['Meta'];
 export type MetaCycle = components['schemas']['MetaCycle'];
@@ -943,6 +1051,149 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_donor_v1_donors__donor_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                donor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Donor"];
+                };
+            };
+            /** @description The donor was merged into another: `Location` names the id it became. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_donor_contributions_v1_donors__donor_id__contributions_get: {
+        parameters: {
+            query?: {
+                /** @description Every cycle, newest first, if left out. */
+                cycle?: number | null;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                donor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContributionPage"];
+                };
+            };
+            /** @description The donor was merged into another: `Location` names the id it became. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gone */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
