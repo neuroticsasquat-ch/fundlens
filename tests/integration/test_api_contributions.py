@@ -146,6 +146,13 @@ def test_a_page_holds_a_hundred_rows_as_reported(client: TestClient, published: 
     assert isinstance(first["amount"], float)
 
 
+def test_a_build_loaded_before_resolution_has_no_donor_ids(client: TestClient) -> None:
+    body = ok(client.get(f"/v1/committees/{COMMITTEE}/contributions", params={"cycle": CYCLE}))
+
+    assert body["contributions"]
+    assert {row["donor_id"] for row in body["contributions"]} == {None}
+
+
 def test_an_earmark_is_listed_once_with_its_conduit(
     client: TestClient, published: Published
 ) -> None:

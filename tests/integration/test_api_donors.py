@@ -1,6 +1,7 @@
 """The donor routes against the fixture cycle resolved, loaded and swapped in once for the module:
-gold's donor tables, a merged-away id's 301, and the donor's contributions read from their
-`donor_id % 256` bucket of each cycle's silver (spec §7.2, ADR-0006)."""
+gold's donor tables, a merged-away id's 301, the donor's contributions read from their
+`donor_id % 256` bucket of each cycle's silver, and the top-donor lists and `donor_id`s the race,
+candidate and committee routes carry (spec §7.2, ADR-0006)."""
 
 import json
 import shutil
@@ -344,3 +345,59 @@ def test_a_donor_known_only_from_attributions_has_no_contributions(
 
     assert body == {"contributions": [], "next_cursor": None}
     assert ok(client.get(f"/v1/donors/{donor_id}"))["total_all_cycles"] == 0
+
+
+def test_a_race_page_lists_its_top_donors_and_what_each_gave_each_candidate(
+    client: TestClient, published: Published
+) -> None:
+    race = ok(client.get("/v1/races/2024/senate/MD"))
+
+    top = race["top_donors"]
+    assert [row["rank"] for row in top] == list(range(1, len(top) + 1))
+    [marlowe] = [row for row in top if row["donor_id"] == published.musk]
+    assert marlowe["display_name"] == "MARLOWE, AUGUSTINE MR."
+    assert marlowe["candidates"] == [{"candidate_id": "S4MD00104", "amount": 3300}]
+    assert marlowe["amount"] == 3300
+    for row in top:
+        assert sum(c["amount"] for c in row["candidates"]) == pytest.approx(row["amount"])
+    # The self-funders' own money makes neither a top donor.
+    assert not self_funders(published) & {row["donor_id"] for row in top}
+
+
+def self_funders(published: Published) -> set[int]:
+    """The donor_ids of WHITLOCK's and OKAFOR's own money."""
+    rows = silver_rows(published.data_dir, CYCLE, BUILD, "is_self_funding")
+    names = {name for _, _, name in rows}
+    assert any(name.startswith("WHITLOCK") for name in names)
+    assert any(name.startswith("OKAFOR") for name in names)
+    return {donor_id for donor_id, *_ in rows}
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["/v1/candidates/S4MD00104", "/v1/committees/C00800104"],
+)
+def test_a_candidate_and_committee_cycle_lists_its_top_donors(
+    client: TestClient, published: Published, url: str
+) -> None:
+    [cycle] = [row for row in ok(client.get(url))["cycles"] if row["cycle"] == CYCLE]
+
+    top = cycle["top_donors"]
+    assert top
+    assert [row["rank"] for row in top] == list(range(1, len(top) + 1))
+    assert published.musk in {row["donor_id"] for row in top}
+    assert not self_funders(published) & {row["donor_id"] for row in top}
+
+
+def test_a_committees_contributions_name_the_donor_each_came_from(
+    app: FastAPI, client: TestClient
+) -> None:
+    small_pages(app)
+
+    rows = walk(client, "/v1/committees/C00800103/contributions", {"cycle": CYCLE})
+
+    assert rows
+    donor_ids = {row["donor_id"] for row in rows}
+    assert None not in donor_ids
+    for donor_id in donor_ids:
+        assert ok(client.get(f"/v1/donors/{donor_id}"))["donor_id"] == donor_id

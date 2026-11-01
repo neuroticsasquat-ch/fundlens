@@ -134,6 +134,13 @@
             "title": "Self Funding",
             "type": "number"
           },
+          "top_donors": {
+            "items": {
+              "$ref": "#/components/schemas/TopDonor"
+            },
+            "title": "Top Donors",
+            "type": "array"
+          },
           "total_committee": {
             "title": "Total Committee",
             "type": "number"
@@ -152,7 +159,8 @@
           "self_funding",
           "ie_support",
           "ie_oppose",
-          "contributor_count"
+          "contributor_count",
+          "top_donors"
         ],
         "title": "CandidateCycle",
         "type": "object"
@@ -245,7 +253,7 @@
         "type": "object"
       },
       "CommitteeCycle": {
-        "description": "`gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to.",
+        "description": "`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who\ngave most to it.",
         "properties": {
           "cycle": {
             "title": "Cycle",
@@ -258,6 +266,13 @@
           "self_funding": {
             "title": "Self Funding",
             "type": "number"
+          },
+          "top_donors": {
+            "items": {
+              "$ref": "#/components/schemas/TopDonor"
+            },
+            "title": "Top Donors",
+            "type": "array"
           },
           "top_recipients": {
             "items": {
@@ -286,7 +301,8 @@
           "total_from_committees",
           "total_to_candidates",
           "ie_total",
-          "top_recipients"
+          "top_recipients",
+          "top_donors"
         ],
         "title": "CommitteeCycle",
         "type": "object"
@@ -447,6 +463,17 @@
             ],
             "title": "Date"
           },
+          "donor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Donor Id"
+          },
           "entity_type": {
             "anyOf": [
               {
@@ -522,6 +549,7 @@
           "amount",
           "recipient_committee_id",
           "candidate_id",
+          "donor_id",
           "contributor_name",
           "contributor_city",
           "contributor_state",
@@ -943,7 +971,7 @@
         "type": "object"
       },
       "Race": {
-        "description": "A race page: the race, its candidates (most money first) and its top committees.",
+        "description": "A race page: the race, its candidates (most money first), its top committees and its top\ndonors.",
         "properties": {
           "candidate_count": {
             "title": "Candidate Count",
@@ -998,6 +1026,13 @@
             "title": "Top Committees",
             "type": "array"
           },
+          "top_donors": {
+            "items": {
+              "$ref": "#/components/schemas/RaceTopDonor"
+            },
+            "title": "Top Donors",
+            "type": "array"
+          },
           "total_committee": {
             "title": "Total Committee",
             "type": "number"
@@ -1021,7 +1056,8 @@
           "ie_support",
           "ie_oppose",
           "candidates",
-          "top_committees"
+          "top_committees",
+          "top_donors"
         ],
         "title": "Race",
         "type": "object"
@@ -1226,6 +1262,69 @@
         "title": "RaceTopCommittee",
         "type": "object"
       },
+      "RaceTopDonor": {
+        "description": "`gold.race_top_donor`: a donor among the 100 who gave most to the race's candidates, their\nown money left out (spec \u00a77.1).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RaceTopDonorCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "donor_id": {
+            "title": "Donor Id",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "donor_id",
+          "display_name",
+          "amount",
+          "candidates"
+        ],
+        "title": "RaceTopDonor",
+        "type": "object"
+      },
+      "RaceTopDonorCandidate": {
+        "description": "What a race's top donor gave one of its candidates, net of refunds.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "amount"
+        ],
+        "title": "RaceTopDonorCandidate",
+        "type": "object"
+      },
       "SearchKind": {
         "enum": [
           "donor",
@@ -1273,6 +1372,42 @@
           "score"
         ],
         "title": "SearchResult",
+        "type": "object"
+      },
+      "TopDonor": {
+        "description": "`gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave\nmost in a cycle, the candidate's own money left out (spec \u00a77.1).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "donor_id": {
+            "title": "Donor Id",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "donor_id",
+          "display_name",
+          "amount"
+        ],
+        "title": "TopDonor",
         "type": "object"
       },
       "ValidationErrorDetail": {

@@ -267,6 +267,8 @@ export interface components {
             race_slug: string | null;
             /** Self Funding */
             self_funding: number;
+            /** Top Donors */
+            top_donors: components["schemas"]["TopDonor"][];
             /** Total Committee */
             total_committee: number;
             /** Total Individual */
@@ -296,7 +298,8 @@ export interface components {
         };
         /**
          * CommitteeCycle
-         * @description `gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to.
+         * @description `gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
+         *     gave most to it.
          */
         CommitteeCycle: {
             /** Cycle */
@@ -305,6 +308,8 @@ export interface components {
             ie_total: number;
             /** Self Funding */
             self_funding: number;
+            /** Top Donors */
+            top_donors: components["schemas"]["TopDonor"][];
             /** Top Recipients */
             top_recipients: components["schemas"]["CommitteeTopRecipient"][];
             /** Total From Committees */
@@ -361,6 +366,8 @@ export interface components {
             cycle: number;
             /** Date */
             date: string | null;
+            /** Donor Id */
+            donor_id: number | null;
             /** Entity Type */
             entity_type: string | null;
             /** Image Num */
@@ -529,7 +536,8 @@ export interface components {
         };
         /**
          * Race
-         * @description A race page: the race, its candidates (most money first) and its top committees.
+         * @description A race page: the race, its candidates (most money first), its top committees and its top
+         *     donors.
          */
         Race: {
             /** Candidate Count */
@@ -555,6 +563,8 @@ export interface components {
             state: string;
             /** Top Committees */
             top_committees: components["schemas"]["RaceTopCommittee"][];
+            /** Top Donors */
+            top_donors: components["schemas"]["RaceTopDonor"][];
             /** Total Committee */
             total_committee: number;
             /** Total Individual */
@@ -634,6 +644,33 @@ export interface components {
             /** Rank */
             rank: number;
         };
+        /**
+         * RaceTopDonor
+         * @description `gold.race_top_donor`: a donor among the 100 who gave most to the race's candidates, their
+         *     own money left out (spec §7.1).
+         */
+        RaceTopDonor: {
+            /** Amount */
+            amount: number;
+            /** Candidates */
+            candidates: components["schemas"]["RaceTopDonorCandidate"][];
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Rank */
+            rank: number;
+        };
+        /**
+         * RaceTopDonorCandidate
+         * @description What a race's top donor gave one of its candidates, net of refunds.
+         */
+        RaceTopDonorCandidate: {
+            /** Amount */
+            amount: number;
+            /** Candidate Id */
+            candidate_id: string;
+        };
         /** @enum {string} */
         SearchKind: "donor" | "candidate" | "committee" | "race";
         /**
@@ -650,6 +687,21 @@ export interface components {
             name: string;
             /** Score */
             score: number;
+        };
+        /**
+         * TopDonor
+         * @description `gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
+         *     most in a cycle, the candidate's own money left out (spec §7.1).
+         */
+        TopDonor: {
+            /** Amount */
+            amount: number;
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Rank */
+            rank: number;
         };
         /** ValidationErrorDetail */
         ValidationErrorDetail: {
@@ -703,8 +755,11 @@ export type Race = components['schemas']['Race'];
 export type RaceCandidate = components['schemas']['RaceCandidate'];
 export type RaceSummary = components['schemas']['RaceSummary'];
 export type RaceTopCommittee = components['schemas']['RaceTopCommittee'];
+export type RaceTopDonor = components['schemas']['RaceTopDonor'];
+export type RaceTopDonorCandidate = components['schemas']['RaceTopDonorCandidate'];
 export type SearchKind = components['schemas']['SearchKind'];
 export type SearchResult = components['schemas']['SearchResult'];
+export type TopDonor = components['schemas']['TopDonor'];
 export type ValidationErrorDetail = components['schemas']['ValidationErrorDetail'];
 export type ValidationProblem = components['schemas']['ValidationProblem'];
 export type $defs = Record<string, never>;

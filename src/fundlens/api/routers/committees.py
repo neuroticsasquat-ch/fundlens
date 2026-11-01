@@ -12,6 +12,7 @@ from fundlens.api.schemas import (
     CommitteeCycle,
     CommitteeTopRecipient,
     ContributionPage,
+    TopDonor,
     problem_responses,
 )
 
@@ -39,6 +40,14 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
     top_recipients: defaultdict[int, list[CommitteeTopRecipient]] = defaultdict(list)
     for row in recipients:
         top_recipients[row.pop("cycle")].append(CommitteeTopRecipient(**row))
+    donors = conn.cursor(row_factory=dict_row).execute(
+        "SELECT cycle, rank, donor_id, display_name, amount"
+        " FROM gold.committee_top_donor WHERE committee_id = %s ORDER BY cycle, rank",
+        (committee_id,),
+    )
+    top_donors: defaultdict[int, list[TopDonor]] = defaultdict(list)
+    for row in donors:
+        top_donors[row.pop("cycle")].append(TopDonor(**row))
     cycles = (
         conn.cursor(row_factory=dict_row)
         .execute(
@@ -52,7 +61,12 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
     return Committee(
         **committee,
         cycles=[
-            CommitteeCycle(**row, top_recipients=top_recipients[row["cycle"]]) for row in cycles
+            CommitteeCycle(
+                **row,
+                top_recipients=top_recipients[row["cycle"]],
+                top_donors=top_donors[row["cycle"]],
+            )
+            for row in cycles
         ],
     )
 

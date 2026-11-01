@@ -170,6 +170,7 @@ export const RACE_SENATE_MD: Race = {
       kind: "contribution",
     },
   ],
+  top_donors: [],
 };
 
 /**
@@ -183,6 +184,7 @@ export const RACE_PAGES: Record<string, Race> = Object.fromEntries(
       ...race,
       candidates: [],
       top_committees: [],
+      top_donors: [],
     })),
   ].map((race) => [race.slug, race]),
 );
@@ -225,6 +227,7 @@ export const CANDIDATE_OKAFOR: Candidate = {
       ie_support: 150000,
       ie_oppose: 45000,
       contributor_count: null,
+      top_donors: [],
     },
   ],
 };
@@ -237,6 +240,7 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   total_to_candidates: 0,
   ie_total: 0,
   top_recipients: [],
+  top_donors: [],
   ...cycle,
 });
 
@@ -306,6 +310,7 @@ export const contribution = (
   cycle: 2024,
   recipient_committee_id: "C00800103",
   candidate_id: "S4MD00103",
+  donor_id: null,
   contributor_city: null,
   contributor_state: null,
   contributor_zip: null,
