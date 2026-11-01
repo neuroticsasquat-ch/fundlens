@@ -20,6 +20,7 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2024 | 2026-10-31 | `20261031T012553Z` | `d67cec2` | 454 | 5 | 407 | 4.1 (0.84 + 2.21) | 75 | 4.77 | 0.91 | 0.04 | 27.2 GiB | First run: committee-level gold, no resolution ([first-run.md](runbooks/first-run.md), NEU-2046). Publish includes its deliberate 75 s wait before the purge. |
 | 2024 | 2026-10-31 | `20261031T164731Z` | `27e1bd0` | — | — | 1871 | — | — | — | — | — | 24.34 GiB | Transform only, with contributor keys (NEU-2047) and the join-side fix (NEU-2076), `DUCKDB_THREADS=6`. 1,602 s of it in `04_contribution.sql`. Six silver tables; `contributor` 5,185,485 rows. |
+| 2024 | 2026-10-31 | `20261031T202003Z` | `47e3dd5` | — | — | 1343 | — | — | — | — | — | 23.46 GiB | Transform only, with JFC attributions (NEU-2078). 1,088 s of it in `04_contribution.sql`, 14 s in `06_jfc_attribution.sql`. Seven silver tables; `jfc_attribution` 17,037,819 rows, `contributor` 5,620,495 (435,010 more than NEU-2047's build). |
 
 Resolution (M3), the backfill (NEU-2060) and the weekly run (M5) add their own figures here.
 
@@ -47,3 +48,8 @@ Resolution (M3), the backfill (NEU-2060) and the weekly run (M5) add their own f
   them in `04_contribution.sql`, which normalizes each distinct name, ZIP, employer and occupation in Python; it
   took 7 minutes before. A cycle end to end is about 40 minutes, still far inside the handover's 6–8 h trigger
   for an ephemeral runner.
+- **JFC attributions cost little (NEU-2078).** The 2024 transform with `jfc_attribution` took 22 minutes, 18 of
+  them in `04_contribution.sql`, and peaked at 23.46 GiB; `06_jfc_attribution.sql` took 14 s. That is faster than
+  NEU-2047's 31 minutes although `04_contribution.sql` now also normalizes the 15J lines' values. The difference
+  is not explained: neither run recorded the box's other load. The 435,010 new `contributor` rows match the
+  spec's measured 434,469 new 15J keys (§6.11) to within 0.2%.
