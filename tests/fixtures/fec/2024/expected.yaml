@@ -398,3 +398,13 @@ attributions:
     4240300000000000017: C00800115 # HOLLOWAY: '2024 AGGREGATE; JFC ATTRIB: OKAFOR VICTORY FUND'
   # The lines of a person in no counted contribution: a donor all the same, with no money.
   attribution_only: [4240300000000000015]
+
+# What `fundlens validate --cycle 2024 --top 3` must report on the fixture after `resolve --full`
+# with the fixture overrides (spec §6.9, NEU-2054 §8.1). Pairs follow from `donors` above: a donor
+# with k contributor keys among its counted contributions contributes k(k-1)/2 true pairs.
+validation:
+  dime_version: "4.0"
+  matched_rows: 281 # every counted contribution: the fixture labels them all
+  labelled_keys: 107 # contributor keys with a counted contribution (108 less the 15J-only key)
+  overall: {precision: 1.0, recall: 1.0}
+  top: {limit: 3, precision: 1.0, recall: 1.0}

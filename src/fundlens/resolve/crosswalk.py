@@ -305,7 +305,7 @@ def _with_donor_id(con: duckdb.DuckDBPyConnection, files: str) -> str:
     return ", ".join(select)
 
 
-def _local_partition(store: R2, prefix: str, *, cycle: int, build_id: str, data_dir: Path) -> Path:
+def local_partition(store: R2, prefix: str, *, cycle: int, build_id: str, data_dir: Path) -> Path:
     """The partition at `prefix` on local disk. A cached one is read as it is, never topped up
     from R2, which may hold a rewrite that died part way (module docstring).
 
@@ -376,10 +376,10 @@ def onto_silver(
     `bucket=<hex2>` directories, unless `contributor` already carries them; the contribution rows.
 
     Raises `RuntimeError`, before anything is uploaded, if a row's key has no donor_id, or if a
-    rewrite that died left R2 unreadable and no local copy (`_local_partition`).
+    rewrite that died left R2 unreadable and no local copy (`local_partition`).
     """
     sentinel = paths.rewrite_sentinel(cycle, build_id)
-    contributors = _local_partition(
+    contributors = local_partition(
         store,
         paths.silver_partition("contributor", cycle, build_id),
         cycle=cycle,
@@ -387,7 +387,7 @@ def onto_silver(
         data_dir=data_dir,
     )
     if _current(con, contributors) and not store.exists(sentinel):
-        contributions = _local_partition(
+        contributions = local_partition(
             store,
             paths.silver_partition("contribution", cycle, build_id),
             cycle=cycle,
@@ -404,7 +404,7 @@ def onto_silver(
     rows = 0
     for table in ("contribution", "jfc_attribution", "contributor"):
         prefix = paths.silver_partition(table, cycle, build_id)
-        local = _local_partition(store, prefix, cycle=cycle, build_id=build_id, data_dir=data_dir)
+        local = local_partition(store, prefix, cycle=cycle, build_id=build_id, data_dir=data_dir)
         files = literal(local / "**" / "*.parquet")
         staged = local.with_name(local.name + ".rewrite")
         shutil.rmtree(staged, ignore_errors=True)

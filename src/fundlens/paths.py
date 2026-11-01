@@ -33,9 +33,16 @@ BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 _BUILD_ID = re.compile(r"\d{8}T\d{6}Z")
 _BUILD_IN_KEY = re.compile(r"/build=(\d{8}T\d{6}Z)(?:/|$)")
 _CYCLE_IN_KEY = re.compile(r"/cycle=(\d+)/")
+_MODEL_KEY = re.compile(r"resolution/model/(\d{8}T\d{6}Z)\.json")
 
 # Every completion marker of every cycle lives under here (`markers_dir`).
 MARKERS_PREFIX = "markers/"
+
+# Every saved Splink model (`resolution_model`).
+MODEL_PREFIX = "resolution/model/"
+
+# The DIME reference files resolution is scored against (ADR-0009).
+DIME_PREFIX = "reference/dime/"
 
 # `silver/contribution` is split into donor_id % 256 buckets (spec §3.4).
 BUCKETS = 256
@@ -149,7 +156,27 @@ def resolution_model(version: str) -> str:
     order is training order.
     """
     _check_build_id(version)
-    return f"resolution/model/{version}.json"
+    return f"{MODEL_PREFIX}{version}.json"
+
+
+def model_version_of(key: str) -> str | None:
+    """The version of the saved model at `key`, or None if `key` is not one."""
+    match = _MODEL_KEY.fullmatch(key)
+    return match.group(1) if match else None
+
+
+def reference_dime_raw(version: str, cycle: int) -> str:
+    """The DIME contribution file for `cycle` as downloaded:
+    `reference/dime/v<version>/contribDB_<cycle>.csv.gz`."""
+    _check_cycle(cycle)
+    return f"{DIME_PREFIX}v{version}/contribDB_{cycle}.csv.gz"
+
+
+def reference_dime(version: str, cycle: int) -> str:
+    """The FEC individual rows of that file, slimmed:
+    `reference/dime/v<version>/cycle=<cycle>/fec_individual.parquet`."""
+    _check_cycle(cycle)
+    return f"{DIME_PREFIX}v{version}/cycle={cycle}/fec_individual.parquet"
 
 
 def local_path(data_dir: Path, key: str) -> Path:

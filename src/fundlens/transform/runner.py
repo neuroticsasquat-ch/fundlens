@@ -168,7 +168,7 @@ def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYT
     _write_utf8(tail, out)
 
 
-def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
+def unzip_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
     """The newest bronze zip of `file` unpacked under `work` as UTF-8; the text file's path.
 
     The current cycle's zip is on local disk already (`fec.extract` keeps it there); any other is
@@ -186,7 +186,7 @@ def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path)
     return text
 
 
-def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
+def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
     """The view `<file>`: the bulk file's rows under the vendored names, cast to their types."""
     names = file.header()
     if names != list(file.columns):
@@ -197,7 +197,7 @@ def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -
         for name, kind in file.columns.items()
     )
     # Pipe-delimited and unquoted (a quote in a name is just a character), with no header row.
-    # UTF-8 throughout, since `_unzip` rewrote it so.
+    # UTF-8 throughout, since `unzip_bulk` rewrote it so.
     con.execute(
         f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
         f" delim = '|', quote = '', escape = '', header = false, auto_detect = false,"
@@ -316,7 +316,9 @@ def transform(
     try:
         with connect(limits, scratch) as con:
             for file in files_for(cycle):
-                _register_bulk(con, file, _unzip(store, cycle, file, data_dir=data_dir, work=work))
+                register_bulk(
+                    con, file, unzip_bulk(store, cycle, file, data_dir=data_dir, work=work)
+                )
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
             _register_unmatched(con, conn, cycle)

@@ -36,6 +36,16 @@ file is `/data/fundlens/resolution/resolve.duckdb` after the run.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 
+## Validation
+
+One `fundlens validate` per row ([refreshing-dime.md](runbooks/refreshing-dime.md), NEU-2054): a cycle's resolved
+donors scored against DIME, pairwise, over the labelled contributor keys (ADR-0009). Matched is the counted
+contributions DIME labels by exactly one `bonica.cid`, of all counted contributions. Precision and recall are the
+`overall` scope, then the `top` one (the 10,000 DIME donors with the most matched dollars). Wall time is `time`'s `real`.
+
+| Date | Model | Cycle (build) | DIME | Matched | Precision (top) | Recall (top) | Wall s | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
 ## Findings
 
 - **Memory, not time, is the limit (2024 first run).** The transform peaked at 27.2 GiB in `pipeline`, against a
