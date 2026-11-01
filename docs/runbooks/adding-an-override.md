@@ -190,6 +190,9 @@ loaded and published again: for each cycle `resolve` printed (`<cycle>: build <b
 `docker exec "$(fl pipeline)" fundlens load --cycle <cycle> --build-id <build>` and then
 `docker exec "$(fl pipeline)" fundlens publish --cycle <cycle>`.
 
+`publish` ends with `kuma push (up) failed: HTTPError: HTTP Error 404: Not Found` while the Kuma monitors are paused
+(coolify-setup step 12, until NEU-2063's schedule): Kuma refuses a push to a paused monitor. Leave them paused.
+
 Append to the Log below: the date, the PR, the entry's donor, and the `overrides:` and `crosswalk:`
 lines of the run.
 
@@ -208,4 +211,5 @@ with `MUSK, ELON|78734|SPACEX|CEO` (donor `2441073`), applied from `bad9c28` by 
 
 5,620,495 contributor keys in 3,816,140 clusters, one fewer than the first resolved run. Search for `musk elon` lists one
 donor, `2441073`, with `contributor_key_count` 11 and `total_all_cycles` 213055236, and `/v1/donors/2441074` answers
-`301` to `/v1/donors/2441073`. The publish's `fundlens/publish` Kuma push answered `404`; the publish itself succeeded.
+`301` to `/v1/donors/2441073`. The publish's Kuma push answered `404`: `fundlens/publish` is paused until NEU-2063, as
+step 5 says.
