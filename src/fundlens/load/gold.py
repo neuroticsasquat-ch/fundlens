@@ -6,7 +6,8 @@ in filename order, reading the views `silver.<table>`), runs `sql/checks/gold_*.
 query that must return no rows), and writes each table as a CSV file under `scratch/`. Then, in
 one Postgres transaction, `gold_build` is dropped and recreated, each table gets its hand-written
 DDL (`sql/gold/ddl/`), its CSV streamed in with `COPY … FROM STDIN`, its indexes
-(`sql/gold/index/`) and an `ANALYZE`, and `meta` its one row. A failed load leaves no
+(`sql/gold/index/`) and an `ANALYZE`, `donor_redirect` a copy of `app.donor_redirect`, and `meta`
+its one row. A failed load leaves no
 `gold_build` at all, never a partial one; a successful one writes the `loaded` marker.
 `fundlens publish` swaps the schema in.
 """
@@ -34,8 +35,8 @@ from fundlens.transform.runner import CHUNK_BYTES, Limits, check, literal, rende
 
 log = logging.getLogger(__name__)
 
-# The M2 gold tables (spec §7.1); the donor tables arrive in M3. `meta` has DDL but no model:
-# its one row is inserted from Python.
+# The gold tables (spec §7.1). `meta` and `donor_redirect` have DDL but no model: Postgres fills
+# them (`FROM_POSTGRES`).
 GoldTable = Literal[
     "meta",
     "cycle",
@@ -48,7 +49,18 @@ GoldTable = Literal[
     "committee_cycle",
     "committee_top_recipient",
     "search_entity",
+    "donor",
+    "donor_cycle",
+    "donor_top_recipient",
+    "donor_redirect",
+    "race_top_donor",
+    "candidate_top_donor",
+    "committee_top_donor",
 ]
+
+# `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
+# Postgres holds.
+FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 
 # The silver tables the gold SQL reads, and the command that writes each one's partition.
 # (`candidate_committee_link` is not among them: silver `contribution` already carries the
@@ -58,8 +70,14 @@ INPUTS: dict[SilverTable, str] = {
     "candidate": "transform",
     "contribution": "transform",
     "committee_transfer": "transform",
+    "jfc_attribution": "transform",
+    "contributor": "transform",
     "race": "seats",
 }
+
+# The silver tables `resolve` rewrites with each row's donor_id (spec §6.6). A build loaded before
+# `resolve` has none, so its views get a NULL one and the build has no donors.
+RESOLVED: frozenset[SilverTable] = frozenset({"contribution", "jfc_attribution"})
 
 
 @dataclass(frozen=True)
@@ -89,7 +107,7 @@ def _models(sql_dir: Path) -> list[tuple[GoldTable, Path]]:
     models: list[tuple[GoldTable, Path]] = []
     for path in sorted((sql_dir / "gold").glob("*.sql")):
         table = tables.get(path.stem.partition("_")[2])
-        if table is None or table == "meta":
+        if table is None or table in FROM_POSTGRES:
             raise ValueError(f"{path.name} names no gold table")
         models.append((table, path))
     if not models:
@@ -141,10 +159,18 @@ def _register_silver(
     for table, local in local_dirs.items():
         # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path.
         # `**` reaches into a resolved `contribution`'s `bucket=` directories too (spec §3.4).
-        con.execute(
-            f"CREATE VIEW silver.{table} AS SELECT * FROM"
-            f" read_parquet({literal(local / '**' / '*.parquet')}, hive_partitioning = false)"
-        )
+        source = f"read_parquet({literal(local / '**' / '*.parquet')}, hive_partitioning = false)"
+        con.execute(f"CREATE VIEW silver.{table} AS SELECT * FROM {source}")
+        if (
+            table in RESOLVED
+            and not con.execute(
+                f"SELECT 1 FROM (DESCRIBE silver.{table}) WHERE column_name = 'donor_id'"
+            ).fetchall()
+        ):
+            con.execute(
+                f"CREATE OR REPLACE VIEW silver.{table} AS"
+                f" SELECT *, CAST(NULL AS BIGINT) AS donor_id FROM {source}"
+            )
     # DuckDB's CSV writer prints a list as `[…]`; Postgres reads an array as `{…}`.
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
 
@@ -186,8 +212,9 @@ def _load_postgres(
     work: Path,
     build_id: str,
     cycles: Mapping[str, object],
-) -> None:
-    """Rebuild `gold_build` from the CSVs under `work`, in one transaction."""
+) -> int:
+    """Rebuild `gold_build` from the CSVs under `work`, in one transaction; the rows of
+    `donor_redirect`."""
     with conn.transaction():
         # In the default schema, never inside `gold_build`: an extension living there would be
         # renamed with it and dropped by the next publish's `DROP SCHEMA gold_prev CASCADE`.
@@ -201,11 +228,18 @@ def _load_postgres(
             if index.exists():
                 conn.execute(_sql(index))
             conn.execute(f"ANALYZE gold_build.{table}")
+        conn.execute(_sql(sql_dir / "gold" / "ddl" / "donor_redirect.sql"))
+        redirects = conn.execute(
+            "INSERT INTO gold_build.donor_redirect (old_donor_id, donor_id)"
+            " SELECT old_donor_id, donor_id FROM app.donor_redirect"
+        ).rowcount
+        conn.execute("ANALYZE gold_build.donor_redirect")
         conn.execute(_sql(sql_dir / "gold" / "ddl" / "meta.sql"))
         conn.execute(
             "INSERT INTO gold_build.meta (build_id, published_at, cycles) VALUES (%s, NULL, %s)",
             (build_id, Jsonb(dict(cycles))),
         )
+    return redirects
 
 
 def load(
@@ -256,7 +290,9 @@ def load(
         aggregate_s = time.monotonic() - aggregate_started
         cycles = {str(cycle): {"build_id": build_id, "source_dates": _source_dates(store, cycle)}}
         copy_started = time.monotonic()
-        _load_postgres(conn, models, sql_dir=sql_dir, work=work, build_id=build_id, cycles=cycles)
+        row_counts["donor_redirect"] = _load_postgres(
+            conn, models, sql_dir=sql_dir, work=work, build_id=build_id, cycles=cycles
+        )
         copy_s = time.monotonic() - copy_started
     finally:
         shutil.rmtree(work, ignore_errors=True)
