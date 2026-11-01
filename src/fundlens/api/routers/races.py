@@ -11,7 +11,13 @@ from psycopg.rows import class_row, dict_row
 
 from fundlens.api.deps import Conn
 from fundlens.api.routers.cycles import RACE_COLUMNS
-from fundlens.api.schemas import Race, RaceCandidate, RaceTopCommittee, problem_responses
+from fundlens.api.schemas import (
+    Race,
+    RaceCandidate,
+    RaceTopCommittee,
+    RaceTopDonor,
+    problem_responses,
+)
 
 router = APIRouter(prefix="/v1")
 
@@ -58,4 +64,13 @@ def get_race(
         )
         .fetchall()
     )
-    return Race(**race, candidates=candidates, top_committees=top_committees)
+    top_donors = (
+        conn.cursor(row_factory=class_row(RaceTopDonor))
+        .execute(
+            "SELECT rank, donor_id, display_name, amount, candidates"
+            " FROM gold.race_top_donor WHERE race_id = %s ORDER BY rank",
+            (race["race_id"],),
+        )
+        .fetchall()
+    )
+    return Race(**race, candidates=candidates, top_committees=top_committees, top_donors=top_donors)

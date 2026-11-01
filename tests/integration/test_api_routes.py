@@ -281,6 +281,16 @@ def test_a_committee_page_names_whom_it_gave_to(client: TestClient) -> None:
     ]
 
 
+def test_a_build_loaded_before_resolution_lists_no_top_donors(client: TestClient) -> None:
+    race = ok(client.get("/v1/races/2024/senate/MD"))
+    candidate = ok(client.get("/v1/candidates/S4MD00104"))
+    committee = ok(client.get("/v1/committees/C00800104"))
+
+    assert race["top_donors"] == []
+    assert [cycle["top_donors"] for cycle in candidate["cycles"]] == [[]]
+    assert [cycle["top_donors"] for cycle in committee["cycles"]] == [[]]
+
+
 def test_unknown_candidates_and_committees_are_404s(client: TestClient) -> None:
     assert_not_found(client.get("/v1/candidates/H0XX00000"))
     assert_not_found(client.get("/v1/committees/C99999999"))

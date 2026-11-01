@@ -116,11 +116,43 @@ class RaceTopCommittee(BaseModel):
     kind: Literal["contribution", "ie"]
 
 
+class RaceTopDonorCandidate(BaseModel):
+    """What a race's top donor gave one of its candidates, net of refunds."""
+
+    candidate_id: str
+    amount: float
+
+
+class RaceTopDonor(BaseModel):
+    """`gold.race_top_donor`: a donor among the 100 who gave most to the race's candidates, their
+    own money left out (spec §7.1)."""
+
+    rank: int
+    donor_id: int
+    display_name: str | None
+    amount: float
+    # Most first; always adds up to `amount`.
+    candidates: list[RaceTopDonorCandidate]
+
+
 class Race(RaceSummary):
-    """A race page: the race, its candidates (most money first) and its top committees."""
+    """A race page: the race, its candidates (most money first), its top committees and its top
+    donors."""
 
     candidates: list[RaceCandidate]
     top_committees: list[RaceTopCommittee]
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[RaceTopDonor]
+
+
+class TopDonor(BaseModel):
+    """`gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
+    most in a cycle, the candidate's own money left out (spec §7.1)."""
+
+    rank: int
+    donor_id: int
+    display_name: str | None
+    amount: float
 
 
 class CandidateCycle(BaseModel):
@@ -137,6 +169,8 @@ class CandidateCycle(BaseModel):
     ie_oppose: float
     # None until M3 resolves donors.
     contributor_count: int | None
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[TopDonor]
 
 
 class Candidate(BaseModel):
@@ -162,7 +196,8 @@ class CommitteeTopRecipient(BaseModel):
 
 
 class CommitteeCycle(BaseModel):
-    """`gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to."""
+    """`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
+    gave most to it."""
 
     cycle: int
     total_individual: float
@@ -171,6 +206,8 @@ class CommitteeCycle(BaseModel):
     total_to_candidates: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[TopDonor]
 
 
 class Committee(BaseModel):
@@ -199,6 +236,9 @@ class Contribution(BaseModel):
     recipient_committee_id: str
     # The candidate the recipient raises for as principal or authorized committee, if any.
     candidate_id: str | None
+    # The resolved donor (spec §6), `/v1/donors/{donor_id}`; None on a build loaded before donors
+    # were resolved.
+    donor_id: int | None
     contributor_name: str | None
     contributor_city: str | None
     contributor_state: str | None

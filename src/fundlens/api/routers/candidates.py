@@ -1,12 +1,20 @@
 """`GET /v1/candidates/{candidate_id}`: a candidate page, and the contributions their
 committees received (spec §7.2)."""
 
+from collections import defaultdict
+
 from fastapi import APIRouter, HTTPException
-from psycopg.rows import class_row, dict_row
+from psycopg.rows import dict_row
 
 from fundlens.api.contributions import CursorParam, CycleParam, contributions_page
 from fundlens.api.deps import Conn, Itemized, PageSize
-from fundlens.api.schemas import Candidate, CandidateCycle, ContributionPage, problem_responses
+from fundlens.api.schemas import (
+    Candidate,
+    CandidateCycle,
+    ContributionPage,
+    TopDonor,
+    problem_responses,
+)
 
 router = APIRouter(prefix="/v1")
 
@@ -24,8 +32,16 @@ def get_candidate(conn: Conn, candidate_id: str) -> Candidate:
     )
     if candidate is None:
         raise HTTPException(404, f"No candidate {candidate_id}.")
+    donors = conn.cursor(row_factory=dict_row).execute(
+        "SELECT cycle, rank, donor_id, display_name, amount"
+        " FROM gold.candidate_top_donor WHERE candidate_id = %s ORDER BY cycle, rank",
+        (candidate_id,),
+    )
+    top_donors: defaultdict[int, list[TopDonor]] = defaultdict(list)
+    for row in donors:
+        top_donors[row.pop("cycle")].append(TopDonor(**row))
     cycles = (
-        conn.cursor(row_factory=class_row(CandidateCycle))
+        conn.cursor(row_factory=dict_row)
         .execute(
             "SELECT candidate_cycle.cycle, candidate_cycle.race_id, race.slug AS race_slug,"
             " candidate_cycle.total_individual, candidate_cycle.total_committee,"
@@ -39,7 +55,10 @@ def get_candidate(conn: Conn, candidate_id: str) -> Candidate:
         )
         .fetchall()
     )
-    return Candidate(**candidate, cycles=cycles)
+    return Candidate(
+        **candidate,
+        cycles=[CandidateCycle(**row, top_donors=top_donors[row["cycle"]]) for row in cycles],
+    )
 
 
 @router.get(

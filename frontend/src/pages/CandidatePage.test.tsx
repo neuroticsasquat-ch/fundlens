@@ -37,6 +37,7 @@ function twoCycles() {
             amount: 100,
             recipient_committee_id: "C00800103",
             candidate_id: "S4MD00103",
+            donor_id: null,
             contributor_name: `DONOR OF ${cycle}`,
             contributor_city: null,
             contributor_state: null,

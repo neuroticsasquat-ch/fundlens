@@ -13,6 +13,10 @@ through the pages neither skips nor repeats a row; once that build is pruned the
 (`BuildGone`) and the walk must start again from the first page. A donor's walk reads each older
 cycle from the build live when it gets there.
 
+A row's `donor_id` is NULL on a build loaded before donors were resolved, whose files have no such
+column at all. Only a yes is kept: `resolve` adds the column to a build in place, even a live one,
+and never takes it away, so a build without it is asked again on every read.
+
 The partitions are read from `DATA_DIR/silver`, the silver volume the `api` service mounts
 read-only. Reading R2 over httpfs instead, for a runner with no volume, is a change to where
 `partition` points, not to the query.
@@ -21,7 +25,8 @@ read-only. Reading R2 over httpfs instead, for a runner with no volume, is a cha
 import base64
 import binascii
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -49,6 +54,7 @@ COLUMNS: tuple[str, ...] = (
     "amount",
     "recipient_committee_id",
     "candidate_id",
+    "donor_id",
     "contributor_name",
     "contributor_city",
     "contributor_state",
@@ -136,6 +142,8 @@ class Scan:
     # Each cycle read, newest first, and the build its files are.
     builds: Mapping[int, str]
     limit: int
+    # False for a build loaded before donors were resolved, whose files have no `donor_id`.
+    donor_id: bool = True
 
     def query(self) -> tuple[str, dict[str, object]]:
         """The SQL and its parameters."""
@@ -158,8 +166,12 @@ class Scan:
                     " OR (date = $after_date AND source_record_id > $after_id))"
                 )
             where.append(f"(cycle < $after_cycle OR (cycle = $after_cycle AND {within}))")
+        columns = (
+            "NULL AS donor_id" if column == "donor_id" and not self.donor_id else column
+            for column in COLUMNS
+        )
         query = (
-            f"SELECT {', '.join(COLUMNS)}"
+            f"SELECT {', '.join(columns)}"
             " FROM read_parquet($files, hive_partitioning = false)"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY cycle DESC, date DESC NULLS LAST, source_record_id"
@@ -197,6 +209,8 @@ class ItemizedReader:
                 "autoload_known_extensions": False,
             }
         )
+        # Each (cycle, build_id) whose files are known to have a `donor_id` column.
+        self._with_donor_id: set[tuple[int, str]] = set()
 
     def close(self) -> None:
         self._db.close()
@@ -227,14 +241,16 @@ class ItemizedReader:
                 raise BadCursor(cursor)
         builds = self._builds([cycle], after)
         partition = self._partition(cycle, builds[cycle], after)
+        files = [str(partition / "**" / "*.parquet")]
         return self.read(
             Scan(
-                files=[str(partition / "**" / "*.parquet")],
+                files=files,
                 where=f"{recipient} = $value",
                 value=recipient_id,
                 after=after,
                 builds=builds,
                 limit=limit,
+                donor_id=self._has_donor_id(cycle, builds[cycle], files, after),
             )
         )
 
@@ -314,22 +330,42 @@ class ItemizedReader:
             raise FileNotFoundError(f"live silver partition missing: {partition}")
         return partition
 
+    def _has_donor_id(
+        self, cycle: int, build_id: str, files: list[str], after: Cursor | None
+    ) -> bool:
+        """Whether the files of `cycle`'s `build_id` have a `donor_id` column."""
+        key = (cycle, build_id)
+        if key not in self._with_donor_id:
+            with self._pruned_is_gone(after), self._db.cursor() as con:
+                con.execute(
+                    "SELECT * FROM read_parquet($files, hive_partitioning = false) LIMIT 0",
+                    {"files": files},
+                )
+                if not any(column[0] == "donor_id" for column in con.description or []):
+                    return False
+            self._with_donor_id.add(key)
+        return True
+
+    @contextmanager
+    def _pruned_is_gone(self, after: Cursor | None) -> Generator[None]:
+        """A read that fails because the cursor's build was pruned since it was checked raises
+        `BuildGone`."""
+        try:
+            yield
+        except duckdb.IOException:
+            if after is not None and after.cycle is not None:
+                if not self.partition(after.cycle, after.build_id).is_dir():
+                    raise BuildGone(after.build_id) from None
+            raise
+
     def read(self, scan: Scan) -> Page:
         """The page `scan` reads."""
         if not scan.files:
             return Page([], None)
         query, params = scan.query()
-        try:
-            with self._db.cursor() as con:
-                result = con.execute(query, params)
-                rows = [dict(zip(COLUMNS, row, strict=True)) for row in result.fetchall()]
-        except duckdb.IOException:
-            # Pruned between the check above and the read.
-            after = scan.after
-            if after is not None and after.cycle is not None:
-                if not self.partition(after.cycle, after.build_id).is_dir():
-                    raise BuildGone(after.build_id) from None
-            raise
+        with self._pruned_is_gone(scan.after), self._db.cursor() as con:
+            result = con.execute(query, params)
+            rows = [dict(zip(COLUMNS, row, strict=True)) for row in result.fetchall()]
         more = len(rows) > scan.limit
         rows = rows[: scan.limit]
         next_cursor = None
