@@ -30,11 +30,12 @@ The backfill (NEU-2060) and the weekly run (M5) add their own figures here.
 One `fundlens resolve --full` per row (spec §6.3–§6.6): every cycle's contributor keys linked, clustered and
 given donor_ids. The phases are the run's own timings, in run order, from its output line `load <s> s, train <s> s, …`; wall time is
 the `resolved` marker's `duration_s`. Peak memory is `pipeline`'s between the run's start and end. The working
-file is `/data/fundlens/resolution/resolve.duckdb` after the run.
+file is `/data/fundlens/resolution/resolve.duckdb` after the run; from NEU-2122 it also keeps the run's `edge` and
+`component` tables, and the Notes give the `recluster` summary line and the cluster cap.
 
-| Date | Model | Cycles (build) | SHA | Contributor keys | Clusters | Load / train / cluster / overrides / save / crosswalk / silver s | Wall s | Peak `pipeline` memory | Working file GB | Notes |
+| Date | Model | Cycles (build) | SHA | Contributor keys | Clusters | Load / train / cluster / recluster / overrides / save / crosswalk / silver s | Wall s | Peak `pipeline` memory | Working file GB | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
+| 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / — / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 
 ## Validation
 
@@ -42,6 +43,8 @@ One `fundlens validate` per row ([refreshing-dime.md](runbooks/refreshing-dime.m
 donors scored against DIME, pairwise, over the labelled contributor keys (ADR-0009). Matched is the counted
 contributions DIME labels by exactly one `bonica.cid`, of all counted contributions. Precision and recall are the
 `overall` scope, then the `top` one (the 10,000 DIME donors with the most matched dollars). Wall time is `time`'s `real`.
+A row from `validate --clusters` (the cluster-cap loop, refreshing-dime.md §8) scores the working file's clusters and
+writes nothing to `app.resolution_quality`; its Notes give the cap.
 
 | Date | Model | Cycle (build) | DIME | Matched | Precision (top) | Recall (top) | Wall s | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

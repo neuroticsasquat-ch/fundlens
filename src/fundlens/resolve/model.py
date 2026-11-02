@@ -45,6 +45,11 @@ DETERMINISTIC_RECALL = 0.6
 U_MAX_PAIRS = 1e8
 U_SEED = 2048
 
+# Under this Jaro-Winkler similarity, two first names with different initials are the first-name
+# comparison's else level: the veto. Re-clustering (`resolve.cluster`) keeps such a pair out of
+# every cluster, so it reads the same constant.
+FIRST_NAME_VETO_JW = 0.8
+
 
 def _first_name() -> cl.CustomComparison:
     return cl.CustomComparison(
@@ -55,7 +60,7 @@ def _first_name() -> cl.CustomComparison:
             cll.JaroWinklerLevel("first_name", 0.92).configure(
                 m_probability=0.07, u_probability=0.003
             ),
-            cll.JaroWinklerLevel("first_name", 0.8).configure(
+            cll.JaroWinklerLevel("first_name", FIRST_NAME_VETO_JW).configure(
                 m_probability=0.03, u_probability=0.01
             ),
             # 'A' for 'AUGUSTINE'.

@@ -8,6 +8,8 @@ committee and transaction ids, then by `SUB_ID` to the resolved silver `contribu
 scores fundlens's `donor_id` against `bonica.cid` over the labelled contributor keys: pairwise
 precision and recall, overall and over the `cid`s with the most matched dollars. The figures
 go to `app.resolution_quality`, from which `load` copies the live model's into `gold.meta`.
+Given resolution's working file instead, `validate` scores its `cluster_id`s in place of the
+`donor_id`s and writes nothing: the loop that tunes the cluster cap (NEU-2122 §5.2).
 """
 
 import csv
@@ -26,6 +28,7 @@ from fundlens import paths
 from fundlens.fec.files import CATALOGUE
 from fundlens.r2 import R2
 from fundlens.resolve import crosswalk, model
+from fundlens.resolve.cluster import CLUSTER_TABLE
 from fundlens.transform.runner import ROW_GROUP_ROWS, Limits, literal, register_bulk, unzip_bulk
 
 log = logging.getLogger(__name__)
@@ -105,7 +108,8 @@ class Validated:
 
 
 class NotResolved(Exception):
-    """The build's silver `contribution` carries a NULL `donor_id`: there is nothing to score."""
+    """The build's silver `contribution` carries a NULL `donor_id`, or a labelled key is in no
+    cluster of the working file scored: there is nothing to score."""
 
 
 def _q(name: str) -> str:
@@ -251,6 +255,18 @@ def _local_dime(store: R2, cycle: int, *, data_dir: Path) -> Path:
         ) from exc
 
 
+def _check_clusters(database: Path) -> None:
+    missing = FileNotFoundError(f"no clusters in {database}: run `fundlens resolve --full`")
+    if not database.exists():
+        raise missing
+    with duckdb.connect(database, read_only=True) as con:
+        [(tables,)] = con.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = $name", {"name": CLUSTER_TABLE}
+        ).fetchall()
+    if not tables:
+        raise missing
+
+
 def _write(conn: Connection[TupleRow], result: Validated, validated_at: datetime) -> None:
     with conn.transaction():
         for scope, scored, top_limit in (
@@ -305,14 +321,19 @@ def validate(
     data_dir: Path,
     limits: Limits,
     conn: Connection[TupleRow],
+    clusters: Path | None = None,
 ) -> Validated:
     """Score the newest resolved build of `cycle` against DIME and write the overall and top
     scopes to `app.resolution_quality` under `model_version` (the newest saved model when None)
     (NEU-2054 §5).
 
-    Raises `FileNotFoundError` when the cycle has no resolved build, no model is saved, or R2
-    has no DIME file for the cycle, and `NotResolved` when the build's contributions are not all
-    resolved; in every case before anything is written. Re-running overwrites the same two rows.
+    With `clusters`, resolution's working file, its `cluster` table's `cluster_id` stands in for
+    silver's `donor_id` and nothing is written (NEU-2122 §5.2).
+
+    Raises `FileNotFoundError` when the cycle has no resolved build, no model is saved, R2 has no
+    DIME file for the cycle, or `clusters` holds no `cluster` table, and `NotResolved` when the
+    build's contributions are not all resolved (or, with `clusters`, a labelled key is in no
+    cluster); in every case before anything is written. Re-running overwrites the same two rows.
     """
     if top < 1:
         raise ValueError(f"top {top} is not a positive number of donors")
@@ -325,6 +346,8 @@ def validate(
     if not store.exists(paths.resolution_model(version)):
         # Figures under a model nobody saved are rows `load` never reads.
         raise FileNotFoundError(f"no saved resolution model {version}: see `resolution/model/`")
+    if clusters is not None:
+        _check_clusters(clusters)
     dime = _local_dime(store, cycle, data_dir=data_dir)
     # A cached partition is read as it stands, as the crosswalk reads it: R2's may be a rewrite
     # that died part way.
@@ -346,14 +369,24 @@ def validate(
                 f"read_parquet({literal(contributions / '**' / '*.parquet')},"
                 " hive_partitioning = false)"
             )
-            con.execute(
-                "CREATE TABLE silver AS SELECT source_record_id, contributor_key, donor_id,"
-                f" amount, date FROM {silver}"
-            )
+            if clusters is None:
+                con.execute(
+                    "CREATE TABLE silver AS SELECT source_record_id, contributor_key, donor_id,"
+                    f" amount, date FROM {silver}"
+                )
+            else:
+                con.execute(f"ATTACH {literal(clusters)} AS run (READ_ONLY)")
+                con.execute(
+                    "CREATE TABLE silver AS SELECT s.source_record_id, s.contributor_key,"
+                    " c.cluster_id AS donor_id, s.amount, s.date"
+                    f" FROM {silver} AS s"
+                    f" LEFT JOIN run.{CLUSTER_TABLE} AS c USING (contributor_key)"
+                )
+                con.execute("DETACH run")
             [(contribution_rows, unresolved)] = con.execute(
                 "SELECT count(*), count(*) FILTER (donor_id IS NULL) FROM silver"
             ).fetchall()
-            if unresolved:
+            if unresolved and clusters is None:
                 raise NotResolved(
                     f"build {build_id} of {cycle} is not resolved: {unresolved} contributions"
                     " have no donor_id; run `fundlens resolve --full`"
@@ -404,6 +437,14 @@ def validate(
                 "CREATE TABLE labelled AS SELECT contributor_key, donor_id, bonica_cid,"
                 " sum(amount) AS amount FROM matched GROUP BY ALL"
             )
+            [(unclustered,)] = con.execute(
+                "SELECT count(DISTINCT contributor_key) FROM labelled WHERE donor_id IS NULL"
+            ).fetchall()
+            if unclustered and clusters is not None:
+                raise NotResolved(
+                    f"{unclustered} labelled contributor keys are in no cluster of {clusters}:"
+                    " run `fundlens resolve --full`"
+                )
             con.execute(
                 """
                 CREATE TABLE labelled_top AS
@@ -429,12 +470,14 @@ def validate(
         overall,
         top_scored,
     )
-    _write(conn, result, datetime.now(UTC))
+    if clusters is None:
+        _write(conn, result, datetime.now(UTC))
     log.info(
-        "validated %d build %s under model %s: %d of %d contributions matched",
+        "validated %d build %s under model %s%s: %d of %d contributions matched",
         cycle,
         build_id,
         version,
+        "" if clusters is None else f", clusters from {clusters}",
         matched_rows,
         contribution_rows,
     )

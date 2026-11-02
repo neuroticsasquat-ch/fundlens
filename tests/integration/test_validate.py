@@ -248,6 +248,54 @@ def test_load_before_validation_leaves_the_figures_null(resolved: Path, migrated
     assert f"quality: not validated for model {AGAIN}" in result.output
 
 
+def test_validating_the_working_files_clusters_writes_nothing(
+    resolved: Path, migrated_db: str
+) -> None:
+    assert dime().exit_code == 0
+    # A cap under the Musk case's four keys cuts it in two: pairs DIME holds that the clusters
+    # do not.
+    capped = run("recluster", "--max-keys", "3")
+    assert capped.exit_code == 0, capped.output
+
+    result = validate("--clusters")
+
+    assert result.exit_code == 0, result.output
+    assert quality(migrated_db) == {}
+    last = result.output.strip().splitlines()[-1]
+    assert last == f"clusters from {paths.resolution_database(resolved)}; nothing written"
+    overall = next(line for line in result.output.splitlines() if line.startswith("overall"))
+    precision, recall = (float(figure) for figure in overall.split()[1:3])
+    assert precision == 1.0
+    assert recall < 1.0
+
+
+def test_validating_clusters_without_a_working_file_says_to_resolve(resolved: Path) -> None:
+    assert dime().exit_code == 0
+    paths.resolution_database(resolved).unlink()
+
+    result = validate("--clusters")
+
+    assert result.exit_code == 1
+    assert "run `fundlens resolve --full`" in result.output
+
+
+def test_validating_clusters_that_miss_a_labelled_key_says_to_resolve(
+    resolved: Path, migrated_db: str
+) -> None:
+    assert dime().exit_code == 0
+    with duckdb.connect(paths.resolution_database(resolved)) as con:
+        con.execute(
+            "DELETE FROM cluster WHERE contributor_key = (SELECT min(contributor_key) FROM cluster)"
+        )
+
+    result = validate("--clusters")
+
+    assert result.exit_code == 1
+    assert "1 labelled contributor keys are in no cluster of" in result.output
+    assert "run `fundlens resolve --full`" in result.output
+    assert quality(migrated_db) == {}
+
+
 def test_validate_before_resolve_says_to_resolve(transformed: Path) -> None:
     assert dime().exit_code == 0
 

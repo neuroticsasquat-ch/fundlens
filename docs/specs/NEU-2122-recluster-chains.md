@@ -19,7 +19,7 @@ This ticket adds a **re-clustering pass** after Splink's connected components an
 | Decision | Pinned | Why (rejected alternative) |
 |---|---|---|
 | Which rules | **Both**: a first-name consistency rule (no cluster holds a vetoed pair) applied to every cluster whatever its size, and a size cap (no cluster holds more than N keys). | The size cap alone cannot split the ticket's three-key chain fixture without N < 4, which would break the four-key Musk case; it also leaves small chains merged. The first-name rule alone cannot touch a cluster of different JOHN JOHNSONs in one metro, whose first names agree. |
-| How they are enforced | **One constrained single-linkage pass** per offending cluster: its edges in order of probability, strongest first; each edge unions the two pieces its ends are in unless the union would hold a vetoed pair or exceed N keys; a refused edge is skipped. | Two phases (name-pure pieces plus an attachment pass for null and initial-only names, then a per-component adaptive threshold) need seeding, attachment and stranded-key rules, and the threshold is a cliff: once the cap is hit every weaker edge in the component drops, so a 2N-key real donor shatters. The single pass keeps merging elsewhere in the component as long as the constraints allow, so it becomes two pieces. A fixed ladder of thresholds tops out on probabilities that saturate near 1.0 and either leaves a piece oversized or shreds it. Raising `RESOLVE_CLUSTER_THRESHOLD` everywhere pays for a few hundred chains with recall on every donor. Community detection (Leiden/Louvain) needs a dependency, a seed and a paragraph on the methodology page. Adjudicating large clusters (NEU-2055) merges or splits named keys and cannot fit 1,105 keys in a prompt. |
+| How they are enforced | **One constrained single-linkage pass** per offending cluster: its edges in order of probability, strongest first; each edge unions the two pieces its ends are in unless the union would hold a vetoed pair or exceed N keys; a refused edge is skipped. | Two phases (name-pure pieces plus an attachment pass for null and initial-only names, then a per-component adaptive threshold) need seeding, attachment and stranded-key rules, and the threshold is a cliff: once the cap is hit every weaker edge in the component drops, so a 2N-key real donor shatters. The single pass keeps merging elsewhere in the component as long as the constraints allow, so it becomes a few large pieces (two or three for 2N keys), never a shower of singletons. A fixed ladder of thresholds tops out on probabilities that saturate near 1.0 and either leaves a piece oversized or shreds it. Raising `RESOLVE_CLUSTER_THRESHOLD` everywhere pays for a few hundred chains with recall on every donor. Community detection (Leiden/Louvain) needs a dependency, a seed and a paragraph on the methodology page. Adjudicating large clusters (NEU-2055) merges or splits named keys and cannot fit 1,105 keys in a prompt. |
 | What a vetoed pair is | **Exactly the model's else level**: both first names present, not equal, Jaro-Winkler below `FIRST_NAME_VETO_JW` (0.8, a new constant in `resolve/model.py` that the comparison level reads too), and first initials different. An initial-only name takes part by its initial: `E` and `KIRSTEN` are vetoed, `E` and `EDWARD` are not. A null first name vetoes nothing. | A stricter notion (any two different full first names) splits ELIZABETH from ELISABETH and a household's EDWARD from ELIZABETH in clusters the model never contradicted. Reusing the model's own level means the rule cannot drift from the model. |
 | Which clusters are rebuilt | **Offending clusters only**: those holding at least one vetoed pair or more than N keys. The rest keep their `cluster_id` and `match_probability`. | Rebuilding every cluster is 3.8M Python passes for nothing; the pass is a no-op on a consistent cluster under the cap. |
 | The cap | A setting, `RESOLVE_MAX_CLUSTER_KEYS`, default **200 until the measurement (§7) says otherwise**; the PR sets the measured value. | A constant: the cap is retuned when the backfill adds 22 cycles of keys or the model is retrained. |
@@ -41,7 +41,7 @@ These are glossary terms (`CONTEXT.md`, Resolution): **component** (what linkage
 
 ### 3.1 Tables
 
-`cluster()` writes three tables on the working file, all its own (so `delete_tables_created_by_splink_from_db` in the `save` phase leaves them):
+Three tables on the working file, all fundlens's own (so `delete_tables_created_by_splink_from_db` in the `save` phase leaves them). As built, `cluster()` writes `edge` and `component`, and `recluster()` writes `cluster`:
 
 - `edge(contributor_key_l, contributor_key_r, match_probability)`: every predicted pair at or above the match threshold, `l < r`, one row per pair. Kept after the run: the tuning loop, `recluster`, and NEU-2062 read it. Size on 2024 is recorded in `docs/capacity.md` (the Resolution table gains a "Working file GB" note; expect low single-digit GB).
 - `component(cluster_id, contributor_key)`: Splink's clustering at the cluster threshold, as `cluster_pairwise_predictions_at_threshold` returned it. Kept, so `recluster` starts from it without predicting again.
@@ -72,7 +72,7 @@ recluster_component(members, edges, vetoed, max_keys) -> dict[contributor_key, c
 
 `cluster` is rebuilt as `component` with offending components replaced by their pieces, then `match_probability` recomputed per key from `edge` within the final cluster. A dataclass `Reclustered(oversized, inconsistent, components, pieces, largest_before, largest_after, keys_moved)` is returned, logged (`resolve recluster: 318 components (9 oversized, 311 inconsistent) into 4,102 pieces; largest 1,105 → 200`) and carried on `Resolved` for the CLI summary line.
 
-`recluster(con, *, max_keys)` is a function of the working file alone: no Linker, no Postgres. NEU-2062 (incremental) calls it on the new keys' components with the same `edge` conventions, which is the "reuse" the ticket asks for.
+`recluster(con, *, max_keys, cluster_threshold)` is a function of the working file alone: no Linker, no Postgres. It takes the cluster threshold because `edge` holds every pair at or above the match threshold, and only those at or above the cluster threshold join two keys. NEU-2062 (incremental) calls it on the new keys' components with the same `edge` conventions, which is the "reuse" the ticket asks for.
 
 ## 4. Settings and the run
 
@@ -91,7 +91,7 @@ No family, hand-run, like `validate`. Opens the working file (`paths.resolution_
 
 Scores the working file's `cluster` table instead of silver's `donor_id`: the labelled records are built as today (bronze `indiv` by FEC ids, DIME by `(cmte_id, tran_id, amount, date)`, silver `contribution` by `SUB_ID` for `contributor_key` and amount), then `cluster_id` from the working file (attached read-only) stands in for `donor_id`. Under `--clusters`: silver's `donor_id` is not required (the `NotResolved` check is skipped), every labelled key must be in `cluster` (else exit 1 naming the count missing and `resolve --full`), the report prints with a last line `clusters from <working file path>; nothing written`, and **no row** goes to `app.resolution_quality`. The `Validated` result is returned for tests. Without `--clusters` nothing changes.
 
-### 5.3 The loop, on `music-box-dancer` (also §9 of the runbook)
+### 5.3 The loop, on `music-box-dancer` (also §8 of the runbook)
 
 Each candidate is `recluster --max-keys N` then `validate --cycle 2024 --clusters`; the veto-only figure is `--max-keys` set to a number above the largest component (there is no "off"), so each rule's contribution is visible. Candidates: veto-only, 500, 200, 100, 50. The cycle's silver must be transformed (it is), and the working file must come from a `resolve --full` run by this PR's code (the one before it holds no `edge`).
 
@@ -118,7 +118,7 @@ With the fixture's priors (no training, spec §6.3): bridge–BEATRICE agrees on
 - A three-key chain with a null bridge splits as §6.1 says; the bridge follows the stronger edge; swapping the two edge strengths moves it.
 - A vetoed pair reached only through two null keys (`ELIZABETH – ø – ø – KIRSTEN`) is split, and the two nulls end up on the side of their stronger edges.
 - A cap of 3 on a five-key clique of equal probabilities gives pieces of 3 and 2, in key order (ties deterministic).
-- A 2N-key component of one person (no vetoed pair, edges of varied strength) becomes exactly two pieces, each ≤ N, no singleton.
+- A 2N-key component of one person (no vetoed pair, every key linked to every other at varied strengths) becomes two or three pieces, each ≤ N, no singleton. (As built: "exactly two" is not something greedy single-linkage can promise, since pieces of 4, 3 and 3 under a cap of 5 cannot merge; no two of the pieces left fit under the cap together, so 2N keys leave at most three.)
 - A consistent component under the cap comes back unchanged.
 - The vetoed-pair SQL agrees with the model's else level on a table of name pairs (exact, JW ≥ 0.92, JW ≥ 0.8, same initial, initial-only vs full, null, and vetoed), computed with the same `jaro_winkler_similarity`.
 
@@ -136,7 +136,7 @@ With the fixture's priors (no training, spec §6.3): bridge–BEATRICE agrees on
 
 ## 7. Rollout on `music-box-dancer` (manual steps, after merge; the user walks these)
 
-Never merge mid-runbook: a merge redeploys `pipeline` and kills a running step. The section goes into `docs/runbooks/refreshing-dime.md` as "9. Tuning the cluster cap", in the runbook's shape (every value its own command, expected output after each block, Log entry at the end). In outline:
+Never merge mid-runbook: a merge redeploys `pipeline` and kills a running step. The section goes into `docs/runbooks/refreshing-dime.md` as "8. Tuning the cluster cap", in the runbook's shape (every value its own command, expected output after each block, Log entry at the end). In outline:
 
 1. Deploy; `printenv OTEL_RESOURCE_ATTRIBUTES` shows the merged SHA.
 2. `fundlens resolve --full` (default N=200): writes `edge` and `component`, re-clusters, assigns the crosswalk. Record phases, the `recluster` summary, `repointed` and `redirects`, and the working file size in `docs/capacity.md`'s Resolution table.
@@ -151,7 +151,7 @@ Never merge mid-runbook: a merge redeploys `pipeline` and kills a running step. 
 - `docs/adr/0010-clusters-are-re-clustered-by-constrained-single-linkage.md` (written with this spec).
 - Project spec §6.4: amended line pointing here (written with this spec). §6.10 (incremental): NEU-2062 reuses `recluster`; its spec says how.
 - `docs/capacity.md`: the Resolution table's phase list gains `recluster`; new rows from §7; Validation rows per candidate.
-- `docs/runbooks/refreshing-dime.md`: §9 "Tuning the cluster cap" (the loop, §7), and the "Not in this runbook" line loses "tuning the resolution thresholds".
+- `docs/runbooks/refreshing-dime.md`: §8 "Tuning the cluster cap" (the loop, §7), and the "Not in this runbook" line loses "tuning the resolution thresholds".
 - `docs/runbooks/adding-an-override.md` Facts: the working file now also holds `edge` and `component`; an override may build a cluster the cap or the veto would not.
 - NEU-2056 (methodology page) gets one sentence to print: "Clusters are Splink's connected components, re-clustered so that no cluster holds two first names the model rejects or more than N keys."
 
@@ -159,7 +159,7 @@ Never merge mid-runbook: a merge redeploys `pipeline` and kills a running step. 
 
 - [ ] On the fixture, after `resolve --full`, `QUINLAN, BEATRICE` and `QUINLAN, DESMOND` are in different clusters (and donor_ids), the bridge key is with BEATRICE, every planted donor in `expected.yaml` resolves as before, and `validate --cycle 2024 --top 3` reports 1.0 / 1.0 for both scopes (integration test).
 - [ ] `recluster_component` passes §6.2's unit cases, including the guarantees (no piece over the cap, no vetoed pair in a piece, a non-offending component unchanged) and the SQL-versus-model agreement on vetoed pairs.
-- [ ] `resolve --full` writes `edge` and `component` to the working file and keeps them past `save`; its summary and the `resolved` marker list the `recluster` phase.
+- [ ] `resolve --full` writes `edge` and `component` to the working file and keeps them past `save`; its summary and its log list the `recluster` phase (as built: a marker carries row counts only, so the `resolved` marker is unchanged).
 - [ ] `RESOLVE_MAX_CLUSTER_KEYS=3` leaves no cluster over three keys on the fixture; `fundlens recluster --max-keys 3` reproduces that `cluster` table from a default run's working file (integration test).
 - [ ] `validate --cycle 2024 --clusters` scores the working file, writes nothing, and names the working file in its last line (integration test).
 - [ ] On `music-box-dancer`, the loop's figures for veto-only, 500, 200, 100 and 50 are in the runbook Log and `docs/capacity.md`; the chosen default meets the DoD's figures or §1.1's quality bar, and the PR (or its follow-up) carries the measured figures, the `repointed` and `redirects` counts, and the crosswalk query returning no row over N.

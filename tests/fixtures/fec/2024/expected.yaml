@@ -31,7 +31,7 @@ rows:
   cm: 18
   cn: 12
   ccl: 12
-  indiv: 308
+  indiv: 311
   pas2: 20
   oth: 21
 
@@ -44,7 +44,7 @@ silver:
   committee: 18
   candidate: 12
   candidate_committee_link: 12
-  contribution: 281
+  contribution: 284
   independent_expenditure: 9
   committee_transfer: 21
   # One row per `attributions` line below.
@@ -52,7 +52,7 @@ silver:
   # One row per contributor key among the counted contributions and the JFC attributions (spec
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
-  contributor: 108
+  contributor: 111
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -70,7 +70,7 @@ contributions:
     C00401224: 5
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2245280
+  total_amount: 2246230
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
@@ -90,7 +90,7 @@ races:
     ie_oppose: 125000
   2024-H-MD-05:
     candidate_count: 4
-    total_individual: 67100
+    total_individual: 68050
     total_committee: 12500
     ie_support: 28000
     ie_oppose: 15000
@@ -176,7 +176,7 @@ candidates:
     ie_oppose: 15000
   H4MD05108: # YANG
     race_id: 2024-H-MD-05
-    total_individual: 5450
+    total_individual: 6400
     total_committee: 0
     self_funding: 0
     ie_support: 0
@@ -276,7 +276,7 @@ committees:
     total_to_candidates: 0
     ie_total: 0
   C00800108: # YANG FOR MARYLAND
-    total_individual: 5450
+    total_individual: 6400
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -386,9 +386,21 @@ donors:
     resolved_by: none
     amount: 250000
     sub_ids: [4240100000000000030]
+  # QUINLAN, BEATRICE and QUINLAN, MRS (a title, so no first name): one person. QUINLAN, DESMOND,
+  # linked to BEATRICE only through MRS, is another; re-clustering parts the chain (NEU-2122).
+  chain_end_beatrice:
+    bonica_cid: 100000104
+    resolved_by: linkage
+    amount: 700
+    sub_ids: [4240100000000000309, 4240100000000000310]
+  chain_end_desmond:
+    bonica_cid: 100000105
+    resolved_by: none
+    amount: 250
+    sub_ids: [4240100000000000311]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 103
+distinct_donors: 105
 
 # JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank) filed by a
 # committee in `cm`. Evidence about people, never money: no total above reads them. Each line by
@@ -408,7 +420,7 @@ attributions:
 # with k contributor keys among its counted contributions contributes k(k-1)/2 true pairs.
 validation:
   dime_version: "4.0"
-  matched_rows: 281 # every counted contribution: the fixture labels them all
-  labelled_keys: 107 # contributor keys with a counted contribution (108 less the 15J-only key)
+  matched_rows: 284 # every counted contribution: the fixture labels them all
+  labelled_keys: 110 # contributor keys with a counted contribution (111 less the 15J-only key)
   overall: {precision: 1.0, recall: 1.0}
   top: {limit: 3, precision: 1.0, recall: 1.0}

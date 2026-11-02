@@ -18,7 +18,7 @@ from typer.testing import CliRunner, Result
 from fundlens import cli, markers, paths
 from fundlens.r2 import R2
 from fundlens.resolve import crosswalk, model
-from fundlens.resolve.cluster import cluster
+from fundlens.resolve.cluster import cluster, recluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT
@@ -134,6 +134,11 @@ def test_resolve_full_saves_a_model_that_reloads_without_training(
             match_threshold=settings.resolve_match_threshold,
             cluster_threshold=settings.resolve_cluster_threshold,
         )
+        recluster(
+            con,
+            max_keys=settings.resolve_max_cluster_keys,
+            cluster_threshold=settings.resolve_cluster_threshold,
+        )
         again = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
     assert partition(again) == partition(run)
 
@@ -154,11 +159,105 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
         "contribution": silver["contribution"],
     }
     logged = [record.getMessage() for record in caplog.records]
-    for phase in ("load", "train", "cluster", "overrides", "save", "crosswalk", "silver"):
+    phases = ("load", "train", "cluster", "recluster", "overrides", "save", "crosswalk", "silver")
+    for phase in phases:
         assert any(message.startswith(f"resolve {phase}: ") for message in logged), phase
+    assert any(
+        message.startswith("resolve recluster: 1 components (0 oversized, 1 inconsistent)")
+        for message in logged
+    )
+    assert "recluster: 1 components (0 oversized, 1 inconsistent) into 2 pieces" in result.output
+    assert ", recluster " in result.output
     # The run's connection had the limit, and kept to it: DuckDB fails a query that exceeds it.
     assert "DuckDB memory limit: 244.1 MiB" in result.output
     assert "priors (too few keys to train on)" in result.output
+
+
+def test_the_chain_is_one_component_and_two_clusters_and_the_working_file_keeps_its_edges(
+    transformed: Path,
+) -> None:
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 0, result.output
+    [beatrice, bridge] = sorted(donor_keys(transformed, "chain_end_beatrice"))
+    [desmond] = donor_keys(transformed, "chain_end_desmond")
+    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+        components = dict(
+            con.execute("SELECT contributor_key, cluster_id FROM component").fetchall()
+        )
+        edges = con.execute(
+            "SELECT contributor_key_l, contributor_key_r, match_probability FROM edge"
+        ).fetchall()
+    # Linkage alone makes the chain one donor; re-clustering parts its ends.
+    assert components[beatrice] == components[bridge] == components[desmond]
+    found = clusters(transformed)
+    assert found[beatrice] == found[bridge] != found[desmond]
+    assert edges
+    threshold = get_settings().resolve_match_threshold
+    assert all(left < right and p >= threshold for left, right, p in edges)
+    assert len({(left, right) for left, right, _ in edges}) == len(edges)
+    # The ends never pair directly: only the bridge joins them.
+    assert not {frozenset((left, right)) for left, right, _ in edges} & {
+        frozenset((beatrice, desmond))
+    }
+
+
+def cluster_rows(data_dir: Path) -> list[tuple[Any, ...]]:
+    with duckdb.connect(paths.resolution_database(data_dir), read_only=True) as con:
+        return con.execute("SELECT * FROM cluster ORDER BY contributor_key").fetchall()
+
+
+def recluster_cli(*args: str) -> Result:
+    return CliRunner().invoke(cli.app, ["recluster", *args])
+
+
+def test_a_cap_of_three_cuts_the_musk_case_and_recluster_rewrites_the_clusters_alike(
+    transformed: Path, migrated_db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RESOLVE_MAX_CLUSTER_KEYS", "3")
+    get_settings.cache_clear()
+    capped = resolve("--full", "--build-id", MODEL)
+    assert capped.exit_code == 0, capped.output
+    at_three = cluster_rows(transformed)
+    monkeypatch.delenv("RESOLVE_MAX_CLUSTER_KEYS")
+    get_settings.cache_clear()
+    default = resolve("--full", "--build-id", AGAIN)
+    assert default.exit_code == 0, default.output
+    at_default = cluster_rows(transformed)
+    crosswalk_after_default = crosswalk_rows(migrated_db)
+
+    cut = recluster_cli("--max-keys", "3")
+
+    assert cut.exit_code == 0, cut.output
+    assert "recluster: 2 components (1 oversized, 1 inconsistent)" in cut.output
+    assert "largest 4 → 3" in cut.output
+    assert cluster_rows(transformed) == at_three
+    sizes: dict[str, int] = {}
+    for cluster_id in clusters(transformed).values():
+        sizes[cluster_id] = sizes.get(cluster_id, 0) + 1
+    assert max(sizes.values()) == 3
+    musk = donor_keys(transformed, "musk_case")
+    assert len({clusters(transformed)[key] for key in musk}) == 2
+    # The working file alone: the crosswalk stands as the default run left it.
+    assert crosswalk_rows(migrated_db) == crosswalk_after_default
+    restored = recluster_cli("--max-keys", "200")
+    assert restored.exit_code == 0, restored.output
+    assert cluster_rows(transformed) == at_default
+
+
+def test_recluster_without_components_says_to_resolve(cli_env: Path) -> None:
+    nothing = recluster_cli()
+    database = paths.resolution_database(cli_env)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(database) as con:
+        # A working file from before re-clustering: no `edge` or `component` table.
+        con.execute("CREATE TABLE contributor (contributor_key VARCHAR, first_name VARCHAR)")
+        con.execute("CREATE TABLE cluster (cluster_id VARCHAR, contributor_key VARCHAR)")
+    older = recluster_cli()
+
+    for result in (nothing, older):
+        assert result.exit_code == 1
+        assert "no components in the working file: run `fundlens resolve --full`" in result.output
 
 
 def test_resolve_full_with_nothing_transformed_says_to_transform(cli_env: Path) -> None:

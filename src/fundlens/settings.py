@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Both are tuned against DIME (spec §6.9, §13).
     resolve_match_threshold: float = Field(default=0.9, alias="RESOLVE_MATCH_THRESHOLD")
     resolve_cluster_threshold: float = Field(default=0.95, alias="RESOLVE_CLUSTER_THRESHOLD")
+    # The cluster cap (NEU-2122, ADR-0010): re-clustering leaves no cluster of more keys than
+    # this. Tuned against DIME by `fundlens recluster` (docs/runbooks/refreshing-dime.md §8).
+    resolve_max_cluster_keys: int = Field(default=200, ge=2, alias="RESOLVE_MAX_CLUSTER_KEYS")
     # The fewest contributor keys `resolve --full` estimates u and m from (`resolve.model.train`);
     # below it the model keeps its prior parameters. Real cycles hold millions of keys.
     resolve_min_training_keys: int = Field(default=100_000, alias="RESOLVE_MIN_TRAINING_KEYS")
