@@ -1,7 +1,8 @@
 import { DEFAULT_THEME } from "@mantine/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { lastOption } from "../test/echarts";
+import { http } from "../test/api";
+import { allOptions, lastOption } from "../test/echarts";
 import { renderApp } from "../test/app";
 import { RACE_SENATE_MD } from "../test/fixtures";
 import { matchMedia } from "../test/media";
@@ -120,6 +121,57 @@ describe("RacePage", () => {
         data: [{ value: 1786850 }, { value: 59700 }, { value: 7175 }, { value: 3250 }],
       },
     ]);
+  });
+
+  it("charts only the 15 candidates with the most money, and says the table has the rest", async () => {
+    // A presidential race lists every filer: 1,602 in 2024, most with nothing. A bar each would
+    // make a canvas taller than the browser will draw.
+    const [model] = RACE_SENATE_MD.candidates;
+    const candidates = Array.from({ length: 25 }, (_, i) => ({
+      ...model,
+      candidate_id: `P4000${String(i).padStart(4, "0")}`,
+      name: `CANDIDATE ${i}`,
+      total_individual: i < 20 ? (20 - i) * 1000 : 0,
+      total_committee: 0,
+      self_funding: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidate_count: 25, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    const option = lastOption();
+    expect(option.yAxis).toMatchObject({
+      data: candidates.slice(0, 15).map((candidate) => candidate.name),
+    });
+    expect(
+      screen.getByText("The 15 candidates with the most money, of 25. The table lists them all."),
+    ).toBeInTheDocument();
+    expect(rows("Candidates")).toHaveLength(25);
+  });
+
+  it("draws no chart when no candidate has any money", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      total_individual: 0,
+      total_committee: 0,
+      self_funding: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    expect(allOptions()).toEqual([]);
+    expect(rows("Candidates")).toHaveLength(4);
   });
 
   it.each([
