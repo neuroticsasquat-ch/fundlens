@@ -72,6 +72,25 @@ The exact normalized tuple (name, ZIP5, employer, occupation) that identifies on
 **Cluster**:
 The set of contributor keys that probabilistic linkage judges to be the same person in one resolution run.
 
+**Component**:
+The set of contributor keys joined by a path of matched pairs in one run: what linkage's connected components give, before re-clustering. A component is a cluster only once re-clustering has left it alone or cut it into pieces.
+_Avoid_: raw cluster, Splink cluster
+
+**Chain**:
+A component holding keys linkage would never pair directly, joined only through intermediates: two first names that disagree, or hundreds of people under one surname sound. The failure re-clustering removes.
+_Avoid_: over-merged cluster, mega-cluster
+
+**Vetoed pair**:
+Two contributor keys whose first names the model rejects outright: both present, not the same, not close, and starting with different letters. A missing first name vetoes nothing. Never in one cluster, except by an override or an adjudication.
+
+**Re-clustering**:
+Rebuilding a component that holds a vetoed pair or more keys than the cluster cap from its own matched pairs, strongest first, so that no piece holds either. Runs after linkage and before overrides; a component that offends neither is untouched.
+_Avoid_: splitting (that is an override's word), pruning
+
+**Cluster cap**:
+The most contributor keys a cluster may hold after re-clustering. Tuned against the reference labels, not derived.
+_Avoid_: max cluster size, size limit
+
 **Crosswalk**:
 The persistent mapping from contributor key to donor ID, so weekly rebuilds do not reshuffle donor URLs. A new cluster inherits the donor ID its members already carry; only never-seen keys get new IDs.
 
