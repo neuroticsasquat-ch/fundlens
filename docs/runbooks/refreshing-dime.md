@@ -210,3 +210,24 @@ publishes it.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-02 — First import and validation, 2024 (NEU-2054)
+
+DIME v4.0, cycle 2024, build `20261031T202003Z`, model `20261101T205049Z`.
+
+- **Download** 12m17s: 19,158,623,840 bytes, `1f8b`. The first download went to `reference/dime/v4.0/` inside the
+  container and was lost when the deploy of PR #58 recreated it; step 2 now downloads into the `scratch` volume (PR #59).
+- **Import** 10m18s, from `6f92e66`: 210,900,861 rows read, 194,682,505 kept, 13,738,582 distinct cids, 0 dropped. The
+  first attempt, from `2b670db`, ran DuckDB's 26 GiB limit out of memory four minutes in: `read_csv(…, parallel = false)`
+  holds what it decompresses under DuckDB 2.0 (fixed in PR #58).
+- **Validate** 2m56s, from `6f92e66`: 25,958,825 of 51,014,276 matched (50.9%); overall 0.3825 / 0.9131, top 10,000
+  0.9197 / 0.8143. A read-only diagnosis found about 4.2M rows whose ids were in DIME but whose amount carried cents the
+  bulk file drops. Matching in whole dollars (PR #60) and validating again, 3m29s from `b77792d`: **30,175,706 matched
+  (59.2%); overall precision 0.3657, recall 0.9149; top 10,000 0.9209 / 0.8120** (2,046,173 correct, 5,594,548 predicted,
+  2,236,402 true pairs overall).
+- **What the rest of the gap is.** Unmatched: about 6.2M gifts to ActBlue and WinRed themselves, which DIME leaves out
+  (only 50 of them match, though the id formats agree), and committees DIME barely holds: TRUMP NATIONAL COMMITTEE JFC
+  (5.4M of ours unmatched, 141,536 DIME rows), TRUMP SAVE AMERICA JFC, NRSC and RNC. Precision: DIME splits only 38,121 keys
+  (41,772 wrong pairs); the rest is our connected-component chaining. Donor `1661978` holds 1,105 keys DIME labels as
+  766 people (Soundex J525 surnames across states). Filed as NEU-2122.
+- Raw file deleted from `scratch/dime-raw/` once R2 held it.

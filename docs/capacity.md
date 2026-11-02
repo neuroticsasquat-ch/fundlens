@@ -45,6 +45,8 @@ contributions DIME labels by exactly one `bonica.cid`, of all counted contributi
 
 | Date | Model | Cycle (build) | DIME | Matched | Precision (top) | Recall (top) | Wall s | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-02 | `20261101T205049Z` | 2024 (`20261031T202003Z`) | v4.0 | 25,958,825 of 51,014,276 (50.9%) | 0.3825 (0.9197) | 0.9131 (0.8143) | 176 | First run, from `6f92e66`. Amounts compared to the cent, so DIME's cents (260.25 against the bulk file's 260) missed about 4.2M rows; superseded by the next row. |
+| 2026-11-02 | `20261101T205049Z` | 2024 (`20261031T202003Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.3657 (0.9209) | 0.9149 (0.8120) | 209 | From `b77792d`: amounts in whole dollars (PR #60). The unmatched rest is DIME's coverage: gifts to ActBlue and WinRed themselves, and the Trump JFCs, RNC and NRSC. Precision is our over-merging: chained clusters, NEU-2122 (DIME's own key splits are 1.4% of the wrong pairs). |
 
 ## Findings
 
