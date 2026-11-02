@@ -241,11 +241,11 @@ time docker exec "$(fl pipeline)" fundlens resolve --full | tee resolve-cap.txt
 docker exec "$(fl pipeline)" du -h /data/fundlens/resolution/resolve.duckdb | tee -a resolve-cap.txt
 ```
 
-**Expected:** about 15 minutes, ending with lines like
+**Expected:** about 10 minutes, ending with lines like
 
 ```
 <keys> contributor keys in <clusters> clusters
-recluster: <n> components (<o> oversized, <i> inconsistent) into <p> pieces; largest 1,105 → 200
+recluster: <n> components (<o> oversized, <i> inconsistent) into <p> pieces; largest <before> → <after>
 overrides: <m> merges joining <j> clusters into others, <s> splits
 crosswalk: <new> new donors, <repointed> keys re-pointed, <redirects> redirects
 model <M>: trained, wrote resolution/model/<M>.json
@@ -310,7 +310,9 @@ Validation-table row each (`N = <N>, validate --clusters` in Notes).
 
 The winner is the candidate meeting NEU-2122's targets (overall precision ≥ 0.8 and recall ≥ 0.88; top 10,000
 precision ≥ 0.92 and recall ≥ 0.81). When none does, it is the candidate with the highest overall precision whose
-overall recall stays ≥ 0.88 and whose top scope stays ≥ 0.92 / 0.81 (NEU-2122 spec §1.1). Set it:
+overall recall stays ≥ 0.88 and whose top scope stays ≥ 0.92 / 0.81 (NEU-2122 spec §1.1). When none keeps that floor
+either, choose by hand and say why in the Log (2026-11-02 kept 200: below the veto's largest cluster, a cap cut
+top-scope recall for little precision). Set it:
 
 ```bash
 # VM, in tmux. The chosen cap.
@@ -367,3 +369,33 @@ DIME v4.0, cycle 2024, build `20261031T202003Z`, model `20261101T205049Z`.
   (5.4M of ours unmatched, 141,536 DIME rows), TRUMP SAVE AMERICA JFC, NRSC and RNC. Precision: DIME splits only 38,121 keys
   (41,772 wrong pairs); the rest is our connected-component chaining. Donor `1661978` holds 1,105 keys DIME labels as
   766 people (Soundex J525 surnames across states). Filed as NEU-2122.
+
+### 2026-11-02 — Tuning the cluster cap, 2024 (NEU-2122)
+
+From `22e56ce`: DIME v4.0, cycle 2024, build `20261102T031624Z`, model `20261102T194152Z` (retrained by this run).
+
+- **Resolve** 9m58s (§8.2): 5,620,495 keys in 3,822,946 clusters. `recluster: 4,085 components (17 oversized, 4,085
+  inconsistent) into 10,891 pieces; largest 1,400 → 180`. One override merge. Crosswalk: 6,806 new donors, 31,213 keys
+  re-pointed, **0 redirects**. Working file 9.5 GB.
+- **The loop** (§8.3–8.4), overall precision / recall, then the top 10,000:
+
+  | N | Pieces | Largest | Overall | Top 10,000 |
+  | --- | --- | --- | --- | --- |
+  | before (model `20261101T205049Z`) | — | 1,105 | 0.3657 / 0.9149 | 0.9209 / 0.8120 |
+  | 1,000,000 (veto only) | 10,891 | 180 | 0.6288 / 0.9121 | 0.9516 / 0.8023 |
+  | 500 | 10,891 | 180 | 0.6288 / 0.9121 | 0.9516 / 0.8023 |
+  | **200** | 10,891 | 180 | **0.6288 / 0.9121** | **0.9516 / 0.8023** |
+  | 100 | 10,910 | 100 | 0.6313 / 0.9121 | 0.9517 / 0.8023 |
+  | 50 | 11,130 | 50 | 0.6382 / 0.9032 | 0.9571 / 0.7593 |
+
+  Each `recluster` took about 18 s and each `validate` about 3m35s.
+- **Chosen: 200, by hand.** No candidate met NEU-2122's targets, nor §8.5's floor: the veto, which every candidate
+  applies, takes top-scope recall from 0.8120 to 0.8023. Above 180 the cap cuts nothing, so 200 is the veto's result
+  and still guards against a future chain; 100 gained 0.0025 precision for a redeploy and a second resolve; 50 cost
+  top recall 0.043. Not yet known why the veto loses top-scope pairs; a person filed under two first names with
+  different initials (WILLIAM and BILL) is the likely case, asserted, not measured.
+- **Crosswalk** (§8.6): no donor over 200 keys; the largest holds 180. Donor `1661978`, the J525 chain, now holds 82 keys.
+- **Load and publish** 2m50s and 1m44s: `quality: precision 0.6288 recall 0.9121 (top 0.9516/0.8023)` in `gold.meta`.
+  Publish logged `kuma push (up) failed: HTTP Error 404` from its heartbeat; the publish itself succeeded.
+- **What is left.** About 95% of the 1,204,209 remaining wrong pairs sit in clusters of 50 keys or fewer (capacity.md
+  Findings), so the 0.8 precision target needs another fix than a cap.
