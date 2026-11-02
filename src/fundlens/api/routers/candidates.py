@@ -45,6 +45,7 @@ def get_candidate(conn: Conn, candidate_id: str) -> Candidate:
         .execute(
             "SELECT candidate_cycle.cycle, candidate_cycle.race_id, race.slug AS race_slug,"
             " candidate_cycle.total_individual, candidate_cycle.total_committee,"
+            " candidate_cycle.total_jfc_transfers,"
             " candidate_cycle.self_funding, candidate_cycle.ie_support,"
             " candidate_cycle.ie_oppose, candidate_cycle.contributor_count"
             " FROM gold.candidate_cycle"

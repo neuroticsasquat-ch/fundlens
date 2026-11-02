@@ -75,6 +75,7 @@ class RaceTotals(TypedDict):
     candidate_count: int
     total_individual: int
     total_committee: int
+    total_jfc_transfers: int
     ie_support: int
     ie_oppose: int
 
@@ -83,6 +84,7 @@ class CandidateTotals(TypedDict):
     race_id: str | None
     total_individual: int
     total_committee: int
+    total_jfc_transfers: int
     self_funding: int
     ie_support: int
     ie_oppose: int

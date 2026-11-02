@@ -4,6 +4,7 @@ CREATE TABLE gold_build.candidate_cycle (
     race_id text,
     total_individual numeric(16, 2) NOT NULL,
     total_committee numeric(16, 2) NOT NULL,
+    total_jfc_transfers numeric(16, 2) NOT NULL,
     self_funding numeric(16, 2) NOT NULL,
     ie_support numeric(16, 2) NOT NULL,
     ie_oppose numeric(16, 2) NOT NULL,

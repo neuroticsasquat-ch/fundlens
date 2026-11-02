@@ -21,6 +21,10 @@
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, OTHER_ID a committee's id. A committee's gift to a
 #   candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
+# - total_jfc_transfers on a candidate: the `oth` receipts above of type 18J, a joint fundraising
+#   committee's transfer of the candidate's share, credited to the candidate the receiving
+#   committee is linked to. In neither total_individual nor total_committee: OKAFOR VICTORY
+#   FUND's 18J to OKAFOR is the fixture's one.
 # - A race's totals are the sums over the candidates attached to it.
 # All amounts are whole dollars.
 
@@ -80,18 +84,21 @@ races:
     candidate_count: 3
     total_individual: 54775
     total_committee: 5000
+    total_jfc_transfers: 0
     ie_support: 400000
     ie_oppose: 0
   2024-S-MD-00:
     candidate_count: 4
     total_individual: 91975
     total_committee: 11000
+    total_jfc_transfers: 6500
     ie_support: 150000
     ie_oppose: 125000
   2024-H-MD-05:
     candidate_count: 4
     total_individual: 68050
     total_committee: 12500
+    total_jfc_transfers: 0
     ie_support: 28000
     ie_oppose: 15000
   # A special in the seat calendar with no one attached: cn cannot tell its filings from the
@@ -100,6 +107,7 @@ races:
     candidate_count: 0
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     ie_support: 0
     ie_oppose: 0
   # A seat no one filed for: a race all the same, with nothing in it.
@@ -107,6 +115,7 @@ races:
     candidate_count: 0
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     ie_support: 0
     ie_oppose: 0
 
@@ -115,6 +124,7 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 19625
     total_committee: 5000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 400000
     ie_oppose: 0
@@ -122,6 +132,7 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 35150
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -129,6 +140,7 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -136,6 +148,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 49700
     total_committee: 5000
+    total_jfc_transfers: 6500
     self_funding: 5000
     ie_support: 150000
     ie_oppose: 45000
@@ -143,6 +156,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 31850
     total_committee: 6000
+    total_jfc_transfers: 0
     self_funding: 1750000
     ie_support: 0
     ie_oppose: 80000
@@ -150,6 +164,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 3250
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -157,6 +172,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 7175
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -164,6 +180,7 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 35825
     total_committee: 10000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 28000
     ie_oppose: 0
@@ -171,6 +188,7 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 25825
     total_committee: 2500
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 15000
@@ -178,6 +196,7 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 6400
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -185,6 +204,7 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -192,6 +212,7 @@ candidates:
     race_id: null
     total_individual: 3200
     total_committee: 1000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0

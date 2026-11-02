@@ -75,6 +75,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert race["candidate_count"] == totals["candidate_count"], race_id
         assert dollars(race["total_individual"]) == totals["total_individual"], race_id
         assert dollars(race["total_committee"]) == totals["total_committee"], race_id
+        assert dollars(race["total_jfc_transfers"]) == totals["total_jfc_transfers"], race_id
         # Independent expenditures arrive with NEU-2057.
         assert (race["ie_support"], race["ie_oppose"]) == (0, 0), race_id
     assert races["2024-S-MD-00"]["slug"] == "2024/senate/MD"
@@ -93,14 +94,22 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert cycle_row["race_id"] == totals["race_id"], candidate_id
         assert dollars(cycle_row["total_individual"]) == totals["total_individual"], candidate_id
         assert dollars(cycle_row["total_committee"]) == totals["total_committee"], candidate_id
+        assert dollars(cycle_row["total_jfc_transfers"]) == totals["total_jfc_transfers"], (
+            candidate_id
+        )
         assert dollars(cycle_row["self_funding"]) == totals["self_funding"], candidate_id
         assert (cycle_row["ie_support"], cycle_row["ie_oppose"]) == (0, 0)
         assert cycle_row["contributor_count"] is None
         if totals["race_id"] is not None:
             race_row = race_candidates[candidate_id]
             assert race_row["race_id"] == totals["race_id"]
-            assert (race_row["total_individual"], race_row["self_funding"]) == (
+            assert (
+                race_row["total_individual"],
+                race_row["total_jfc_transfers"],
+                race_row["self_funding"],
+            ) == (
                 cycle_row["total_individual"],
+                cycle_row["total_jfc_transfers"],
                 cycle_row["self_funding"],
             )
     okafor = race_candidates["S4MD00103"]

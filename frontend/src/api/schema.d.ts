@@ -273,6 +273,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * Committee
@@ -569,6 +571,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceCandidate
@@ -595,6 +599,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceSummary
@@ -624,6 +630,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceTopCommittee

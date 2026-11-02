@@ -30,6 +30,7 @@ DIME = fec_fixture.FIXTURES / "dime" / "contribDB_2024.csv"
 CONDUITS = {"ACTBLUE": "C00401224", "WINRED": "C00694323"}
 IE_SUPPORT, IE_OPPOSE = "24E", "24A"
 COMMITTEE_CONTRIBUTION = "24K"
+JFC_TRANSFER = "18J"
 
 EXPECTED = fec_fixture.expected()
 
@@ -233,6 +234,12 @@ def tally_candidates() -> dict[str, CandidateTotals]:
     from_committees = sum_by(
         (c, amount(r)) for r in committee_contributions() if (c := gift_candidate(r)) is not None
     )
+    # A JFC's 18J transfer, credited to the candidate its recipient committee raises for.
+    jfc_transfers = sum_by(
+        (c, amount(r))
+        for r in committee_receipts()
+        if r["TRANSACTION_TP"] == JFC_TRANSFER and (c := links.get(r["CMTE_ID"])) is not None
+    )
     support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
     races = race_ids()
     return {
@@ -244,6 +251,7 @@ def tally_candidates() -> dict[str, CandidateTotals]:
                 if cand == candidate_id
             ),
             "total_committee": from_committees.get(candidate_id, 0),
+            "total_jfc_transfers": jfc_transfers.get(candidate_id, 0),
             "self_funding": sum(
                 committees[c]["self_funding"] for c, cand in links.items() if cand == candidate_id
             ),
@@ -262,6 +270,7 @@ def tally_races(candidates: dict[str, CandidateTotals]) -> dict[str, RaceTotals]
             "candidate_count": len(members),
             "total_individual": sum(c["total_individual"] for c in members),
             "total_committee": sum(c["total_committee"] for c in members),
+            "total_jfc_transfers": sum(c["total_jfc_transfers"] for c in members),
             "ie_support": sum(c["ie_support"] for c in members),
             "ie_oppose": sum(c["ie_oppose"] for c in members),
         }
@@ -302,7 +311,13 @@ def test_each_race_total_is_the_sum_of_its_candidates() -> None:
     for race_id, race in EXPECTED["races"].items():
         members = [c for c in EXPECTED["candidates"].values() if c["race_id"] == race_id]
         assert race["candidate_count"] == len(members), race_id
-        for field in ("total_individual", "total_committee", "ie_support", "ie_oppose"):
+        for field in (
+            "total_individual",
+            "total_committee",
+            "total_jfc_transfers",
+            "ie_support",
+            "ie_oppose",
+        ):
             assert race[field] == sum(c[field] for c in members), (race_id, field)
 
 
