@@ -230,4 +230,3 @@ DIME v4.0, cycle 2024, build `20261031T202003Z`, model `20261101T205049Z`.
   (5.4M of ours unmatched, 141,536 DIME rows), TRUMP SAVE AMERICA JFC, NRSC and RNC. Precision: DIME splits only 38,121 keys
   (41,772 wrong pairs); the rest is our connected-component chaining. Donor `1661978` holds 1,105 keys DIME labels as
   766 people (Soundex J525 surnames across states). Filed as NEU-2122.
-- Raw file deleted from `scratch/dime-raw/` once R2 held it.
