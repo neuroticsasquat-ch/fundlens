@@ -175,8 +175,8 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     pas2 = rows("pas2")
     to_candidates = sum_by(
         (r["CMTE_ID"], amount(r))
-        for r in pas2
-        if r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION and gift_candidate(r) is not None
+        for r in committee_contributions()
+        if gift_candidate(r) is not None
     )
     ie = sum_by(
         (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
@@ -191,6 +191,16 @@ def tally_committees() -> dict[str, CommitteeTotals]:
         }
         for committee_id in (row["CMTE_ID"] for row in rows("cm"))
     }
+
+
+def committee_contributions() -> list[dict[str, str]]:
+    """The `pas2` 24K rows that are a committee's gift: not a conduit's, whose 24K is its side of
+    an earmark it passed on, counted on the recipient's `indiv` row (ADR-0004)."""
+    return [
+        r
+        for r in rows("pas2")
+        if r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION and r["CMTE_ID"] not in CONDUITS.values()
+    ]
 
 
 def gift_candidate(row: dict[str, str]) -> str | None:
@@ -214,18 +224,16 @@ def tally_candidates() -> dict[str, CandidateTotals]:
     pas2 = rows("pas2")
 
     def by_type(transaction_type: str) -> dict[str, int]:
-        candidate = gift_candidate if transaction_type == COMMITTEE_CONTRIBUTION else ie_candidate
         return sum_by(
             (c, amount(r))
             for r in pas2
-            if r["TRANSACTION_TP"] == transaction_type and (c := candidate(r)) is not None
+            if r["TRANSACTION_TP"] == transaction_type and (c := ie_candidate(r)) is not None
         )
 
-    from_committees, support, oppose = (
-        by_type(COMMITTEE_CONTRIBUTION),
-        by_type(IE_SUPPORT),
-        by_type(IE_OPPOSE),
+    from_committees = sum_by(
+        (c, amount(r)) for r in committee_contributions() if (c := gift_candidate(r)) is not None
     )
+    support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
     races = race_ids()
     return {
         candidate_id: {
@@ -343,8 +351,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "candidate_committee_link": len(rows("ccl")),
         "contribution": len(contributions),
         "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
-        "committee_transfer": len(committee_receipts())
-        + sum(r["TRANSACTION_TP"] == COMMITTEE_CONTRIBUTION for r in pas2),
+        "committee_transfer": len(committee_receipts()) + len(committee_contributions()),
         "jfc_attribution": len(attributions()),
         "contributor": len({contributor_key(r) for r in [*contributions, *attributions()]}),
     }

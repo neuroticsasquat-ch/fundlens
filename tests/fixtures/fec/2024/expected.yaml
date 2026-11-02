@@ -13,7 +13,8 @@
 #   authorized (A), and of the one their `cn` row names principal (CAND_PCC) whatever `ccl`'s
 #   designation: STRATTON's, a leadership PAC since the election. Any other leadership PAC (D) is
 #   not the candidate's.
-# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows, credited
+# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows not
+#   filed by a conduit (a conduit's 24K is its side of an earmark, ADR-0004), credited
 #   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
 #   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
@@ -31,13 +32,14 @@ rows:
   cn: 12
   ccl: 12
   indiv: 308
-  pas2: 18
+  pas2: 20
   oth: 21
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
 # every `oth` receipt from a committee (recorded by the receiving committee) plus every `pas2` 24K
-# row (a disbursement, recorded by the giver): the one gift on both sides, each side its own row.
+# row not filed by a conduit (a disbursement, recorded by the giver): the one gift on both sides,
+# each side its own row.
 silver:
   committee: 18
   candidate: 12

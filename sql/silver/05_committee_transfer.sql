@@ -7,7 +7,10 @@
 -- only: receipts by to_committee_id, disbursements by from_committee_id or candidate_id. Adding
 -- the two sides would count the gift twice (expected.yaml's rule). The other `pas2` types
 -- (24A/24E independent expenditures, 24C coordinated) are NEU-2057's independent_expenditure.
--- A negative amount is a correction, kept so it nets out.
+-- A negative amount is a correction, kept so it nets out. A conduit's 24K is no gift: it is the
+-- conduit's side of an earmark it passed on (WinRed filed 348,042 in 2024, $10.2M net, most of them
+-- refunds), an individual's money counted once on the recipient's `indiv` row (ADR-0004), so it
+-- is dropped as the conduit's 24T is in 04_contribution.sql.
 --
 -- `oth` is not only receipts (NEU-2070). It also repeats every `pas2` row under the same SUB_ID,
 -- holds the filer's own disbursements (24G, 22Z), the memo lines itemizing individuals' gifts
@@ -73,4 +76,5 @@ SELECT
     'disbursement' AS side
 FROM pas2
 LEFT JOIN linked ON linked.committee_id = nullif(trim(pas2.OTHER_ID), '')
-WHERE pas2.TRANSACTION_TP = '24K';
+WHERE pas2.TRANSACTION_TP = '24K'
+    AND pas2.CMTE_ID NOT IN (SELECT committee_id FROM committee WHERE is_conduit);
