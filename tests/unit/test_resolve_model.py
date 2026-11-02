@@ -16,7 +16,7 @@ import pytest
 from splink import DuckDBAPI
 
 from fundlens.resolve import model
-from fundlens.resolve.cluster import cluster, cluster_fingerprint
+from fundlens.resolve.cluster import cluster, cluster_fingerprint, recluster
 
 COLUMNS = (
     "contributor_key",
@@ -141,6 +141,7 @@ def test_training_estimates_u_and_m_and_finds_each_donors_keys(
     trained = linker.misc.save_model_to_json()
     assert _m(trained, "employer_norm", "Exact match on employer_norm") != EMPLOYER_EXACT_PRIOR
     cluster(linker, con, match_threshold=0.9, cluster_threshold=0.95)
+    recluster(con, max_keys=200, cluster_threshold=0.95)
     clusters = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
     found, truth = _pairs(clusters), _pairs(dict(donor_of))
     assert len(found & truth) / len(truth) >= 0.95

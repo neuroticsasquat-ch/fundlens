@@ -380,6 +380,7 @@ def resolve(
                     match=settings.resolve_match_threshold,
                     cluster=settings.resolve_cluster_threshold,
                 ),
+                max_keys=settings.resolve_max_cluster_keys,
                 min_training_keys=settings.resolve_min_training_keys,
                 overrides_path=settings.overrides_path,
                 conn=conn,
@@ -390,6 +391,7 @@ def resolve(
     for cycle, build in result.builds.items():
         typer.echo(f"{cycle}: build {build}")
     typer.echo(f"{result.contributor_keys} contributor keys in {result.clusters} clusters")
+    typer.echo(f"recluster: {result.reclustered.summary()}")
     overridden = result.overridden
     typer.echo(
         f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
@@ -404,6 +406,41 @@ def resolve(
     typer.echo(f"model {result.model_version}: {parameters}, wrote {result.model_key}")
     typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
     typer.echo(f"DuckDB memory limit: {result.memory_limit}")
+
+
+@app.command()
+# No family, like `validate`: run by hand, to tune the cluster cap.
+@step("recluster")
+def recluster(
+    max_keys: Annotated[
+        int | None,
+        typer.Option(help="The cluster cap. Default: RESOLVE_MAX_CLUSTER_KEYS.", min=2),
+    ] = None,
+) -> None:
+    """Rewrite the working file's clusters from its components under another cluster cap, then
+    apply `resolution/overrides.yaml`, as `resolve --full` would; nothing else changes: no
+    crosswalk, silver, marker or R2 (NEU-2122 §5.1)."""
+    settings = get_settings()
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = resolution.recluster_working_file(
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                max_keys=max_keys or settings.resolve_max_cluster_keys,
+                cluster_threshold=settings.resolve_cluster_threshold,
+                overrides_path=settings.overrides_path,
+                conn=conn,
+            )
+    except (FileNotFoundError, overrides.OverridesError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"recluster: {result.reclustered.summary()}")
+    overridden = result.overridden
+    typer.echo(
+        f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
+        f" into others, {overridden.splits} splits"
+    )
+    typer.echo(f"{result.clusters} clusters")
 
 
 def _figure(value: object | None) -> str:
@@ -461,6 +498,13 @@ def validate(
     top: Annotated[
         int, typer.Option(help="How many DIME donors, by matched dollars, the top scope scores.")
     ] = validation.DEFAULT_TOP,
+    clusters: Annotated[
+        bool,
+        typer.Option(
+            "--clusters",
+            help="Score the working file's clusters instead of silver's donor_ids; write nothing.",
+        ),
+    ] = False,
 ) -> None:
     """Score the cycle's resolved donors against DIME: pairwise precision and recall, overall and
     over the top donors, written to app.resolution_quality and printed (ADR-0009)."""
@@ -471,6 +515,7 @@ def validate(
     if top < 1:
         raise typer.BadParameter("must be at least 1", param_hint="--top")
     settings = get_settings()
+    working_file = paths.resolution_database(settings.data_dir) if clusters else None
     try:
         with psycopg.connect(settings.database_url, autocommit=True) as conn:
             result = validation.validate(
@@ -481,6 +526,7 @@ def validate(
                 data_dir=settings.data_dir,
                 limits=runner.Limits.from_settings(settings),
                 conn=conn,
+                clusters=working_file,
             )
     except (FileNotFoundError, validation.NotResolved) as exc:
         typer.echo(str(exc), err=True)
@@ -503,6 +549,8 @@ def validate(
     typer.echo(
         f"model {result.model_version}, DIME v{validation.DIME_VERSION}, build {result.build_id}"
     )
+    if working_file is not None:
+        typer.echo(f"clusters from {working_file}; nothing written")
 
 
 @app.command()

@@ -5,7 +5,8 @@ working file (`paths.resolution_database`) as one table, `contributor`: a key re
 cycles is one row, its attributes the variant of the cycle with the most contributions (for a key
 with none, the most JFC attributions), its counts and totals summed. It trains the Splink model
 on that table (`resolve.model`), saves the model as JSON locally and in R2 under this run's
-`build_id`, writes the `cluster` table beside `contributor` (`resolve.cluster`), merges and
+`build_id`, writes the `edge`, `component` and re-clustered `cluster` tables beside
+`contributor` (`resolve.cluster`), merges and
 splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`), gives every key its
 persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycle's
 `contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
@@ -29,7 +30,14 @@ from splink import DuckDBAPI
 from fundlens import markers, paths
 from fundlens.r2 import R2
 from fundlens.resolve import crosswalk, model, overrides
-from fundlens.resolve.cluster import CLUSTER_TABLE, cluster
+from fundlens.resolve.cluster import (
+    CLUSTER_TABLE,
+    COMPONENT_TABLE,
+    EDGE_TABLE,
+    Reclustered,
+    cluster,
+    recluster,
+)
 from fundlens.transform.runner import Limits, literal
 
 log = logging.getLogger(__name__)
@@ -55,6 +63,7 @@ class Resolved:
     trained: bool
     contributor_keys: int
     clusters: int
+    reclustered: Reclustered
     # Each cycle resolved, and the transformed build its contributors came from.
     builds: dict[int, str]
     overridden: overrides.Applied
@@ -190,13 +199,15 @@ def resolve_full(
     data_dir: Path,
     limits: Limits,
     thresholds: Thresholds,
+    max_keys: int,
     min_training_keys: int,
     overrides_path: Path,
     conn: Connection[TupleRow],
 ) -> Resolved:
-    """Train the model on every cycle's contributors and cluster them, then apply the overrides
-    file at `overrides_path`; write the model, the `cluster` table, the crosswalk, each cycle's
-    silver with its donor_ids and each cycle's `resolved` marker (spec §6.3–§6.6, §5.1).
+    """Train the model on every cycle's contributors, cluster them and re-cluster under the
+    cluster cap `max_keys`, then apply the overrides file at `overrides_path`; write the model,
+    the `edge`, `component` and `cluster` tables, the crosswalk, each cycle's silver with its
+    donor_ids and each cycle's `resolved` marker (spec §6.3–§6.6, §5.1, NEU-2122).
 
     Raises `FileNotFoundError` when no cycle has been transformed, and `OverridesError` when the
     overrides file is malformed or names a key or donor_id the run does not know, before the run
@@ -235,6 +246,8 @@ def resolve_full(
             cluster(
                 linker, con, match_threshold=thresholds.match, cluster_threshold=thresholds.cluster
             )
+        with _phase("recluster", times):
+            reclustered = recluster(con, max_keys=max_keys, cluster_threshold=thresholds.cluster)
         with _phase("overrides", times):
             overridden = overrides.rewrite(con, asserted)
         [(clusters,)] = con.execute(
@@ -242,7 +255,8 @@ def resolve_full(
         ).fetchall()
         with _phase("save", times):
             linker.misc.save_model_to_json(str(model_path), overwrite=True)
-            # Splink's working tables are a run's scratch; the file keeps the input and clusters.
+            # Splink's working tables are a run's scratch; the file keeps the input, the edges,
+            # the components and the clusters.
             linker.table_management.delete_tables_created_by_splink_from_db()
         store.put(model_key, model_path)
         with _phase("crosswalk", times):
@@ -282,9 +296,63 @@ def resolve_full(
         trained,
         keys,
         clusters,
+        reclustered,
         builds,
         overridden,
         assigned,
         memory_limit,
         times,
     )
+
+
+@dataclass(frozen=True)
+class Rewritten:
+    """What `recluster_working_file` did."""
+
+    reclustered: Reclustered
+    overridden: overrides.Applied
+    clusters: int
+
+
+def recluster_working_file(
+    *,
+    data_dir: Path,
+    limits: Limits,
+    max_keys: int,
+    cluster_threshold: float,
+    overrides_path: Path,
+    conn: Connection[TupleRow],
+) -> Rewritten:
+    """Rewrite the working file's `cluster` table as `resolve_full` would under the cluster cap
+    `max_keys`: its components re-clustered, then the overrides file at `overrides_path` applied
+    (NEU-2122 §5.1). Nothing else changes: no crosswalk, silver, marker or R2.
+
+    Raises `FileNotFoundError` when there is no working file or it holds no `component`, `edge`
+    or `contributor` table, and `OverridesError` as `resolve_full` does; in every case, and on
+    any failure part way, the previous `cluster` table stands.
+    """
+    asserted = overrides.load(overrides_path)
+    database = paths.resolution_database(data_dir)
+    missing = FileNotFoundError("no components in the working file: run `fundlens resolve --full`")
+    if not database.exists():
+        raise missing
+    scratch = paths.scratch_dir(data_dir)
+    scratch.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(database, config=limits.duckdb_config(scratch)) as con:
+        tables = {name for (name,) in con.execute("SHOW TABLES").fetchall()}
+        if not {COMPONENT_TABLE, EDGE_TABLE, CONTRIBUTOR_TABLE} <= tables:
+            raise missing
+        overrides.check(con, conn, asserted)
+        # One transaction, so a failure part way leaves the previous clusters in place.
+        con.begin()
+        try:
+            reclustered = recluster(con, max_keys=max_keys, cluster_threshold=cluster_threshold)
+            overridden = overrides.rewrite(con, asserted)
+            [(clusters,)] = con.execute(
+                f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
+            ).fetchall()
+        except BaseException:
+            con.rollback()
+            raise
+        con.commit()
+    return Rewritten(reclustered, overridden, clusters)

@@ -280,3 +280,6 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00279,15,500,2024-05-01,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SA11AI.00306,C00800201
 2024,dime00280,22Y,-200,2024-05-10,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SB28A.00307,C00800201
 2024,dime00281,22Y,200,2024-05-20,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SB28A.00308,C00800201
+2024,dime00282,15,400,2024-04-09,100000104,"quinlan, beatrice",quinlan,beatrice,I,hagerstown,MD,21740,farmer,antietam orchards,yang for maryland,comm100011,SA11AI.00309,C00800108
+2024,dime00283,15,300,2024-05-14,100000104,"quinlan, mrs",quinlan,,I,hagerstown,MD,21740,farmer,antietam orchards,yang for maryland,comm100011,SA11AI.00310,C00800108
+2024,dime00284,15,250,2024-06-18,100000105,"quinlan, desmond",quinlan,desmond,I,hagerstown,MD,21740,mechanic,antietam orchards,yang for maryland,comm100011,SA11AI.00311,C00800108

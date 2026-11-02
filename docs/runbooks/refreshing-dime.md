@@ -11,8 +11,8 @@ per cycle. Append to the [Log](#log) at the bottom; never rewrite it.
 links that rot, and `bonica.cid` values change between DIME releases (codebook §14). A published figure
 must be reproducible from what R2 holds (ADR-0002).
 
-**Not in this runbook:** tuning the resolution thresholds against the figures (a follow-up ticket), the
-methodology page and the `/v1/meta` fields (NEU-2056).
+**Not in this runbook:** the methodology page and the `/v1/meta` fields (NEU-2056). Tuning the cluster cap
+against the figures is [step 8](#8-tuning-the-cluster-cap).
 
 ## Before you start
 
@@ -206,6 +206,143 @@ missing.
 For the backfill (NEU-2060), repeat steps 2–4 and 6 with `export C=<cycle>`. Cycles before electronic filing
 (roughly before 2001) carry few `efec.*` ids, so `matched` will be low; that is expected, and `matched_rows`
 publishes it.
+
+## 8. Tuning the cluster cap
+
+Re-clustering (NEU-2122, [ADR-0010](../adr/0010-clusters-are-re-clustered-by-constrained-single-linkage.md))
+cuts every component holding two first names the model vetoes, or more than `RESOLVE_MAX_CLUSTER_KEYS` keys
+(the cluster cap, default 200). This step picks the cap against DIME. `fundlens recluster --max-keys <N>`
+rewrites the working file's `cluster` table under another cap in about a minute, and
+`fundlens validate --clusters` scores that table, writing nothing; neither touches the crosswalk, silver or R2.
+Run it after a deploy that changes resolution, after the backfill (NEU-2060), and after a retrained model.
+
+**Never merge to `main` while this step runs:** a merge redeploys `pipeline` and kills the running command.
+
+Steps 0, 1.2 and 3 must have run for the cycle (helpers defined, `export C=2024`, DIME imported).
+
+### 8.1 The deployed code
+
+```bash
+# VM, in tmux
+docker exec "$(fl pipeline)" printenv OTEL_RESOURCE_ATTRIBUTES
+```
+
+**Expected:** `service.version=<sha>` is the merge commit of the code you mean to tune (`git log -1 origin/main`
+on the laptop). Anything older: wait for the deploy.
+
+### 8.2 Resolve under the default cap
+
+The working file must come from a `resolve --full` run by code with re-clustering: an older one holds no
+`edge` or `component` table, and `recluster` says `no components in the working file`.
+
+```bash
+# VM, in tmux
+time docker exec "$(fl pipeline)" fundlens resolve --full | tee resolve-cap.txt
+docker exec "$(fl pipeline)" du -h /data/fundlens/resolution/resolve.duckdb | tee -a resolve-cap.txt
+```
+
+**Expected:** about 15 minutes, ending with lines like
+
+```
+<keys> contributor keys in <clusters> clusters
+recluster: <n> components (<o> oversized, <i> inconsistent) into <p> pieces; largest 1,105 → 200
+overrides: <m> merges joining <j> clusters into others, <s> splits
+crosswalk: <new> new donors, <repointed> keys re-pointed, <redirects> redirects
+model <M>: trained, wrote resolution/model/<M>.json
+load <s> s, train <s> s, cluster <s> s, recluster <s> s, overrides <s> s, save <s> s, crosswalk <s> s, silver <s> s
+```
+
+Copy `largest <before>` from the `recluster` line: the veto-only candidate in 8.4 needs a cap above it.
+Add a row to the Resolution table in [`docs/capacity.md`](../capacity.md) (phases, wall s, working file size;
+the `recluster` line, `repointed` and `redirects` in Notes).
+
+### 8.3 Validate the default
+
+```bash
+# VM, in tmux
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" | tee validate-cap-200.txt
+```
+
+**Expected:** the step 4 table. These are the live figures, written to `app.resolution_quality`. Copy them into
+the Log and the Validation table (`N = 200` in Notes).
+
+### 8.4 The loop
+
+Each candidate is two commands: re-cluster under the cap, then score. First veto-only: a cap above the largest
+component, so only the first-name rule cuts.
+
+```bash
+# VM, in tmux
+export N=1000000
+time docker exec "$(fl pipeline)" fundlens recluster --max-keys "$N" | tee "recluster-$N.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-cap-$N.txt"
+```
+
+**Expected:** `recluster: … largest <before> → <after>` with no `oversized` component, then the step 4 table,
+ending `clusters from /data/fundlens/resolution/resolve.duckdb; nothing written`. Copy both scopes' precision
+and recall.
+
+```bash
+# VM, in tmux
+export N=500
+time docker exec "$(fl pipeline)" fundlens recluster --max-keys "$N" | tee "recluster-$N.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-cap-$N.txt"
+```
+
+```bash
+# VM, in tmux
+export N=100
+time docker exec "$(fl pipeline)" fundlens recluster --max-keys "$N" | tee "recluster-$N.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-cap-$N.txt"
+```
+
+```bash
+# VM, in tmux
+export N=50
+time docker exec "$(fl pipeline)" fundlens recluster --max-keys "$N" | tee "recluster-$N.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-cap-$N.txt"
+```
+
+**Expected:** each as the first, `largest … → <N>` or less. Copy every candidate's figures into the Log and a
+Validation-table row each (`N = <N>, validate --clusters` in Notes).
+
+### 8.5 Choose the cap
+
+The winner is the candidate meeting NEU-2122's targets (overall precision ≥ 0.8 and recall ≥ 0.88; top 10,000
+precision ≥ 0.92 and recall ≥ 0.81). When none does, it is the candidate with the highest overall precision whose
+overall recall stays ≥ 0.88 and whose top scope stays ≥ 0.92 / 0.81 (NEU-2122 spec §1.1). Set it:
+
+```bash
+# VM, in tmux. The chosen cap.
+export WINNER=200
+```
+
+**If the winner is 200**, put the working file back to it, so its `cluster` table matches the crosswalk:
+
+```bash
+# VM, in tmux
+docker exec "$(fl pipeline)" fundlens recluster --max-keys "$WINNER"
+```
+
+**Expected:** the same `recluster:` line as 8.2.
+
+**If the winner is not 200**, change the default instead: open a PR that sets `resolve_max_cluster_keys` in
+`src/fundlens/settings.py` to the winner and records the figures (the compose file passes `pipeline` no
+`RESOLVE_MAX_CLUSTER_KEYS`, so a Coolify entry would never reach it). Its merge redeploys `pipeline`, so merge it
+only now, with nothing running. After the deploy, run 8.1, 8.2 and 8.3 again: 8.2's `recluster:` line ends
+`→ <winner>` or less.
+
+### 8.6 Check the crosswalk
+
+```bash
+# VM, in tmux
+pg -c "SELECT donor_id, count(*) AS keys FROM app.crosswalk GROUP BY donor_id HAVING count(*) > $WINNER ORDER BY keys DESC"
+```
+
+**Expected:** `(0 rows)`. A row is a donor an override merged past the cap (overrides apply unconstrained):
+check `resolution/overrides.yaml` names its keys. Any other row is a bug: stop and file it.
+
+The next `load` and `publish` carry the figures into `gold.meta` (step 5).
 
 ## Log
 
