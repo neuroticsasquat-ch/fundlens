@@ -22,6 +22,10 @@ _Avoid_: conduit contribution, pass-through
 A joint fundraising committee participant's memo line (FEC type 15J) naming the individual behind part of a JFC transfer and the share attributed to that participant. Evidence that the individual's money reached the participant; never a contribution, and never counted in a total.
 _Avoid_: JFC contribution, attributed contribution
 
+**JFC transfer**:
+A joint fundraising committee's transfer (FEC type 18J) of its participants' shares to a participant committee. Counted for a candidate when the participant raises for one, apart from the candidate's contributions and committee gifts. Committee money, never a contribution.
+_Avoid_: JFC contribution
+
 **Self-funding**:
 A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 

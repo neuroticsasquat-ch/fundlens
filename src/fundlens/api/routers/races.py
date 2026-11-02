@@ -48,7 +48,8 @@ def get_race(
         conn.cursor(row_factory=class_row(RaceCandidate))
         .execute(
             "SELECT candidate_id, name, party, incumbent_challenger_open, principal_committee_id,"
-            " total_individual, total_committee, self_funding, ie_support, ie_oppose"
+            " total_individual, total_committee, total_jfc_transfers, self_funding, ie_support,"
+            " ie_oppose"
             " FROM gold.race_candidate WHERE race_id = %s"
             " ORDER BY total_individual + total_committee + self_funding DESC, candidate_id",
             (race["race_id"],),

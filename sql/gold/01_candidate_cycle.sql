@@ -5,7 +5,10 @@
 -- not the candidate's own money; self_funding is that own money (silver's is_self_funding), and
 -- neither includes the other. total_committee is the committees' gifts to the candidate: the
 -- disbursement side of committee_transfer only (the recipient's 18K twin would count each gift
--- twice). Refunds are negative amounts and net out. Nothing to sum is 0, never NULL.
+-- twice). total_jfc_transfers is the 18J receipts of the committees raising for the candidate: a
+-- joint fundraising committee's transfer of the candidate's share (NEU-2124). It is in neither
+-- figure above, and counts nothing twice: the JFC's own contributions raise for no candidate.
+-- Refunds are negative amounts and net out. Nothing to sum is 0, never NULL.
 -- contributor_count is the donors whose counted gifts reached the candidate, their own money aside;
 -- NULL for every candidate of a build loaded before `resolve`, whose contributions have no donor
 -- (the loader gives them a NULL donor_id). ie_support and ie_oppose are 0 until NEU-2057.
@@ -28,6 +31,12 @@ from_committees AS (
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND candidate_id IS NOT NULL
     GROUP BY candidate_id
+),
+jfc_transfers AS (
+    SELECT candidate_id, sum(amount) AS total_jfc_transfers
+    FROM silver.committee_transfer
+    WHERE side = 'receipt' AND transaction_type = '18J' AND candidate_id IS NOT NULL
+    GROUP BY candidate_id
 )
 SELECT
     candidate.candidate_id,
@@ -35,6 +44,7 @@ SELECT
     candidate.race_id,
     CAST(coalesce(money.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
     CAST(coalesce(from_committees.total_committee, 0) AS DECIMAL(16, 2)) AS total_committee,
+    CAST(coalesce(jfc_transfers.total_jfc_transfers, 0) AS DECIMAL(16, 2)) AS total_jfc_transfers,
     CAST(coalesce(money.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(0 AS DECIMAL(16, 2)) AS ie_support,
     CAST(0 AS DECIMAL(16, 2)) AS ie_oppose,
@@ -44,4 +54,5 @@ SELECT
 FROM silver.candidate AS candidate
 CROSS JOIN resolved
 LEFT JOIN money USING (candidate_id)
-LEFT JOIN from_committees USING (candidate_id);
+LEFT JOIN from_committees USING (candidate_id)
+LEFT JOIN jfc_transfers USING (candidate_id);

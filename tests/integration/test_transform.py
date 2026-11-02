@@ -692,7 +692,18 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     # A conduit's 24K is its side of an earmark, an individual's money (ADR-0004): WinRed's two
     # to DRISCOLL are no committee's gift.
     assert {row["from_committee_id"] for row in disbursements} & {ACTBLUE, WINRED} == set()
-    assert {row["candidate_id"] for row in receipts} == {None}
+    # A receipt's candidate is the one its recipient raises for, by contribution's rule, and none
+    # when its recipient raises for no one: the super PAC and the state party (NEU-2124).
+    assert {(row["to_committee_id"], row["candidate_id"]) for row in receipts} == {
+        ("C00800101", "P40000101"),
+        ("C00800103", "S4MD00103"),
+        ("C00800104", "S4MD00104"),
+        ("C00800106", "H4MD05106"),
+        ("C00800107", "H4MD05107"),
+        ("C00800109", "H4MD09109"),
+        ("C00800201", None),
+        ("C00800203", None),
+    }
     # A gift is credited to the candidate its recipient is linked to, whatever CAND_ID the giver
     # wrote, and to none when its recipient raises for no candidate of the cycle (NEU-2075).
     by_sub_id = {row["source_record_id"]: row for row in disbursements}
@@ -711,10 +722,11 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         "C00800103",
         "S4MD00103",
     )
-    assert (received["from_committee_id"], received["to_committee_id"]) == (
-        "C00800202",
-        "C00800103",
-    )
+    assert (
+        received["from_committee_id"],
+        received["to_committee_id"],
+        received["candidate_id"],
+    ) == ("C00800202", "C00800103", "S4MD00103")
     assert (given["amount"], received["amount"], given["date"]) == (5000, 5000, date(2024, 4, 10))
 
     # One side each (expected.yaml's rule): receipts by recipient, disbursements by giver and
@@ -736,6 +748,13 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         candidate_id: totals["total_committee"]
         for candidate_id, totals in candidates.items()
         if totals["total_committee"]
+    }
+    # A JFC's 18J transfer is a receipt, credited to the candidate its recipient raises for.
+    jfc_transfers = [row for row in receipts if row["transaction_type"] == "18J"]
+    assert sum_by(jfc_transfers, "candidate_id") == {
+        candidate_id: totals["total_jfc_transfers"]
+        for candidate_id, totals in candidates.items()
+        if totals["total_jfc_transfers"]
     }
 
 

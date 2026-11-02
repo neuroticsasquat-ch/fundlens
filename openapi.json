@@ -148,6 +148,10 @@
           "total_individual": {
             "title": "Total Individual",
             "type": "number"
+          },
+          "total_jfc_transfers": {
+            "title": "Total Jfc Transfers",
+            "type": "number"
           }
         },
         "required": [
@@ -156,6 +160,7 @@
           "race_slug",
           "total_individual",
           "total_committee",
+          "total_jfc_transfers",
           "self_funding",
           "ie_support",
           "ie_oppose",
@@ -1040,6 +1045,10 @@
           "total_individual": {
             "title": "Total Individual",
             "type": "number"
+          },
+          "total_jfc_transfers": {
+            "title": "Total Jfc Transfers",
+            "type": "number"
           }
         },
         "required": [
@@ -1053,6 +1062,7 @@
           "candidate_count",
           "total_individual",
           "total_committee",
+          "total_jfc_transfers",
           "ie_support",
           "ie_oppose",
           "candidates",
@@ -1132,6 +1142,10 @@
           "total_individual": {
             "title": "Total Individual",
             "type": "number"
+          },
+          "total_jfc_transfers": {
+            "title": "Total Jfc Transfers",
+            "type": "number"
           }
         },
         "required": [
@@ -1142,6 +1156,7 @@
           "principal_committee_id",
           "total_individual",
           "total_committee",
+          "total_jfc_transfers",
           "self_funding",
           "ie_support",
           "ie_oppose"
@@ -1198,6 +1213,10 @@
           "total_individual": {
             "title": "Total Individual",
             "type": "number"
+          },
+          "total_jfc_transfers": {
+            "title": "Total Jfc Transfers",
+            "type": "number"
           }
         },
         "required": [
@@ -1211,6 +1230,7 @@
           "candidate_count",
           "total_individual",
           "total_committee",
+          "total_jfc_transfers",
           "ie_support",
           "ie_oppose"
         ],

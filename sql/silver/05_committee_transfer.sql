@@ -2,11 +2,11 @@
 -- and per `pas2` 24K committee-to-candidate contribution, told apart by `side`.
 --
 -- A committee's gift to a candidate's committee is reported twice: the giver files it in `pas2`
--- as a 24K (side = 'disbursement', with the candidate it is for), the recipient in `oth` as an
--- 18K (side = 'receipt', with no candidate). Both are kept, and a gold aggregate sums one side
--- only: receipts by to_committee_id, disbursements by from_committee_id or candidate_id. Adding
--- the two sides would count the gift twice (expected.yaml's rule). The other `pas2` types
--- (24A/24E independent expenditures, 24C coordinated) are NEU-2057's independent_expenditure.
+-- as a 24K (side = 'disbursement'), the recipient in `oth` as an 18K (side = 'receipt'). Both are
+-- kept, and a gold aggregate sums one side only: receipts by to_committee_id or candidate_id,
+-- disbursements by from_committee_id or candidate_id. Adding the two sides would count the gift
+-- twice (expected.yaml's rule). The other `pas2` types (24A/24E independent expenditures, 24C
+-- coordinated) are NEU-2057's independent_expenditure.
 -- A negative amount is a correction, kept so it nets out. A conduit's 24K is no gift: it is the
 -- conduit's side of an earmark it passed on (WinRed filed 348,042 in 2024, $10.2M net, most of them
 -- refunds), an individual's money counted once on the recipient's `indiv` row (ADR-0004), so it
@@ -18,6 +18,11 @@
 -- campaigns (16C). A receipt here is a receipt type (TRANSACTION_TP 1x, or 3x for a party's
 -- convention, headquarters and recount accounts), not a memo line, from a giver whose id is a
 -- committee's.
+--
+-- A receipt's candidate is the one its recipient committee raises for, by contribution's rule
+-- (NEU-2124), so a JFC's 18J transfer to a campaign is that candidate's (gold's
+-- total_jfc_transfers). A receipt to a committee raising for no candidate (a party, a PAC, a JFC)
+-- has none: the giver's CAND_ID a 24K may fall back on is not on the receipt.
 --
 -- A 24K's candidate is the one its recipient committee is linked to (NEU-2075), the rule
 -- contribution follows: givers often write a stale or wrong CAND_ID (a senator's old House id, an
@@ -44,20 +49,21 @@ WITH linked AS (
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
     'fec' AS source,
-    SUB_ID AS source_record_id,
+    oth.SUB_ID AS source_record_id,
     'US' AS jurisdiction,
-    trim(OTHER_ID) AS from_committee_id,
-    CMTE_ID AS to_committee_id,
-    CAST(NULL AS VARCHAR) AS candidate_id,
-    TRANSACTION_AMT AS amount,
+    trim(oth.OTHER_ID) AS from_committee_id,
+    oth.CMTE_ID AS to_committee_id,
+    linked.candidate_id,
+    oth.TRANSACTION_AMT AS amount,
     -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
-    TRANSACTION_TP AS transaction_type,
+    CAST(try_strptime(oth.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    oth.TRANSACTION_TP AS transaction_type,
     'receipt' AS side
 FROM oth
-WHERE left(TRANSACTION_TP, 1) IN ('1', '3')
-    AND MEMO_CD IS DISTINCT FROM 'X'
-    AND trim(OTHER_ID) LIKE 'C%'
+LEFT JOIN linked ON linked.committee_id = oth.CMTE_ID
+WHERE left(oth.TRANSACTION_TP, 1) IN ('1', '3')
+    AND oth.MEMO_CD IS DISTINCT FROM 'X'
+    AND trim(oth.OTHER_ID) LIKE 'C%'
 UNION ALL
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
