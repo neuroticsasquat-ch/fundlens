@@ -168,7 +168,7 @@ Rules applied in `sql/silver/04_contribution.sql`:
 - Amendments: FEC bulk already contains the latest version of each record per cycle snapshot; no amendment reconciliation in v1. `amendment_indicator` is retained.
 - Negative amounts (refunds, type `22Y` etc.) are kept and net out in aggregates.
 - `source_record_id` = FEC `SUB_ID`.
-- `candidate_id` on a contribution = the candidate linked to `recipient_committee_id` in `ccl` for that cycle, when the committee is a principal or authorized committee (`CMTE_DSGN IN ('P','A')`); else null.
+- `candidate_id` on a contribution = the candidate linked to `recipient_committee_id` in `ccl` for that cycle, when the committee is a principal or authorized committee (`CMTE_DSGN IN ('P','A')`) or the one the candidate's `cn` row names principal (`CAND_PCC`), whatever `ccl` designates it; else null. FEC's files show a committee as it stands today, and a campaign committee turned leadership PAC after the election raised the cycle's money as the campaign: Trump's 2024 `C00828541`, now NEVER SURRENDER, INC., which `ccl` links `N`/`D`, credited none of its money to him until this rule. A `ccl` link is still required, so a leadership PAC that is no one's `CAND_PCC` stays the candidate's in no total. The same rule credits `committee_transfer`'s 24K gifts and `jfc_attribution`'s candidate.
 
 FEC bulk files (`https://www.fec.gov/files/bulk-downloads/<cycle>/<file><yy>.zip`, pipe-delimited, no header; headers from `data_dictionaries/<file>_header_file.csv`, vendored under `src/fundlens/fec/headers/`):
 

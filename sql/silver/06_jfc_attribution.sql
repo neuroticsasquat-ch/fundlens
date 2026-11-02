@@ -14,12 +14,17 @@
 -- 18J transfer from; else none.
 CREATE TABLE jfc_attribution AS
 WITH linked AS (
-    -- As in 04_contribution.sql: the principal link, then the lower candidate_id, so one each.
-    SELECT committee_id, candidate_id
-    FROM candidate_committee_link
-    WHERE designation IN ('P', 'A')
+    -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
+    -- principal link, then the lower candidate_id, so one each.
+    SELECT link.committee_id, link.candidate_id
+    FROM candidate_committee_link AS link
+    LEFT JOIN candidate USING (candidate_id)
+    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
     QUALIFY row_number() OVER (
-        PARTITION BY committee_id ORDER BY designation = 'P' DESC, candidate_id
+        PARTITION BY link.committee_id
+        ORDER BY
+            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+            link.candidate_id
     ) = 1
 ),
 named AS (

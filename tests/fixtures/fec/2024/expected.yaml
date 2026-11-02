@@ -10,7 +10,9 @@
 # - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
 #   committee is linked to. It is never in total_individual: it is its own total.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
-#   authorized (A). A leadership PAC (D) is not the candidate's.
+#   authorized (A), and of the one their `cn` row names principal (CAND_PCC) whatever `ccl`'s
+#   designation: STRATTON's, a leadership PAC since the election. Any other leadership PAC (D) is
+#   not the candidate's.
 # - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows, credited
 #   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
 #   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).

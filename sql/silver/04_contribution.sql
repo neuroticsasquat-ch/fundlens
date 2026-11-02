@@ -65,14 +65,21 @@ DROP TABLE contributor_value;
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
-    -- a leadership PAC (D) among them, raises for none. Should `ccl` link one committee P or A to
-    -- two candidates, the principal link and then the lower candidate_id is kept, so the key holds.
+    -- a leadership PAC (D) among them, raises for none. The exception is the committee a
+    -- candidate's `cn` row names principal (CAND_PCC), whatever `ccl` designates it: FEC's files
+    -- show a committee as it stands today, and a campaign turned leadership PAC after the election
+    -- raised the cycle's money as the campaign (Trump's 2024 C00828541, now NEVER SURRENDER, INC.,
+    -- which `ccl` links N/D). Should `ccl` link one committee to two candidates, the principal link
+    -- and then the lower candidate_id is kept, so the key holds.
     SELECT link.committee_id, link.candidate_id, candidate.name
     FROM candidate_committee_link AS link
     LEFT JOIN candidate USING (candidate_id)
-    WHERE link.designation IN ('P', 'A')
+    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
     QUALIFY row_number() OVER (
-        PARTITION BY link.committee_id ORDER BY link.designation = 'P' DESC, link.candidate_id
+        PARTITION BY link.committee_id
+        ORDER BY
+            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+            link.candidate_id
     ) = 1
 ),
 conduits AS (

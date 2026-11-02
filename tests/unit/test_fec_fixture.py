@@ -66,8 +66,14 @@ def signed(row: dict[str, str]) -> int:
 
 
 def linked_candidates() -> dict[str, str]:
-    """Committee → candidate, for the principal and authorized committees `ccl` links (spec §4)."""
-    return {row["CMTE_ID"]: row["CAND_ID"] for row in rows("ccl") if row["CMTE_DSGN"] in ("P", "A")}
+    """Committee → candidate, for the principal and authorized committees `ccl` links, and the
+    principal campaign committee each `cn` row names whatever `ccl`'s designation (spec §4)."""
+    principal = {(row["CAND_ID"], row["CAND_PCC"]) for row in rows("cn")}
+    return {
+        row["CMTE_ID"]: row["CAND_ID"]
+        for row in rows("ccl")
+        if row["CMTE_DSGN"] in ("P", "A") or (row["CAND_ID"], row["CMTE_ID"]) in principal
+    }
 
 
 def is_conduit_side(row: dict[str, str]) -> bool:
