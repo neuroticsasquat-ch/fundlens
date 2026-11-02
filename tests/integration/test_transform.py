@@ -689,6 +689,9 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     assert len(disbursements) == len(rows) - len(receipts)
     assert len(rows) == expected["silver"]["committee_transfer"]
     assert {row["transaction_type"] for row in disbursements} == {"24K"}
+    # A conduit's 24K is its side of an earmark, an individual's money (ADR-0004): WinRed's two
+    # to DRISCOLL are no committee's gift.
+    assert {row["from_committee_id"] for row in disbursements} & {ACTBLUE, WINRED} == set()
     assert {row["candidate_id"] for row in receipts} == {None}
     # A gift is credited to the candidate its recipient is linked to, whatever CAND_ID the giver
     # wrote, and to none when its recipient raises for no candidate of the cycle (NEU-2075).
