@@ -22,6 +22,7 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | 2024 | 2026-10-31 | `20261031T164731Z` | `27e1bd0` | — | — | 1871 | — | — | — | — | — | 24.34 GiB | Transform only, with contributor keys (NEU-2047) and the join-side fix (NEU-2076), `DUCKDB_THREADS=6`. 1,602 s of it in `04_contribution.sql`. Six silver tables; `contributor` 5,185,485 rows. |
 | 2024 | 2026-10-31 | `20261031T202003Z` | `47e3dd5` | — | — | 1343 | — | — | — | — | — | 23.46 GiB | Transform only, with JFC attributions (NEU-2078). 1,088 s of it in `04_contribution.sql`, 14 s in `06_jfc_attribution.sql`. Seven silver tables; `jfc_attribution` 17,037,819 rows, `contributor` 5,620,495 (435,010 more than NEU-2047's build). |
 | 2024 | 2026-11-01 | `20261031T202003Z` | `a4c82b8` | — | 6 | — | 169 (73.08 + 93.51) | 91 | — | 2.03 | 2.61 | 24.54 GiB | First resolved build: donor tables live ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Resolved, loaded and published NEU-2078's build; `seats` ran only to add the `race` partition its transform-only run lacked. Silver is after resolution's bucketed rewrite. Peak memory is resolve's; load and publish stayed below it. |
+| 2024 | 2026-11-02 | `20261102T031624Z` | `22e56ce` | — | — | — | 170 (71.34 + 91.29) | 104 | — | — | — | — | Load and publish after re-clustering (NEU-2122, [refreshing-dime.md](runbooks/refreshing-dime.md) §8); both times are `time`'s `real`. 3,822,946 donors, 6,968,328 `donor_top_recipient` rows, 1 `donor_redirect`. |
 
 The backfill (NEU-2060) and the weekly run (M5) add their own figures here.
 
@@ -36,6 +37,7 @@ file is `/data/fundlens/resolution/resolve.duckdb` after the run; from NEU-2122 
 | Date | Model | Cycles (build) | SHA | Contributor keys | Clusters | Load / train / cluster / recluster / overrides / save / crosswalk / silver s | Wall s | Peak `pipeline` memory | Working file GB | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / — / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | `22e56ce` | 5,620,495 | 3,822,946 | 10.21 / 188.02 / 106.62 / 11.85 / 0.18 / 0.13 / 18.81 / 253.41 | 598 | — | 9.5 | First run with re-clustering ([refreshing-dime.md](runbooks/refreshing-dime.md) §8, NEU-2122), cap 200. `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces; largest 1,400 → 180`. Crosswalk: 6,806 new donors, 31,213 keys re-pointed, 0 redirects; one override merge. Wall time is `time`'s `real`; peak memory not measured. |
 
 ## Validation
 
@@ -50,6 +52,11 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | `20261101T205049Z` | 2024 (`20261031T202003Z`) | v4.0 | 25,958,825 of 51,014,276 (50.9%) | 0.3825 (0.9197) | 0.9131 (0.8143) | 176 | First run, from `6f92e66`. Amounts compared to the cent, so DIME's cents (260.25 against the bulk file's 260) missed about 4.2M rows; superseded by the next row. |
 | 2026-11-02 | `20261101T205049Z` | 2024 (`20261031T202003Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.3657 (0.9209) | 0.9149 (0.8120) | 209 | From `b77792d`: amounts in whole dollars (PR #60). The unmatched rest is DIME's coverage: gifts to ActBlue and WinRed themselves, and the Trump JFCs, RNC and NRSC. Precision is our over-merging: chained clusters, NEU-2122 (DIME's own key splits are 1.4% of the wrong pairs). |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6288 (0.9516) | 0.9121 (0.8023) | 216 | From `22e56ce`: re-clustered, N = 200, the chosen default and the live figures. 2,039,877 correct, 3,244,086 predicted, 2,236,402 true pairs overall. Identical at N = 1,000,000 (veto only) and N = 500: the veto leaves no cluster over 180 keys. |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6288 (0.9516) | 0.9121 (0.8023) | 206 | N = 1,000,000 (veto only), validate --clusters, nothing written. |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6288 (0.9516) | 0.9121 (0.8023) | 213 | N = 500, validate --clusters, nothing written. |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6313 (0.9517) | 0.9121 (0.8023) | 218 | N = 100, validate --clusters, nothing written. 59 oversized components, 10,910 pieces. |
+| 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6382 (0.9571) | 0.9032 (0.7593) | 218 | N = 50, validate --clusters, nothing written. 202 oversized components, 11,130 pieces. |
 
 ## Findings
 
@@ -90,3 +97,9 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   to 2.61 GB and the database from 49 MB to 3.68 GB (with `app.crosswalk`'s 5.6M rows). Load took 169 s (aggregates
   73 s, `COPY` 94 s), against 4 s without donors. The spec's 10–30 GB gold estimate (§3.4) is for every cycle; one cycle
   is 2.6 GB.
+- **The first-name veto does the work; the cap is a guard (NEU-2122).** Re-clustering took 12 s inside `resolve --full`
+  (about 18 s as `fundlens recluster`). All 4,085 re-clustered components held a vetoed pair; 17 were over 200 keys. The
+  veto alone cut the largest cluster from 1,400 keys to 180 and wrong pairs from 3,548,375 to 1,204,209, taking 2024's
+  precision from 0.3657 to 0.6288 for 6,296 fewer correct pairs. A cap under 180 buys little: at N = 50 every cluster is
+  50 keys or fewer, yet only 59,266 more wrong pairs go, and top-10,000 recall falls to 0.7593. So about 95% of the
+  remaining wrong pairs sit inside clusters of 50 keys or fewer, out of reach of any cap.
