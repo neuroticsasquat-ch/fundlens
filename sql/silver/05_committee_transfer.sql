@@ -24,13 +24,18 @@
 -- total_to_candidates.
 CREATE TABLE committee_transfer AS
 WITH linked AS (
-    -- As in 04_contribution.sql: the principal link, then the lower candidate_id, so one each. Only
-    -- to a candidate of the cycle: `ccl` also links a few committees to candidates `cn` lacks.
-    SELECT committee_id, candidate_id
-    FROM candidate_committee_link
-    WHERE designation IN ('P', 'A') AND candidate_id IN (SELECT candidate_id FROM candidate)
+    -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
+    -- principal link, then the lower candidate_id, so one each. Only to a candidate of the cycle:
+    -- `ccl` also links a few committees to candidates `cn` lacks.
+    SELECT link.committee_id, link.candidate_id
+    FROM candidate_committee_link AS link
+    JOIN candidate USING (candidate_id)
+    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
     QUALIFY row_number() OVER (
-        PARTITION BY committee_id ORDER BY designation = 'P' DESC, candidate_id
+        PARTITION BY link.committee_id
+        ORDER BY
+            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+            link.candidate_id
     ) = 1
 )
 SELECT
