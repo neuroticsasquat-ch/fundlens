@@ -104,6 +104,12 @@ less, stop and free space first.
 
 ## 2. Download the file
 
+The file goes into the `scratch` volume, under `scratch/dime-raw/`. Not under `reference/`: the `pipeline`
+container mounts volumes only for `bronze`, `silver`, `scratch` and `resolution` (`docker-compose.prod.yml`), so
+anything else under `/data/fundlens` lives in the container and a redeploy deletes it (a 19 GB download was lost
+that way on 2026-11-01). Not under `scratch/dime-<cycle>/` either: that is the import's own working directory,
+deleted when it ends.
+
 Copy the cycle's `contribDB_<cycle>.csv.gz` link from the download page (right-click → *Copy link*), then
 set it, with its `dl=0` changed to `dl=1` so Dropbox sends the file rather than a preview page:
 
@@ -114,10 +120,10 @@ export DIME_URL='<the copied link, ending dl=1>'
 
 ```bash
 # VM
-docker exec "$(fl pipeline)" mkdir -p "/data/fundlens/reference/dime/v$V"
-time docker exec -e DIME_URL="$DIME_URL" "$(fl pipeline)" python -c 'import os, sys, urllib.request; urllib.request.urlretrieve(os.environ["DIME_URL"], sys.argv[1])' "/data/fundlens/reference/dime/v$V/contribDB_$C.csv.gz"
-docker exec "$(fl pipeline)" ls -l "/data/fundlens/reference/dime/v$V/contribDB_$C.csv.gz"
-docker exec "$(fl pipeline)" python -c 'import sys; print(open(sys.argv[1], "rb").read(2).hex())' "/data/fundlens/reference/dime/v$V/contribDB_$C.csv.gz"
+docker exec "$(fl pipeline)" mkdir -p "/data/fundlens/scratch/dime-raw/v$V"
+time docker exec -e DIME_URL="$DIME_URL" "$(fl pipeline)" python -c 'import os, sys, urllib.request; urllib.request.urlretrieve(os.environ["DIME_URL"], sys.argv[1])' "/data/fundlens/scratch/dime-raw/v$V/contribDB_$C.csv.gz"
+docker exec "$(fl pipeline)" ls -l "/data/fundlens/scratch/dime-raw/v$V/contribDB_$C.csv.gz"
+docker exec "$(fl pipeline)" python -c 'import sys; print(open(sys.argv[1], "rb").read(2).hex())' "/data/fundlens/scratch/dime-raw/v$V/contribDB_$C.csv.gz"
 ```
 
 **Expected:** for 2024, a size of `19158623840` bytes; every cycle prints `1f8b` (a gzip file). A
@@ -127,7 +133,7 @@ size of a few kB, or anything else in place of `1f8b`, is an HTML page: check th
 
 ```bash
 # VM, in tmux
-time docker exec "$(fl pipeline)" fundlens dime --cycle "$C" --import "/data/fundlens/reference/dime/v$V/contribDB_$C.csv.gz" | tee import.txt
+time docker exec "$(fl pipeline)" fundlens dime --cycle "$C" --import "/data/fundlens/scratch/dime-raw/v$V/contribDB_$C.csv.gz" | tee import.txt
 ```
 
 **Expected:** after tens of minutes (decompression, then the 19 GB upload),
@@ -187,12 +193,13 @@ The import printed both R2 keys, so R2 holds the raw file (ADR-0002) and the loc
 
 ```bash
 # VM
-docker exec "$(fl pipeline)" rm "/data/fundlens/reference/dime/v$V/contribDB_$C.csv.gz"
+docker exec "$(fl pipeline)" rm "/data/fundlens/scratch/dime-raw/v$V/contribDB_$C.csv.gz"
 df -h / | tee disk-after.txt
 ```
 
-**Expected:** about 19 GB more free than before step 2, for 2024. The slim Parquet stays in the local cache;
-`validate` downloads it again if the disk is ever dropped.
+**Expected:** about 19 GB more free than before step 2, for 2024. The slim Parquet's local copy is under
+`reference/`, inside the container, so a redeploy drops it; `validate` downloads it again from R2 when it is
+missing.
 
 ## 7. Other cycles
 
