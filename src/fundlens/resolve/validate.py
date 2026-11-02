@@ -361,13 +361,16 @@ def validate(
             # Tables, not views, so the joins below are planned on real row counts.
             con.execute(
                 "CREATE TABLE bronze AS SELECT SUB_ID AS sub_id, CMTE_ID AS cmte_id,"
-                " TRAN_ID AS tran_id, abs(TRANSACTION_AMT) AS amount FROM indiv"
+                " TRAN_ID AS tran_id, trunc(abs(TRANSACTION_AMT)) AS amount FROM indiv"
                 " WHERE CMTE_ID IS NOT NULL AND TRAN_ID IS NOT NULL"
             )
-            # Amounts meet by magnitude: a refund's sign is the filer's choice in FEC's bulk
-            # file, and the committee and transaction ids already pin the row.
+            # Amounts meet by magnitude, in whole dollars: a refund's sign is the filer's choice
+            # in FEC's bulk file, which also drops the cents DIME keeps (DIME's 260.25 is 260
+            # there). The date must still agree: some filers reuse a transaction id from one
+            # report to the next, and only the date and amount tell those gifts apart.
             con.execute(
-                "CREATE TABLE dime AS SELECT DISTINCT cmte_id, tran_id, abs(amount) AS amount,"
+                "CREATE TABLE dime AS SELECT DISTINCT cmte_id, tran_id,"
+                " trunc(abs(amount)) AS amount,"
                 f" date, bonica_cid FROM read_parquet({literal(dime)})"
             )
             # The counted contributions with their FEC ids; `amount` is the dollars as counted.

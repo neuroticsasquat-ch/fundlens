@@ -195,6 +195,25 @@ def test_a_label_that_no_longer_joins_leaves_its_contribution_unmatched(
     assert quality(migrated_db)["overall"]["matched_rows"] == VALIDATION["matched_rows"] - 1
 
 
+def test_dimes_cents_still_meet_the_bulk_files_whole_dollars(
+    resolved: Path, migrated_db: str, tmp_path: Path
+) -> None:
+    # FEC's bulk file drops cents that DIME keeps: 260.25 in DIME is 260 in bronze.
+    with DIME.open(newline="") as f:
+        table = list(csv.reader(f))
+    column = table[0].index("amount")
+    table[1][column] = f"{table[1][column]}.25"
+    altered = tmp_path / "contribDB_2024.csv"
+    with altered.open("w", newline="") as f:
+        csv.writer(f, lineterminator="\n").writerows(table)
+    assert dime(altered).exit_code == 0
+
+    result = validate()
+
+    assert result.exit_code == 0, result.output
+    assert quality(migrated_db)["overall"]["matched_rows"] == VALIDATION["matched_rows"]
+
+
 def test_load_carries_the_live_models_figures_into_meta(resolved: Path, migrated_db: str) -> None:
     assert dime().exit_code == 0
     assert validate().exit_code == 0
