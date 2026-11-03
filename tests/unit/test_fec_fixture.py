@@ -11,6 +11,7 @@ import re
 import zipfile
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import get_args
@@ -31,6 +32,9 @@ CONDUITS = {"ACTBLUE": "C00401224", "WINRED": "C00694323"}
 IE_SUPPORT, IE_OPPOSE = "24E", "24A"
 COMMITTEE_CONTRIBUTION = "24K"
 JFC = "J"
+# The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
+# candidate to another, the first's before the date and the second's on and after it (NEU-2126).
+HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
 
 EXPECTED = fec_fixture.expected()
 
@@ -75,6 +79,17 @@ def linked_candidates() -> dict[str, str]:
         for row in rows("ccl")
         if row["CMTE_DSGN"] in ("P", "A") or (row["CAND_ID"], row["CMTE_ID"]) in principal
     }
+
+
+def candidate_of(committee_id: str, row: dict[str, str]) -> str | None:
+    """The candidate `row`'s money to `committee_id` is credited to: the one `ccl` links it to, or,
+    for a handed-off committee, the candidate it was handed from before the handoff date and the
+    one it was handed to on and after it, and an undated row's the latter's (NEU-2126)."""
+    if committee_id in HANDOFFS:
+        before, after, handoff = HANDOFFS[committee_id]
+        dated = row["TRANSACTION_DT"]
+        return before if dated and datetime.strptime(dated, "%m%d%Y").date() < handoff else after
+    return linked_candidates().get(committee_id)
 
 
 def is_conduit_side(row: dict[str, str]) -> bool:
@@ -143,7 +158,7 @@ def attributions() -> list[dict[str, str]]:
 
 def is_self_funding(row: dict[str, str]) -> bool:
     names = {r["CAND_ID"]: r["CAND_NAME"] for r in rows("cn")}
-    candidate = linked_candidates().get(row["CMTE_ID"])
+    candidate = candidate_of(row["CMTE_ID"], row)
     return row["ENTITY_TP"] == "CAN" and candidate is not None and names[candidate] == row["NAME"]
 
 
@@ -223,7 +238,7 @@ def gift_candidate(row: dict[str, str]) -> str | None:
     """The candidate a 24K is credited to: the one its recipient committee is linked to, else the
     giver's CAND_ID when that is a candidate of the cycle, else none."""
     candidates = {r["CAND_ID"] for r in rows("cn")}
-    linked = linked_candidates().get(row["OTHER_ID"])
+    linked = candidate_of(row["OTHER_ID"], row)
     if linked in candidates:
         return linked
     return row["CAND_ID"] if row["CAND_ID"] in candidates else None
@@ -235,9 +250,18 @@ def ie_candidate(row: dict[str, str]) -> str | None:
 
 
 def tally_candidates() -> dict[str, CandidateTotals]:
-    links = linked_candidates()
-    committees = tally_committees()
     pas2 = rows("pas2")
+    contributions = counted()
+    individual = sum_by(
+        (c, signed(r))
+        for r in contributions
+        if not is_self_funding(r) and (c := candidate_of(r["CMTE_ID"], r)) is not None
+    )
+    self_funding = sum_by(
+        (c, signed(r))
+        for r in contributions
+        if is_self_funding(r) and (c := candidate_of(r["CMTE_ID"], r)) is not None
+    )
 
     def by_type(transaction_type: str) -> dict[str, int]:
         return sum_by(
@@ -254,23 +278,17 @@ def tally_candidates() -> dict[str, CandidateTotals]:
     jfc_transfers = sum_by(
         (c, amount(r))
         for r in committee_receipts()
-        if giver(r) in jfcs and (c := links.get(r["CMTE_ID"])) is not None
+        if giver(r) in jfcs and (c := candidate_of(r["CMTE_ID"], r)) is not None
     )
     support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
     races = race_ids()
     return {
         candidate_id: {
             "race_id": races[candidate_id],
-            "total_individual": sum(
-                committees[c]["total_individual"]
-                for c, cand in links.items()
-                if cand == candidate_id
-            ),
+            "total_individual": individual.get(candidate_id, 0),
             "total_committee": from_committees.get(candidate_id, 0),
             "total_jfc_transfers": jfc_transfers.get(candidate_id, 0),
-            "self_funding": sum(
-                committees[c]["self_funding"] for c, cand in links.items() if cand == candidate_id
-            ),
+            "self_funding": self_funding.get(candidate_id, 0),
             "ie_support": support.get(candidate_id, 0),
             "ie_oppose": oppose.get(candidate_id, 0),
         }
@@ -338,13 +356,27 @@ def test_each_race_total_is_the_sum_of_its_candidates() -> None:
 
 
 def test_each_candidate_total_is_the_sum_of_their_principal_and_authorized_committees() -> None:
-    links = linked_candidates()
+    links = {c: cand for c, cand in linked_candidates().items() if c not in HANDOFFS}
+    handed = {cand for before, after, _ in HANDOFFS.values() for cand in (before, after)}
     for candidate_id, candidate in EXPECTED["candidates"].items():
+        if candidate_id in handed:
+            continue
         committees = [
             EXPECTED["committees"][c] for c, cand in links.items() if cand == candidate_id
         ]
         for field in ("total_individual", "self_funding"):
             assert candidate[field] == sum(c[field] for c in committees), (candidate_id, field)
+
+
+def test_a_handed_off_committee_is_split_between_its_candidates_and_its_money_kept_whole() -> None:
+    # The fixture's two candidates of the handed-off committee have no other: each holds a share
+    # of it, together all of it, so the split moves money within the race and adds none.
+    for committee_id, (before, after, _) in HANDOFFS.items():
+        committee = EXPECTED["committees"][committee_id]
+        shares = (EXPECTED["candidates"][before], EXPECTED["candidates"][after])
+        assert all(share["total_individual"] for share in shares), committee_id
+        for field in ("total_individual", "self_funding"):
+            assert sum(share[field] for share in shares) == committee[field], (committee_id, field)
 
 
 def test_every_candidate_with_a_race_is_in_a_listed_race() -> None:
@@ -458,11 +490,14 @@ def test_each_donor_grouping_is_its_contributions_and_one_dime_donor() -> None:
     assert len(cids_listed) == len(set(cids_listed))
 
 
-def test_the_expected_validation_labels_every_counted_contribution_and_its_keys() -> None:
+def test_the_expected_validation_labels_every_dated_counted_contribution_and_its_keys() -> None:
     validation = EXPECTED["validation"]
-    contributions = counted()
-    assert validation["matched_rows"] == len(dime_cids()) == len(contributions)
+    # The DIME import drops a label with no date, and the validator matches on the date: a counted
+    # contribution with none (VOSS's, NEU-2126) is labelled in the file but never matched.
+    dated = [r for r in counted() if r["TRANSACTION_DT"]]
+    assert len(dated) < len(counted()) == len(dime_cids())
+    assert validation["matched_rows"] == len(dated)
     cids = dime_cids()
     assert validation["labelled_keys"] == len(
-        {(contributor_key(r), cids[int(r["SUB_ID"])]) for r in contributions}
+        {(contributor_key(r), cids[int(r["SUB_ID"])]) for r in dated}
     )

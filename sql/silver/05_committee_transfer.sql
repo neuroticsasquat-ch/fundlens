@@ -37,18 +37,28 @@
 CREATE TABLE committee_transfer AS
 WITH linked AS (
     -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
-    -- principal link, then the lower candidate_id, so one each. Only to a candidate of the cycle:
-    -- `ccl` also links a few committees to candidates `cn` lacks.
-    SELECT link.committee_id, link.candidate_id
-    FROM candidate_committee_link AS link
-    JOIN candidate USING (candidate_id)
-    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
-    QUALIFY row_number() OVER (
-        PARTITION BY link.committee_id
-        ORDER BY
-            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
-            link.candidate_id
-    ) = 1
+    -- principal link, then the lower candidate_id, so one each, or a handed-off committee's two
+    -- dated rows. Only to a candidate of the cycle: `ccl` also links a few committees to
+    -- candidates `cn` lacks (a handoff's are the cycle's, silver_handoff_linked.sql).
+    (
+        SELECT
+            link.committee_id,
+            link.candidate_id,
+            NULL::DATE AS valid_from,
+            NULL::DATE AS valid_until
+        FROM candidate_committee_link AS link
+        JOIN candidate USING (candidate_id)
+        WHERE (link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id)
+            AND link.committee_id NOT IN (SELECT committee_id FROM handoff)
+        QUALIFY row_number() OVER (
+            PARTITION BY link.committee_id
+            ORDER BY
+                (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+                link.candidate_id
+        ) = 1
+    )
+    UNION ALL
+    SELECT committee_id, candidate_id, valid_from, valid_until FROM handoff_link
 ),
 jfc_named AS (
     -- Each JFC by name; a name two JFCs share names neither.
@@ -63,6 +73,8 @@ jfc_named AS (
 receipt AS (
     SELECT
         oth.*,
+        -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
+        CAST(try_strptime(oth.TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date,
         coalesce(
             CASE WHEN trim(oth.OTHER_ID) LIKE 'C%' THEN trim(oth.OTHER_ID) END,
             jfc_named.committee_id
@@ -82,30 +94,40 @@ SELECT
     receipt.CMTE_ID AS to_committee_id,
     linked.candidate_id,
     receipt.TRANSACTION_AMT AS amount,
-    -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(receipt.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    receipt.transaction_date AS date,
     receipt.TRANSACTION_TP AS transaction_type,
     'receipt' AS side
 FROM receipt
-LEFT JOIN linked ON linked.committee_id = receipt.CMTE_ID
+LEFT JOIN linked
+    ON linked.committee_id = receipt.CMTE_ID
+    AND (linked.valid_from IS NULL OR receipt.transaction_date IS NULL
+        OR receipt.transaction_date >= linked.valid_from)
+    AND (linked.valid_until IS NULL OR receipt.transaction_date < linked.valid_until)
 WHERE receipt.giver IS NOT NULL
 UNION ALL
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
     'fec' AS source,
-    SUB_ID AS source_record_id,
+    gift.SUB_ID AS source_record_id,
     'US' AS jurisdiction,
-    pas2.CMTE_ID AS from_committee_id,
-    nullif(trim(pas2.OTHER_ID), '') AS to_committee_id,
+    gift.CMTE_ID AS from_committee_id,
+    nullif(trim(gift.OTHER_ID), '') AS to_committee_id,
     coalesce(
         linked.candidate_id,
-        CASE WHEN pas2.CAND_ID IN (SELECT candidate_id FROM candidate) THEN pas2.CAND_ID END
+        CASE WHEN gift.CAND_ID IN (SELECT candidate_id FROM candidate) THEN gift.CAND_ID END
     ) AS candidate_id,
-    pas2.TRANSACTION_AMT AS amount,
-    CAST(try_strptime(pas2.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
-    pas2.TRANSACTION_TP AS transaction_type,
+    gift.TRANSACTION_AMT AS amount,
+    gift.transaction_date AS date,
+    gift.TRANSACTION_TP AS transaction_type,
     'disbursement' AS side
-FROM pas2
-LEFT JOIN linked ON linked.committee_id = nullif(trim(pas2.OTHER_ID), '')
-WHERE pas2.TRANSACTION_TP = '24K'
-    AND pas2.CMTE_ID NOT IN (SELECT committee_id FROM committee WHERE is_conduit);
+FROM (
+    SELECT *, CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
+    FROM pas2
+    WHERE TRANSACTION_TP = '24K'
+        AND CMTE_ID NOT IN (SELECT committee_id FROM committee WHERE is_conduit)
+) AS gift
+LEFT JOIN linked
+    ON linked.committee_id = nullif(trim(gift.OTHER_ID), '')
+    AND (linked.valid_from IS NULL OR gift.transaction_date IS NULL
+        OR gift.transaction_date >= linked.valid_from)
+    AND (linked.valid_until IS NULL OR gift.transaction_date < linked.valid_until);

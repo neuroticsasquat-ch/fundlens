@@ -68,6 +68,10 @@ _Avoid_: race list, ballot
 **Conduit**:
 A committee (ActBlue, WinRed) that forwards earmarked contributions to their final recipient. Flagged on the contribution; never a recipient in fundlens.
 
+**Handoff**:
+A candidate committee passed from one candidate to another mid-cycle (Biden's 2024 campaign, Harris's from 2024-07-21). Listed by hand in `fec/handoffs.csv`, never inferred; the committee's money is the first candidate's before the handoff date and the second's from it on.
+_Avoid_: transfer (a committee's money moving), takeover
+
 ### Resolution
 
 **Contributor key**:

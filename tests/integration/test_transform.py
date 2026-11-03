@@ -64,6 +64,14 @@ NOT_ATTRIBUTIONS = {4240300000000000018, 4240300000000000019}
 MUSK, MUSK_AGAIN = 4240100000000000007, 4240100000000000011
 # 24K gifts whose giver wrote a stale candidate id, and whose recipient raises for no candidate.
 STALE_CAND_ID_GIFT, NO_CANDIDATE_GIFT = 4240200000000000017, 4240200000000000018
+# The committee handed from BIDEN to HARRIS on 2024-07-21 (NEU-2126, fec/handoffs.csv): two gifts
+# before the date, one on it, one after it and one with no date; and a committee's gift before it,
+# as the giver's 24K and the recipient's 18K.
+HANDED_OFF, BIDEN, HARRIS = "C00703975", "P80000722", "P00009423"
+BEFORE_HANDOFF = (4240100000000000312, 4240100000000000313)
+FROM_HANDOFF = (4240100000000000314, 4240100000000000315)
+UNDATED = 4240100000000000316
+HANDOFF_GIFT, HANDOFF_RECEIPT = 4240200000000000021, 4240300000000000023
 
 
 def put_bronze(
@@ -659,6 +667,65 @@ def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(
     assert hargrove == [124000000001]
 
 
+def test_a_handed_off_committees_money_is_split_between_its_candidates_by_date(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    contributions = {
+        row["source_record_id"]: row
+        for row in read_silver(store, "contribution", tmp_path)
+        if row["recipient_committee_id"] == HANDED_OFF
+    }
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+
+    # Before the handoff date the committee's money is BIDEN's; on and after it, HARRIS's, and a
+    # gift with no date is HARRIS's, the committee's holder now. `ccl` links it to both, and the
+    # lower candidate_id alone, HARRIS's, would take it all.
+    assert {sub_id: row["candidate_id"] for sub_id, row in contributions.items()} == {
+        **dict.fromkeys(BEFORE_HANDOFF, BIDEN),
+        **dict.fromkeys(FROM_HANDOFF, HARRIS),
+        UNDATED: HARRIS,
+    }
+    assert contributions[FROM_HANDOFF[0]]["date"] == date(2024, 7, 21)
+    assert contributions[UNDATED]["date"] is None
+    # One row each still: the dated links never overlap.
+    assert len(contributions) == len(BEFORE_HANDOFF) + len(FROM_HANDOFF) + 1
+    # A committee's gift before the date is BIDEN's on both its sides.
+    assert (
+        transfers[HANDOFF_GIFT]["candidate_id"],
+        transfers[HANDOFF_RECEIPT]["candidate_id"],
+    ) == (
+        BIDEN,
+        BIDEN,
+    )
+
+
+def test_a_handoff_whose_committee_is_not_linked_to_both_candidates_aborts_the_run(
+    store: R2, cli_env: Path
+) -> None:
+    # `ccl` without HARRIS's link: the vendored handoff names a link the cycle does not have.
+    ccl = "".join(
+        line
+        for line in fec_fixture.bulk_text("ccl").splitlines(keepends=True)
+        if not line.startswith(f"{HARRIS}|")
+    )
+    put_bronze(store, texts={"ccl": ccl})
+    seats_report()
+
+    result = transform()
+
+    assert isinstance(result.exception, ChecksFailed)
+    assert "silver_handoff_linked.sql" in str(result.exception)
+    assert f"('{HANDED_OFF}', '{HARRIS}')" in str(result.exception)
+    assert uploaded_silver(store) == []
+    assert not markers.exists("transformed", store, cycle=2024, build_id=BUILD)
+
+
 def test_transform_without_bronze_says_to_extract(store: R2, cli_env: Path) -> None:
     result = transform()
 
@@ -700,6 +767,7 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     # when its recipient raises for no one: the super PAC and the state party (NEU-2124).
     assert {(row["to_committee_id"], row["candidate_id"]) for row in receipts} == {
         ("C00800101", "P40000101"),
+        (HANDED_OFF, BIDEN),
         ("C00800103", "S4MD00103"),
         ("C00800104", "S4MD00104"),
         ("C00800106", "H4MD05106"),

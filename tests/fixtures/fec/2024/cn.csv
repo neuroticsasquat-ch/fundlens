@@ -1,7 +1,8 @@
-# cn: candidate master. Every candidate is invented and stands in 2024.
-# Races: President (HARGROVE, STRATTON, QUILL), MD Senate (OKAFOR, WHITLOCK, PELL, BRANNIGAN), MD-05
-# (CALLOWAY, DRISCOLL, YANG, ESPOSITO). FENWICK files for MD-09, which Maryland's eight districts do
-# not draw: the unmatched-district filing (spec §5.2). QUILL and ESPOSITO have no committee and no money.
+# cn: candidate master. Every candidate stands in 2024, and all but BIDEN and HARRIS are invented.
+# Races: President (HARGROVE, STRATTON, QUILL, BIDEN, HARRIS), MD Senate (OKAFOR, WHITLOCK, PELL,
+# BRANNIGAN), MD-05 (CALLOWAY, DRISCOLL, YANG, ESPOSITO). FENWICK files for MD-09, which Maryland's
+# eight districts do not draw: the unmatched-district filing (spec §5.2). QUILL and ESPOSITO have no
+# committee and no money.
 # No one files for the 2024 NE Senate special or for MD-08: cn cannot tell a special's filing from the
 # regular race beside it, so the special stays empty until race attachment decides that (NEU-2037).
 CAND_ID,CAND_NAME,CAND_PTY_AFFILIATION,CAND_ELECTION_YR,CAND_OFFICE_ST,CAND_OFFICE,CAND_OFFICE_DISTRICT,CAND_ICI,CAND_STATUS,CAND_PCC,CAND_ST1,CAND_ST2,CAND_CITY,CAND_ST,CAND_ZIP
@@ -17,3 +18,7 @@ H4MD05107,"DRISCOLL, PETER",REP,2024,MD,H,05,C,C,C00800107,99 OAK LN,,LA PLATA,M
 H4MD05108,"YANG, SOPHIE",IND,2024,MD,H,05,C,C,C00800108,110 OAK LN,,WALDORF,MD,20601
 H4MD05112,"ESPOSITO, LEO",GRE,2024,MD,H,05,C,N,,121 OAK LN,,CLINTON,MD,20735
 H4MD09109,"FENWICK, LOUIS",REP,2024,MD,H,09,C,C,C00800109,132 OAK LN,,BALTIMORE,MD,21209
+# BIDEN and HARRIS, under their real ids, both naming C00703975 their CAND_PCC as `cn` does: the
+# committee handed from one to the other (NEU-2126, cm.csv).
+P80000722,"BIDEN, JOSEPH R JR",DEM,2024,US,P,00,I,C,C00703975,,,WILMINGTON,DE,19801
+P00009423,"HARRIS, KAMALA",DEM,2024,US,P,00,O,C,C00703975,,,WASHINGTON,DC,20003
