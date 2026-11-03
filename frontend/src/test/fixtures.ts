@@ -68,6 +68,7 @@ export const RACES: RaceSummary[] = [
     candidate_count: 4,
     total_individual: 91975,
     total_committee: 10000,
+    total_jfc_transfers: 19500,
     ie_support: 150000,
     ie_oppose: 125000,
   }),
@@ -138,7 +139,7 @@ const OKAFOR_TOP_DONORS: TopDonor[] = [
 /**
  * `/v1/races/2024/senate/MD`: four candidates, most money first (the API's order), and the two
  * committees that gave to them. WHITLOCK is the self-funder: his loan is self-funding, not in
- * `total_individual`.
+ * `total_individual`. OKAFOR VICTORY FUND's transfers to OKAFOR are her `total_jfc_transfers`.
  */
 export const RACE_SENATE_MD: Race = {
   ...RACES[1],
@@ -160,6 +161,7 @@ export const RACE_SENATE_MD: Race = {
       principal_committee_id: "C00800103",
       total_individual: 49700,
       total_committee: 5000,
+      total_jfc_transfers: 19500,
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
@@ -286,7 +288,7 @@ export const CANDIDATE_OKAFOR: Candidate = {
       race_slug: "2024/senate/MD",
       total_individual: 49700,
       total_committee: 5000,
-      total_jfc_transfers: 6500,
+      total_jfc_transfers: 19500,
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
