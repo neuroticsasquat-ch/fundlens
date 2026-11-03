@@ -235,7 +235,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
 def test_a_jfc_attribution_adds_nothing_to_its_participants_or_its_races_totals(
     store: R2, cli_env: Path, migrated_db: str
 ) -> None:
-    # Evidence, never money (spec §6.11): the participant's share is the JFC's 18J transfer.
+    # Evidence, never money (spec §6.11): the participant's share is the JFC's transfer.
     def totals() -> list[dict[str, Any]]:
         return [
             next(r for r in rows(migrated_db, table) if r[column] == value)
