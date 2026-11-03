@@ -48,6 +48,9 @@ OTH_NOT_RECEIPTS = {
     # More 15J memo lines (spec §6.11): JFC attributions, an organization's, one to no committee.
     *range(4240300000000000015, 4240300000000000020),
     4240300000000000022,  # a blank OTHER_ID naming a committee that is no JFC
+    # 15J memo lines in the filings of the JFC's 18G and of its blank-OTHER_ID 15J.
+    4240300000000000024,
+    4240300000000000025,
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
 # OKAFOR VICTORY FUND's 18J transfer to OKAFOR, and the 15J lines of the people behind it: one known
@@ -984,7 +987,8 @@ def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
     rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
 
     # Each line's JFC is the committee its MEMO_TEXT names ('* OKAFOR VICTORY FUND', or after
-    # '2024 AGGREGATE; JFC ATTRIB:'), else its filing's only 18J sender, else none (spec §6.11).
+    # '2024 AGGREGATE; JFC ATTRIB:'), else the one JFC its filing has transfers from, of any type:
+    # VANTERPOOL's an 18J, HOLLOWAY's others an 18G and a blank-OTHER_ID 15J (spec §6.11).
     assert {sub_id: row["jfc_committee_id"] for sub_id, row in rows.items()} == (
         expected["attributions"]["jfc_committee"]
     )
@@ -1060,6 +1064,37 @@ def test_a_jfc_named_in_memo_text_is_the_joint_fundraising_committee_of_that_nam
     assert transform().exit_code == 0
     rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
     assert rows[ACHTERBERG]["jfc_committee_id"] == JFC
+
+
+def test_a_line_in_a_filing_with_transfers_from_two_jfcs_names_neither(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # A second JFC with the same participant, and a filing holding an 18G from each and a 15J line
+    # naming neither: either could be its JFC, so it has none (spec §6.11).
+    cm = fec_fixture.bulk_text("cm") + (
+        "C00800116|CHESAPEAKE UNITY FUND||||BALTIMORE|MD|21202|J|N|DEM|Q|||\n"
+    )
+    oth = fec_fixture.bulk_text("oth") + (
+        "C00800103|N|30G|G2024|1|18G|COM|OKAFOR VICTORY FUND|BALTIMORE|MD|21202|||11252024|4000|"
+        "C00800115|SA.1|1900126|||4249999999999999981\n"
+        "C00800103|N|30G|G2024|1|18G|COM|CHESAPEAKE UNITY FUND|BALTIMORE|MD|21202|||11252024|2000|"
+        "C00800116|SA.2|1900126|||4249999999999999982\n"
+        "C00800103|N|30G|G2024|1|15J|IND|HOLLOWAY, DEAN|FREDERICK|MD|21701|HOLLOWAY FARMS|OWNER|"
+        "11252024|100||SA.3|1900126|X||4249999999999999983\n"
+    )
+    put_bronze(store, texts={"cm": cm, "oth": oth})
+    seats_report()
+
+    assert transform().exit_code == 0
+    transfers = {
+        row["source_record_id"]: row["from_committee_id"]
+        for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    assert (transfers[4249999999999999981], transfers[4249999999999999982]) == (JFC, "C00800116")
+    rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
+    assert rows[4249999999999999983]["jfc_committee_id"] is None
+    # The fixture's own lines are as before: VANTERPOOL's filing has one JFC's 18J.
+    assert rows[VANTERPOOL_LINE]["jfc_committee_id"] == JFC
 
 
 def test_a_key_with_no_contributions_shows_the_variant_most_of_its_attributions_report(

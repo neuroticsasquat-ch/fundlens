@@ -45,7 +45,7 @@ rows:
   ccl: 15
   indiv: 316
   pas2: 21
-  oth: 25
+  oth: 27
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
@@ -60,7 +60,7 @@ silver:
   independent_expenditure: 9
   committee_transfer: 25
   # One row per `attributions` line below.
-  jfc_attribution: 4
+  jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
@@ -461,14 +461,16 @@ distinct_donors: 109
 
 # JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank) filed by a
 # committee in `cm`. Evidence about people, never money: no total above reads them. Each line by
-# SUB_ID, with its JFC: the committee its MEMO_TEXT names, else its filing's only 18J sender, else
-# none.
+# SUB_ID, with its JFC: the committee its MEMO_TEXT names, else the one designation-J committee its
+# filing has receipts from, of whatever type, else none.
 attributions:
   jfc_committee:
-    4240300000000000011: null # REYES: no MEMO_TEXT, and no 18J in its filing
+    4240300000000000011: null # REYES: no MEMO_TEXT, and its filing's 18G is from no JFC
     4240300000000000015: C00800115 # ACHTERBERG: '* OKAFOR VICTORY FUND'
-    4240300000000000016: C00800115 # VANTERPOOL: the filing's only 18J sender
+    4240300000000000016: C00800115 # VANTERPOOL: the one JFC its filing has a transfer (18J) from
     4240300000000000017: C00800115 # HOLLOWAY: '2024 AGGREGATE; JFC ATTRIB: OKAFOR VICTORY FUND'
+    4240300000000000024: C00800115 # HOLLOWAY: the one JFC its filing has a transfer (18G) from
+    4240300000000000025: C00800115 # HOLLOWAY: the JFC its filing's blank-OTHER_ID 15J transfer names
   # The lines of a person in no counted contribution: a donor all the same, with no money.
   attribution_only: [4240300000000000015]
 

@@ -1,7 +1,7 @@
 -- jfc_attribution (spec §4, §6.11): one row per JFC attribution, an `oth` 15J memo line in which
 -- a joint fundraising committee's participant itemizes an individual behind its share of a JFC
 -- transfer (`jfc_line`, 04_contribution.sql). Evidence about a person, never money: the share
--- reaches the participant as the JFC's 18J transfer in committee_transfer, and the JFC's own
+-- reaches the participant as the JFC's transfer in committee_transfer, and the JFC's own
 -- `indiv` row counts the gift wherever the JFC itemized it, so no total reads `amount`. It is kept
 -- as filed, with no refund sign rule.
 --
@@ -10,8 +10,12 @@
 -- the filer, always known. The JFC is best effort: a line's OTHER_ID is always blank, so it is the
 -- committee MEMO_TEXT names once a leading '<year> AGGREGATE;' and a 'JFC ATTRIB:', 'TRANSFER
 -- FROM', 'JFC-', 'JFC:' or '*' prefix are stripped ('* HARRIS VICTORY FUND'), compared as names
--- are in 04_contribution.sql; else the one committee the filing (CMTE_ID and FILE_NUM) reports an
--- 18J transfer from; else none.
+-- are in 04_contribution.sql; else the one joint fundraising committee the filing (CMTE_ID and
+-- FILE_NUM) reports a transfer from; else none. A JFC's transfer is filed under any of several
+-- receipt types (18G mostly, some 18J, a few 15J), now and then with OTHER_ID blank (NEU-2124), so
+-- the filing's transfers are its receipts in committee_transfer, by that table's giver rule, from a
+-- committee of designation J (NEU-2183). Another committee's receipt in the filing, such as a
+-- candidate's authorized committee's 18G, is no JFC transfer and is not counted.
 CREATE TABLE jfc_attribution AS
 WITH linked AS (
     -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
@@ -46,13 +50,18 @@ named AS (
     ) = 1
 ),
 sender AS (
-    -- A filing's 18J transfers, when they all come from one committee in `cm`.
-    SELECT CMTE_ID, FILE_NUM, min(trim(OTHER_ID)) AS committee_id
-    FROM oth
-    WHERE TRANSACTION_TP = '18J' AND MEMO_CD IS DISTINCT FROM 'X'
-    GROUP BY CMTE_ID, FILE_NUM
-    HAVING count(DISTINCT trim(OTHER_ID)) = 1
-        AND min(trim(OTHER_ID)) IN (SELECT committee_id FROM committee)
+    -- A filing's receipts from JFCs, when they all come from one. committee_transfer keeps no
+    -- FILE_NUM, so a receipt is read back from its `oth` row.
+    SELECT
+        receipt.to_committee_id AS CMTE_ID,
+        oth.FILE_NUM,
+        min(receipt.from_committee_id) AS committee_id
+    FROM committee_transfer AS receipt
+    JOIN oth ON oth.SUB_ID = receipt.source_record_id AND oth.CMTE_ID = receipt.to_committee_id
+    WHERE receipt.side = 'receipt'
+        AND receipt.from_committee_id IN (SELECT committee_id FROM committee WHERE designation = 'J')
+    GROUP BY receipt.to_committee_id, oth.FILE_NUM
+    HAVING count(DISTINCT receipt.from_committee_id) = 1
 ),
 line AS (
     SELECT
