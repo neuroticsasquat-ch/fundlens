@@ -133,6 +133,7 @@ class Expected(TypedDict):
     silver: dict[str, int]
     contributions: dict[str, Any]
     unmatched_filings: list[str]
+    aliases: dict[str, str]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]

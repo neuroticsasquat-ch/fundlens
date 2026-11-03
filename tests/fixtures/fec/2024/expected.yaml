@@ -30,6 +30,9 @@
 #   whatever their type, a joint fundraising committee's transfer of the candidate's share,
 #   credited to the candidate the receiving committee is linked to. In neither total_individual
 #   nor total_committee: OKAFOR VICTORY FUND's 18J, 18G and blank-OTHER_ID 15J to OKAFOR.
+# - A candidate alias (`aliases` below, NEU-2127) is in no race and holds no money: a 24K whose
+#   giver wrote one's id, its recipient linked to no candidate, is credited to the id it is an
+#   alias of.
 # - A race's totals are the sums over the candidates attached to it.
 # All amounts are whole dollars.
 
@@ -38,8 +41,8 @@ cycle: 2024
 # Data rows per bulk file, comment lines and header excluded.
 rows:
   cm: 19
-  cn: 14
-  ccl: 14
+  cn: 15
+  ccl: 15
   indiv: 316
   pas2: 21
   oth: 25
@@ -51,8 +54,8 @@ rows:
 # each side its own row.
 silver:
   committee: 19
-  candidate: 14
-  candidate_committee_link: 14
+  candidate: 15
+  candidate_committee_link: 15
   contribution: 289
   independent_expenditure: 9
   committee_transfer: 25
@@ -83,6 +86,12 @@ contributions:
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
+
+# Candidate aliases (NEU-2127): a second id of a person, in the same race, linked principal or
+# authorized to a committee credited to the other, under the same last and first given name. In no
+# race and in `candidates` below under the id holding the money only.
+aliases:
+  H6MD05113: H4MD05107 # DRISCOLL, PETER J.: DRISCOLL, PETER
 
 races:
   2024-P-US-00:

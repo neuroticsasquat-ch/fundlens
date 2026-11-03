@@ -1566,6 +1566,9 @@
             },
             "description": "Successful Response"
           },
+          "301": {
+            "description": "The id is an alias of another candidate's: `Location` names the id holding their money."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1669,6 +1672,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "301": {
+            "description": "The id is an alias of another candidate's: `Location` names the id holding their money."
           },
           "400": {
             "content": {

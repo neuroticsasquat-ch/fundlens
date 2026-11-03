@@ -22,3 +22,7 @@ H4MD09109,"FENWICK, LOUIS",REP,2024,MD,H,09,C,C,C00800109,132 OAK LN,,BALTIMORE,
 # committee handed from one to the other (NEU-2126, cm.csv).
 P80000722,"BIDEN, JOSEPH R JR",DEM,2024,US,P,00,I,C,C00703975,,,WILMINGTON,DE,19801
 P00009423,"HARRIS, KAMALA",DEM,2024,US,P,00,O,C,C00703975,,,WASHINGTON,DC,20003
+# DRISCOLL again, under a second id for the same seat as FEC sometimes registers one person (Hovde's
+# 2024 S2WI00268 and S4WI00256), his name written with a middle initial and naming the same
+# CAND_PCC. `ccl` links C00800107 to both: an alias of H4MD05107, who holds the money (NEU-2127).
+H6MD05113,"DRISCOLL, PETER J.",REP,2024,MD,H,05,C,C,C00800107,99 OAK LN,,LA PLATA,MD,20646

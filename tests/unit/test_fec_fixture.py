@@ -72,13 +72,22 @@ def signed(row: dict[str, str]) -> int:
 
 def linked_candidates() -> dict[str, str]:
     """Committee → candidate, for the principal and authorized committees `ccl` links, and the
-    principal campaign committee each `cn` row names whatever `ccl`'s designation (spec §4)."""
+    principal campaign committee each `cn` row names whatever `ccl`'s designation (spec §4). A
+    committee linked to two candidates is the principal link's, then the lower candidate_id's."""
     principal = {(row["CAND_ID"], row["CAND_PCC"]) for row in rows("cn")}
-    return {
-        row["CMTE_ID"]: row["CAND_ID"]
+    links = sorted(
+        (
+            not (row["CMTE_DSGN"] == "P" or (row["CAND_ID"], row["CMTE_ID"]) in principal),
+            row["CAND_ID"],
+            row["CMTE_ID"],
+        )
         for row in rows("ccl")
         if row["CMTE_DSGN"] in ("P", "A") or (row["CAND_ID"], row["CMTE_ID"]) in principal
-    }
+    )
+    linked: dict[str, str] = {}
+    for _, candidate_id, committee_id in links:
+        linked.setdefault(committee_id, candidate_id)
+    return linked
 
 
 def candidate_of(committee_id: str, row: dict[str, str]) -> str | None:
@@ -117,6 +126,40 @@ def counted() -> list[dict[str, str]]:
 
 def name_key(name: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", name.upper())
+
+
+def person(name: str) -> tuple[str, str]:
+    """A `cn` name's last name and first given name, as the self-funding test compares them."""
+    last, _, given = name.partition(",")
+    return name_key(last), name_key(given.strip().partition(" ")[0])
+
+
+def aliases() -> dict[str, str]:
+    """Candidate alias → the candidate it is an alias of (NEU-2127): a candidate of the same race,
+    under the same last and first given name, credited a committee `ccl` links both principal or
+    authorized; the alias credited none, and in no handoff."""
+    linked = {c: cand for c, cand in linked_candidates().items() if c not in HANDOFFS}
+    credited = {
+        *linked.values(),
+        *(c for before, after, _ in HANDOFFS.values() for c in (before, after)),
+    }
+    races = race_ids()
+    names = {row["CAND_ID"]: person(row["CAND_NAME"]) for row in rows("cn")}
+    pa_links = {(r["CAND_ID"], r["CMTE_ID"]) for r in rows("ccl") if r["CMTE_DSGN"] in ("P", "A")}
+    found: dict[str, str] = {}
+    for alias, committee_id in sorted(pa_links):
+        holder = linked.get(committee_id)
+        if (
+            holder is not None
+            and holder != alias
+            and alias not in credited
+            and (holder, committee_id) in pa_links
+            and races[alias] is not None
+            and races[alias] == races[holder]
+            and names[alias] == names[holder]
+        ):
+            found[alias] = min(found.get(alias, holder), holder)
+    return found
 
 
 def giver(row: dict[str, str]) -> str | None:
@@ -236,12 +279,14 @@ def committee_contributions() -> list[dict[str, str]]:
 
 def gift_candidate(row: dict[str, str]) -> str | None:
     """The candidate a 24K is credited to: the one its recipient committee is linked to, else the
-    giver's CAND_ID when that is a candidate of the cycle, else none."""
+    giver's CAND_ID when that is a candidate of the cycle (the one it is an alias of, when it is an
+    alias), else none."""
     candidates = {r["CAND_ID"] for r in rows("cn")}
     linked = candidate_of(row["OTHER_ID"], row)
     if linked in candidates:
         return linked
-    return row["CAND_ID"] if row["CAND_ID"] in candidates else None
+    stated = row["CAND_ID"]
+    return aliases().get(stated, stated) if stated in candidates else None
 
 
 def ie_candidate(row: dict[str, str]) -> str | None:
@@ -281,7 +326,7 @@ def tally_candidates() -> dict[str, CandidateTotals]:
         if giver(r) in jfcs and (c := candidate_of(r["CMTE_ID"], r)) is not None
     )
     support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
-    races = race_ids()
+    races, alias_ids = race_ids(), aliases()
     return {
         candidate_id: {
             "race_id": races[candidate_id],
@@ -293,6 +338,7 @@ def tally_candidates() -> dict[str, CandidateTotals]:
             "ie_oppose": oppose.get(candidate_id, 0),
         }
         for candidate_id in races
+        if candidate_id not in alias_ids
     }
 
 
@@ -391,6 +437,7 @@ def test_the_expected_totals_match_a_tally_of_the_fixture() -> None:
     assert EXPECTED["candidates"] == candidates
     assert EXPECTED["races"] == tally_races(candidates)
     assert EXPECTED["unmatched_filings"] == [c for c, r in race_ids().items() if r is None]
+    assert EXPECTED["aliases"] == aliases()
 
 
 def contributor_key(row: dict[str, str]) -> str:

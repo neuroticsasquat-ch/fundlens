@@ -1,5 +1,6 @@
 -- search_entity (spec §7.1): what `GET /v1/search` matches by trigram. One row per candidate,
--- committee, race and donor. weight orders ties in the search results; aliases is a second string
+-- committee, race and donor; not per candidate alias (NEU-2127), which candidate_cycle leaves
+-- out. weight orders ties in the search results; aliases is a second string
 -- to match on (the race's slug, the candidate's principal committee, the committee's connected
 -- organisation, the donor's other spellings of their name, most money first). A donor's weight is
 -- their total; one known only from JFC attributions weighs 0 and is still found.

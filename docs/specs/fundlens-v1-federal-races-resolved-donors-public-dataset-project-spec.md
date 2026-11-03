@@ -153,7 +153,7 @@ Source-agnostic from day one: every table carries `source` (`fec`) and `jurisdic
 | Table | Key | Columns (beyond key) |
 |---|---|---|
 | `committee` | `(cycle, committee_id)` | `name, treasurer, street, city, state, zip, designation, type, party, filing_frequency, org_type, connected_org, candidate_id, is_conduit` |
-| `candidate` | `(cycle, candidate_id)` | `name, party, election_year, office (H/S/P), state, district (2-char, '00' for S/P), incumbent_challenger_open, status, principal_committee_id, race_id` |
+| `candidate` | `(cycle, candidate_id)` | `name, party, election_year, office (H/S/P), state, district (2-char, '00' for S/P), incumbent_challenger_open, status, principal_committee_id, race_id, alias_of` (`alias_of`, NEU-2127: set by `03_candidate_committee_link.sql` on a candidate alias, a person's second id for the same race, to the id holding their money, below) |
 | `candidate_committee_link` | `(cycle, candidate_id, committee_id)` | `committee_type, designation, linkage_id` |
 | `race` | `race_id` | `cycle, jurisdiction, office, state, district, is_special, slug` (from the seat calendar, §5.2) |
 | `contributor` | `contributor_key` | `name_raw, name_first, name_last, name_suffix, zip5, city, state, employer_raw, employer_norm, occupation_raw, occupation_norm, contribution_count, amount_total, attribution_count, first_cycle, last_cycle` (`attribution_count` counts the key's JFC attributions, §6.11) |
@@ -169,6 +169,7 @@ Rules applied in `sql/silver/04_contribution.sql`:
 - Negative amounts (refunds, type `22Y` etc.) are kept and net out in aggregates.
 - `source_record_id` = FEC `SUB_ID`.
 - `candidate_id` on a contribution = the candidate linked to `recipient_committee_id` in `ccl` for that cycle, when the committee is a principal or authorized committee (`CMTE_DSGN IN ('P','A')`) or the one the candidate's `cn` row names principal (`CAND_PCC`), whatever `ccl` designates it; else null. FEC's files show a committee as it stands today, and a campaign committee turned leadership PAC after the election raised the cycle's money as the campaign: Trump's 2024 `C00828541`, now NEVER SURRENDER, INC., which `ccl` links `N`/`D`, credited none of its money to him until this rule. A `ccl` link is still required, so a leadership PAC that is no one's `CAND_PCC` stays the candidate's in no total. Where `ccl` links one committee to two candidates, the principal link and then the lower `candidate_id` takes it, with one exception: a committee handed from one candidate to another, listed in the vendored, hand-curated `src/fundlens/fec/handoffs.csv` (`committee_id, from_candidate_id, to_candidate_id, handoff_date, source`), is the first candidate's before `handoff_date` and the second's on and after it, judged by each row's own date, and a row with no date is the second's (NEU-2126). Its one row is Biden's 2024 `C00703975`, Harris's from 2024-07-21. The transform loads the rows whose date falls in the cycle, and a silver check fails the build unless `ccl` links each one's committee `P` or `A` to both its candidates. The same rule credits `committee_transfer`'s receipts and 24K gifts and `jfc_attribution`'s candidate.
+- **Candidate aliases (NEU-2127).** FEC sometimes registers one person under two candidate ids for one seat and cycle, an old id beside a new one, both linked to the same committee (Hovde's 2024 `S2WI00268` and `S4WI00256`). The rule above credits the committee to one; the other is an alias of it (`candidate.alias_of`) when both are candidates of the same race, both are linked P or A to that committee, and their names share a last name and first given name, compared as the self-funding test compares them. An alias is credited no committee, by contribution's rule or by `committee_transfer`'s (which passes over an id `cn` lacks), and is in no handoff, so no money moves: the canonical id is the one already holding it. A 24K whose giver's `CAND_ID` stands (its recipient linked to no candidate) and is an alias is credited to the id it is an alias of. Silver checks fail the build if an alias names another alias or holds money in `contribution` or `committee_transfer`. Name variants the rule does not catch (`CRAVEN, MICHAEL ANDREW` / `CRAVEN , MIKE`) and ids filed for different seats stay separate candidates.
 
 FEC bulk files (`https://www.fec.gov/files/bulk-downloads/<cycle>/<file><yy>.zip`, pipe-delimited, no header; headers from `data_dictionaries/<file>_header_file.csv`, vendored under `src/fundlens/fec/headers/`):
 
@@ -263,6 +264,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 | `race_top_donor` | `race_id, rank (≤100), donor_id, display_name, amount, candidates jsonb [{candidate_id, amount}]` |
 | `race_top_committee` | `race_id, rank, committee_id, name, amount, kind (contribution/ie)` |
 | `candidate` | `candidate_id, name, party, office, state, district, cycles int[]` |
+| `candidate_redirect` | `old_candidate_id, candidate_id` (NEU-2127: each candidate alias and the id it is an alias of; aliases are in no other gold table, so `race_candidate`, `race.candidate_count` and `search_entity` list each person once) |
 | `candidate_cycle` | `candidate_id, cycle, race_id, total_individual, total_committee, total_jfc_transfers, self_funding, ie_support, ie_oppose, contributor_count` (`total_jfc_transfers`, NEU-2124: the receipts of the committees raising for the candidate from a designation-J committee, §6.11's JFC transfers, whatever receipt type the filer gave them: 2024's are 18G mostly, some 18J and 15J. Checked against FEC's transfers-in totals on the 2024 build: Harris −0.9%, Trump −0.03%. In neither of the totals before it) |
 | `candidate_top_donor` | `candidate_id, cycle, rank, donor_id, display_name, amount` |
 | `committee` | `committee_id, name, type, designation, party, connected_org, is_conduit, cycles int[]` |
@@ -286,7 +288,7 @@ Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation":
 | `GET /v1/meta` | `gold.meta` |
 | `GET /v1/cycles` · `GET /v1/cycles/{cycle}/races?office=&state=` | `gold.cycle`, `gold.race` |
 | `GET /v1/races/{cycle}/{office}/{state}` · `…/{state}-{district}` · `…?special=1` | `race`, `race_candidate`, `race_top_donor`, `race_top_committee` |
-| `GET /v1/candidates/{id}` · `GET /v1/candidates/{id}/contributions?cycle=&cursor=` | gold · DuckDB scan of `contribution` for `candidate_id` (cycle partition) |
+| `GET /v1/candidates/{id}` · `GET /v1/candidates/{id}/contributions?cycle=&cursor=` | gold (301 via `candidate_redirect`) · DuckDB scan of `contribution` for `candidate_id` (cycle partition) |
 | `GET /v1/committees/{id}` · `…/contributions?cycle=&cursor=` | gold · DuckDB |
 | `GET /v1/donors/{id}` · `…/contributions?cycle=&cursor=` | gold (301 via `donor_redirect`) · DuckDB scan of `bucket=donor_id % 256` |
 | `GET /v1/search?q=&kind=` | `search_entity` trigram, top 20 |
@@ -294,6 +296,8 @@ Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation":
 | `GET /healthz` | Postgres + silver volume reachable |
 
 Donor routes, built by NEU-2052 (`api/routers/donors.py`): a `donor_id` in `gold.donor_redirect` answers `GET /v1/donors/{id}` and `…/contributions` with a cacheable 301 to the id it became, the rest of the path and the query kept. `…/contributions` takes `cycle` optionally: without it the walk reads the donor's bucket of every live cycle, one directory per cycle, newest cycle first, and the cursor carries the cycle of its last row, so a page may end one cycle and start the next. Every `/contributions` row carries its `cycle`.
+
+A candidate alias in `gold.candidate_redirect` (NEU-2127) answers `GET /v1/candidates/{id}` and `…/contributions` the same way: a cacheable 301 to the id it is an alias of, the rest of the path and the query kept.
 
 Responses carry `Cache-Control: public, max-age=3600, s-maxage=604800` and `ETag: <build_id>`; Cloudflare caches everything under `api.fundlens.org` and `publish` purges the zone. Cursor pagination on row lists (page size 100). Errors are RFC 9457 problem details. CORS allows `https://fundlens.org`. A Cloudflare rate-limiting rule (ops setting, not code) caps `/v1/*` per IP. The OpenAPI document is the contract: `frontend/src/api/` is generated from it in CI and a drift check fails the build.
 

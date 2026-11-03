@@ -822,6 +822,13 @@ export interface operations {
                     "application/json": components["schemas"]["Candidate"];
                 };
             };
+            /** @description The id is an alias of another candidate's: `Location` names the id holding their money. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -877,6 +884,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ContributionPage"];
                 };
+            };
+            /** @description The id is an alias of another candidate's: `Location` names the id holding their money. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Bad Request */
             400: {

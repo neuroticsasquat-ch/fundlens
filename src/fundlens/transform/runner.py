@@ -17,8 +17,10 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   `normalize_employer`, `normalize_occupation`), from which the contributor key is built.
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
-`<table>`, and may leave temporary tables a later file reads; `{cycle}`, `{build_id}`,
-`{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal brace is written twice).
+`<table>`, may leave temporary tables a later file reads, and may fill in a column of an earlier
+table that needs its own (03_candidate_committee_link.sql sets `candidate.alias_of`);
+`{cycle}`, `{build_id}`, `{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal
+brace is written twice).
 A model or check puts the larger input on the left of each join: DuckDB builds the join on its
 right side as written (`connect`).
 Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops

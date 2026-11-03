@@ -138,6 +138,11 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     candidates = {row["candidate_id"]: row for row in rows(migrated_db, "candidate")}
     assert set(candidates) == set(expected["candidates"])
     assert candidates["H4MD09109"]["cycles"] == [2024]
+    # A candidate alias is in no table above but this one (NEU-2127).
+    redirects = rows(migrated_db, "candidate_redirect")
+    assert {row["old_candidate_id"]: row["candidate_id"] for row in redirects} == expected[
+        "aliases"
+    ]
     committees = {row["committee_id"]: row for row in rows(migrated_db, "committee")}
     assert committees["C00401224"]["is_conduit"] is True
     assert committees["C00401224"]["cycles"] == [2024]

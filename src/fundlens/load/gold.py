@@ -48,6 +48,7 @@ GoldTable = Literal[
     "race_top_committee",
     "candidate",
     "candidate_cycle",
+    "candidate_redirect",
     "committee",
     "committee_cycle",
     "committee_top_recipient",

@@ -72,6 +72,10 @@ A committee (ActBlue, WinRed) that forwards earmarked contributions to their fin
 A candidate committee passed from one candidate to another mid-cycle (Biden's 2024 campaign, Harris's from 2024-07-21). Listed by hand in `fec/handoffs.csv`, never inferred; the committee's money is the first candidate's before the handoff date and the second's from it on.
 _Avoid_: transfer (a committee's money moving), takeover
 
+**Candidate alias**:
+A second regulator ID one person holds for the same race (Hovde's 2024 `S4WI00256` beside `S2WI00268`), linked to a committee credited to the other ID, under the same last and first given name. Holds no money; listed nowhere, and its candidate page redirects to the ID that holds the money. Inferred by rule, never listed by hand.
+_Avoid_: duplicate candidate, merged candidate
+
 ### Resolution
 
 **Contributor key**:

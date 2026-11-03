@@ -72,6 +72,9 @@ BEFORE_HANDOFF = (4240100000000000312, 4240100000000000313)
 FROM_HANDOFF = (4240100000000000314, 4240100000000000315)
 UNDATED = 4240100000000000316
 HANDOFF_GIFT, HANDOFF_RECEIPT = 4240200000000000021, 4240300000000000023
+# DRISCOLL's second id for MD-05, an alias of the one holding his money (NEU-2127).
+DRISCOLL, DRISCOLL_ALIAS = "H4MD05107", "H6MD05113"
+CHECKS = Path(__file__).resolve().parents[2] / "sql" / "checks"
 
 
 def put_bronze(
@@ -177,10 +180,16 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "status",
         "principal_committee_id",
         "race_id",
+        "alias_of",
     ]
+    # An alias stands in the race of the candidate it is an alias of.
     assert {row["candidate_id"]: row["race_id"] for row in candidates} == {
-        candidate_id: totals["race_id"] for candidate_id, totals in expected["candidates"].items()
+        **{c: totals["race_id"] for c, totals in expected["candidates"].items()},
+        **{alias: expected["candidates"][c]["race_id"] for alias, c in expected["aliases"].items()},
     }
+    assert {
+        row["candidate_id"]: row["alias_of"] for row in candidates if row["alias_of"] is not None
+    } == expected["aliases"]
 
     links = read_silver(store, "candidate_committee_link", tmp_path)
     assert list(links[0]) == [
@@ -724,6 +733,122 @@ def test_a_handoff_whose_committee_is_not_linked_to_both_candidates_aborts_the_r
     assert f"('{HANDED_OFF}', '{HARRIS}')" in str(result.exception)
     assert uploaded_silver(store) == []
     assert not markers.exists("transformed", store, cycle=2024, build_id=BUILD)
+
+
+def test_a_second_id_of_one_person_is_an_alias_only_in_the_same_race_under_the_same_name(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    alias = fec_fixture.bulk_text("cn").splitlines()[-1]
+    assert alias.startswith(f"{DRISCOLL_ALIAS}|")
+    cn = (
+        fec_fixture.bulk_text("cn")
+        # The same person filing for MD-04, a race he is not in: no alias.
+        + alias.replace(DRISCOLL_ALIAS, "H6MD04114").replace("|MD|H|05|", "|MD|H|04|")
+        + "\n"
+        # Another person of the same last name, in the same race: no alias.
+        + alias.replace(DRISCOLL_ALIAS, "H6MD05115").replace("PETER J.", "PAULA")
+        + "\n"
+    )
+    ccl = (
+        fec_fixture.bulk_text("ccl")
+        + "H6MD04114|2024|2024|C00800107|H|P|124000000097\n"
+        + "H6MD05115|2024|2024|C00800107|H|P|124000000098\n"
+    )
+    put_bronze(store, texts={"cn": cn, "ccl": ccl})
+    seats_report()
+
+    assert transform().exit_code == 0
+    aliases = {
+        row["candidate_id"]: row["alias_of"]
+        for row in read_silver(store, "candidate", tmp_path)
+        if row["alias_of"] is not None
+    }
+    assert aliases == {DRISCOLL_ALIAS: DRISCOLL}
+
+
+def test_an_id_credited_a_committee_by_either_crediting_rule_is_no_alias(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # DRISCOLL's committee linked principal to an id `cn` lacks, lower than his: contribution's
+    # rule credits it that id, committee_transfer's (a candidate of the cycle only) still DRISCOLL.
+    # And DRISCOLL under a third, lower id, linked with him to the leadership PAC, which credits it.
+    # DRISCOLL holds that committee's transfers, so is no alias of his lower id.
+    cn = fec_fixture.bulk_text("cn") + (
+        "H2MD05100|DRISCOLL, PETER|REP|2024|MD|H|05|C|C|C00800114|99 OAK LN||LA PLATA|MD|20646\n"
+    )
+    ccl = fec_fixture.bulk_text("ccl") + (
+        "H0MD05001|2024|2024|C00800107|H|P|124000000096\n"
+        "H2MD05100|2024|2024|C00800114|H|P|124000000097\n"
+        f"{DRISCOLL}|2024|2024|C00800114|H|P|124000000098\n"
+    )
+    put_bronze(store, texts={"cn": cn, "ccl": ccl})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    aliases = {
+        row["candidate_id"]: row["alias_of"]
+        for row in read_silver(store, "candidate", tmp_path)
+        if row["alias_of"] is not None
+    }
+    assert aliases == {DRISCOLL_ALIAS: DRISCOLL}
+
+
+def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # The fixture's 24K to the super PAC, which raises for no candidate, with the giver writing
+    # DRISCOLL's alias as CAND_ID: it stands, as the id holding his money.
+    [line] = [
+        line
+        for line in fec_fixture.bulk_text("pas2").splitlines()
+        if line.endswith(f"|{NO_CANDIDATE_GIFT}")
+    ]
+    fields = line.split("|")
+    fields[16], fields[21] = DRISCOLL_ALIAS, "4240200000000000099"
+    put_bronze(store, texts={"pas2": fec_fixture.bulk_text("pas2") + "|".join(fields) + "\n"})
+    seats_report()
+
+    assert transform().exit_code == 0
+    gifts = {
+        row["source_record_id"]: row["candidate_id"]
+        for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    assert gifts[4240200000000000099] == DRISCOLL
+
+
+def failing_rows(con: duckdb.DuckDBPyConnection, check: str) -> list[tuple[object, ...]]:
+    return con.execute((CHECKS / check).read_text()).fetchall()
+
+
+def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alias() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE candidate AS SELECT * FROM (VALUES"
+            f" ('{DRISCOLL}', CAST(NULL AS VARCHAR)),"
+            f" ('{DRISCOLL_ALIAS}', '{DRISCOLL}'),"
+            f" ('H8MD05116', '{DRISCOLL_ALIAS}')"
+            ") AS t(candidate_id, alias_of)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES"
+            f" (1, '{DRISCOLL}'), (2, '{DRISCOLL_ALIAS}'), (3, '{DRISCOLL_ALIAS}')"
+            ") AS t(source_record_id, candidate_id)"
+        )
+        con.execute(
+            "CREATE TABLE committee_transfer AS SELECT * FROM (VALUES"
+            f" (4, '{DRISCOLL}'), (5, 'H8MD05116')"
+            ") AS t(source_record_id, candidate_id)"
+        )
+
+        assert sorted(failing_rows(con, "silver_candidate_alias_no_money.sql")) == [
+            ("committee_transfer", "H8MD05116", 1),
+            ("contribution", DRISCOLL_ALIAS, 2),
+        ]
+        assert failing_rows(con, "silver_candidate_alias_canonical.sql") == [
+            ("H8MD05116", DRISCOLL_ALIAS)
+        ]
 
 
 def test_transform_without_bronze_says_to_extract(store: R2, cli_env: Path) -> None:
