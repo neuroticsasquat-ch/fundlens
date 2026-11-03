@@ -151,6 +151,27 @@ describe("RacePage", () => {
     ]);
   });
 
+  it("charts the candidates by their Total, whatever order the API gives them in", async () => {
+    // BRANNIGAN, out-raised by OKAFOR in individual gifts, out-totals her via joint fundraising.
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) =>
+      candidate.candidate_id === "S4MD00111"
+        ? { ...candidate, total_jfc_transfers: 100000 }
+        : candidate,
+    );
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    expect(lastOption().yAxis).toMatchObject({
+      data: ["WHITLOCK, GORDON", "BRANNIGAN, TESS", "OKAFOR, DIANA", "PELL, MARCUS"],
+    });
+  });
+
   it("charts only the 15 candidates with the most money, and says the table has the rest", async () => {
     // A presidential race lists every filer: 1,602 in 2024, most with nothing. A bar each would
     // make a canvas taller than the browser will draw.

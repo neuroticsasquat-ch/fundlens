@@ -12,14 +12,18 @@ import { candidateTotalsOption } from "./candidateTotalsOption";
 const CHARTED = 15;
 
 /**
- * The race split: the candidates with the most money, each total a bar coloured by party. Takes
- * the API's order, most money first; a candidate with none is left out, and so is the chart when
- * nobody has any.
+ * The race split: the candidates with the most money, each total a bar coloured by party, most
+ * first by the table's Total rather than the API's order; a candidate with none is left out, and
+ * so is the chart when nobody has any.
  */
 function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
   const theme = useChartTheme();
   const charted = useMemo(
-    () => candidates.filter((candidate) => candidateTotal(candidate) > 0).slice(0, CHARTED),
+    () =>
+      candidates
+        .filter((candidate) => candidateTotal(candidate) > 0)
+        .sort((a, b) => candidateTotal(b) - candidateTotal(a))
+        .slice(0, CHARTED),
     [candidates],
   );
   const option = useMemo(() => candidateTotalsOption(charted, theme), [charted, theme]);
