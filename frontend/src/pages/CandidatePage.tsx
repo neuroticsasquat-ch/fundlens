@@ -53,6 +53,13 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
     sortValue: (row) => row.total_committee,
   },
   {
+    key: "jfc",
+    header: "Via joint fundraising",
+    align: "right",
+    render: (row) => money(row.total_jfc_transfers),
+    sortValue: (row) => row.total_jfc_transfers,
+  },
+  {
     key: "self",
     header: "Self-funding",
     align: "right",
@@ -71,6 +78,7 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
 const CYCLE_SERIES: CycleSeries<CandidateCycle>[] = [
   { name: "From individuals", value: (row) => row.total_individual },
   { name: "From committees", value: (row) => row.total_committee },
+  { name: "Via joint fundraising", value: (row) => row.total_jfc_transfers },
   { name: "Self-funding", value: (row) => row.self_funding },
 ];
 

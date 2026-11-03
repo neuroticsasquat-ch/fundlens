@@ -22,17 +22,25 @@ describe("RacePage", () => {
       await screen.findByRole("heading", { level: 1, name: "2024 Senate · Maryland" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("4 candidates · $91,975 from individuals · $10,000 from committees"),
+      screen.getByText(
+        "4 candidates · $91,975 from individuals · $10,000 from committees · $19,500 via joint fundraising",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Special")).not.toBeInTheDocument();
     expect(document.title).toBe("2024 Senate · Maryland · fundlens");
 
     expect(rows("Candidates").map(cells)).toEqual([
-      ["WHITLOCK, GORDON", "REP", "Open", "$31,850", "$5,000", "$1,750,000", "$1,786,850"],
-      ["OKAFOR, DIANA", "DEM", "Open", "$49,700", "$5,000", "$5,000", "$59,700"],
-      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$7,175"],
-      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$3,250"],
+      ["WHITLOCK, GORDON", "REP", "Open", "$31,850", "$5,000", "$0", "$1,750,000", "$1,786,850"],
+      ["OKAFOR, DIANA", "DEM", "Open", "$49,700", "$5,000", "$19,500", "$5,000", "$79,200"],
+      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$0", "$7,175"],
+      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250"],
     ]);
+    expect(
+      within(section("Candidates"))
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        .slice(3, 7),
+    ).toEqual(["From individuals", "From committees", "Via joint fundraising", "Self-funding"]);
     const candidates = section("Candidates");
     expect(within(candidates).getByRole("columnheader", { name: /Total/ })).toHaveAttribute(
       "aria-sort",
@@ -45,10 +53,30 @@ describe("RacePage", () => {
   });
 
   it("has a fixture whose candidates add up to the race's totals", () => {
-    const sum = (key: "total_individual" | "total_committee") =>
+    const sum = (key: "total_individual" | "total_committee" | "total_jfc_transfers") =>
       RACE_SENATE_MD.candidates.reduce((total, candidate) => total + candidate[key], 0);
     expect(sum("total_individual")).toBe(RACE_SENATE_MD.total_individual);
     expect(sum("total_committee")).toBe(RACE_SENATE_MD.total_committee);
+    expect(sum("total_jfc_transfers")).toBe(RACE_SENATE_MD.total_jfc_transfers);
+  });
+
+  it("says nothing of joint fundraising in a race that had none", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      total_jfc_transfers: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, total_jfc_transfers: 0, candidates }),
+        ),
+      ],
+    });
+
+    expect(
+      await screen.findByText("4 candidates · $91,975 from individuals · $10,000 from committees"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/via joint fundraising/)).not.toBeInTheDocument();
   });
 
   it("sorts the candidates from a column header", async () => {
@@ -118,7 +146,7 @@ describe("RacePage", () => {
     expect(option.series).toMatchObject([
       {
         type: "bar",
-        data: [{ value: 1786850 }, { value: 59700 }, { value: 7175 }, { value: 3250 }],
+        data: [{ value: 1786850 }, { value: 79200 }, { value: 7175 }, { value: 3250 }],
       },
     ]);
   });
@@ -133,6 +161,7 @@ describe("RacePage", () => {
       name: `CANDIDATE ${i}`,
       total_individual: i < 20 ? (20 - i) * 1000 : 0,
       total_committee: 0,
+      total_jfc_transfers: 0,
       self_funding: 0,
     }));
     renderApp("/race/2024/senate/MD", {
@@ -159,6 +188,7 @@ describe("RacePage", () => {
       ...candidate,
       total_individual: 0,
       total_committee: 0,
+      total_jfc_transfers: 0,
       self_funding: 0,
     }));
     renderApp("/race/2024/senate/MD", {

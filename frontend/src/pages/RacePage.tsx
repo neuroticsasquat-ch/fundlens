@@ -79,6 +79,13 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     sortValue: (candidate) => candidate.total_committee,
   },
   {
+    key: "jfc",
+    header: "Via joint fundraising",
+    align: "right",
+    render: (candidate) => money(candidate.total_jfc_transfers),
+    sortValue: (candidate) => candidate.total_jfc_transfers,
+  },
+  {
     key: "self",
     header: "Self-funding",
     align: "right",
@@ -244,6 +251,8 @@ function RaceDetail({ race }: { race: Race }) {
           {race.candidate_count === 1 ? "candidate" : "candidates"} ·{" "}
           {money(race.total_individual)} from individuals · {money(race.total_committee)} from
           committees
+          {race.total_jfc_transfers > 0 &&
+            ` · ${money(race.total_jfc_transfers)} via joint fundraising`}
         </Text>
       </Stack>
       {race.candidates.length === 0 ? (

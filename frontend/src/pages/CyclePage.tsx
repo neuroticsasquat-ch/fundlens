@@ -19,7 +19,8 @@ const SECTIONS: { office: Office; anchor: string }[] = [
   { office: "H", anchor: "house" },
 ];
 
-const total = (race: RaceSummary) => race.total_individual + race.total_committee;
+const total = (race: RaceSummary) =>
+  race.total_individual + race.total_committee + race.total_jfc_transfers;
 
 const COLUMNS: Column<RaceSummary>[] = [
   {
@@ -55,6 +56,13 @@ const COLUMNS: Column<RaceSummary>[] = [
     align: "right",
     render: (race) => money(race.total_committee),
     sortValue: (race) => race.total_committee,
+  },
+  {
+    key: "jfc",
+    header: "Via joint fundraising",
+    align: "right",
+    render: (race) => money(race.total_jfc_transfers),
+    sortValue: (race) => race.total_jfc_transfers,
   },
   {
     key: "total",
