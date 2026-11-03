@@ -5,9 +5,11 @@
 -- not the candidate's own money; self_funding is that own money (silver's is_self_funding), and
 -- neither includes the other. total_committee is the committees' gifts to the candidate: the
 -- disbursement side of committee_transfer only (the recipient's 18K twin would count each gift
--- twice). total_jfc_transfers is the 18J receipts of the committees raising for the candidate: a
--- joint fundraising committee's transfer of the candidate's share (NEU-2124). It is in neither
--- figure above, and counts nothing twice: the JFC's own contributions raise for no candidate.
+-- twice). total_jfc_transfers is the receipts of the committees raising for the candidate from a
+-- joint fundraising committee (designation J): its transfers of the candidate's share (NEU-2124),
+-- whatever receipt type the filer gave them (18G mostly, some 18J and 15J; FEC's own transfers-in
+-- totals take them all). It is in neither figure above, and counts nothing twice: the JFC's own
+-- contributions raise for no candidate.
 -- Refunds are negative amounts and net out. Nothing to sum is 0, never NULL.
 -- contributor_count is the donors whose counted gifts reached the candidate, their own money aside;
 -- NULL for every candidate of a build loaded before `resolve`, whose contributions have no donor
@@ -33,10 +35,12 @@ from_committees AS (
     GROUP BY candidate_id
 ),
 jfc_transfers AS (
-    SELECT candidate_id, sum(amount) AS total_jfc_transfers
-    FROM silver.committee_transfer
-    WHERE side = 'receipt' AND transaction_type = '18J' AND candidate_id IS NOT NULL
-    GROUP BY candidate_id
+    SELECT transfer.candidate_id, sum(transfer.amount) AS total_jfc_transfers
+    FROM silver.committee_transfer AS transfer
+    JOIN silver.committee AS jfc
+        ON jfc.committee_id = transfer.from_committee_id AND jfc.designation = 'J'
+    WHERE transfer.side = 'receipt' AND transfer.candidate_id IS NOT NULL
+    GROUP BY transfer.candidate_id
 )
 SELECT
     candidate.candidate_id,

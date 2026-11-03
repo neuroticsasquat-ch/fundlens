@@ -17,10 +17,14 @@
 -- through a joint fundraising committee (15J, MEMO_CD = 'X') and candidates' loans to their
 -- campaigns (16C). A receipt here is a receipt type (TRANSACTION_TP 1x, or 3x for a party's
 -- convention, headquarters and recount accounts), not a memo line, from a giver whose id is a
--- committee's.
+-- committee's. A JFC's transfer is filed under any of several receipt types (18G mostly, some 18J,
+-- a few 15J) and now and then with OTHER_ID blank: Trump's campaign filed $32.3M of its 2024 JFC
+-- transfers so (NEU-2124). A blank OTHER_ID's giver is the joint fundraising committee (designation
+-- J) its NAME names, compared as names are in 04_contribution.sql; naming any other committee, or
+-- none, it names no giver and the row is no receipt.
 --
 -- A receipt's candidate is the one its recipient committee raises for, by contribution's rule
--- (NEU-2124), so a JFC's 18J transfer to a campaign is that candidate's (gold's
+-- (NEU-2124), so a JFC's transfer to a campaign is that candidate's (gold's
 -- total_jfc_transfers). A receipt to a committee raising for no candidate (a party, a PAC, a JFC)
 -- has none: the giver's CAND_ID a 24K may fall back on is not on the receipt.
 --
@@ -45,25 +49,46 @@ WITH linked AS (
             (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
             link.candidate_id
     ) = 1
+),
+jfc_named AS (
+    -- Each JFC by name; a name two JFCs share names neither.
+    SELECT
+        regexp_replace(upper(name), '[^A-Z0-9]', '', 'g') AS name_key,
+        min(committee_id) AS committee_id
+    FROM committee
+    WHERE designation = 'J'
+    GROUP BY name_key
+    HAVING count(*) = 1
+),
+receipt AS (
+    SELECT
+        oth.*,
+        coalesce(
+            CASE WHEN trim(oth.OTHER_ID) LIKE 'C%' THEN trim(oth.OTHER_ID) END,
+            jfc_named.committee_id
+        ) AS giver
+    FROM oth
+    LEFT JOIN jfc_named
+        ON coalesce(trim(oth.OTHER_ID), '') = ''
+        AND jfc_named.name_key = regexp_replace(upper(oth.NAME), '[^A-Z0-9]', '', 'g')
+    WHERE left(oth.TRANSACTION_TP, 1) IN ('1', '3') AND oth.MEMO_CD IS DISTINCT FROM 'X'
 )
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
     'fec' AS source,
-    oth.SUB_ID AS source_record_id,
+    receipt.SUB_ID AS source_record_id,
     'US' AS jurisdiction,
-    trim(oth.OTHER_ID) AS from_committee_id,
-    oth.CMTE_ID AS to_committee_id,
+    receipt.giver AS from_committee_id,
+    receipt.CMTE_ID AS to_committee_id,
     linked.candidate_id,
-    oth.TRANSACTION_AMT AS amount,
+    receipt.TRANSACTION_AMT AS amount,
     -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(oth.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
-    oth.TRANSACTION_TP AS transaction_type,
+    CAST(try_strptime(receipt.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    receipt.TRANSACTION_TP AS transaction_type,
     'receipt' AS side
-FROM oth
-LEFT JOIN linked ON linked.committee_id = oth.CMTE_ID
-WHERE left(oth.TRANSACTION_TP, 1) IN ('1', '3')
-    AND oth.MEMO_CD IS DISTINCT FROM 'X'
-    AND trim(oth.OTHER_ID) LIKE 'C%'
+FROM receipt
+LEFT JOIN linked ON linked.committee_id = receipt.CMTE_ID
+WHERE receipt.giver IS NOT NULL
 UNION ALL
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,

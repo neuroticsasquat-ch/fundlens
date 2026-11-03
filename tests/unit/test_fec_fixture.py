@@ -30,7 +30,7 @@ DIME = fec_fixture.FIXTURES / "dime" / "contribDB_2024.csv"
 CONDUITS = {"ACTBLUE": "C00401224", "WINRED": "C00694323"}
 IE_SUPPORT, IE_OPPOSE = "24E", "24A"
 COMMITTEE_CONTRIBUTION = "24K"
-JFC_TRANSFER = "18J"
+JFC = "J"
 
 EXPECTED = fec_fixture.expected()
 
@@ -100,15 +100,30 @@ def counted() -> list[dict[str, str]]:
     ]
 
 
+def name_key(name: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", name.upper())
+
+
+def giver(row: dict[str, str]) -> str | None:
+    """The committee an `oth` row is from: OTHER_ID when it is a committee's id, else, when it is
+    blank, the joint fundraising committee whose name NAME is (NEU-2124)."""
+    if row["OTHER_ID"].startswith("C"):
+        return row["OTHER_ID"]
+    if row["OTHER_ID"]:
+        return None
+    jfcs = {name_key(r["CMTE_NM"]): r["CMTE_ID"] for r in rows("cm") if r["CMTE_DSGN"] == JFC}
+    return jfcs.get(name_key(row["NAME"]))
+
+
 def committee_receipts() -> list[dict[str, str]]:
     """The `oth` rows that are receipts from another committee: a receipt type (1x, or 3x for a
-    party's accounts), not a memo line, from a giver whose id is a committee's."""
+    party's accounts), not a memo line, from a giver."""
     return [
         row
         for row in rows("oth")
         if row["TRANSACTION_TP"][:1] in ("1", "3")
         and row["MEMO_CD"] != "X"
-        and row["OTHER_ID"].startswith("C")
+        and giver(row) is not None
     ]
 
 
@@ -234,11 +249,12 @@ def tally_candidates() -> dict[str, CandidateTotals]:
     from_committees = sum_by(
         (c, amount(r)) for r in committee_contributions() if (c := gift_candidate(r)) is not None
     )
-    # A JFC's 18J transfer, credited to the candidate its recipient committee raises for.
+    # A JFC's transfer, whatever its type, credited to the candidate its recipient raises for.
+    jfcs = {r["CMTE_ID"] for r in rows("cm") if r["CMTE_DSGN"] == JFC}
     jfc_transfers = sum_by(
         (c, amount(r))
         for r in committee_receipts()
-        if r["TRANSACTION_TP"] == JFC_TRANSFER and (c := links.get(r["CMTE_ID"])) is not None
+        if giver(r) in jfcs and (c := links.get(r["CMTE_ID"])) is not None
     )
     support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
     races = race_ids()

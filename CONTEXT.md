@@ -23,7 +23,7 @@ A joint fundraising committee participant's memo line (FEC type 15J) naming the 
 _Avoid_: JFC contribution, attributed contribution
 
 **JFC transfer**:
-A joint fundraising committee's transfer (FEC type 18J) of its participants' shares to a participant committee. Counted for a candidate when the participant raises for one, apart from the candidate's contributions and committee gifts. Committee money, never a contribution.
+A joint fundraising committee's transfer of its participants' shares to a participant committee: a receipt from a designation-J committee, whatever type the filer gave it (mostly 18G, some 18J and 15J). Counted for a candidate when the participant raises for one, apart from the candidate's contributions and committee gifts. Committee money, never a contribution.
 _Avoid_: JFC contribution
 
 **Self-funding**:

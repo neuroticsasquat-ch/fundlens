@@ -187,7 +187,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert search[("race", "2024-S-NE-00-special")]["name"] == "2024 Senate NE special"
     assert search[("candidate", "S4MD00103")]["aliases"] == "OKAFOR FOR MARYLAND"
     assert dollars(search[("candidate", "S4MD00103")]["weight"]) == 49700 + 5000
-    assert dollars(search[("committee", "C00800103")]["weight"]) == 37550 + 31500
+    assert dollars(search[("committee", "C00800103")]["weight"]) == 37550 + 44500
     assert {kind for kind, _ in search} == {"candidate", "committee", "race"}
 
     [meta] = rows(migrated_db, "meta")

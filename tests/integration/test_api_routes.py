@@ -203,11 +203,11 @@ def test_a_race_page_has_its_candidates_and_top_committees(
 def test_a_race_page_counts_jfc_transfers_apart_from_its_other_money(client: TestClient) -> None:
     race = ok(client.get("/v1/races/2024/senate/MD"))
 
-    # OKAFOR VICTORY FUND's 18J to OKAFOR's campaign, in neither her individual nor her committee
-    # total (NEU-2124).
-    assert race["total_jfc_transfers"] == 6500
+    # OKAFOR VICTORY FUND's transfers to OKAFOR's campaign (an 18J, an 18G and a 15J), in neither
+    # her individual nor her committee total (NEU-2124).
+    assert race["total_jfc_transfers"] == 19500
     assert {c["candidate_id"]: c["total_jfc_transfers"] for c in race["candidates"]} == {
-        "S4MD00103": 6500,
+        "S4MD00103": 19500,
         "S4MD00104": 0,
         "S4MD00105": 0,
         "S4MD00111": 0,
