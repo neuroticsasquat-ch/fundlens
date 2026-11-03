@@ -1,5 +1,8 @@
 -- candidate_cycle (spec §7.1, NEU-2039 §3): one row per silver candidate of the cycle, with or
--- without a race (the fixture's H4MD09109 has money but no seat).
+-- without a race (the fixture's H4MD09109 has money but no seat), but an alias (NEU-2127): a
+-- person's second id for the same race, holding no money, is in candidate_redirect instead. So
+-- race_candidate, race.candidate_count and search_entity, all built from this, list each person
+-- once.
 --
 -- total_individual is every counted contribution to a committee raising for the candidate that is
 -- not the candidate's own money; self_funding is that own money (silver's is_self_funding), and
@@ -59,4 +62,5 @@ FROM silver.candidate AS candidate
 CROSS JOIN resolved
 LEFT JOIN money USING (candidate_id)
 LEFT JOIN from_committees USING (candidate_id)
-LEFT JOIN jfc_transfers USING (candidate_id);
+LEFT JOIN jfc_transfers USING (candidate_id)
+WHERE candidate.alias_of IS NULL;

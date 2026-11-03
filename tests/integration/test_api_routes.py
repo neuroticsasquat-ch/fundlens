@@ -313,6 +313,37 @@ def test_unknown_candidates_and_committees_are_404s(client: TestClient) -> None:
     assert_not_found(client.get("/v1/committees/C99999999"))
 
 
+def test_a_candidate_alias_is_a_cacheable_redirect_to_the_id_holding_the_money(
+    client: TestClient,
+) -> None:
+    [(alias, canonical)] = EXPECTED["aliases"].items()
+
+    page = client.get(f"/v1/candidates/{alias}", follow_redirects=False)
+    rows = client.get(
+        f"/v1/candidates/{alias}/contributions",
+        params={"cycle": CYCLE, "cursor": "x"},
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 301, page.text
+    assert page.headers["location"] == f"/v1/candidates/{canonical}"
+    assert page.headers["cache-control"] == CACHE_CONTROL
+    assert rows.status_code == 301, rows.text
+    assert rows.headers["location"] == (
+        f"/v1/candidates/{canonical}/contributions?cycle={CYCLE}&cursor=x"
+    )
+    assert ok(client.get(f"/v1/candidates/{alias}"))["candidate_id"] == canonical
+
+
+def test_search_finds_a_person_under_one_candidate_id(client: TestClient) -> None:
+    [canonical] = EXPECTED["aliases"].values()
+
+    results = ok(client.get("/v1/search", params={"q": "driscoll", "kind": "candidate"}))
+
+    # One DRISCOLL, under the id holding his money: never his alias.
+    assert [r["id"] for r in results] == [canonical]
+
+
 def test_search_ranks_trigram_matches_fast(client: TestClient) -> None:
     client.get("/v1/search", params={"q": "calloway"})  # A warm pool and build-id cache.
 

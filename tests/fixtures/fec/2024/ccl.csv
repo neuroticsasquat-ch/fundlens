@@ -22,3 +22,6 @@ H4MD09109,2024,2024,C00800109,H,P,124000000012
 # split by the handoff date (NEU-2126), where the lower candidate_id alone would take it all.
 P80000722,2024,2024,C00703975,P,P,124000000013
 P00009423,2024,2024,C00703975,P,P,124000000014
+# DRISCOLL's committee linked principal to his second id too, as FEC links Hovde's to both of his:
+# the lower candidate_id, H4MD05107, takes its money, and H6MD05113 is his alias (NEU-2127).
+H6MD05113,2024,2024,C00800107,H,P,124000000015

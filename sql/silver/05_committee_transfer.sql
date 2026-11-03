@@ -34,6 +34,8 @@
 -- candidate of the cycle does the giver's CAND_ID stand, and only if it is one; otherwise the gift is
 -- credited to no candidate, and is in neither a candidate's total_committee nor the giver's
 -- total_to_candidates.
+-- A giver's CAND_ID that is a candidate's alias (03_candidate_committee_link.sql, NEU-2127), often
+-- the person's old id, stands for the id it is an alias of: an alias holds no money.
 CREATE TABLE committee_transfer AS
 WITH linked AS (
     -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
@@ -114,7 +116,8 @@ SELECT
     nullif(trim(gift.OTHER_ID), '') AS to_committee_id,
     coalesce(
         linked.candidate_id,
-        CASE WHEN gift.CAND_ID IN (SELECT candidate_id FROM candidate) THEN gift.CAND_ID END
+        stated.alias_of,
+        stated.candidate_id
     ) AS candidate_id,
     gift.TRANSACTION_AMT AS amount,
     gift.transaction_date AS date,
@@ -130,4 +133,5 @@ LEFT JOIN linked
     ON linked.committee_id = nullif(trim(gift.OTHER_ID), '')
     AND (linked.valid_from IS NULL OR gift.transaction_date IS NULL
         OR gift.transaction_date >= linked.valid_from)
-    AND (linked.valid_until IS NULL OR gift.transaction_date < linked.valid_until);
+    AND (linked.valid_until IS NULL OR gift.transaction_date < linked.valid_until)
+LEFT JOIN candidate AS stated ON stated.candidate_id = gift.CAND_ID;
