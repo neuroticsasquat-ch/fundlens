@@ -509,3 +509,86 @@ From `22e56ce`: DIME v4.0, cycle 2024, build `20261102T031624Z`, model `20261102
   Publish logged `kuma push (up) failed: HTTP Error 404` from its heartbeat; the publish itself succeeded.
 - **What is left.** About 95% of the 1,204,209 remaining wrong pairs sit in clusters of 50 keys or fewer (capacity.md
   Findings), so the 0.8 precision target needs another fix than a cap.
+
+### 2026-11-03 — Diagnosing the wrong pairs, 2024 (NEU-2182)
+
+From `98acd28`: DIME v4.0, cycle 2024, build `20261103T163743Z`, model `20261103T170755Z`.
+
+- **Plain recluster** (§9.2): `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces;
+  largest 1,400 → 180`, the same line as NEU-2122's.
+- **Diagnose** (§9.3): 3,244,086 pairs predicted, 2,039,877 correct, 1,204,209 wrong (precision 0.6288).
+
+  | Link | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | same key | 45,045 | 0 | 0.0000 |
+  | direct < 0.95 | 23,771 | 5,050 | 0.1752 |
+  | direct 0.95–0.99 | 450,718 | 49,062 | 0.0982 |
+  | direct 0.99–0.999 | 53,765 | 18,074 | 0.2516 |
+  | direct ≥ 0.999 | 292,732 | 1,913,550 | 0.8673 |
+  | chained | 338,178 | 54,141 | 0.1380 |
+
+  | Cluster keys | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | 1 | 17,661 | 0 | 0.0000 |
+  | 2 | 95,978 | 361,253 | 0.7901 |
+  | 3–5 | 271,351 | 686,344 | 0.7167 |
+  | 6–10 | 248,144 | 430,072 | 0.6341 |
+  | 11–25 | 300,821 | 365,193 | 0.5483 |
+  | 26–50 | 156,562 | 131,225 | 0.4560 |
+  | 51–200 | 113,692 | 65,790 | 0.3666 |
+
+  | Cluster dollars | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | < $1k | 134,950 | 390,611 | 0.7432 |
+  | $1k–10k | 450,003 | 829,360 | 0.6483 |
+  | $10k–50k | 332,447 | 428,757 | 0.5633 |
+  | ≥ $50k | 286,809 | 391,149 | 0.5770 |
+
+  | Keys sharing name | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | 1 | 27,961 | 13,727 | 0.3293 |
+  | 2–10 | 367,398 | 1,243,766 | 0.7720 |
+  | 11–100 | 550,417 | 727,043 | 0.5691 |
+  | > 100 | 258,433 | 55,341 | 0.1764 |
+
+  Of the 20 commonest direct patterns, the eight whose first name is `initial only` hold 441,466 wrong pairs and
+  23,339 correct: the largest of them, `initial only / exact / differ / null / null`, 176,755 wrong to 691 correct.
+- **Hand classification** of the 100 sampled pairs (`classify.csv` on the VM; notes give each call, 12 marked
+  `likely` or `unsure`):
+
+  | Class | Pairs |
+  | --- | --- |
+  | DIME's error | 30 |
+  | household or Jr/Sr (family) | 11 |
+  | common name in one area | 6 |
+  | junk data | 0 |
+  | other | 53 (47 two different first names sharing an initial; 6 unsure between common name and DIME's error) |
+
+  By link: of the 33 `direct ≥ 0.999` pairs, 18 are DIME's error; of the 29 `direct 0.95–0.99`, 21 are two first
+  names sharing an initial; all 3 `same key` pairs are DIME's error. 54 of the 100 (43 in other, 10 households,
+  1 chain) were joined through the model's `first_initial` level (`model.py:67`), which matches any two names
+  starting with the same letter, so MARGO and MICHAEL score as an initial (sample 17, 0.9998), and the
+  re-clustering veto, which asks for different initials, never cuts them.
+- **Sweep** (§9.4), overall precision / recall, then the top 10,000. Each `recluster` took about 18 s and each
+  `validate` about 3.5 minutes.
+
+  | T | Pieces | Largest | Overall | Top 10,000 | Wrong pairs |
+  | --- | --- | --- | --- | --- | --- |
+  | 0.95 (the default) | 10,891 | 180 | 0.6288 / 0.9121 | 0.9516 / 0.8023 | 1,204,209 |
+  | 0.97 | 10,294 | 123 | 0.6651 / 0.9002 | 0.9645 / 0.7753 | 1,013,541 |
+  | 0.99 | 6,578 | 97 | 0.7881 / 0.8897 | 0.9653 / 0.7681 | 534,829 |
+  | **0.999** | 1,662 | 97 | **0.8211 / 0.8864** | 0.9661 / 0.7647 | 431,884 |
+  | 0.9999 | 537 | 96 | 0.8978 / 0.8262 | 0.9760 / 0.7073 | 210,438 |
+
+  0.999 is the first configuration to meet NEU-2122's overall targets (≥ 0.8 / ≥ 0.88): it drops 772,325 wrong pairs
+  for 57,437 correct ones. No T meets the top-scope recall target of 0.81, which the default already misses
+  (0.8023); 0.999 costs it a further 0.0376.
+- **Restored** (§9.5): `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces; largest
+  1,400 → 180`, as 9.2.
+- **What it means.** About 30% of the 1,090,517 wrong pairs in clusters of 50 keys or fewer are DIME's own splits:
+  about 330,000 pairs (95% interval 230,000–425,000), so the default's precision against the truth is about 0.73
+  (0.70–0.76), not 0.6288. Most of the rest is the first-initial level, which a higher threshold also reaches
+  because most of its pairs score below 0.999 (21 of the 29 sampled `direct 0.95–0.99` pairs; that band is
+  0.0982 precise). The threshold cuts them with 57,437 correct pairs and top-scope recall; fixing the level
+  targets them alone. Two tickets follow: fix the first-initial level, then re-run this sweep on the fixed model
+  and set the threshold.

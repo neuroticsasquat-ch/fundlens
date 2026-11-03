@@ -104,3 +104,13 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   precision from 0.3657 to 0.6288 for 6,296 fewer correct pairs. A cap under 180 buys little: at N = 50 every cluster is
   50 keys or fewer, yet only 59,266 more wrong pairs go, and top-10,000 recall falls to 0.7593. So about 95% of the
   remaining wrong pairs sit inside clusters of 50 keys or fewer, out of reach of any cap.
+- **A third of the wrong pairs are DIME's; half are one model level (NEU-2182).** A hand classification of 100 wrong
+  pairs from clusters of 50 keys or fewer found 30 that DIME splits but are one person (HAL and HAROLD GEORGE at one
+  ZIP; one professor at two ZIPs), 11 households, 6 common names in one area and 53 others, nearly all two first
+  names sharing an initial. Scaled to the 1,090,517 wrong pairs in those clusters, DIME's own error is about 330,000
+  pairs (95% interval 230,000–425,000), so 2024's precision against the truth is about 0.73, not 0.6288. 54 of the 100
+  were joined through the model's `first_initial` level, which treats MARGO and MICHAEL as an initial and its
+  full name; among direct wrong pairs the `initial only` patterns hold at least 441,466 wrong to 23,339 correct.
+  A higher cluster threshold also reaches them, since most of them score below 0.999: at 0.999 overall precision
+  and recall are 0.8211 / 0.8864, the first configuration to meet the overall targets, for 57,437 correct pairs and
+  top-10,000 recall 0.8023 → 0.7647.
