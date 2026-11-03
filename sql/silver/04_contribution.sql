@@ -24,6 +24,23 @@
 -- each a reported value and its normalized form, outlive this file: 06_jfc_attribution.sql and
 -- 07_contributor.sql read them too.
 --
+-- `handoff_link` is each handed-off committee (`handoff`, fec/handoffs.csv) linked twice, dated: to
+-- the candidate it was handed from until the handoff date, and to the one it was handed to from
+-- that date on (NEU-2126). FEC's files show a committee as it stands today, and `ccl` links Biden's
+-- 2024 campaign, Harris's since he withdrew, to both, so neither candidate alone holds its money:
+-- each contribution, transfer and JFC attribution is the candidate's whose dates hold its own.
+-- One with no date is the committee's current holder's, the candidate it was handed to. The
+-- three `linked` CTEs, here and in 05_committee_transfer.sql and 06_jfc_attribution.sql, take
+-- these rows for a handed-off committee in place of its single undated link.
+CREATE TEMP VIEW handoff_link AS
+SELECT committee_id, from_candidate_id AS candidate_id, NULL::DATE AS valid_from,
+    handoff_date AS valid_until
+FROM handoff
+UNION ALL
+SELECT committee_id, to_candidate_id AS candidate_id, handoff_date AS valid_from,
+    NULL::DATE AS valid_until
+FROM handoff;
+
 -- `jfc_line` is every `oth` line 06_jfc_attribution.sql builds a JFC attribution from (spec §6.11):
 -- a 15J memo line, where a joint fundraising committee's participant itemizes an individual (IND,
 -- or blank as in `indiv`) behind its share of a JFC transfer, filed by a committee in `cm`.
@@ -70,17 +87,31 @@ WITH linked AS (
     -- show a committee as it stands today, and a campaign turned leadership PAC after the election
     -- raised the cycle's money as the campaign (Trump's 2024 C00828541, now NEVER SURRENDER, INC.,
     -- which `ccl` links N/D). Should `ccl` link one committee to two candidates, the principal link
-    -- and then the lower candidate_id is kept, so the key holds.
-    SELECT link.committee_id, link.candidate_id, candidate.name
-    FROM candidate_committee_link AS link
+    -- and then the lower candidate_id is kept, so the key holds; a committee handed from one to the
+    -- other takes its two dated `handoff_link` rows instead, which never overlap.
+    (
+        SELECT
+            link.committee_id,
+            link.candidate_id,
+            candidate.name,
+            NULL::DATE AS valid_from,
+            NULL::DATE AS valid_until
+        FROM candidate_committee_link AS link
+        LEFT JOIN candidate USING (candidate_id)
+        WHERE (link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id)
+            AND link.committee_id NOT IN (SELECT committee_id FROM handoff)
+        QUALIFY row_number() OVER (
+            PARTITION BY link.committee_id
+            ORDER BY
+                (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+                link.candidate_id
+        ) = 1
+    )
+    UNION ALL
+    SELECT handoff_link.committee_id, handoff_link.candidate_id, candidate.name,
+        handoff_link.valid_from, handoff_link.valid_until
+    FROM handoff_link
     LEFT JOIN candidate USING (candidate_id)
-    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
-    QUALIFY row_number() OVER (
-        PARTITION BY link.committee_id
-        ORDER BY
-            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
-            link.candidate_id
-    ) = 1
 ),
 conduits AS (
     -- One row holding every conduit, so each contribution's MEMO_TEXT is searched for them
@@ -92,7 +123,11 @@ conduits AS (
     FROM conduit
 ),
 individual AS (
-    SELECT *, regexp_replace(upper(coalesce(MEMO_TEXT, '')), '[^A-Z0-9]', '', 'g') AS memo_key
+    SELECT
+        *,
+        regexp_replace(upper(coalesce(MEMO_TEXT, '')), '[^A-Z0-9]', '', 'g') AS memo_key,
+        -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
     FROM indiv
     WHERE coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN')
         AND MEMO_CD IS DISTINCT FROM 'X'
@@ -171,8 +206,7 @@ SELECT
         WHEN kept.SUB_ID IN (SELECT SUB_ID FROM reversal) THEN -kept.TRANSACTION_AMT
         ELSE -abs(kept.TRANSACTION_AMT)
     END AS amount,
-    -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(kept.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    kept.transaction_date AS date,
     kept.TRANSACTION_TP AS transaction_type,
     kept.ENTITY_TP AS entity_type,
     kept.RPT_TP AS report_type,
@@ -197,7 +231,11 @@ SELECT
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num
 FROM kept
-LEFT JOIN linked ON linked.committee_id = kept.CMTE_ID
+LEFT JOIN linked
+    ON linked.committee_id = kept.CMTE_ID
+    AND (linked.valid_from IS NULL OR kept.transaction_date IS NULL
+        OR kept.transaction_date >= linked.valid_from)
+    AND (linked.valid_until IS NULL OR kept.transaction_date < linked.valid_until)
 LEFT JOIN contributor_name AS cname ON cname.raw = kept.NAME
 LEFT JOIN contributor_zip AS czip ON czip.raw = kept.ZIP_CODE
 LEFT JOIN contributor_employer AS cemployer ON cemployer.raw = kept.EMPLOYER

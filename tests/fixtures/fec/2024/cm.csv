@@ -1,9 +1,9 @@
 # cm: committee master. Read by tests/fec_fixture.py, which drops these comment lines and the header
 # row and writes the rest pipe-delimited into cm.txt inside cm24.zip, as FEC publishes it.
-# ActBlue and WinRed carry their real FEC ids, the ones the conduit list names; every other
-# committee is invented. OKAFOR VICTORY FUND is a joint fundraising committee (designation J), whose
-# only participant is OKAFOR's principal committee (oth.csv). STRATTON 2024 is now a leadership PAC
-# (designation D, ccl.csv).
+# ActBlue and WinRed carry their real FEC ids, the ones the conduit list names, and C00703975 its
+# own, the one the handoff list names (below); every other committee is invented. OKAFOR VICTORY
+# FUND is a joint fundraising committee (designation J), whose only participant is OKAFOR's
+# principal committee (oth.csv). STRATTON 2024 is now a leadership PAC (designation D, ccl.csv).
 CMTE_ID,CMTE_NM,TRES_NM,CMTE_ST1,CMTE_ST2,CMTE_CITY,CMTE_ST,CMTE_ZIP,CMTE_DSGN,CMTE_TP,CMTE_PTY_AFFILIATION,CMTE_FILING_FREQ,ORG_TP,CONNECTED_ORG_NM,CAND_ID
 C00401224,ACTBLUE,,,,SOMERVILLE,MA,02144,U,V,,M,,,
 C00694323,WINRED,,,,ARLINGTON,VA,22201,U,V,,M,,,
@@ -23,3 +23,7 @@ C00800109,FENWICK FOR CONGRESS,"HALE, DORIS",1000 FALLS RD,,BALTIMORE,MD,21209,P
 C00800201,MARYLAND FORWARD PAC,"ASHWORTH, NINA",1100 PRATT ST,,BALTIMORE,MD,21202,U,O,,Q,,,
 C00800202,BRICKLAYERS UNITED PAC,"DUFFY, SEAN",1200 K ST NW,,WASHINGTON,DC,20005,B,Q,,M,L,BRICKLAYERS UNITED,
 C00800203,OLD LINE REPUBLICAN COMMITTEE,"GRANT, WALTER",1300 WEST ST,,ANNAPOLIS,MD,21401,U,Y,REP,M,,,
+# The one real campaign (NEU-2126): Biden's 2024 committee, HARRIS FOR PRESIDENT since he withdrew
+# on 2024-07-21, under its real id and named as `cm` names it today, as the vendored handoff list
+# (fec/handoffs.csv) names it. Its money is Biden's before that date and Harris's from it on.
+C00703975,HARRIS FOR PRESIDENT,,PO BOX 58174,,PHILADELPHIA,PA,19102,P,P,DEM,M,,,P00009423

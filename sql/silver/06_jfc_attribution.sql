@@ -15,17 +15,27 @@
 CREATE TABLE jfc_attribution AS
 WITH linked AS (
     -- As in 04_contribution.sql: a P or A link, or the candidate's `cn` principal committee; the
-    -- principal link, then the lower candidate_id, so one each.
-    SELECT link.committee_id, link.candidate_id
-    FROM candidate_committee_link AS link
-    LEFT JOIN candidate USING (candidate_id)
-    WHERE link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id
-    QUALIFY row_number() OVER (
-        PARTITION BY link.committee_id
-        ORDER BY
-            (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
-            link.candidate_id
-    ) = 1
+    -- principal link, then the lower candidate_id, so one each, or a handed-off committee's two
+    -- dated rows.
+    (
+        SELECT
+            link.committee_id,
+            link.candidate_id,
+            NULL::DATE AS valid_from,
+            NULL::DATE AS valid_until
+        FROM candidate_committee_link AS link
+        LEFT JOIN candidate USING (candidate_id)
+        WHERE (link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id)
+            AND link.committee_id NOT IN (SELECT committee_id FROM handoff)
+        QUALIFY row_number() OVER (
+            PARTITION BY link.committee_id
+            ORDER BY
+                (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+                link.candidate_id
+        ) = 1
+    )
+    UNION ALL
+    SELECT committee_id, candidate_id, valid_from, valid_until FROM handoff_link
 ),
 named AS (
     -- One committee per name: a JFC (designation J) first, then the lower id.
@@ -56,7 +66,9 @@ line AS (
             '[^A-Z0-9]',
             '',
             'g'
-        ) AS memo_key
+        ) AS memo_key,
+        -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
     FROM jfc_line
 )
 SELECT
@@ -81,12 +93,15 @@ SELECT
     coalesce(named.committee_id, sender.committee_id) AS jfc_committee_id,
     linked.candidate_id,
     line.TRANSACTION_AMT AS amount,
-    -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(line.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date
+    line.transaction_date AS date
 FROM line
 LEFT JOIN named ON named.name_key = line.memo_key AND line.memo_key <> ''
 LEFT JOIN sender ON sender.CMTE_ID = line.CMTE_ID AND sender.FILE_NUM = line.FILE_NUM
-LEFT JOIN linked ON linked.committee_id = line.CMTE_ID
+LEFT JOIN linked
+    ON linked.committee_id = line.CMTE_ID
+    AND (linked.valid_from IS NULL OR line.transaction_date IS NULL
+        OR line.transaction_date >= linked.valid_from)
+    AND (linked.valid_until IS NULL OR line.transaction_date < linked.valid_until)
 LEFT JOIN contributor_name AS cname ON cname.raw = line.NAME
 LEFT JOIN contributor_zip AS czip ON czip.raw = line.ZIP_CODE
 LEFT JOIN contributor_employer AS cemployer ON cemployer.raw = line.EMPLOYER

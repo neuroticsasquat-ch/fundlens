@@ -8,6 +8,9 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
+- `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
+  handed from one candidate to another, whose money is the first's before the date and the
+  second's on and after it (NEU-2126);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
@@ -31,7 +34,7 @@ import shutil
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from importlib.resources import files as package_files
 from pathlib import Path
 from typing import IO, Literal, get_args
@@ -212,6 +215,22 @@ def _register_conduits(con: duckdb.DuckDBPyConnection) -> None:
     con.executemany("INSERT INTO conduit VALUES (?, ?)", rows)
 
 
+def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    text = package_files("fundlens.fec").joinpath("handoffs.csv").read_text()
+    rows = [
+        (row["committee_id"], row["from_candidate_id"], row["to_candidate_id"], handoff_date)
+        for row in csv.DictReader(io.StringIO(text))
+        if (handoff_date := date.fromisoformat(row["handoff_date"])).year in (cycle - 1, cycle)
+    ]
+    con.execute(
+        "CREATE TABLE handoff (committee_id VARCHAR, from_candidate_id VARCHAR,"
+        " to_candidate_id VARCHAR, handoff_date DATE)"
+    )
+    # DuckDB's executemany refuses an empty list, and most cycles have no handoff.
+    if rows:
+        con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?)", rows)
+
+
 def _register_unmatched(
     con: duckdb.DuckDBPyConnection, conn: Connection[TupleRow], cycle: int
 ) -> None:
@@ -321,6 +340,7 @@ def transform(
                 )
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
+            _register_handoffs(con, cycle)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
             for table, path in models:

@@ -12,7 +12,10 @@
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
 #   authorized (A), and of the one their `cn` row names principal (CAND_PCC) whatever `ccl`'s
 #   designation: STRATTON's, a leadership PAC since the election. Any other leadership PAC (D) is
-#   not the candidate's.
+#   not the candidate's. A committee handed from one candidate to another (fec/handoffs.csv) is the
+#   first's before the handoff date and the second's on and after it, an undated row the second's:
+#   C00703975, BIDEN's to 2024-07-21 and HARRIS's from then (NEU-2126). The same dated rule credits
+#   its 24Ks, receipts and JFC attributions.
 # - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows not
 #   filed by a conduit (a conduit's 24K is its side of an earmark, ADR-0004), credited
 #   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
@@ -34,12 +37,12 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded.
 rows:
-  cm: 18
-  cn: 12
-  ccl: 12
-  indiv: 311
-  pas2: 20
-  oth: 24
+  cm: 19
+  cn: 14
+  ccl: 14
+  indiv: 316
+  pas2: 21
+  oth: 25
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
@@ -47,18 +50,18 @@ rows:
 # row not filed by a conduit (a disbursement, recorded by the giver): the one gift on both sides,
 # each side its own row.
 silver:
-  committee: 18
-  candidate: 12
-  candidate_committee_link: 12
-  contribution: 284
+  committee: 19
+  candidate: 14
+  candidate_committee_link: 14
+  contribution: 289
   independent_expenditure: 9
-  committee_transfer: 23
+  committee_transfer: 25
   # One row per `attributions` line below.
   jfc_attribution: 4
   # One row per contributor key among the counted contributions and the JFC attributions (spec
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
-  contributor: 111
+  contributor: 115
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -76,16 +79,16 @@ contributions:
     C00401224: 5
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2246230
+  total_amount: 2250080
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
 
 races:
   2024-P-US-00:
-    candidate_count: 3
-    total_individual: 54775
-    total_committee: 5000
+    candidate_count: 5
+    total_individual: 58625
+    total_committee: 7500
     total_jfc_transfers: 0
     ie_support: 400000
     ie_oppose: 0
@@ -133,6 +136,22 @@ candidates:
   P40000102: # STRATTON
     race_id: 2024-P-US-00
     total_individual: 35150
+    total_committee: 0
+    total_jfc_transfers: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  P80000722: # BIDEN: C00703975's money before the handoff
+    race_id: 2024-P-US-00
+    total_individual: 1500
+    total_committee: 2500
+    total_jfc_transfers: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  P00009423: # HARRIS: C00703975's money from the handoff on, and its undated gift
+    race_id: 2024-P-US-00
+    total_individual: 2350
     total_committee: 0
     total_jfc_transfers: 0
     self_funding: 0
@@ -244,6 +263,12 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
+  C00703975: # HARRIS FOR PRESIDENT: handed from BIDEN to HARRIS, split between them by date
+    total_individual: 3850
+    self_funding: 0
+    total_from_committees: 2500
+    total_to_candidates: 0
+    ie_total: 0
   C00800103: # OKAFOR FOR MARYLAND: its JFC's transfers in total_from_committees, 15J lines nowhere
     total_individual: 37550
     self_funding: 5000
@@ -320,7 +345,7 @@ committees:
     total_individual: 4050
     self_funding: 0
     total_from_committees: 0
-    total_to_candidates: 18500
+    total_to_candidates: 21000
     ie_total: 3000
   C00800203: # OLD LINE REPUBLICAN COMMITTEE
     total_individual: 14300
@@ -423,7 +448,7 @@ donors:
     sub_ids: [4240100000000000311]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 105
+distinct_donors: 109
 
 # JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank) filed by a
 # committee in `cm`. Evidence about people, never money: no total above reads them. Each line by
@@ -443,7 +468,9 @@ attributions:
 # with k contributor keys among its counted contributions contributes k(k-1)/2 true pairs.
 validation:
   dime_version: "4.0"
-  matched_rows: 284 # every counted contribution: the fixture labels them all
-  labelled_keys: 110 # contributor keys with a counted contribution (111 less the 15J-only key)
+  # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
+  # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
+  matched_rows: 288
+  labelled_keys: 113 # contributor keys with a dated counted contribution (115 less 15J-only and VOSS)
   overall: {precision: 1.0, recall: 1.0}
   top: {limit: 3, precision: 1.0, recall: 1.0}
