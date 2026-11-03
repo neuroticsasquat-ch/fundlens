@@ -51,7 +51,8 @@ def get_race(
             " total_individual, total_committee, total_jfc_transfers, self_funding, ie_support,"
             " ie_oppose"
             " FROM gold.race_candidate WHERE race_id = %s"
-            " ORDER BY total_individual + total_committee + self_funding DESC, candidate_id",
+            " ORDER BY total_individual + total_committee + total_jfc_transfers + self_funding"
+            " DESC, candidate_id",
             (race["race_id"],),
         )
         .fetchall()

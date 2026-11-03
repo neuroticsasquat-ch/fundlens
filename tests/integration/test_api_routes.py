@@ -192,7 +192,8 @@ def test_a_race_page_has_its_candidates_and_top_committees(
         del want["race_id"]
         assert totals(candidate, want) == want, candidate["candidate_id"]
     raised = [
-        c["total_individual"] + c["total_committee"] + c["self_funding"] for c in race["candidates"]
+        c["total_individual"] + c["total_committee"] + c["total_jfc_transfers"] + c["self_funding"]
+        for c in race["candidates"]
     ]
     assert raised == sorted(raised, reverse=True)
     top = race["top_committees"]
