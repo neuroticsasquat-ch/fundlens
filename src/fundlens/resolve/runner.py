@@ -36,6 +36,7 @@ from fundlens.resolve.cluster import (
     EDGE_TABLE,
     Reclustered,
     cluster,
+    components_at,
     recluster,
 )
 from fundlens.transform.runner import Limits, literal
@@ -322,10 +323,15 @@ def recluster_working_file(
     cluster_threshold: float,
     overrides_path: Path,
     conn: Connection[TupleRow],
+    rebuild: bool = False,
 ) -> Rewritten:
     """Rewrite the working file's `cluster` table as `resolve_full` would under the cluster cap
     `max_keys`: its components re-clustered, then the overrides file at `overrides_path` applied
     (NEU-2122 §5.1). Nothing else changes: no crosswalk, silver, marker or R2.
+
+    With `rebuild`, the components are first rebuilt from `edge` at `cluster_threshold`
+    (`components_at`) into a temp table, `component` left as linkage wrote it: the threshold
+    sweep (NEU-2182). Without it, `component` is re-clustered as it stands.
 
     Raises `FileNotFoundError` when there is no working file or it holds no `component`, `edge`
     or `contributor` table, and `OverridesError` as `resolve_full` does; in every case, and on
@@ -346,7 +352,14 @@ def recluster_working_file(
         # One transaction, so a failure part way leaves the previous clusters in place.
         con.begin()
         try:
-            reclustered = recluster(con, max_keys=max_keys, cluster_threshold=cluster_threshold)
+            components = (
+                components_at(con, cluster_threshold=cluster_threshold)
+                if rebuild
+                else COMPONENT_TABLE
+            )
+            reclustered = recluster(
+                con, max_keys=max_keys, cluster_threshold=cluster_threshold, components=components
+            )
             overridden = overrides.rewrite(con, asserted)
             [(clusters,)] = con.execute(
                 f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"

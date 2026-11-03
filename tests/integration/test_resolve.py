@@ -245,6 +245,48 @@ def test_a_cap_of_three_cuts_the_musk_case_and_recluster_rewrites_the_clusters_a
     assert cluster_rows(transformed) == at_default
 
 
+def component_rows(data_dir: Path) -> list[tuple[Any, ...]]:
+    with duckdb.connect(paths.resolution_database(data_dir), read_only=True) as con:
+        return con.execute("SELECT * FROM component ORDER BY contributor_key").fetchall()
+
+
+def test_a_cluster_threshold_above_an_edge_parts_its_keys_and_leaves_the_components_alone(
+    transformed: Path, migrated_db: str
+) -> None:
+    result = resolve("--full", "--build-id", MODEL)
+    assert result.exit_code == 0, result.output
+    at_default = cluster_rows(transformed)
+    components = component_rows(transformed)
+    [beatrice, bridge] = sorted(donor_keys(transformed, "chain_end_beatrice"))
+    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+        [(probability,)] = con.execute(
+            "SELECT match_probability FROM edge"
+            " WHERE contributor_key_l = least($a, $b) AND contributor_key_r = greatest($a, $b)",
+            {"a": beatrice, "b": bridge},
+        ).fetchall()
+    above = (probability + 1) / 2
+    assert probability < above <= 1
+
+    raised = recluster_cli("--cluster-threshold", str(above))
+
+    assert raised.exit_code == 0, raised.output
+    assert f"components rebuilt from the edges at or above {above}" in raised.output
+    assert component_rows(transformed) == components
+    found = clusters(transformed)
+    assert found[beatrice] != found[bridge]
+    restored = recluster_cli()
+    assert restored.exit_code == 0, restored.output
+    assert "components rebuilt" not in restored.output
+    assert cluster_rows(transformed) == at_default
+
+
+def test_a_cluster_threshold_under_the_match_threshold_is_a_usage_error(cli_env: Path) -> None:
+    result = recluster_cli("--cluster-threshold", "0.5")
+
+    # Before it opens anything: `edge` holds no pair under the match threshold.
+    assert result.exit_code == 2
+
+
 def test_recluster_without_components_says_to_resolve(cli_env: Path) -> None:
     nothing = recluster_cli()
     database = paths.resolution_database(cli_env)

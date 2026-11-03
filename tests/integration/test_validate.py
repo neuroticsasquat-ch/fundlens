@@ -1,8 +1,10 @@
 """`fundlens dime` and `fundlens validate` on the fixture cycle: the DIME file into MinIO, the
 resolved donors scored against it into `app.resolution_quality`, and `load` carrying the figures
-into `gold_build.meta` (NEU-2054 §8.3, ADR-0009)."""
+into `gold_build.meta` (NEU-2054 §8.3, ADR-0009); and `fundlens diagnose` taking the working
+file's wrong pairs apart (NEU-2182)."""
 
 import csv
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,8 @@ from tests.integration.test_resolve import (
     AGAIN,
     FIXTURE_OVERRIDES,
     MODEL,
+    clusters,
+    donor_keys,
     keys_by_sub_id,
     resolve,
 )
@@ -310,3 +314,70 @@ def test_validate_without_the_dime_file_names_the_runbook(resolved: Path) -> Non
 
     assert result.exit_code == 1
     assert "docs/runbooks/refreshing-dime.md" in result.output
+
+
+DIRECT_PATTERN = ["null", "exact", "exact", "exact", "differ"]
+
+
+def diagnose(*args: str) -> Result:
+    return run("diagnose", "--cycle", "2024", *args)
+
+
+def test_diagnose_finds_a_planted_direct_and_chained_wrong_pair_and_writes_nothing(
+    resolved: Path, migrated_db: str
+) -> None:
+    assert dime().exit_code == 0
+    assert validate().exit_code == 0
+    before = quality(migrated_db)
+    clean = diagnose()
+    assert clean.exit_code == 0, clean.output
+    assert re.search(r"pairs: (\d+) predicted, \1 correct, 0 wrong", clean.output), clean.output
+    # DESMOND into BEATRICE's cluster: a wrong pair with the bridge, which has an edge to him,
+    # and one with BEATRICE, which has none.
+    [beatrice, bridge] = sorted(donor_keys(resolved, "chain_end_beatrice"))
+    [desmond] = donor_keys(resolved, "chain_end_desmond")
+    target = clusters(resolved)[beatrice]
+    with duckdb.connect(paths.resolution_database(resolved)) as con:
+        con.execute(
+            "UPDATE cluster SET cluster_id = $target WHERE contributor_key = $key",
+            {"target": target, "key": desmond},
+        )
+
+    result = diagnose("--sample", "5")
+
+    assert result.exit_code == 0, result.output
+    assert re.search(r"pairs: \d+ predicted, \d+ correct, 2 wrong", result.output), result.output
+    lines = result.output.splitlines()
+
+    def wrong(label: str) -> int:
+        [line] = [line for line in lines if line.startswith(f"{label} ")]
+        return int(line[len(label) :].split()[0])
+
+    assert wrong("chained") == 1
+    assert (
+        sum(wrong(band) for band in ("direct 0.95–0.99", "direct 0.99–0.999", "direct ≥ 0.999"))
+        == 1
+    )
+    # Both wrong pairs are in one three-key cluster.
+    assert wrong("3–5") == 2
+    # The direct one, bridge and DESMOND: no first name on the bridge, occupations that differ.
+    [pattern] = [line.split() for line in lines if line.split()[:5] == DIRECT_PATTERN]
+    assert int(pattern[5]) == 1
+    sampled = [line for line in lines if line.startswith("sample ")]
+    assert len(sampled) == 2
+    assert all(f"cluster {target} (3 keys)" in line for line in sampled)
+    assert any(line.endswith(", chained") for line in sampled)
+    assert all(f"  {key} cid " in result.output for key in (beatrice, bridge, desmond))
+    assert result.output.rstrip().endswith(
+        f"clusters from {paths.resolution_database(resolved)}; nothing written"
+    )
+    assert quality(migrated_db) == before
+
+
+def test_diagnose_without_a_working_file_says_to_resolve(resolved: Path, migrated_db: str) -> None:
+    paths.resolution_database(resolved).unlink()
+
+    result = diagnose()
+
+    assert result.exit_code == 1
+    assert "run `fundlens resolve --full`" in result.output

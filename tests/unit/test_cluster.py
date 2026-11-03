@@ -1,5 +1,6 @@
 """Re-clustering of spec §6.4 (NEU-2122 §3, ADR-0010): components rebuilt so that no cluster holds
-a vetoed pair of first names or more keys than the cluster cap, on components made up here."""
+a vetoed pair of first names or more keys than the cluster cap, on components made up here; and
+the components rebuilt from the kept edges at another cluster threshold (NEU-2182)."""
 
 import dataclasses
 from itertools import combinations
@@ -9,7 +10,7 @@ import pytest
 from splink import DuckDBAPI
 
 from fundlens.resolve import model
-from fundlens.resolve.cluster import recluster, recluster_component
+from fundlens.resolve.cluster import components_at, recluster, recluster_component
 
 VETOED = {frozenset(("ELIZABETH", "KIRSTEN"))}
 
@@ -229,3 +230,59 @@ def test_recluster_leaves_a_consistent_component_as_it_was_and_names_pieces_by_l
     ]
     assert result.keys_moved == 2
     assert (result.pieces, result.largest_before, result.largest_after) == (2, 3, 3)
+
+
+def edges_table(
+    con: duckdb.DuckDBPyConnection, keys: list[str], edges: list[tuple[str, str, float]]
+) -> None:
+    con.execute("CREATE TABLE contributor (contributor_key VARCHAR, first_name VARCHAR)")
+    con.executemany("INSERT INTO contributor VALUES (?, 'JOHN')", [[key] for key in keys])
+    con.execute(
+        "CREATE TABLE edge (contributor_key_l VARCHAR, contributor_key_r VARCHAR,"
+        " match_probability DOUBLE)"
+    )
+    con.executemany("INSERT INTO edge VALUES (?, ?, ?)", [list(edge) for edge in edges])
+
+
+def test_components_at_a_threshold_are_the_connected_components_of_the_edges_above_it() -> None:
+    con = duckdb.connect()
+    # A path from the highest key to the lowest, so the lowest label has the whole way to travel,
+    # and a pair below the threshold that would join it to a third component.
+    path = [f"p{n:02d}" for n in range(12)]
+    keys = [*path, "q1", "q2", "r1", "s1"]
+    edges = [(path[n], path[n + 1], 0.999) for n in range(len(path) - 1)]
+    edges += [("q1", "q2", 0.97), ("p11", "q1", 0.96), ("r1", "s1", 0.92)]
+    edges_table(con, keys, edges)
+
+    table = components_at(con, cluster_threshold=0.965)
+
+    found = dict(con.execute(f"SELECT contributor_key, cluster_id FROM {table}").fetchall())
+    assert found == {**dict.fromkeys(path, "p00"), "q1": "q1", "q2": "q1", "r1": "r1", "s1": "s1"}
+    # The connection holds nothing the rebuild used along the way.
+    assert {name for (name,) in con.execute("SHOW TABLES").fetchall()} == {
+        "contributor",
+        "edge",
+        table,
+    }
+
+
+def test_a_threshold_above_an_edge_parts_its_keys_and_recluster_reads_the_rebuilt_components() -> (
+    None
+):
+    con = duckdb.connect()
+    edges_table(con, ["a", "b", "c"], [("a", "b", 0.999), ("b", "c", 0.97)])
+    con.execute(
+        "CREATE TABLE component AS SELECT * FROM (VALUES ('a', 'a'), ('a', 'b'), ('a', 'c'))"
+        " AS t(cluster_id, contributor_key)"
+    )
+
+    components = components_at(con, cluster_threshold=0.99)
+    result = recluster(con, max_keys=200, cluster_threshold=0.99, components=components)
+
+    rows = con.execute(
+        "SELECT contributor_key, cluster_id, match_probability FROM cluster ORDER BY 1"
+    ).fetchall()
+    assert rows == [("a", "a", 0.999), ("b", "a", 0.999), ("c", "c", None)]
+    assert (result.components, result.largest_before) == (0, 2)
+    # Linkage's components stand.
+    assert con.execute("SELECT count(DISTINCT cluster_id) FROM component").fetchall() == [(1,)]

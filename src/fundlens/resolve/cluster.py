@@ -7,6 +7,8 @@ so a path of strong pairs can join people the model would never pair directly: a
 Re-clustering rebuilds each component that holds a vetoed pair, or more keys than the cluster
 cap, from its own joining edges, strongest first, refusing any union that would put a vetoed
 pair in one cluster or exceed the cap. Every other component is a cluster as it stands.
+`components_at` rebuilds the components from the kept edges at another cluster threshold, for the
+threshold sweep (NEU-2182), without predicting again.
 """
 
 import hashlib
@@ -30,6 +32,8 @@ COMPONENT_TABLE = "component"
 # Every key, in its cluster after re-clustering. `match_probability` is the strongest joining
 # edge between the key and another key of its cluster; NULL for a key clustered alone.
 CLUSTER_TABLE = "cluster"
+# The components `components_at` rebuilds, beside `component` and never over it.
+REBUILT_COMPONENT_TABLE = "component_at"
 
 _CONTRIBUTOR_TABLE = "contributor"
 
@@ -143,7 +147,9 @@ def recluster_component(
     return {key: lowest[root(key)] for key in members}
 
 
-def _vetoed_pairs(con: duckdb.DuckDBPyConnection) -> dict[str, set[frozenset[str]]]:
+def _vetoed_pairs(
+    con: duckdb.DuckDBPyConnection, components: str
+) -> dict[str, set[frozenset[str]]]:
     """Each component holding a vetoed pair, and its vetoed pairs of first names: both present,
     not equal, Jaro-Winkler under `FIRST_NAME_VETO_JW` and different first initials, the model's
     else level (`model._first_name`) to the letter."""
@@ -151,7 +157,7 @@ def _vetoed_pairs(con: duckdb.DuckDBPyConnection) -> dict[str, set[frozenset[str
         f"""
         WITH name AS (
             SELECT DISTINCT c.cluster_id, k.first_name
-            FROM {COMPONENT_TABLE} AS c
+            FROM {components} AS c
             JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
             WHERE k.first_name IS NOT NULL
         )
@@ -169,18 +175,88 @@ def _vetoed_pairs(con: duckdb.DuckDBPyConnection) -> dict[str, set[frozenset[str
     return vetoed
 
 
+def components_at(con: duckdb.DuckDBPyConnection, *, cluster_threshold: float) -> str:
+    """Write the temp table `component_at(cluster_id, contributor_key)` on `con`: every key of
+    `contributor` in its connected component over the `edge`s at or above `cluster_threshold`,
+    named by its lowest key as linkage names components; the table's name. `component` is left
+    as it stands.
+
+    Each key takes the lowest label among itself and its neighbours, then its label's own label,
+    until no label changes: labels only fall, and the lowest key of a component never moves, so
+    every key ends on it.
+    """
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE joining AS
+        SELECT contributor_key_l AS contributor_key, contributor_key_r AS neighbour
+        FROM {EDGE_TABLE} WHERE match_probability >= $threshold
+        UNION ALL
+        SELECT contributor_key_r, contributor_key_l
+        FROM {EDGE_TABLE} WHERE match_probability >= $threshold
+        """,
+        {"threshold": cluster_threshold},
+    )
+    # Only keys with a joining edge can move; every other key is a component of its own.
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE label AS"
+        " SELECT DISTINCT contributor_key, contributor_key AS cluster_id FROM joining"
+    )
+    changed = True
+    while changed:
+        con.execute(
+            """
+            CREATE OR REPLACE TEMP TABLE lowered AS
+            SELECT l.contributor_key, least(l.cluster_id, min(n.cluster_id)) AS cluster_id
+            FROM label AS l
+            JOIN joining AS j USING (contributor_key)
+            JOIN label AS n ON n.contributor_key = j.neighbour
+            GROUP BY l.contributor_key, l.cluster_id
+            """
+        )
+        con.execute(
+            """
+            CREATE OR REPLACE TEMP TABLE jumped AS
+            SELECT k.contributor_key, least(k.cluster_id, l.cluster_id) AS cluster_id
+            FROM lowered AS k
+            JOIN lowered AS l ON l.contributor_key = k.cluster_id
+            """
+        )
+        [(moved,)] = con.execute(
+            "SELECT count(*) FROM jumped JOIN label USING (contributor_key)"
+            " WHERE jumped.cluster_id <> label.cluster_id"
+        ).fetchall()
+        changed = moved > 0
+        con.execute("CREATE OR REPLACE TEMP TABLE label AS SELECT * FROM jumped")
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {REBUILT_COMPONENT_TABLE} AS
+        SELECT coalesce(l.cluster_id, k.contributor_key) AS cluster_id, k.contributor_key
+        FROM {_CONTRIBUTOR_TABLE} AS k
+        LEFT JOIN label AS l USING (contributor_key)
+        """
+    )
+    for scratch in ("joining", "label", "lowered", "jumped"):
+        con.execute(f"DROP TABLE {scratch}")
+    return REBUILT_COMPONENT_TABLE
+
+
 def recluster(
-    con: duckdb.DuckDBPyConnection, *, max_keys: int, cluster_threshold: float
+    con: duckdb.DuckDBPyConnection,
+    *,
+    max_keys: int,
+    cluster_threshold: float,
+    components: str = COMPONENT_TABLE,
 ) -> Reclustered:
     """Write the table `cluster(cluster_id, contributor_key, match_probability)` on `con` from
-    its `component`, `edge` and `contributor` tables: each component holding a vetoed pair or more
-    than `max_keys` keys re-clustered (`recluster_component`) over its edges at or above
-    `cluster_threshold`, every other component as it stands."""
-    vetoed = _vetoed_pairs(con)
+    its `components` (linkage's `component` unless `components_at` rebuilt them), `edge` and
+    `contributor` tables: each component holding a vetoed pair or more than `max_keys` keys
+    re-clustered (`recluster_component`) over its edges at or above `cluster_threshold`, every
+    other component as it stands."""
+    vetoed = _vetoed_pairs(con, components)
     oversized = {
         cluster_id
         for (cluster_id,) in con.execute(
-            f"SELECT cluster_id FROM {COMPONENT_TABLE} GROUP BY cluster_id HAVING count(*) > $n",
+            f"SELECT cluster_id FROM {components} GROUP BY cluster_id HAVING count(*) > $n",
             {"n": max_keys},
         ).fetchall()
     }
@@ -193,7 +269,7 @@ def recluster(
     for cluster_id, key, first_name in con.execute(
         f"""
         SELECT c.cluster_id, c.contributor_key, k.first_name
-        FROM {COMPONENT_TABLE} AS c
+        FROM {components} AS c
         JOIN offending USING (cluster_id)
         JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
         ORDER BY c.cluster_id, c.contributor_key
@@ -205,8 +281,8 @@ def recluster(
         f"""
         SELECT l.cluster_id, e.contributor_key_l, e.contributor_key_r, e.match_probability
         FROM {EDGE_TABLE} AS e
-        JOIN {COMPONENT_TABLE} AS l ON l.contributor_key = e.contributor_key_l
-        JOIN {COMPONENT_TABLE} AS r ON r.contributor_key = e.contributor_key_r
+        JOIN {components} AS l ON l.contributor_key = e.contributor_key_l
+        JOIN {components} AS r ON r.contributor_key = e.contributor_key_r
         JOIN offending ON offending.cluster_id = l.cluster_id
         WHERE r.cluster_id = l.cluster_id AND e.match_probability >= $threshold
         ORDER BY l.cluster_id
@@ -232,7 +308,7 @@ def recluster(
             ),
             placed AS (
                 SELECT coalesce(moved.cluster_id, c.cluster_id) AS cluster_id, c.contributor_key
-                FROM {COMPONENT_TABLE} AS c
+                FROM {components} AS c
                 LEFT JOIN moved USING (contributor_key)
             ),
             inside AS (
@@ -257,7 +333,7 @@ def recluster(
     con.execute("DROP TABLE offending")
     [(largest_before,)] = con.execute(
         f"SELECT coalesce(max(n), 0) FROM"
-        f" (SELECT count(*) AS n FROM {COMPONENT_TABLE} GROUP BY cluster_id)"
+        f" (SELECT count(*) AS n FROM {components} GROUP BY cluster_id)"
     ).fetchall()
     [(largest_after,)] = con.execute(
         f"SELECT coalesce(max(n), 0) FROM"

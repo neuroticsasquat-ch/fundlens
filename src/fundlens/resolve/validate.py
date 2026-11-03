@@ -9,7 +9,8 @@ scores fundlens's `donor_id` against `bonica.cid` over the labelled contributor 
 precision and recall, overall and over the `cid`s with the most matched dollars. The figures
 go to `app.resolution_quality`, from which `load` copies the live model's into `gold.meta`.
 Given resolution's working file instead, `validate` scores its `cluster_id`s in place of the
-`donor_id`s and writes nothing: the loop that tunes the cluster cap (NEU-2122 §5.2).
+`donor_id`s and writes nothing: the loop that tunes the cluster cap (NEU-2122 §5.2). `label`
+builds the labelled keys both read; `diagnose` takes their wrong pairs apart (NEU-2182).
 """
 
 import csv
@@ -255,16 +256,131 @@ def _local_dime(store: R2, cycle: int, *, data_dir: Path) -> Path:
         ) from exc
 
 
-def _check_clusters(database: Path) -> None:
+def check_clusters(database: Path, tables: tuple[str, ...] = (CLUSTER_TABLE,)) -> None:
+    """Raise `FileNotFoundError` unless the working file `database` holds every one of
+    `tables`."""
     missing = FileNotFoundError(f"no clusters in {database}: run `fundlens resolve --full`")
     if not database.exists():
         raise missing
     with duckdb.connect(database, read_only=True) as con:
-        [(tables,)] = con.execute(
-            "SELECT count(*) FROM duckdb_tables() WHERE table_name = $name", {"name": CLUSTER_TABLE}
-        ).fetchall()
-    if not tables:
+        found = {
+            name for (name,) in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()
+        }
+    if not set(tables) <= found:
         raise missing
+
+
+def label(
+    con: duckdb.DuckDBPyConnection,
+    store: R2,
+    *,
+    cycle: int,
+    build_id: str,
+    data_dir: Path,
+    work: Path,
+    clusters: Path | None = None,
+) -> tuple[int, int]:
+    """Write the table `labelled(contributor_key, donor_id, bonica_cid, amount)` on `con`: one
+    record per contributor key and the person DIME says it is, with its matched dollars, from
+    build `build_id` of `cycle`; the counted contributions and those DIME matched.
+
+    With `clusters`, resolution's working file, its `cluster_id` stands in for `donor_id`.
+    Raises `FileNotFoundError` when R2 has no DIME file for the cycle, and `NotResolved` when the
+    build's contributions are not all resolved (or, with `clusters`, a labelled key is in no
+    cluster). `validate` scores this table, and `diagnose` takes its wrong pairs apart.
+    """
+    dime = _local_dime(store, cycle, data_dir=data_dir)
+    # A cached partition is read as it stands, as the crosswalk reads it: R2's may be a rewrite
+    # that died part way.
+    contributions = crosswalk.local_partition(
+        store,
+        paths.silver_partition("contribution", cycle, build_id),
+        cycle=cycle,
+        build_id=build_id,
+        data_dir=data_dir,
+    )
+    indiv = CATALOGUE["indiv"]
+    register_bulk(con, indiv, unzip_bulk(store, cycle, indiv, data_dir=data_dir, work=work))
+    silver = (
+        f"read_parquet({literal(contributions / '**' / '*.parquet')}, hive_partitioning = false)"
+    )
+    if clusters is None:
+        con.execute(
+            "CREATE TABLE silver AS SELECT source_record_id, contributor_key, donor_id,"
+            f" amount, date FROM {silver}"
+        )
+    else:
+        con.execute(f"ATTACH {literal(clusters)} AS run (READ_ONLY)")
+        con.execute(
+            "CREATE TABLE silver AS SELECT s.source_record_id, s.contributor_key,"
+            " c.cluster_id AS donor_id, s.amount, s.date"
+            f" FROM {silver} AS s"
+            f" LEFT JOIN run.{CLUSTER_TABLE} AS c USING (contributor_key)"
+        )
+        con.execute("DETACH run")
+    [(contribution_rows, unresolved)] = con.execute(
+        "SELECT count(*), count(*) FILTER (donor_id IS NULL) FROM silver"
+    ).fetchall()
+    if unresolved and clusters is None:
+        raise NotResolved(
+            f"build {build_id} of {cycle} is not resolved: {unresolved} contributions"
+            " have no donor_id; run `fundlens resolve --full`"
+        )
+    # Tables, not views, so the joins below are planned on real row counts.
+    con.execute(
+        "CREATE TABLE bronze AS SELECT SUB_ID AS sub_id, CMTE_ID AS cmte_id,"
+        " TRAN_ID AS tran_id, trunc(abs(TRANSACTION_AMT)) AS amount FROM indiv"
+        " WHERE CMTE_ID IS NOT NULL AND TRAN_ID IS NOT NULL"
+    )
+    # Amounts meet by magnitude, in whole dollars: a refund's sign is the filer's choice
+    # in FEC's bulk file, which also drops the cents DIME keeps (DIME's 260.25 is 260
+    # there). The date must still agree: some filers reuse a transaction id from one
+    # report to the next, and only the date and amount tell those gifts apart.
+    con.execute(
+        "CREATE TABLE dime AS SELECT DISTINCT cmte_id, tran_id,"
+        " trunc(abs(amount)) AS amount,"
+        f" date, bonica_cid FROM read_parquet({literal(dime)})"
+    )
+    # The counted contributions with their FEC ids; `amount` is the dollars as counted.
+    con.execute(
+        """
+        CREATE TABLE fec AS
+        SELECT
+            s.source_record_id AS sub_id, b.cmte_id, b.tran_id, b.amount AS magnitude,
+            s.date, s.amount, s.contributor_key, s.donor_id
+        FROM silver AS s
+        JOIN bronze AS b ON b.sub_id = s.source_record_id
+        """
+    )
+    # One cid per contribution, or nothing: a row DIME labels twice is ambiguous.
+    con.execute(
+        """
+        CREATE TABLE matched AS
+        SELECT f.sub_id, f.contributor_key, f.donor_id, f.amount,
+            any_value(d.bonica_cid) AS bonica_cid
+        FROM fec AS f
+        JOIN dime AS d
+            ON d.cmte_id = f.cmte_id AND d.tran_id = f.tran_id
+            AND d.amount = f.magnitude AND d.date = f.date
+        GROUP BY f.sub_id, f.contributor_key, f.donor_id, f.amount
+        HAVING count(DISTINCT d.bonica_cid) = 1
+        """
+    )
+    [(matched_rows,)] = con.execute("SELECT count(*) FROM matched").fetchall()
+    # The records scored: one per contributor key and the person DIME says it is.
+    con.execute(
+        "CREATE TABLE labelled AS SELECT contributor_key, donor_id, bonica_cid,"
+        " sum(amount) AS amount FROM matched GROUP BY ALL"
+    )
+    [(unclustered,)] = con.execute(
+        "SELECT count(DISTINCT contributor_key) FROM labelled WHERE donor_id IS NULL"
+    ).fetchall()
+    if unclustered and clusters is not None:
+        raise NotResolved(
+            f"{unclustered} labelled contributor keys are in no cluster of {clusters}:"
+            " run `fundlens resolve --full`"
+        )
+    return contribution_rows, matched_rows
 
 
 def _write(conn: Connection[TupleRow], result: Validated, validated_at: datetime) -> None:
@@ -347,104 +463,21 @@ def validate(
         # Figures under a model nobody saved are rows `load` never reads.
         raise FileNotFoundError(f"no saved resolution model {version}: see `resolution/model/`")
     if clusters is not None:
-        _check_clusters(clusters)
-    dime = _local_dime(store, cycle, data_dir=data_dir)
-    # A cached partition is read as it stands, as the crosswalk reads it: R2's may be a rewrite
-    # that died part way.
-    contributions = crosswalk.local_partition(
-        store,
-        paths.silver_partition("contribution", cycle, build_id),
-        cycle=cycle,
-        build_id=build_id,
-        data_dir=data_dir,
-    )
+        check_clusters(clusters)
     scratch = paths.scratch_dir(data_dir)
     work = scratch / f"validate-{cycle}-{build_id}"
     work.mkdir(parents=True, exist_ok=True)
     try:
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
-            indiv = CATALOGUE["indiv"]
-            register_bulk(con, indiv, unzip_bulk(store, cycle, indiv, data_dir=data_dir, work=work))
-            silver = (
-                f"read_parquet({literal(contributions / '**' / '*.parquet')},"
-                " hive_partitioning = false)"
+            contribution_rows, matched_rows = label(
+                con,
+                store,
+                cycle=cycle,
+                build_id=build_id,
+                data_dir=data_dir,
+                work=work,
+                clusters=clusters,
             )
-            if clusters is None:
-                con.execute(
-                    "CREATE TABLE silver AS SELECT source_record_id, contributor_key, donor_id,"
-                    f" amount, date FROM {silver}"
-                )
-            else:
-                con.execute(f"ATTACH {literal(clusters)} AS run (READ_ONLY)")
-                con.execute(
-                    "CREATE TABLE silver AS SELECT s.source_record_id, s.contributor_key,"
-                    " c.cluster_id AS donor_id, s.amount, s.date"
-                    f" FROM {silver} AS s"
-                    f" LEFT JOIN run.{CLUSTER_TABLE} AS c USING (contributor_key)"
-                )
-                con.execute("DETACH run")
-            [(contribution_rows, unresolved)] = con.execute(
-                "SELECT count(*), count(*) FILTER (donor_id IS NULL) FROM silver"
-            ).fetchall()
-            if unresolved and clusters is None:
-                raise NotResolved(
-                    f"build {build_id} of {cycle} is not resolved: {unresolved} contributions"
-                    " have no donor_id; run `fundlens resolve --full`"
-                )
-            # Tables, not views, so the joins below are planned on real row counts.
-            con.execute(
-                "CREATE TABLE bronze AS SELECT SUB_ID AS sub_id, CMTE_ID AS cmte_id,"
-                " TRAN_ID AS tran_id, trunc(abs(TRANSACTION_AMT)) AS amount FROM indiv"
-                " WHERE CMTE_ID IS NOT NULL AND TRAN_ID IS NOT NULL"
-            )
-            # Amounts meet by magnitude, in whole dollars: a refund's sign is the filer's choice
-            # in FEC's bulk file, which also drops the cents DIME keeps (DIME's 260.25 is 260
-            # there). The date must still agree: some filers reuse a transaction id from one
-            # report to the next, and only the date and amount tell those gifts apart.
-            con.execute(
-                "CREATE TABLE dime AS SELECT DISTINCT cmte_id, tran_id,"
-                " trunc(abs(amount)) AS amount,"
-                f" date, bonica_cid FROM read_parquet({literal(dime)})"
-            )
-            # The counted contributions with their FEC ids; `amount` is the dollars as counted.
-            con.execute(
-                """
-                CREATE TABLE fec AS
-                SELECT
-                    s.source_record_id AS sub_id, b.cmte_id, b.tran_id, b.amount AS magnitude,
-                    s.date, s.amount, s.contributor_key, s.donor_id
-                FROM silver AS s
-                JOIN bronze AS b ON b.sub_id = s.source_record_id
-                """
-            )
-            # One cid per contribution, or nothing: a row DIME labels twice is ambiguous.
-            con.execute(
-                """
-                CREATE TABLE matched AS
-                SELECT f.sub_id, f.contributor_key, f.donor_id, f.amount,
-                    any_value(d.bonica_cid) AS bonica_cid
-                FROM fec AS f
-                JOIN dime AS d
-                    ON d.cmte_id = f.cmte_id AND d.tran_id = f.tran_id
-                    AND d.amount = f.magnitude AND d.date = f.date
-                GROUP BY f.sub_id, f.contributor_key, f.donor_id, f.amount
-                HAVING count(DISTINCT d.bonica_cid) = 1
-                """
-            )
-            [(matched_rows,)] = con.execute("SELECT count(*) FROM matched").fetchall()
-            # The records scored: one per contributor key and the person DIME says it is.
-            con.execute(
-                "CREATE TABLE labelled AS SELECT contributor_key, donor_id, bonica_cid,"
-                " sum(amount) AS amount FROM matched GROUP BY ALL"
-            )
-            [(unclustered,)] = con.execute(
-                "SELECT count(DISTINCT contributor_key) FROM labelled WHERE donor_id IS NULL"
-            ).fetchall()
-            if unclustered and clusters is not None:
-                raise NotResolved(
-                    f"{unclustered} labelled contributor keys are in no cluster of {clusters}:"
-                    " run `fundlens resolve --full`"
-                )
             con.execute(
                 """
                 CREATE TABLE labelled_top AS

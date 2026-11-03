@@ -12,7 +12,8 @@ links that rot, and `bonica.cid` values change between DIME releases (codebook Â
 must be reproducible from what R2 holds (ADR-0002).
 
 **Not in this runbook:** the methodology page and the `/v1/meta` fields (NEU-2056). Tuning the cluster cap
-against the figures is [step 8](#8-tuning-the-cluster-cap).
+against the figures is [step 8](#8-tuning-the-cluster-cap); taking the wrong pairs apart and sweeping the cluster
+threshold is [step 9](#9-diagnosing-the-wrong-pairs).
 
 ## Before you start
 
@@ -345,6 +346,115 @@ pg -c "SELECT donor_id, count(*) AS keys FROM app.crosswalk GROUP BY donor_id HA
 check `resolution/overrides.yaml` names its keys. Any other row is a bug: stop and file it.
 
 The next `load` and `publish` carry the figures into `gold.meta` (step 5).
+
+## 9. Diagnosing the wrong pairs
+
+`fundlens diagnose` (NEU-2182) builds the labelled keys `validate --clusters` scores, through the same
+function, and takes the working file's wrong pairs apart: by cluster size and matched dollars, by how the pair
+was joined (`same key`: DIME splits one of our keys; `direct`: an `edge` between the keys, by probability band;
+`chained`: no edge), by the field agreement of the direct wrong pairs (the 20 patterns with the most), and by
+how many keys share the pair's name. `--sample <N>` adds N wrong pairs from clusters of 50 keys or fewer, the
+same N every time for the same working file, to classify by hand. `fundlens recluster --cluster-threshold <T>`
+rebuilds the components from `edge` at or above T into a temp table, leaving `component` alone, then re-clusters
+them as usual: the threshold sweep, with no re-predict (`edge` holds every pair at or above 0.9). Both write
+nothing to Postgres, R2 or the crosswalk; `recluster` rewrites only the working file's `cluster` table.
+
+**Never merge to `main` while this step runs:** a merge redeploys `pipeline` and kills the running command.
+
+Steps 0, 1.2 and 3 must have run for the cycle, and the working file must come from 8.2 (or a later
+`resolve --full`).
+
+### 9.1 The deployed code
+
+```bash
+# VM, in tmux
+docker exec "$(fl pipeline)" printenv OTEL_RESOURCE_ATTRIBUTES
+```
+
+**Expected:** `service.version=<sha>` is the merge commit of NEU-2182 or later.
+
+### 9.2 The working file at the default
+
+```bash
+# VM, in tmux
+docker exec "$(fl pipeline)" fundlens recluster | tee recluster-default.txt
+```
+
+**Expected:** the same `recluster:` line as the last 8.2 run (the Log), and no `components rebuilt` line.
+
+### 9.3 Diagnose
+
+```bash
+# VM, in tmux
+time docker exec "$(fl pipeline)" fundlens diagnose --cycle "$C" --sample 100 | tee diagnose.txt
+```
+
+**Expected:** a few minutes (it builds what `validate` builds, then the pairs). The first line is
+`pairs: <predicted> predicted, <correct> correct, <wrong> wrong (precision <p>)`, and `<p>` is the overall
+precision `validate --clusters` gives for the same working file. Then the tables `cluster keys`,
+`cluster dollars`, `link`, `keys sharing name`, the patterns, 100 `sample <n>:` blocks, and the last line
+`clusters from /data/fundlens/resolution/resolve.duckdb; nothing written`. Copy every table into the Log.
+
+Classify each sampled pair by hand from its two keys' fields and `cid`s as one of: DIME's error, household or
+Jr/Sr, common name in one area, junk data, other. Copy the count per class into the Log.
+
+### 9.4 The threshold sweep
+
+Each value is two commands: re-cluster at the threshold, then score.
+
+```bash
+# VM, in tmux
+export T=0.95
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.97
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.99
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.999
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.9999
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+**Expected:** each `recluster` prints `components rebuilt from the edges at or above <T>` and its
+`recluster:` line, and each `validate` the step 4 table ending `nothing written`. Copy both scopes' precision and
+recall for every T into the Log.
+
+### 9.5 Put the working file back
+
+```bash
+# VM, in tmux
+docker exec "$(fl pipeline)" fundlens recluster
+```
+
+**Expected:** the same `recluster:` line as 9.2, so the working file's `cluster` table matches the crosswalk.
+
+### 9.6 Record
+
+Add a Findings entry to [`docs/capacity.md`](../capacity.md) stating which causes make up the wrong pairs, by
+count, from 9.3's tables and the hand classification, and the sweep's figures. File a ticket for each fix the
+figures point at, with the expected precision gain taken from them.
 
 ## Log
 
