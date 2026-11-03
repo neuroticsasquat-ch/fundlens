@@ -87,7 +87,7 @@ class RaceSummary(BaseModel):
     candidate_count: int
     total_individual: float
     total_committee: float
-    # A joint fundraising committee's 18J transfers to the candidate's committees: committee money,
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
     # in neither total_individual nor total_committee (NEU-2124).
     total_jfc_transfers: float
     ie_support: float
@@ -104,7 +104,7 @@ class RaceCandidate(BaseModel):
     principal_committee_id: str | None
     total_individual: float
     total_committee: float
-    # A joint fundraising committee's 18J transfers to the candidate's committees: committee money,
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
     # in neither total_individual nor total_committee (NEU-2124).
     total_jfc_transfers: float
     self_funding: float
@@ -170,7 +170,7 @@ class CandidateCycle(BaseModel):
     race_slug: str | None
     total_individual: float
     total_committee: float
-    # A joint fundraising committee's 18J transfers to the candidate's committees: committee money,
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
     # in neither total_individual nor total_committee (NEU-2124).
     total_jfc_transfers: float
     self_funding: float

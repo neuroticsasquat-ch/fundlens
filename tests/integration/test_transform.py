@@ -47,12 +47,16 @@ OTH_NOT_RECEIPTS = {
     4240300000000000012,  # WHITLOCK's 16C loan to his campaign
     # More 15J memo lines (spec §6.11): JFC attributions, an organization's, one to no committee.
     *range(4240300000000000015, 4240300000000000020),
+    4240300000000000022,  # a blank OTHER_ID naming a committee that is no JFC
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
 # OKAFOR VICTORY FUND's 18J transfer to OKAFOR, and the 15J lines of the people behind it: one known
 # from no contribution, and VANTERPOOL, who gave to the super PAC. An organization's 15J line and
 # one to a committee missing from `cm` are no attribution.
 JFC, JFC_TRANSFER = "C00800115", 4240300000000000014
+# The same JFC's transfers as most are filed (NEU-2124): an 18G, and a 15J with OTHER_ID blank whose
+# NAME names the JFC.
+JFC_18G, JFC_NAMED_ONLY = 4240300000000000020, 4240300000000000021
 ACHTERBERG, VANTERPOOL_LINE = 4240300000000000015, 4240300000000000016
 VANTERPOOL = 4240100000000000030
 NOT_ATTRIBUTIONS = {4240300000000000018, 4240300000000000019}
@@ -749,8 +753,10 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         for candidate_id, totals in candidates.items()
         if totals["total_committee"]
     }
-    # A JFC's 18J transfer is a receipt, credited to the candidate its recipient raises for.
-    jfc_transfers = [row for row in receipts if row["transaction_type"] == "18J"]
+    # A JFC's transfer is a receipt, whatever its type, credited to the candidate its recipient
+    # raises for.
+    jfc_transfers = [row for row in receipts if row["from_committee_id"] == JFC]
+    assert {row["transaction_type"] for row in jfc_transfers} == {"18G", "18J", "15J"}
     assert sum_by(jfc_transfers, "candidate_id") == {
         candidate_id: totals["total_jfc_transfers"]
         for candidate_id, totals in candidates.items()
@@ -827,17 +833,24 @@ def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
         vanterpool["attribution_count"],
     ) == (1, 250000, 1)
 
-    # The money is the JFC's 18J transfer, a receipt like any other.
+    # The money is the JFC's transfers, receipts like any other; the one with OTHER_ID blank is
+    # the JFC's because its NAME is the JFC's, case and punctuation aside.
     transfers = {
         row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
     }
-    transfer = transfers[JFC_TRANSFER]
-    assert (
-        transfer["from_committee_id"],
-        transfer["to_committee_id"],
-        transfer["amount"],
-        transfer["side"],
-    ) == (JFC, "C00800103", 6500, "receipt")
+    assert {
+        sub_id: (
+            transfers[sub_id]["from_committee_id"],
+            transfers[sub_id]["to_committee_id"],
+            transfers[sub_id]["amount"],
+            transfers[sub_id]["side"],
+        )
+        for sub_id in (JFC_TRANSFER, JFC_18G, JFC_NAMED_ONLY)
+    } == {
+        JFC_TRANSFER: (JFC, "C00800103", 6500, "receipt"),
+        JFC_18G: (JFC, "C00800103", 10000, "receipt"),
+        JFC_NAMED_ONLY: (JFC, "C00800103", 3000, "receipt"),
+    }
 
 
 def test_a_jfc_named_in_memo_text_is_the_joint_fundraising_committee_of_that_name(

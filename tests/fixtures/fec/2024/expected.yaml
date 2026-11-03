@@ -19,12 +19,14 @@
 #   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
-#   TRANSACTION_TP 1x or 3x, MEMO_CD not X, OTHER_ID a committee's id. A committee's gift to a
+#   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
+#   blank, the designation-J committee whose name NAME is, compared after uppercasing and dropping
+#   all but letters and digits; naming no JFC, the row is no receipt. A committee's gift to a
 #   candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
-# - total_jfc_transfers on a candidate: the `oth` receipts above of type 18J, a joint fundraising
-#   committee's transfer of the candidate's share, credited to the candidate the receiving
-#   committee is linked to. In neither total_individual nor total_committee: OKAFOR VICTORY
-#   FUND's 18J to OKAFOR is the fixture's one.
+# - total_jfc_transfers on a candidate: the `oth` receipts above from a designation-J committee,
+#   whatever their type, a joint fundraising committee's transfer of the candidate's share,
+#   credited to the candidate the receiving committee is linked to. In neither total_individual
+#   nor total_committee: OKAFOR VICTORY FUND's 18J, 18G and blank-OTHER_ID 15J to OKAFOR.
 # - A race's totals are the sums over the candidates attached to it.
 # All amounts are whole dollars.
 
@@ -37,7 +39,7 @@ rows:
   ccl: 12
   indiv: 311
   pas2: 20
-  oth: 21
+  oth: 24
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
@@ -50,7 +52,7 @@ silver:
   candidate_committee_link: 12
   contribution: 284
   independent_expenditure: 9
-  committee_transfer: 21
+  committee_transfer: 23
   # One row per `attributions` line below.
   jfc_attribution: 4
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -91,7 +93,7 @@ races:
     candidate_count: 4
     total_individual: 91975
     total_committee: 11000
-    total_jfc_transfers: 6500
+    total_jfc_transfers: 19500
     ie_support: 150000
     ie_oppose: 125000
   2024-H-MD-05:
@@ -148,7 +150,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 49700
     total_committee: 5000
-    total_jfc_transfers: 6500
+    total_jfc_transfers: 19500
     self_funding: 5000
     ie_support: 150000
     ie_oppose: 45000
@@ -242,10 +244,10 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C00800103: # OKAFOR FOR MARYLAND: its JFC's 18J is in total_from_committees, its 15J lines nowhere
+  C00800103: # OKAFOR FOR MARYLAND: its JFC's transfers in total_from_committees, 15J lines nowhere
     total_individual: 37550
     self_funding: 5000
-    total_from_committees: 31500
+    total_from_committees: 44500
     total_to_candidates: 0
     ie_total: 0
   C00800113: # FRIENDS OF DIANA OKAFOR (authorized)
