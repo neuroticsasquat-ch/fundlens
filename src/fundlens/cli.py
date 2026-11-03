@@ -32,6 +32,7 @@ from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
+from fundlens.resolve import diagnose as diagnosis
 from fundlens.resolve import overrides
 from fundlens.resolve import runner as resolution
 from fundlens.resolve import validate as validation
@@ -416,24 +417,42 @@ def recluster(
         int | None,
         typer.Option(help="The cluster cap. Default: RESOLVE_MAX_CLUSTER_KEYS.", min=2),
     ] = None,
+    cluster_threshold: Annotated[
+        float | None,
+        typer.Option(
+            help="Rebuild the components from the working file's edges at or above this"
+            " probability first, leaving `component` alone. Default: linkage's components.",
+            max=1.0,
+        ),
+    ] = None,
 ) -> None:
     """Rewrite the working file's clusters from its components under another cluster cap, then
     apply `resolution/overrides.yaml`, as `resolve --full` would; nothing else changes: no
-    crosswalk, silver, marker or R2 (NEU-2122 §5.1)."""
+    crosswalk, silver, marker or R2 (NEU-2122 §5.1). `--cluster-threshold` re-clusters components
+    rebuilt at another threshold (NEU-2182)."""
     settings = get_settings()
+    if cluster_threshold is not None and cluster_threshold < settings.resolve_match_threshold:
+        # `edge` holds no pair under the match threshold: a lower one would need a re-predict.
+        raise typer.BadParameter(
+            f"must be at least the match threshold, {settings.resolve_match_threshold}",
+            param_hint="--cluster-threshold",
+        )
     try:
         with psycopg.connect(settings.database_url, autocommit=True) as conn:
             result = resolution.recluster_working_file(
                 data_dir=settings.data_dir,
                 limits=runner.Limits.from_settings(settings),
                 max_keys=max_keys or settings.resolve_max_cluster_keys,
-                cluster_threshold=settings.resolve_cluster_threshold,
+                cluster_threshold=cluster_threshold or settings.resolve_cluster_threshold,
                 overrides_path=settings.overrides_path,
                 conn=conn,
+                rebuild=cluster_threshold is not None,
             )
     except (FileNotFoundError, overrides.OverridesError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+    if cluster_threshold is not None:
+        typer.echo(f"components rebuilt from the edges at or above {cluster_threshold}")
     typer.echo(f"recluster: {result.reclustered.summary()}")
     overridden = result.overridden
     typer.echo(
@@ -551,6 +570,79 @@ def validate(
     )
     if working_file is not None:
         typer.echo(f"clusters from {working_file}; nothing written")
+
+
+def _bands(title: str, bands: list[diagnosis.Band]) -> None:
+    typer.echo(f"{title:<20} {'wrong':>12} {'correct':>12} {'precision':>9}")
+    for band in bands:
+        typer.echo(
+            f"{band.label:<20} {band.wrong:>12} {band.correct:>12} {_figure(band.precision):>9}"
+        )
+
+
+@app.command()
+# No family, like `validate`: run by hand, to find what the wrong pairs are.
+@step("diagnose")
+def diagnose(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    sample: Annotated[
+        int,
+        typer.Option(
+            help=f"Also print this many wrong pairs from clusters of"
+            f" {diagnosis.SAMPLE_MAX_KEYS} keys or fewer, to classify by hand.",
+            min=0,
+        ),
+    ] = 0,
+) -> None:
+    """Take the working file's wrong pairs against DIME apart: by cluster size and dollars, direct
+    or chained, field agreement and name commonness; write nothing (NEU-2182)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    working_file = paths.resolution_database(settings.data_dir)
+    try:
+        result = diagnosis.diagnose(
+            R2.from_settings(settings),
+            cycle=cycle,
+            data_dir=settings.data_dir,
+            limits=runner.Limits.from_settings(settings),
+            working_file=working_file,
+            sample=sample,
+        )
+    except (FileNotFoundError, validation.NotResolved) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    found = result.breakdown
+    precision = found.correct / found.predicted if found.predicted else None
+    typer.echo(
+        f"pairs: {found.predicted} predicted, {found.correct} correct, {found.wrong} wrong"
+        f" (precision {_figure(precision)})"
+    )
+    _bands("cluster keys", found.by_size)
+    _bands("cluster dollars", found.by_dollars)
+    _bands("link", found.by_link)
+    _bands("keys sharing name", found.by_name)
+    typer.echo(
+        " ".join(f"{field:<12}" for field in diagnosis.FIELDS) + f" {'wrong':>12} {'correct':>12}"
+    )
+    for pattern in found.patterns:
+        typer.echo(
+            " ".join(f"{level:<12}" for level in pattern.levels)
+            + f" {pattern.wrong:>12} {pattern.correct:>12}"
+        )
+    for n, pair in enumerate(found.sample, start=1):
+        typer.echo(f"sample {n}: cluster {pair.cluster_id} ({pair.keys} keys), {pair.link}")
+        for side in (pair.a, pair.b):
+            fields = " | ".join("" if value is None else value for value in side.fields)
+            typer.echo(f"  {side.contributor_key} cid {side.bonica_cid}: {fields}")
+    share = 100 * result.matched_rows / result.contribution_rows if result.contribution_rows else 0
+    typer.echo(
+        f"matched {result.matched_rows} of {result.contribution_rows} counted contributions"
+        f" ({share:.1f}%), build {result.build_id}"
+    )
+    typer.echo(f"clusters from {working_file}; nothing written")
 
 
 @app.command()

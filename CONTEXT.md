@@ -119,6 +119,9 @@ _Avoid_: DIME id, true donor, gold label
 **Labelled key**:
 One `(contributor key, reference label)` pair among the contributions DIME and fundlens both know: the record precision and recall count pairs of. A key DIME gives two labels is two labelled keys.
 
+**Direct pair** / **Chained pair**:
+Two labelled keys in one cluster that linkage scored as a pair (an edge between their contributor keys), or did not: a chained pair shares a cluster only through other keys. `fundlens diagnose` counts the wrong pairs of each.
+
 **Validation**:
 `fundlens validate`: scoring a resolved build's `donor_id`s against the reference labels, as pairwise precision and recall, overall and for the top contributors by dollars. A report, not a pipeline step: it writes `app.resolution_quality`, and `load` copies the live model's figures into `gold.meta`.
 _Avoid_: evaluation, benchmark, accuracy (the figures are precision and recall, not accuracy)
