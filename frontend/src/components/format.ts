@@ -21,6 +21,17 @@ export function moneyCompact(v: number | null | undefined): string {
   return Math.abs(v) < 1000 ? money(v) : signed(v, compact.format(Math.abs(v)));
 }
 
+const percentage = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/** A share between 0 and 1 as `62.9%`. */
+export function percent(v: number | null | undefined): string {
+  return v == null ? DASH : percentage.format(v);
+}
+
 /** `1,234`. */
 export function count(v: number | null | undefined): string {
   return v == null ? DASH : whole.format(v);

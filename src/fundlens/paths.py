@@ -159,6 +159,13 @@ def resolution_model(version: str) -> str:
     return f"{MODEL_PREFIX}{version}.json"
 
 
+def resolution_run(version: str) -> str:
+    """What the `resolve --full` run that trained model `version` applied, as JSON:
+    `resolution/run/<version>.json` (`resolve.runner.RunRecord`, NEU-2056)."""
+    _check_build_id(version)
+    return f"resolution/run/{version}.json"
+
+
 def model_version_of(key: str) -> str | None:
     """The version of the saved model at `key`, or None if `key` is not one."""
     match = _MODEL_KEY.fullmatch(key)

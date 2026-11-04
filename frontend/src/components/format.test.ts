@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { count, DASH, isoDate, money, moneyCompact } from "./format";
+import { count, DASH, isoDate, money, moneyCompact, percent } from "./format";
 
 describe("format", () => {
   it("writes full dollars, a minus sign for negatives and a dash for nothing", () => {
@@ -24,5 +24,11 @@ describe("format", () => {
     expect(isoDate("2024-11-03T08:00:00Z")).toBe("2024-11-03");
     expect(isoDate("2024-11-02")).toBe("2024-11-02");
     expect(isoDate(null)).toBe(DASH);
+  });
+
+  it("writes a share as a percentage to one decimal", () => {
+    expect(percent(0.6288)).toBe("62.9%");
+    expect(percent(1)).toBe("100.0%");
+    expect(percent(null)).toBe(DASH);
   });
 });

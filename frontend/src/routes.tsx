@@ -5,6 +5,7 @@ import ComingSoon from "./pages/ComingSoon";
 import CyclePage from "./pages/CyclePage";
 import DonorPage from "./pages/DonorPage";
 import HomePage from "./pages/HomePage";
+import MethodologyPage from "./pages/MethodologyPage";
 import NotFound from "./pages/NotFound";
 import RacePage from "./pages/RacePage";
 import SearchPage from "./pages/SearchPage";
@@ -49,7 +50,7 @@ export const routes: RouteObject[] = [
       { path: "/donor/:id", element: <DonorPage /> },
       { path: "/search", element: <SearchPage /> },
       { path: "/dataset", element: <ComingSoon name="Dataset" /> },
-      { path: "/methodology", element: <ComingSoon name="Methodology" /> },
+      { path: "/methodology", element: <MethodologyPage /> },
       { path: "*", element: <NotFound /> },
     ],
   },

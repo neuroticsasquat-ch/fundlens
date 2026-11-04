@@ -9,6 +9,7 @@ from fundlens import telemetry
 from fundlens.settings import Settings, get_settings
 from fundlens.telemetry import (
     init_sentry,
+    known_release,
     parse_resource_attributes,
     pipeline_integrations,
     resolve_telemetry,
@@ -44,6 +45,11 @@ def test_unset_attributes_fall_back_to_unknown_and_development() -> None:
 
     assert resolved.release == "unknown"
     assert resolved.environment == "development"
+
+
+def test_a_known_release_is_none_where_otel_names_none() -> None:
+    assert known_release(PROD_ATTRS) == SHA
+    assert known_release("service.name=fundlens-pipeline") is None
 
 
 @pytest.fixture
