@@ -423,7 +423,7 @@ donors:
     resolved_by: none
     amount: 7000
     sub_ids: [4240100000000000023, 4240100000000000024]
-  merge_override: # KOWALCZYK, MARGARET and KOWALCZYK, PEGGY
+  merge_override: # KOWALCZYK, MARGARET and KOWALCZYK, MEGGIE
     bonica_cid: 100000011
     resolved_by: merge_override
     amount: 1250

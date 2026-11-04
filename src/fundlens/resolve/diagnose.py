@@ -21,7 +21,7 @@ import duckdb
 from fundlens import paths
 from fundlens.r2 import R2
 from fundlens.resolve.cluster import CLUSTER_TABLE, EDGE_TABLE
-from fundlens.resolve.model import FIRST_NAME_VETO_JW
+from fundlens.resolve.model import FIRST_NAME_VETO_JW, initial_pair_sql, nickname_pair_sql
 from fundlens.resolve.validate import check_clusters, label, newest_resolved
 from fundlens.transform.runner import Limits, literal
 
@@ -89,15 +89,19 @@ def _null_or(field: str, levels: str) -> str:
     return f"CASE WHEN a.{field} IS NULL OR b.{field} IS NULL THEN 'null' {levels} END"
 
 
+_NICKNAME = nickname_pair_sql(
+    "a.first_name", "a.first_name_nicknames", "b.first_name", "b.first_name_nicknames"
+)
 # The level of each field a direct pair's pattern reports: the model's first-name levels
 # (`model._first_name`) in its order, and the others' as NEU-2182 names them.
 _LEVELS = {
     "first_name": _null_or(
         "first_name",
         "WHEN a.first_name = b.first_name THEN 'exact'"
+        f" WHEN {_NICKNAME} THEN 'nickname'"
         " WHEN jaro_winkler_similarity(a.first_name, b.first_name) >= 0.92 THEN 'jw ≥ 0.92'"
         " WHEN jaro_winkler_similarity(a.first_name, b.first_name) >= $veto THEN 'jw ≥ 0.8'"
-        " WHEN a.first_initial = b.first_initial THEN 'initial only'"
+        f" WHEN {initial_pair_sql('a.first_name', 'b.first_name')} THEN 'initial only'"
         " ELSE 'other'",
     ),
     "last_name": _null_or("last_name", "WHEN a.last_name = b.last_name THEN 'exact' ELSE 'differ'"),

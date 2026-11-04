@@ -92,8 +92,16 @@ _Avoid_: raw cluster, Splink cluster
 A component holding keys linkage would never pair directly, joined only through intermediates: two first names that disagree, or hundreds of people under one surname sound. The failure re-clustering removes.
 _Avoid_: over-merged cluster, mega-cluster
 
+**Initial pair**:
+Two first names of which one is a single letter and both start with that letter (`C` and `CRAIG`). Linkage's evidence of one person. Two full names sharing a first letter (`MARGO` and `MICHAEL`) are not an initial pair.
+_Avoid_: same initial, initial match
+
+**Nickname pair**:
+Two different first names of which one is a prefix of the other at least three letters long (`LOU` and `LOUIS`), or which the vendored nickname table (`resolve/nicknames.csv` less `nicknames-excluded.csv`) links directly, read either way (`HAL` and `HAROLD`). Linkage's evidence of one person; a nickname the table does not name is still an override's to merge. Two nicknames of one name (`HAL` and `HARRY`) are not a nickname pair.
+_Avoid_: alias (that is an employer's word), variant
+
 **Vetoed pair**:
-Two contributor keys whose first names the model rejects outright: both present, not the same, not close, and starting with different letters. A missing first name vetoes nothing. Never in one cluster, except by an override or an adjudication.
+Two contributor keys whose first names the model rejects outright: both present, not the same, not close, and neither an initial pair nor a nickname pair, whatever their first letters. A missing first name vetoes nothing. Never in one cluster, except by an override or an adjudication.
 
 **Re-clustering**:
 Rebuilding a component that holds a vetoed pair or more keys than the cluster cap from its own matched pairs, strongest first, so that no piece holds either. Runs after linkage and before overrides; a component that offends neither is untouched.

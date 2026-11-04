@@ -7,10 +7,12 @@ has seen data and the ones it keeps for any level training cannot estimate. `tra
 rest from the contributors themselves.
 
 The priors encode what the fixture's hard cases assert (spec §6). A name agreeing in full is the
-strongest evidence there is; a different first name is a different person to linkage, since a
-nickname (PEGGY for MARGARET) is an override's or an adjudication's to merge (§6.5, §6.8), and
-two people of one household share a surname, a ZIP and often an employer. So a first name that
-disagrees outright all but vetoes a match, whatever else agrees, and training never moves it.
+strongest evidence there is; a different first name is a different person to linkage, and two
+people of one household share a surname, a ZIP and often an employer. So a first name that
+disagrees outright all but vetoes a match, whatever else agrees, and training never moves it. Two
+first names agree when they are an initial pair (C for CRAIG) or a nickname pair (LOU for LOUIS,
+or a pair the nickname table names, HAL for HAROLD; NEU-2188); a nickname neither names is still
+an override's or an adjudication's to merge (§6.5, §6.8).
 """
 
 import logging
@@ -45,10 +47,35 @@ DETERMINISTIC_RECALL = 0.6
 U_MAX_PAIRS = 1e8
 U_SEED = 2048
 
-# Under this Jaro-Winkler similarity, two first names with different initials are the first-name
-# comparison's else level: the veto. Re-clustering (`resolve.cluster`) keeps such a pair out of
-# every cluster, so it reads the same constant.
+# Under this Jaro-Winkler similarity, two first names that are neither an initial pair nor a
+# nickname pair are the first-name comparison's else level: the veto. Re-clustering
+# (`resolve.cluster`) keeps such a pair out of every cluster, so it reads the same constant.
 FIRST_NAME_VETO_JW = 0.8
+
+# The shortest first name the prefix rule treats as a nickname of a longer one: LOU for LOUIS,
+# not JO for JOSEPH.
+NICKNAME_MIN_PREFIX = 3
+
+
+def initial_pair_sql(name_a: str, name_b: str) -> str:
+    """SQL over the two first-name expressions: one is a single letter and both start with it.
+
+    The model, the veto (`cluster._vetoed_pairs`) and `diagnose` all read this, so the three
+    cannot drift. It tests neither equality nor nulls: each caller's level order does."""
+    return f"((len({name_a}) = 1 OR len({name_b}) = 1) AND left({name_a}, 1) = left({name_b}, 1))"
+
+
+def nickname_pair_sql(name_a: str, nicknames_a: str, name_b: str, nicknames_b: str) -> str:
+    """SQL over two first names and their `first_name_nicknames` lists: one is a prefix of the
+    other at least `NICKNAME_MIN_PREFIX` letters long, or the nickname table links them.
+
+    Read by the same three as `initial_pair_sql`, and likewise tests neither equality nor nulls.
+    """
+    return (
+        f"(((starts_with({name_a}, {name_b}) OR starts_with({name_b}, {name_a}))"
+        f" AND least(len({name_a}), len({name_b})) >= {NICKNAME_MIN_PREFIX})"
+        f" OR list_contains({nicknames_a}, {name_b}) OR list_contains({nicknames_b}, {name_a}))"
+    )
 
 
 def _first_name() -> cl.CustomComparison:
@@ -56,19 +83,32 @@ def _first_name() -> cl.CustomComparison:
         output_column_name="first_name",
         comparison_levels=[
             cll.NullLevel("first_name"),
-            cll.ExactMatchLevel("first_name").configure(m_probability=0.88, u_probability=0.005),
+            cll.ExactMatchLevel("first_name").configure(m_probability=0.86, u_probability=0.005),
+            # 'LOU' for 'LOUIS', 'HAL' for 'HAROLD': ahead of Jaro-Winkler, which would take both
+            # pairs at a lower level.
+            cll.CustomLevel(
+                nickname_pair_sql(
+                    "first_name_l",
+                    "first_name_nicknames_l",
+                    "first_name_r",
+                    "first_name_nicknames_r",
+                ),
+                label_for_charts="nickname",
+            ).configure(m_probability=0.03, u_probability=0.002),
             cll.JaroWinklerLevel("first_name", 0.92).configure(
-                m_probability=0.07, u_probability=0.003
+                m_probability=0.06, u_probability=0.003
             ),
             cll.JaroWinklerLevel("first_name", FIRST_NAME_VETO_JW).configure(
                 m_probability=0.03, u_probability=0.01
             ),
-            # 'A' for 'AUGUSTINE'.
-            cll.ExactMatchLevel("first_initial").configure(m_probability=0.02, u_probability=0.03),
+            # 'A' for 'AUGUSTINE'; not 'MARGO' for 'MICHAEL'.
+            cll.CustomLevel(
+                initial_pair_sql("first_name_l", "first_name_r"), label_for_charts="initial"
+            ).configure(m_probability=0.02, u_probability=0.002),
             # The veto: a first name that differs outright is a different person. Fixed, so EM
             # cannot learn a household's members as one person and lift it.
             cll.ElseLevel().configure(
-                m_probability=1e-10, u_probability=0.952, fix_m_probability=True
+                m_probability=1e-10, u_probability=0.978, fix_m_probability=True
             ),
         ],
     )

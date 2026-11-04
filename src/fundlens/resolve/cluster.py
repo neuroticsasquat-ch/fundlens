@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import duckdb
 from splink import Linker
 
-from fundlens.resolve.model import FIRST_NAME_VETO_JW
+from fundlens.resolve.model import FIRST_NAME_VETO_JW, initial_pair_sql, nickname_pair_sql
 
 log = logging.getLogger(__name__)
 
@@ -151,12 +151,16 @@ def _vetoed_pairs(
     con: duckdb.DuckDBPyConnection, components: str
 ) -> dict[str, set[frozenset[str]]]:
     """Each component holding a vetoed pair, and its vetoed pairs of first names: both present,
-    not equal, Jaro-Winkler under `FIRST_NAME_VETO_JW` and different first initials, the model's
-    else level (`model._first_name`) to the letter."""
+    not equal, Jaro-Winkler under `FIRST_NAME_VETO_JW` and neither an initial pair nor a nickname
+    pair, the model's else level (`model._first_name`) to the letter."""
+    initial = initial_pair_sql("a.first_name", "b.first_name")
+    nickname = nickname_pair_sql(
+        "a.first_name", "a.first_name_nicknames", "b.first_name", "b.first_name_nicknames"
+    )
     rows = con.execute(
         f"""
         WITH name AS (
-            SELECT DISTINCT c.cluster_id, k.first_name
+            SELECT DISTINCT c.cluster_id, k.first_name, k.first_name_nicknames
             FROM {components} AS c
             JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
             WHERE k.first_name IS NOT NULL
@@ -165,7 +169,8 @@ def _vetoed_pairs(
         FROM name AS a
         JOIN name AS b ON b.cluster_id = a.cluster_id AND b.first_name > a.first_name
         WHERE jaro_winkler_similarity(a.first_name, b.first_name) < $jw
-            AND left(a.first_name, 1) <> left(b.first_name, 1)
+            AND NOT {initial}
+            AND NOT {nickname}
         """,
         {"jw": FIRST_NAME_VETO_JW},
     ).fetchall()

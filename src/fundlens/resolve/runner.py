@@ -29,7 +29,7 @@ from splink import DuckDBAPI
 
 from fundlens import markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import crosswalk, model, overrides
+from fundlens.resolve import crosswalk, model, nicknames, overrides
 from fundlens.resolve.cluster import (
     CLUSTER_TABLE,
     COMPONENT_TABLE,
@@ -120,8 +120,10 @@ def _count(con: duckdb.DuckDBPyConnection, partition: Path) -> int:
 
 def _load_contributors(con: duckdb.DuckDBPyConnection, partitions: list[Path]) -> int:
     """The table `contributor`: one row per key across `partitions`, in the columns the model
-    reads (`model.settings`), with its counts and totals across cycles; its row count."""
+    reads (`model.settings`, the first name's `first_name_nicknames` from `nicknames.pairs`), with
+    its counts and totals across cycles; its row count."""
     files = "[" + ", ".join(literal(part / "*.parquet") for part in partitions) + "]"
+    linked = sorted(nicknames.pairs())
     con.execute(
         f"""
         CREATE TABLE {CONTRIBUTOR_TABLE} AS
@@ -150,10 +152,17 @@ def _load_contributors(con: duckdb.DuckDBPyConnection, partitions: list[Path]) -
         surname AS (
             SELECT name_last, soundex(name_last) AS last_name_soundex
             FROM (SELECT DISTINCT name_last FROM chosen)
+        ),
+        -- Each first name the nickname table names, and the names it links to that one.
+        nickname AS (
+            SELECT name, list(DISTINCT other ORDER BY other) AS first_name_nicknames
+            FROM (SELECT unnest($names::VARCHAR[]) AS name, unnest($others::VARCHAR[]) AS other)
+            GROUP BY name
         )
         SELECT
             chosen.contributor_key,
             chosen.name_first AS first_name,
+            coalesce(nickname.first_name_nicknames, []::VARCHAR[]) AS first_name_nicknames,
             chosen.name_last AS last_name,
             left(chosen.name_first, 1) AS first_initial,
             surname.last_name_soundex,
@@ -170,7 +179,9 @@ def _load_contributors(con: duckdb.DuckDBPyConnection, partitions: list[Path]) -
             chosen.last_seen AS last_cycle
         FROM chosen
         LEFT JOIN surname ON surname.name_last = chosen.name_last
-        """
+        LEFT JOIN nickname ON nickname.name = chosen.name_first
+        """,
+        {"names": [name for name, _ in linked], "others": [other for _, other in linked]},
     )
     [(rows,)] = con.execute(f"SELECT count(*) FROM {CONTRIBUTOR_TABLE}").fetchall()
     return rows

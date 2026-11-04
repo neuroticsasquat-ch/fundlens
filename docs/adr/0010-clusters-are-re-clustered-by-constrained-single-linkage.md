@@ -19,3 +19,9 @@ Rejected: raising the cluster threshold everywhere (a chain forms at any thresho
 - `RESOLVE_MAX_CLUSTER_KEYS` is retuned when the model is retrained or the backfill adds cycles; the loop in `docs/runbooks/refreshing-dime.md` is how.
 - A cluster of different people who share a first name and link pairwise at 0.99 is still one donor up to the cap: the cap bounds the model's error, it does not fix it.
 - The working file grows by the `edge` and `component` tables (low single-digit GB on 2024; `docs/capacity.md` records it).
+
+## Amendment 2026-11-03 (NEU-2188): the veto reads no initials
+
+The first-name comparison's "initial" level was an exact match on `first_initial`, so any two names sharing a first letter (MARGO and MICHAEL) scored as an initial and its full name instead of reaching the else level; NEU-2182's diagnosis of 2024 put 54 of 100 sampled wrong pairs on it. The veto above copied that level, so it required *different* initials and never cut those pairs either, while it did cut BILL from WILLIAM.
+
+A vetoed pair is now: both first names present, not equal, Jaro-Winkler under 0.8, and **neither an initial pair** (one name a single letter, both starting with it) **nor a nickname pair** (one a prefix of the other at least three letters long, or the two linked directly by the vendored nickname table `resolve/nicknames.csv` less `nicknames-excluded.csv`), whatever their initials. The model gains a nickname level and its initial level fires only for a real single letter; the model, the veto and `fundlens diagnose` read the initial and nickname rules from the same two SQL fragments in `resolve/model.py`, so the three cannot drift. A household's EDWARD and ELIZABETH are now a vetoed pair. Spec: `docs/specs/NEU-2188-first-name-levels.md`.

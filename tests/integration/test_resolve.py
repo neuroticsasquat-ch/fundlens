@@ -533,13 +533,13 @@ def test_the_fixture_overrides_merge_and_split_donors_in_the_crosswalk(
 ) -> None:
     first = resolve("--full", "--build-id", MODEL)
     assert first.exit_code == 0, first.output
-    margaret, peggy = sorted(donor_keys(transformed, "merge_override"))
+    margaret, meggie = sorted(donor_keys(transformed, "merge_override"))
     [junior] = donor_keys(transformed, "split_override_jr")
     [senior] = donor_keys(transformed, "split_override_sr")
     before = {key: donor_id for key, donor_id, *_ in crosswalk_rows(migrated_db)}
     # What the overrides are for: linkage keeps the KOWALCZYKs apart and joins the ABERNATHYs, as
     # the donor_id the fixture's split names (`from: 1`).
-    assert before[margaret] != before[peggy]
+    assert before[margaret] != before[meggie]
     assert before[junior] == before[senior] == 1
     monkeypatch.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
     get_settings.cache_clear()
@@ -549,9 +549,9 @@ def test_the_fixture_overrides_merge_and_split_donors_in_the_crosswalk(
     assert again.exit_code == 0, again.output
     assert "overrides: 1 merges joining 1 clusters into others, 1 splits" in again.output
     after = {key: donor_id for key, donor_id, *_ in crosswalk_rows(migrated_db)}
-    # The merge keeps PEGGY's id, which carries more dollars, and redirects MARGARET's.
-    assert after[margaret] == after[peggy] == before[peggy]
-    assert redirects(migrated_db) == {before[margaret]: before[peggy]}
+    # The merge keeps MEGGIE's id, which carries more dollars, and redirects MARGARET's.
+    assert after[margaret] == after[meggie] == before[meggie]
+    assert redirects(migrated_db) == {before[margaret]: before[meggie]}
     # The split leaves the father, with more dollars, the donor's id, and gives the son a new one.
     assert after[senior] == 1
     assert after[junior] not in before.values()
@@ -571,7 +571,7 @@ def test_overrides_naming_what_the_run_does_not_know_stop_it_before_training(
     bad = tmp_path / "overrides.yaml"
     bad.write_text(
         FIXTURE_OVERRIDES.read_text().replace(
-            "KOWALCZYK, PEGGY|20910||", "KOWALCZYK, PEGGY|99999||"
+            "KOWALCZYK, MEGGIE|20910||", "KOWALCZYK, MEGGIE|99999||"
         )
     )
     monkeypatch.setenv("OVERRIDES_PATH", str(bad))
@@ -581,7 +581,7 @@ def test_overrides_naming_what_the_run_does_not_know_stop_it_before_training(
 
     assert result.exit_code == 1
     assert (
-        "overrides: 'KOWALCZYK, PEGGY|99999||' is no contributor key of this run;"
+        "overrides: 'KOWALCZYK, MEGGIE|99999||' is no contributor key of this run;"
         " split from 1: no such donor_id"
     ) in result.output
     assert not store.exists(paths.resolution_model(MODEL))
