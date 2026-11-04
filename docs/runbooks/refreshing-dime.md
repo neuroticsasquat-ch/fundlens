@@ -12,8 +12,8 @@ links that rot, and `bonica.cid` values change between DIME releases (codebook �
 must be reproducible from what R2 holds (ADR-0002).
 
 **Not in this runbook:** the methodology page and the `/v1/meta` fields (NEU-2056). Tuning the cluster cap
-against the figures is [step 8](#8-tuning-the-cluster-cap); taking the wrong pairs apart and sweeping the cluster
-threshold is [step 9](#9-diagnosing-the-wrong-pairs).
+against the figures is [step 8](#8-tuning-the-cluster-cap); taking the wrong pairs apart, sweeping the cluster
+threshold and choosing it is [step 9](#9-diagnosing-the-wrong-pairs).
 
 ## Before you start
 
@@ -359,6 +359,11 @@ rebuilds the components from `edge` at or above T into a temp table, leaving `co
 them as usual: the threshold sweep, with no re-predict (`edge` holds every pair at or above 0.9). Both write
 nothing to Postgres, R2 or the crosswalk; `recluster` rewrites only the working file's `cluster` table.
 
+The sweep (9.4) covers thresholds below the default as well as above it: a higher threshold can only lower
+recall, so only a lower one can recover it, down to the match threshold (`recluster` refuses anything below).
+[9.6](#96-choose-the-threshold) chooses the threshold by a fixed rule and, when the winner is not the default,
+changes the default.
+
 **Never merge to `main` while this step runs:** a merge redeploys `pipeline` and kills the running command.
 
 Steps 0, 1.2 and 3 must have run for the cycle, and the working file must come from 8.2 (or a later
@@ -371,7 +376,8 @@ Steps 0, 1.2 and 3 must have run for the cycle, and the working file must come f
 docker exec "$(fl pipeline)" printenv OTEL_RESOURCE_ATTRIBUTES
 ```
 
-**Expected:** `service.version=<sha>` is the merge commit of NEU-2182 or later.
+**Expected:** `service.version=<sha>` is the merge commit of NEU-2189's runbook PR or later. That commit
+includes NEU-2188's first-name levels.
 
 ### 9.2 The working file at the default
 
@@ -400,7 +406,36 @@ Jr/Sr, common name in one area, junk data, other. Copy the count per class into 
 
 ### 9.4 The threshold sweep
 
-Each value is two commands: re-cluster at the threshold, then score.
+Each value is two commands: re-cluster at the threshold, then score. The four values below the default come
+first.
+
+```bash
+# VM, in tmux
+export T=0.90
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.92
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.93
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
+
+```bash
+# VM, in tmux
+export T=0.94
+time docker exec "$(fl pipeline)" fundlens recluster --cluster-threshold "$T" | tee "recluster-t$T.txt"
+time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | tee "validate-t$T.txt"
+```
 
 ```bash
 # VM, in tmux
@@ -438,8 +473,13 @@ time docker exec "$(fl pipeline)" fundlens validate --cycle "$C" --clusters | te
 ```
 
 **Expected:** each `recluster` prints `components rebuilt from the edges at or above <T>` and its
-`recluster:` line, and each `validate` the step 4 table ending `nothing written`. Copy both scopes' precision and
-recall for every T into the Log.
+`recluster:` line, and each `validate` the step 4 table ending `nothing written`.
+
+- Below 0.95 components grow, so a `recluster:` line may count more `oversized` components than 9.2's.
+- A `recluster:` line ending `→ 200` means the cluster cap binds at that T: re-clustering cut pieces at the
+  cap, not the veto below it. Note it beside that T's figures.
+- Copy every T's `recluster:` line (pieces, largest), both scopes' precision and recall, and the wrong pairs
+  (overall `predicted` less `correct`) into the Log.
 
 ### 9.5 Put the working file back
 
@@ -450,11 +490,56 @@ docker exec "$(fl pipeline)" fundlens recluster
 
 **Expected:** the same `recluster:` line as 9.2, so the working file's `cluster` table matches the crosswalk.
 
-### 9.6 Record
+### 9.6 Choose the threshold
+
+Go through four tiers in order and stop at the first that holds a threshold. Inside a tier the winner is the
+threshold with the highest overall precision; on a tie, the one with the higher top-10,000 recall (NEU-2189
+spec §1.1).
+
+1. NEU-2122's targets: overall precision ≥ 0.8 and recall ≥ 0.88; top 10,000 precision ≥ 0.92 and
+   recall ≥ 0.81.
+2. 8.5's floor: overall recall ≥ 0.88; top 10,000 precision ≥ 0.92 and recall ≥ 0.81. No bar on overall
+   precision.
+3. The step down: overall precision ≥ 0.8 and recall ≥ 0.88; top 10,000 precision ≥ 0.92 and
+   recall ≥ 0.8023 (the floor NEU-2188 carried over).
+4. None of these: keep 0.95, and the Log records top-scope recall's shortfall against 0.81 and 0.8023 as
+   accepted.
+
+Set it. It is `T_WINNER`, not 8.5's `WINNER`, which 8.6 reads as the cluster cap:
+
+```bash
+# VM, in tmux. The chosen threshold.
+export T_WINNER=0.95
+```
+
+**If the winner is 0.95**, nothing changes: 9.5 has already put the working file back.
+
+**If the winner is not 0.95**, change the default:
+
+- Open a PR that sets `resolve_cluster_threshold`'s default in `src/fundlens/settings.py` to the winner, with
+  the comment above it naming the tuning (this step, NEU-2189), and the sweep figures in its body. The compose
+  file passes `pipeline` no `RESOLVE_CLUSTER_THRESHOLD`, so a Coolify entry would never reach it. In the same
+  PR, amend the project spec §6.3 item 4, which writes 0.95 into the clustering step.
+- Its merge redeploys `pipeline`, so merge it only with nothing running.
+- After the deploy, run 8.1, 8.2 and 8.3, then 8.6 under the cap, which this step leaves unchanged:
+
+  ```bash
+  # VM, in tmux. The cluster cap, for 8.6.
+  export WINNER=200
+  ```
+
+  Then step 5 once the next `load` and `publish` have run.
+
+**Expected** after the redeploy (the not-0.95 path only): 8.3's figures are within 0.002 of the winner's row in
+the sweep; a larger gap means the retrained model differs, so stop and record it. 8.6 returns `(0 rows)`. `gold.meta`'s quality line after `load` and
+`publish` matches 8.3.
+
+### 9.7 Record
 
 Add a Findings entry to [`docs/capacity.md`](../capacity.md) stating which causes make up the wrong pairs, by
-count, from 9.3's tables and the hand classification, and the sweep's figures. File a ticket for each fix the
-figures point at, with the expected precision gain taken from them.
+count, from 9.3's tables and the hand classification, and the sweep's figures. State what the threshold gained
+and cost on the current model against 0.95: the wrong pairs removed, and the correct pairs and top-scope recall
+lost. File a ticket for each fix the figures point at, with the expected precision gain taken from them.
 
 ## Log
 

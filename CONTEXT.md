@@ -111,6 +111,10 @@ _Avoid_: splitting (that is an override's word), pruning
 The most contributor keys a cluster may hold after re-clustering. Tuned against the reference labels, not derived.
 _Avoid_: max cluster size, size limit
 
+**Cluster threshold**:
+The match probability at or above which a scored pair joins its two contributor keys into one component (`RESOLVE_CLUSTER_THRESHOLD`). A pair between the match threshold and it is kept as an edge but joins nothing. Tuned against the reference labels, like the cluster cap.
+_Avoid_: link threshold, match threshold (that is the lower bar, below which a pair is not kept at all)
+
 **Crosswalk**:
 The persistent mapping from contributor key to donor ID, so weekly rebuilds do not reshuffle donor URLs. A new cluster inherits the donor ID its members already carry; only never-seen keys get new IDs.
 
