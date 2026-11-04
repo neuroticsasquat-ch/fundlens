@@ -27,7 +27,9 @@ def test_an_exclusion_removes_its_pair_both_ways() -> None:
 @pytest.mark.parametrize(
     ("upstream", "excluded", "message"),
     [
-        (UPSTREAM, "name1,name2,reason\nharold,henry,stale\n", "has no harold,henry"),
+        (UPSTREAM, "name1,name2,reason\nharold,henry,stale\n", "has no row harold,henry"),
+        (UPSTREAM, "name1,name2,reason\nhal,harold,backwards\n", "has no row hal,harold"),
+        (UPSTREAM, "name1,name2,reason\nharold,hal,a\nharold,hal,b\n", "excluded twice"),
         (UPSTREAM, "name1,name2,reason\nhal,hal,itself\n", "paired with itself"),
         (UPSTREAM, "name1,name2,reason\nharold,,empty\n", "a name is empty"),
         (UPSTREAM + "hal,is_nickname_of,harold\n", "name1,name2,reason\n", "not has_nickname"),

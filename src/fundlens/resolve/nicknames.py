@@ -38,19 +38,23 @@ def _pair(source: str, line: int, name: str, other: str) -> frozenset[str]:
 
 
 def _pairs(upstream: str, excluded: str) -> set[tuple[str, str]]:
+    rows: set[tuple[str, str]] = set()
     linked: set[frozenset[str]] = set()
     for line, row in _rows(upstream, UPSTREAM, ["name1", "relationship", "name2"]):
         name, relationship, other = row
         if relationship != _RELATIONSHIP:
             raise ValueError(f"{UPSTREAM} line {line}: {relationship!r} is not {_RELATIONSHIP}")
         linked.add(_pair(UPSTREAM, line, name, other))
+        rows.add((name, other))
     refused: set[frozenset[str]] = set()
     for line, row in _rows(excluded, EXCLUDED, ["name1", "name2", "reason"]):
         name, other, _ = row
         pair = _pair(EXCLUDED, line, name, other)
         # A stale exclusion is a mistake: the upstream row it was written against has changed.
-        if pair not in linked:
-            raise ValueError(f"{EXCLUDED} line {line}: {UPSTREAM} has no {name},{other}")
+        if (name, other) not in rows:
+            raise ValueError(f"{EXCLUDED} line {line}: {UPSTREAM} has no row {name},{other}")
+        if pair in refused:
+            raise ValueError(f"{EXCLUDED} line {line}: {name},{other} is excluded twice")
         refused.add(pair)
     return {(a, b) for pair in linked - refused for a in pair for b in pair if a != b}
 

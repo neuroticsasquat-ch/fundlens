@@ -17,7 +17,7 @@ from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import crosswalk, model
+from fundlens.resolve import crosswalk, model, nicknames
 from fundlens.resolve.cluster import cluster, recluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
@@ -171,6 +171,25 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
     # The run's connection had the limit, and kept to it: DuckDB fails a query that exceeds it.
     assert "DuckDB memory limit: 244.1 MiB" in result.output
     assert "priors (too few keys to train on)" in result.output
+
+
+def test_each_key_carries_the_names_the_nickname_table_links_to_its_first_name(
+    transformed: Path,
+) -> None:
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 0, result.output
+    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+        found = dict(
+            con.execute(
+                "SELECT DISTINCT first_name, first_name_nicknames FROM contributor"
+            ).fetchall()
+        )
+    linked = nicknames.pairs()
+    assert found == {name: sorted(o for n, o in linked if n == name) for name in found}
+    # MARGARET's nicknames include PEGGY; MEGGIE, whom only the override joins to her, has none.
+    assert "PEGGY" in found["MARGARET"]
+    assert found["MEGGIE"] == []
 
 
 def test_the_chain_is_one_component_and_two_clusters_and_the_working_file_keeps_its_edges(

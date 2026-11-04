@@ -8,8 +8,9 @@ to the [Log](#log) at the bottom, never rewrite it.
 
 **When to use one.** Linkage keeps apart what only a reviewer can join (a nickname the nickname table
 does not name: MARGARET and MEGGIE) and joins what only a reviewer can tell apart (father and son at
-one address, whose `JR` and `SR` normalization strips). An override is for a donor you can name and justify in a sentence. It is not a
-way to tune linkage across many donors: that is the thresholds (spec §6.4) and a `resolve --full`.
+one address, whose `JR` and `SR` normalization strips). An override is for a donor you can name and
+justify in a sentence. It is not a way to tune linkage across many donors: that is the thresholds
+(spec §6.4) and a `resolve --full`.
 
 **Not in this runbook:** adjudication (spec §6.8), tuning the model, re-resolving after a change to the
 model or normalization.

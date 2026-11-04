@@ -177,7 +177,7 @@ def test_the_vetoed_pairs_recluster_finds_are_the_models_else_level(
     assert result.oversized == 0
 
 
-def test_two_full_names_sharing_an_initial_are_cut_apart_and_a_nickname_is_left_whole() -> None:
+def test_two_full_names_sharing_a_first_letter_are_cut_apart_and_a_nickname_is_left_whole() -> None:
     pairs: list[NamePair] = [("MARGO", "MICHAEL"), ("BILL", "WILLIAM")]
     con = duckdb.connect()
     pair_components(con, pairs)
