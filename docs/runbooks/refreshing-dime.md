@@ -784,3 +784,44 @@ veto reads no initials (`docs/specs/NEU-2188-first-name-levels.md`).
   about 340,000 of the 432,161 in clusters of 50 keys or fewer if the sample holds (79 of 100; 95% interval about
   300,000–370,000), which puts precision against the truth at about 0.95–0.97, not 0.8229. What linkage still gets wrong is common names in one area and first names close by
   Jaro-Winkler; the `jw ≥ 0.8` patterns with a different ZIP are 20,183 wrong to 281 correct.
+
+### 2026-11-03 — The cluster threshold, 2024 (NEU-2189)
+
+From `8b5ca05` (NEU-2189's runbook PR, which includes NEU-2188): DIME v4.0, cycle 2024, build `20261103T175128Z`,
+model `20261104T012451Z`, the working file NEU-2188's resolve left. §9.3 was not re-run: NEU-2188's `diagnose` on
+this working file is the baseline (438,256 wrong pairs).
+
+- **Plain recluster** (§9.2): `recluster: 7,339 components (3 oversized, 7,339 inconsistent) into 18,975 pieces;
+  largest 263 → 103`, as NEU-2188's resolve.
+- **Sweep** (§9.4), overall precision / recall, then the top 10,000; wrong pairs are overall `predicted` less
+  `correct`. Each `recluster` took 38–76 s (shorter at higher T) and each `validate` 3m30s–4m18s.
+
+  | T | Pieces | Largest | Overall | Top 10,000 | Wrong pairs |
+  | --- | --- | --- | --- | --- | --- |
+  | 0.90 | 24,087 | 617 → 103 | 0.8023 / 0.9146 | 0.9736 / 0.8010 | 503,913 |
+  | 0.92 | 23,972 | 568 → 103 | 0.8031 / 0.9146 | 0.9737 / 0.8010 | 501,518 |
+  | 0.93 | 19,253 | 265 → 103 | 0.8052 / 0.9143 | 0.9737 / 0.8009 | 494,724 |
+  | 0.94 | 19,129 | 265 → 103 | 0.8090 / 0.9138 | 0.9737 / 0.8005 | 482,338 |
+  | **0.95** (the default) | 18,975 | 263 → 103 | **0.8229 / 0.9105** | **0.9739 / 0.7988** | 438,256 |
+  | 0.97 | 18,324 | 258 → 102 | 0.8254 / 0.9086 | 0.9741 / 0.7965 | 429,930 |
+  | 0.99 | 16,354 | 238 → 102 | 0.8279 / 0.9059 | 0.9741 / 0.7948 | 421,254 |
+  | 0.999 | 6,137 | 148 → 97 | 0.8714 / 0.8865 | 0.9865 / 0.7615 | 292,694 |
+  | 0.9999 | 4,243 | 122 → 96 | 0.9001 / 0.8468 | 0.9895 / 0.7118 | 210,264 |
+
+  0.95 reproduces NEU-2188's figures exactly. Oversized components rise below the default (10 at 0.90 and 0.92,
+  against 3), but **the cluster cap bound at no T**: every `recluster:` line ends at 103 keys or fewer, so the
+  first-name veto does all the cutting.
+- **Restored** (§9.5): `recluster: 7,339 components (3 oversized, 7,339 inconsistent) into 18,975 pieces; largest
+  263 → 103`, as 9.2.
+- **Chosen** (§9.6): **0.95, from tier 4.** No T reaches top-10,000 recall 0.81 (tiers 1 and 2) or 0.8023 (tier 3):
+  the best is 0.8010, at 0.90 and 0.92. The default stands, so nothing is redeployed and no PR 3 follows.
+  Top-10,000 recall's shortfall at 0.95, 0.7988 against 0.81 (0.0112) and against 0.8023 (0.0035, 1,495 correct
+  pairs), is **accepted**, closing NEU-2188's carry-over.
+- **What it means.** Lowering the threshold to the match threshold (0.90) recovers 924 of those 1,495 correct
+  top-scope pairs and 9,283 correct pairs overall, for 65,657 more wrong ones (overall precision 0.8229 → 0.8023).
+  So the rest of the top-scope gap is not the threshold's: those pairs were never compared, scored below 0.9 or
+  were cut by the veto, which this sweep cannot tell apart. Raising it trades recall for precision more dearly than on NEU-2182's model:
+  0.999 removes 145,562 wrong pairs for 53,507 correct ones (2.7 to 1), where it removed 772,325 for 57,437
+  (13.4 to 1), and costs top-scope recall 0.0373. With 79 of NEU-2188's 100 sampled wrong pairs DIME's own, many of
+  the "wrong" pairs a higher threshold removes are likely one person DIME splits, though this sweep did not sample
+  them.

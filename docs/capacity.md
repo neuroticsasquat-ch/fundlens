@@ -60,6 +60,15 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6382 (0.9571) | 0.9032 (0.7593) | 218 | N = 50, validate --clusters, nothing written. 202 oversized components, 11,130 pieces. |
 | 2026-11-03 | `20261103T145232Z` | 2024 (`20261103T142758Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6288 (0.9516) | 0.9121 (0.8023) | 221 | From `abafafe`: the Biden→Harris handoff split (NEU-2126). Identical to `20261102T194152Z`: the change moves money between candidates and leaves contributor keys alone. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8229 (0.9739) | 0.9105 (0.7988) | — | From `a2ca75f`: NEU-2188's first-name levels, N = 200, threshold 0.95; the live figures. 2,036,148 correct, 2,474,404 predicted, 2,236,402 true pairs overall; top 10,000: 343,871 correct, 353,072 predicted, 430,470 true. Wall time not captured. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8023 (0.9736) | 0.9146 (0.8010) | 258 | T = 0.90, validate --clusters, nothing written (NEU-2189). 24,087 pieces, largest 617 → 103; 503,913 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8031 (0.9737) | 0.9146 (0.8010) | 218 | T = 0.92, validate --clusters, nothing written (NEU-2189). 23,972 pieces, largest 568 → 103; 501,518 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8052 (0.9737) | 0.9143 (0.8009) | 215 | T = 0.93, validate --clusters, nothing written (NEU-2189). 19,253 pieces, largest 265 → 103; 494,724 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8090 (0.9737) | 0.9138 (0.8005) | 210 | T = 0.94, validate --clusters, nothing written (NEU-2189). 19,129 pieces, largest 265 → 103; 482,338 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8229 (0.9739) | 0.9105 (0.7988) | 213 | T = 0.95, validate --clusters, nothing written (NEU-2189). The default, chosen (refreshing-dime §9.6, tier 4); 18,975 pieces, largest 263 → 103; 438,256 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8254 (0.9741) | 0.9086 (0.7965) | 218 | T = 0.97, validate --clusters, nothing written (NEU-2189). 18,324 pieces, largest 258 → 102; 429,930 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8279 (0.9741) | 0.9059 (0.7948) | 216 | T = 0.99, validate --clusters, nothing written (NEU-2189). 16,354 pieces, largest 238 → 102; 421,254 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8714 (0.9865) | 0.8865 (0.7615) | 213 | T = 0.999, validate --clusters, nothing written (NEU-2189). 6,137 pieces, largest 148 → 97; 292,694 wrong pairs. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.9001 (0.9895) | 0.8468 (0.7118) | 211 | T = 0.9999, validate --clusters, nothing written (NEU-2189). 4,243 pieces, largest 122 → 96; 210,264 wrong pairs. |
 
 ## Findings
 
@@ -128,3 +137,13 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   Jaro-Winkler-close first names that are two people: BARRY/LARRY, CLAIRE/LAURIE) and households (4). If the sample holds, about 340,000 of the
   432,161 wrong pairs in clusters of 50 keys or fewer are DIME's, and precision against the truth is about
   0.95–0.97.
+- **The threshold is not where top-scope recall went; 0.95 stays (NEU-2189).** Swept from the match threshold
+  (0.90) to 0.9999 on NEU-2188's model, against 0.95: lowering it to 0.90 adds 9,283 correct pairs and 924 of the
+  1,495 top-10,000 pairs below the 0.8023 floor, for 65,657 more wrong pairs (precision 0.8229 → 0.8023), and top
+  recall stops at 0.8010. Raising it removes wrong pairs at a far worse rate than on NEU-2182's model: at 0.999,
+  145,562 wrong for 53,507 correct (2.7 to 1; it was 772,325 for 57,437, 13.4 to 1, before the first-name fix),
+  and top-10,000 recall falls 0.7988 → 0.7615; at 0.9999, 227,992 wrong for 142,282 correct, and 0.7118. The
+  first-initial fix took most of what a higher threshold used to remove: it now buys about 2.7 wrong pairs per
+  correct one lost, and if NEU-2188's sample holds, many of those "wrong" pairs are DIME's own errors, so the trade
+  is worse than it looks. The cluster cap bound at no threshold (largest 103 keys at most), and 0.95 is kept by the
+  rule's last tier, top-scope recall 0.7988 accepted.
