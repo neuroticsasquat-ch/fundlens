@@ -38,6 +38,7 @@ file is `/data/fundlens/resolution/resolve.duckdb` after the run; from NEU-2122 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / — / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | `22e56ce` | 5,620,495 | 3,822,946 | 10.21 / 188.02 / 106.62 / 11.85 / 0.18 / 0.13 / 18.81 / 253.41 | 598 | — | 9.5 | First run with re-clustering ([refreshing-dime.md](runbooks/refreshing-dime.md) §8, NEU-2122), cap 200. `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces; largest 1,400 → 180`. Crosswalk: 6,806 new donors, 31,213 keys re-pointed, 0 redirects; one override merge. Wall time is `time`'s `real`; peak memory not measured. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | `a2ca75f` | 5,620,495 | 4,009,899 | 10.01 / 174.71 / 112.62 / 10.98 / 0.19 / 0.15 / 32.82 / 197.31 | — | — | 9.4 | First run with the first-name levels of NEU-2188 (initial pair, nickname pair, the veto blind to initials), cap 200. `recluster: 7,339 components (3 oversized, 7,339 inconsistent) into 18,975 pieces; largest 263 → 103`. Crosswalk: 197,265 new donors, 284,508 keys re-pointed, 10,312 redirects; one override merge. The phases sum to 539 s; wall time and peak memory not captured. |
 
 ## Validation
 
@@ -58,6 +59,7 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6313 (0.9517) | 0.9121 (0.8023) | 218 | N = 100, validate --clusters, nothing written. 59 oversized components, 10,910 pieces. |
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6382 (0.9571) | 0.9032 (0.7593) | 218 | N = 50, validate --clusters, nothing written. 202 oversized components, 11,130 pieces. |
 | 2026-11-03 | `20261103T145232Z` | 2024 (`20261103T142758Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.6288 (0.9516) | 0.9121 (0.8023) | 221 | From `abafafe`: the Biden→Harris handoff split (NEU-2126). Identical to `20261102T194152Z`: the change moves money between candidates and leaves contributor keys alone. |
+| 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8229 (0.9739) | 0.9105 (0.7988) | — | From `a2ca75f`: NEU-2188's first-name levels, N = 200, threshold 0.95; the live figures. 2,036,148 correct, 2,474,404 predicted, 2,236,402 true pairs overall; top 10,000: 343,871 correct, 353,072 predicted, 430,470 true. Wall time not captured. |
 
 ## Findings
 
@@ -114,3 +116,15 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   A higher cluster threshold also reaches them, since most of them score below 0.999: at 0.999 overall precision
   and recall are 0.8211 / 0.8864, the first configuration to meet the overall targets, for 57,437 correct pairs and
   top-10,000 recall 0.8023 → 0.7647.
+- **Telling an initial and a nickname from two first names sharing a letter removes nearly two thirds of
+  the wrong pairs (NEU-2188).** With the initial level confined to a single letter, a nickname level (prefix of three letters or
+  more, or the vendored nickname table) and a veto blind to initials, 2024's wrong pairs fell from 1,204,209 to
+  438,256 for 3,729 correct ones: overall precision 0.6288 → 0.8229, recall 0.9121 → 0.9105, both past
+  NEU-2122's overall targets at the default threshold. The top 10,000 gained precision (0.9516 → 0.9739) and lost a
+  little recall (0.8023 → 0.7988, 1,495 correct pairs under the ticket's floor; accepted, and carried to NEU-2189),
+  a fraction of what the 0.999 threshold cost it (0.7647). Among direct wrong pairs the `initial only` patterns in the top 20 now hold 8,904
+  wrong pairs, against 441,466. Of the 100 sampled wrong pairs, 79 look like DIME's own splits (11 of them two
+  `cid`s that differ by exactly 5×10¹⁵); the rest are common names in one area (12), other causes (5, chiefly
+  Jaro-Winkler-close first names that are two people: BARRY/LARRY, CLAIRE/LAURIE) and households (4). If the sample holds, about 340,000 of the
+  432,161 wrong pairs in clusters of 50 keys or fewer are DIME's, and precision against the truth is about
+  0.95–0.97.
