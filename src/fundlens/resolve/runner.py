@@ -7,7 +7,8 @@ with none, the most JFC attributions), its counts and totals summed. It trains t
 on that table (`resolve.model`), saves the model as JSON locally and in R2 under this run's
 `build_id`, writes the `edge`, `component` and re-clustered `cluster` tables beside
 `contributor` (`resolve.cluster`), merges and
-splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`), gives every key its
+splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`) and then as the confident
+verdicts of `fundlens adjudicate` say (`resolve.adjudicate`), gives every key its
 persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycle's
 `contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
 marker for each cycle's transformed build. DuckDB runs under the pipeline's memory limit and
@@ -29,7 +30,7 @@ from splink import DuckDBAPI
 
 from fundlens import markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import crosswalk, model, nicknames, overrides
+from fundlens.resolve import adjudicate, crosswalk, model, nicknames, overrides
 from fundlens.resolve.cluster import (
     CLUSTER_TABLE,
     COMPONENT_TABLE,
@@ -68,6 +69,7 @@ class Resolved:
     # Each cycle resolved, and the transformed build its contributors came from.
     builds: dict[int, str]
     overridden: overrides.Applied
+    adjudicated: adjudicate.Applied
     assigned: crosswalk.Assigned
     # DuckDB's memory limit as the run's connection had it.
     memory_limit: str
@@ -214,10 +216,13 @@ def resolve_full(
     max_keys: int,
     min_training_keys: int,
     overrides_path: Path,
+    adjudication: adjudicate.Version,
+    adjudicate_min_amount: int,
     conn: Connection[TupleRow],
 ) -> Resolved:
     """Train the model on every cycle's contributors, cluster them and re-cluster under the
-    cluster cap `max_keys`, then apply the overrides file at `overrides_path`; write the model,
+    cluster cap `max_keys`, then apply the overrides file at `overrides_path` and the confident
+    verdicts of `adjudication` (`adjudicate.apply`); write the model,
     the `edge`, `component` and `cluster` tables, the crosswalk, each cycle's silver with its
     donor_ids and each cycle's `resolved` marker (spec §6.3–§6.6, §5.1, NEU-2122).
 
@@ -262,6 +267,13 @@ def resolve_full(
             reclustered = recluster(con, max_keys=max_keys, cluster_threshold=thresholds.cluster)
         with _phase("overrides", times):
             overridden = overrides.rewrite(con, asserted)
+        with _phase("adjudications", times):
+            adjudicated = adjudicate.apply(
+                con,
+                adjudicate.confident(conn, adjudication),
+                min_amount=adjudicate_min_amount,
+                overrides=asserted,
+            )
         [(clusters,)] = con.execute(
             f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
         ).fetchall()
@@ -311,6 +323,7 @@ def resolve_full(
         reclustered,
         builds,
         overridden,
+        adjudicated,
         assigned,
         memory_limit,
         times,
@@ -323,6 +336,7 @@ class Rewritten:
 
     reclustered: Reclustered
     overridden: overrides.Applied
+    adjudicated: adjudicate.Applied
     clusters: int
 
 
@@ -333,12 +347,15 @@ def recluster_working_file(
     max_keys: int,
     cluster_threshold: float,
     overrides_path: Path,
+    adjudication: adjudicate.Version,
+    adjudicate_min_amount: int,
     conn: Connection[TupleRow],
     rebuild: bool = False,
 ) -> Rewritten:
     """Rewrite the working file's `cluster` table as `resolve_full` would under the cluster cap
-    `max_keys`: its components re-clustered, then the overrides file at `overrides_path` applied
-    (NEU-2122 §5.1). Nothing else changes: no crosswalk, silver, marker or R2.
+    `max_keys`: its components re-clustered, then the overrides file at `overrides_path` and the
+    confident verdicts of `adjudication` applied (NEU-2122 §5.1, spec §6.8). Nothing else
+    changes: no crosswalk, silver, marker or R2.
 
     With `rebuild`, the components are first rebuilt from `edge` at `cluster_threshold`
     (`components_at`) into a temp table, `component` left as linkage wrote it: the threshold
@@ -372,6 +389,12 @@ def recluster_working_file(
                 con, max_keys=max_keys, cluster_threshold=cluster_threshold, components=components
             )
             overridden = overrides.rewrite(con, asserted)
+            adjudicated = adjudicate.apply(
+                con,
+                adjudicate.confident(conn, adjudication),
+                min_amount=adjudicate_min_amount,
+                overrides=asserted,
+            )
             [(clusters,)] = con.execute(
                 f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
             ).fetchall()
@@ -379,4 +402,4 @@ def recluster_working_file(
             con.rollback()
             raise
         con.commit()
-    return Rewritten(reclustered, overridden, clusters)
+    return Rewritten(reclustered, overridden, adjudicated, clusters)

@@ -1,0 +1,28 @@
+# The adjudication model's replies to the fixture cycle's planted candidates (NEU-2055, spec §6.8),
+# written as DeepInfra's chat completions return them: the reply's content and its usage. Each is
+# matched by every contributor key of the candidate it answers (tests/fake_adjudicator.py); the
+# fake answers any other candidate `unsure` with no confidence.
+#
+# HALVORSEN, KATHERINE and HALVORSEN, KATHRYN (expected.yaml `adjudication_merge`): a pair linkage
+# scores in the band and keeps apart, merged with a confidence the resolve run applies.
+- keys:
+    - "HALVORSEN, KATHERINE|21401|NAVAL ACADEMY|PROFESSOR"
+    - "HALVORSEN, KATHRYN|21409|HALVORSEN CONSULTING|CONSULTANT"
+  content: >-
+    {"decision": "merge", "confidence": 0.86, "reason": "KATHRYN and KATHERINE are one name,
+    and a professor in Annapolis and a consultant in neighbouring Arnold under her own surname fit
+    one career."}
+  prompt_tokens: 612
+  completion_tokens: 47
+  cost: 0.000097
+# THORSBY, OSCAR under two employers (expected.yaml `adjudication_unsure`): one cluster of
+# linkage's, which the model is unsure of; recorded, and left as it is.
+- keys:
+    - "THORSBY, OSCAR|20814|NORTHBRIDGE PARTNERS|INVESTOR"
+    - "THORSBY, OSCAR|20814|THORSBY CAPITAL|INVESTOR"
+  content: >-
+    {"decision": "unsure", "confidence": 0.45, "reason": "One name and address, but two
+    investment employers could be one investor or a parent and child."}
+  prompt_tokens: 598
+  completion_tokens: 39
+  cost: 0.000094

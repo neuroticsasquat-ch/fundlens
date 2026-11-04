@@ -21,7 +21,7 @@ from fundlens.settings import get_settings
 from fundlens.transform.runner import ChecksFailed
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT
-from tests.integration.test_resolve import FOR_OVERRIDES, MODEL
+from tests.integration.test_resolve import BEYOND_LINKAGE, MODEL
 from tests.integration.test_transform import BUILD, put_bronze, seats_report, transform
 
 NEWER = "20261031T030000Z"
@@ -313,10 +313,10 @@ def test_load_of_a_resolved_build_builds_the_donor_tables(
     donor_cycles = {row["donor_id"]: row for row in rows(migrated_db, "donor_cycle")}
     # One donor per donor_id among the contributions and the attributions.
     assert set(donors) == set(donor_cycles) == set(donor_of.values())
-    # Each planted donor linkage resolves (the overrides' cases need the fixture's overrides) is
-    # one donor with all of their money, their own included.
+    # Each planted donor linkage resolves (the overrides' and adjudication's cases need the
+    # fixture's overrides and verdicts) is one donor with all of their money, their own included.
     for name, planted in expected["donors"].items():
-        if planted["resolved_by"] in FOR_OVERRIDES:
+        if planted["resolved_by"] in BEYOND_LINKAGE:
             continue
         donor_id = donor(name)
         assert dollars(donors[donor_id]["total_all_cycles"]) == planted["amount"], name
