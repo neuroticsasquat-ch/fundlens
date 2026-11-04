@@ -198,7 +198,9 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     [meta] = rows(migrated_db, "meta")
     assert meta["build_id"] == BUILD
     assert meta["published_at"] is None
-    assert (meta["resolver_version"], meta["model_version"]) == (None, None)
+    # No resolve has saved a model, so there is no live one and no run record.
+    columns = ("resolver_version", "model_version", "overrides_count", "adjudications_applied")
+    assert [meta[column] for column in columns] == [None] * len(columns)
     assert meta["cycles"] == {
         "2024": {
             "build_id": BUILD,

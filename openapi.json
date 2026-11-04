@@ -840,8 +840,19 @@
         "type": "object"
       },
       "Meta": {
-        "description": "The live gold build (`gold.meta`, spec \u00a77.1).",
+        "description": "The live gold build (`gold.meta`, spec \u00a77.1): how its donors were resolved and how well\nthat scored against DIME, which the methodology page prints (NEU-2056).",
         "properties": {
+          "adjudications_applied": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjudications Applied"
+          },
           "build_id": {
             "title": "Build Id",
             "type": "string"
@@ -852,6 +863,28 @@
             },
             "title": "Cycles",
             "type": "object"
+          },
+          "dime_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dime Version"
+          },
+          "matched_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Rows"
           },
           "model_version": {
             "anyOf": [
@@ -864,6 +897,17 @@
             ],
             "title": "Model Version"
           },
+          "overrides_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Count"
+          },
           "precision": {
             "anyOf": [
               {
@@ -874,6 +918,17 @@
               }
             ],
             "title": "Precision"
+          },
+          "precision_top": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision Top"
           },
           "published_at": {
             "format": "date-time",
@@ -890,6 +945,17 @@
               }
             ],
             "title": "Recall"
+          },
+          "recall_top": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall Top"
           },
           "resolver_version": {
             "anyOf": [
@@ -908,8 +974,14 @@
           "published_at",
           "resolver_version",
           "model_version",
+          "overrides_count",
+          "adjudications_applied",
           "precision",
           "recall",
+          "precision_top",
+          "recall_top",
+          "matched_rows",
+          "dime_version",
           "cycles"
         ],
         "title": "Meta",

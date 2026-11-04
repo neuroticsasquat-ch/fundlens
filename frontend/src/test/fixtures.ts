@@ -613,10 +613,16 @@ export const MARLOWE_CONTRIBUTIONS: Contribution[] = [
 export const META: Meta = {
   build_id: "20241103T060000Z",
   published_at: "2024-11-03T08:00:00Z",
-  resolver_version: null,
-  model_version: null,
-  precision: null,
-  recall: null,
+  resolver_version: "0123456789abcdef0123456789abcdef01234567",
+  model_version: "20241102T040000Z",
+  overrides_count: 2,
+  adjudications_applied: 31,
+  precision: 0.6288,
+  recall: 0.9121,
+  precision_top: 0.9516,
+  recall_top: 0.8023,
+  matched_rows: 41_230_118,
+  dime_version: "4.0",
   cycles: { "2024": { build_id: "20241103T060000Z", source_dates: { indiv: "2024-11-02" } } },
 };
 

@@ -38,7 +38,7 @@ from fundlens.resolve import overrides
 from fundlens.resolve import runner as resolution
 from fundlens.resolve import validate as validation
 from fundlens.settings import Settings, get_settings
-from fundlens.telemetry import init_sentry, pipeline_integrations
+from fundlens.telemetry import init_sentry, known_release, pipeline_integrations
 from fundlens.transform import runner
 from fundlens.transform import seats as seat_calendar
 
@@ -389,6 +389,7 @@ def resolve(
                 adjudication=_adjudication(settings),
                 adjudicate_min_amount=settings.adjudicate_min_amount,
                 conn=conn,
+                release=known_release(settings.otel_resource_attributes),
             )
     except (FileNotFoundError, overrides.OverridesError) as exc:
         typer.echo(str(exc), err=True)
@@ -772,6 +773,12 @@ def load(
         )
     else:
         typer.echo(f"quality: not validated for model {quality.model_version or '(none saved)'}")
+    if quality.overrides_count is not None:
+        typer.echo(
+            f"resolution: release {quality.resolver_version or '(unknown)'},"
+            f" {quality.overrides_count} overrides,"
+            f" {quality.adjudications_applied} adjudications applied"
+        )
     typer.echo(
         f"loaded build {result.build_id} into gold_build"
         f" (aggregates {result.aggregate_s:.2f} s, copy {result.copy_s:.2f} s)"

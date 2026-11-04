@@ -42,6 +42,7 @@ BUILD = "20261102T030000Z"
             f"resolution/build={BUILD}/adjudication.parquet",
         ),
         (paths.resolution_model(BUILD), f"resolution/model/{BUILD}.json"),
+        (paths.resolution_run(BUILD), f"resolution/run/{BUILD}.json"),
         (paths.reference_dime_raw("4.0", 2024), "reference/dime/v4.0/contribDB_2024.csv.gz"),
         (
             paths.reference_dime("4.0", 2024),
@@ -128,6 +129,8 @@ def test_cycle_of_reads_the_cycle_segment_of_a_key(key: str, cycle: int | None) 
 def test_a_model_version_is_a_build_id() -> None:
     with pytest.raises(ValueError, match="not YYYYMMDDTHHMMSSZ"):
         paths.resolution_model("latest")
+    with pytest.raises(ValueError, match="not YYYYMMDDTHHMMSSZ"):
+        paths.resolution_run("latest")
 
 
 @pytest.mark.parametrize(

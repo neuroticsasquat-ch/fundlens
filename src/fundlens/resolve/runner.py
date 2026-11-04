@@ -11,7 +11,8 @@ splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`) and then 
 verdicts of `fundlens adjudicate` say (`resolve.adjudicate`), gives every key its
 persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycle's
 `contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
-marker for each cycle's transformed build. DuckDB runs under the pipeline's memory limit and
+marker for each cycle's transformed build and the run's record (`RunRecord`) beside its model.
+DuckDB runs under the pipeline's memory limit and
 spills under `scratch/`, and each phase's wall time is logged.
 """
 
@@ -26,6 +27,7 @@ from pathlib import Path
 import duckdb
 from psycopg import Connection
 from psycopg.rows import TupleRow
+from pydantic import BaseModel
 from splink import DuckDBAPI
 
 from fundlens import markers, paths
@@ -75,6 +77,32 @@ class Resolved:
     memory_limit: str
     # Wall time of each phase, in run order.
     phase_s: dict[str, float] = field(default_factory=dict[str, float])
+
+
+class RunRecord(BaseModel):
+    """What a `resolve --full` run applied, saved under its model version
+    (`paths.resolution_run`) for `load` to carry into `gold.meta` (NEU-2056).
+
+    Keyed by the model, so it describes the `--full` run that trained the live model: an
+    incremental run (NEU-2062) that applies overrides without training must write its own.
+    """
+
+    # The deployed release (commit) that resolved; None where none is known (dev, CI).
+    release: str | None
+    # Override entries applied: merges and splits.
+    overrides: int
+    # Adjudication verdicts that merged or split clusters.
+    adjudications: int
+
+
+def run_record(store: R2, version: str) -> RunRecord | None:
+    """The record of the run that trained model `version`, or None if it wrote none (a run
+    before NEU-2056, or one that failed after saving its model)."""
+    try:
+        raw = store.get(paths.resolution_run(version))
+    except FileNotFoundError:
+        return None
+    return RunRecord.model_validate_json(raw)
 
 
 def transformed_builds(store: R2) -> dict[int, str]:
@@ -219,12 +247,14 @@ def resolve_full(
     adjudication: adjudicate.Version,
     adjudicate_min_amount: int,
     conn: Connection[TupleRow],
+    release: str | None,
 ) -> Resolved:
     """Train the model on every cycle's contributors, cluster them and re-cluster under the
     cluster cap `max_keys`, then apply the overrides file at `overrides_path` and the confident
     verdicts of `adjudication` (`adjudicate.apply`); write the model,
     the `edge`, `component` and `cluster` tables, the crosswalk, each cycle's silver with its
-    donor_ids and each cycle's `resolved` marker (spec §6.3–§6.6, §5.1, NEU-2122).
+    donor_ids, each cycle's `resolved` marker and, last, the run's record naming `release`
+    (spec §6.3–§6.6, §5.1, NEU-2122, NEU-2056).
 
     Raises `FileNotFoundError` when no cycle has been transformed, and `OverridesError` when the
     overrides file is malformed or names a key or donor_id the run does not know, before the run
@@ -304,6 +334,12 @@ def resolve_full(
             # The cycle's own keys, each in `cluster` (a key of several cycles counts in each).
             row_counts={CLUSTER_TABLE: cycle_keys[cycle], "contribution": contributions[cycle]},
         )
+    record = RunRecord(
+        release=release,
+        overrides=overridden.merges + overridden.splits,
+        adjudications=adjudicated.merges + adjudicated.splits,
+    )
+    store.put(paths.resolution_run(build_id), record.model_dump_json().encode())
     log.info(
         "resolved %d contributor keys into %d clusters across %d cycles (model %s, %s;"
         " DuckDB memory limit %s)",

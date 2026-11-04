@@ -26,19 +26,22 @@ PREPARE_THRESHOLD_DEFAULT = 5
 def seed_meta(
     conninfo: str, schema: str, build_id: str, *, precision_type: LiteralString = "numeric"
 ) -> None:
-    """A `<schema>.meta` with one row, shaped as the gold build will write it (spec §7.1)."""
+    """A `<schema>.meta` with one row, shaped as the gold build writes it (spec §7.1)."""
     table = sql.Identifier(schema, "meta")
     with psycopg.connect(conninfo, autocommit=True) as conn:
         conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         conn.execute(
             sql.SQL(
                 "CREATE TABLE {} (build_id text, published_at timestamptz, resolver_version text,"
-                " model_version text, precision {}, recall numeric, cycles jsonb)"
+                " model_version text, overrides_count integer, adjudications_applied integer,"
+                " precision {}, recall numeric, precision_top numeric, recall_top numeric,"
+                " matched_rows bigint, dime_version text, cycles jsonb)"
             ).format(table, sql.SQL(precision_type))
         )
         conn.execute(
             sql.SQL(
-                "INSERT INTO {} VALUES (%s, '2026-11-02T09:00:00Z', 'r1', 'm1', 0.97, 0.91, %s)"
+                "INSERT INTO {} VALUES (%s, '2026-11-02T09:00:00Z', 'r1', 'm1', 3, 12, 0.97, 0.91,"
+                " 0.99, 0.88, 281, '4.0', %s)"
             ).format(table),
             (
                 build_id,
@@ -77,12 +80,51 @@ def test_meta_returns_the_live_build_with_cache_headers(
         "published_at": "2026-11-02T09:00:00Z",
         "resolver_version": "r1",
         "model_version": "m1",
+        "overrides_count": 3,
+        "adjudications_applied": 12,
         "precision": 0.97,
         "recall": 0.91,
+        "precision_top": 0.99,
+        "recall_top": 0.88,
+        "matched_rows": 281,
+        "dime_version": "4.0",
         "cycles": {"2026": {"build_id": BUILD_ID, "source_dates": {"cm": "2026-11-02"}}},
     }
     assert response.headers["cache-control"] == CACHE_CONTROL
     assert response.headers["etag"] == f'"{BUILD_ID}"'
+
+
+def test_meta_answers_for_a_build_loaded_before_its_later_columns(
+    scratch_db: str, client: TestClient
+) -> None:
+    # A build live when this code deploys, loaded before NEU-2054's columns and NEU-2056's.
+    with psycopg.connect(scratch_db, autocommit=True) as conn:
+        conn.execute("CREATE SCHEMA gold")
+        conn.execute(
+            "CREATE TABLE gold.meta (build_id text, published_at timestamptz,"
+            " resolver_version text, model_version text, precision numeric, recall numeric,"
+            " cycles jsonb)"
+        )
+        conn.execute(
+            "INSERT INTO gold.meta VALUES (%s, '2026-11-02T09:00:00Z', NULL, NULL, 0.6288, 0.9121,"
+            " '{}')",
+            (BUILD_ID,),
+        )
+
+    response = client.get(META)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    later = (
+        "precision_top",
+        "recall_top",
+        "matched_rows",
+        "dime_version",
+        "overrides_count",
+        "adjudications_applied",
+    )
+    assert [body[column] for column in later] == [None] * len(later)
+    assert (body["precision"], body["recall"]) == (0.6288, 0.9121)
 
 
 def test_meta_is_503_and_uncached_before_any_gold_exists(client: TestClient) -> None:

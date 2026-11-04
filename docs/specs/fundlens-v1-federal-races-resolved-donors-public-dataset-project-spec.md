@@ -137,6 +137,8 @@ bronze/cycle=2026/indiv/2026-11-02.zip          one object per (cycle, file, dow
 silver/<table>/cycle=<cycle>/build=<build_id>/part-0000.parquet   zstd, row groups ≤ 1M rows
 silver/contribution/cycle=<cycle>/build=<build_id>/bucket=<00..ff>/part-*.parquet   bucket = donor_id % 256, zero-padded hex
 resolution/build=<build_id>/{crosswalk,adjudication}.parquet       snapshot taken at publish
+resolution/model/<version>.json                                     the trained Splink model; version = the `resolve --full` build_id
+resolution/run/<version>.json                                       what that run applied: release, overrides, adjudications (NEU-2056)
 markers/cycle=<cycle>/build=<build_id>/{extracted,transformed,resolved,loaded,published}.json
 reference/dime/v<version>/contribDB_<cycle>.csv.gz                  DIME as downloaded, archived (NEU-2054, ADR-0009)
 reference/dime/v<version>/cycle=<cycle>/fec_individual.parquet      its FEC individual rows, slimmed: what `validate` reads
@@ -257,7 +259,7 @@ Only individuals are resolved; committees and candidates carry FEC IDs.
 
 | Table | Content |
 |---|---|
-| `meta` | one row: `build_id, published_at, resolver_version, model_version, precision, recall, precision_top, recall_top, matched_rows, dime_version, cycles jsonb (cycle → live build_id, source download dates)` (the quality columns since NEU-2054: `precision`/`recall` are the overall scope, `_top` the top-10k scope) |
+| `meta` | one row: `build_id, published_at, resolver_version, model_version, overrides_count, adjudications_applied, precision, recall, precision_top, recall_top, matched_rows, dime_version, cycles jsonb (cycle → live build_id, source download dates)` (the quality columns since NEU-2054: `precision`/`recall` are the overall scope, `_top` the top-10k scope; since NEU-2056 `model_version` is the newest saved model, and `resolver_version` (the release that resolved, from OTel's `service.version`), `overrides_count` and `adjudications_applied` (merges and splits each applied) come from that run's record, `resolution/run/<version>.json`) |
 | `cycle` | `cycle, race_count, contribution_count, total_amount` |
 | `race` | `race_id, cycle, office, state, district, is_special, slug, candidate_count, total_individual, total_committee, total_jfc_transfers, ie_support, ie_oppose` |
 | `race_candidate` | `race_id, candidate_id, name, party, incumbent_challenger_open, principal_committee_id, total_individual, total_committee, total_jfc_transfers, self_funding, ie_support, ie_oppose` |

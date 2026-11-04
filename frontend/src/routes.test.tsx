@@ -3,14 +3,11 @@ import { describe, expect, it } from "vitest";
 import { renderApp } from "./test/app";
 
 describe("routes", () => {
-  it.each([
-    ["/dataset", "Dataset"],
-    ["/methodology", "Methodology"],
-  ])("%s renders the %s stub until its page is built", async (path, name) => {
-    renderApp(path);
+  it("/dataset renders the Dataset stub until its page is built", async () => {
+    renderApp("/dataset");
 
-    expect(await screen.findByText(`${name} pages are coming.`)).toBeInTheDocument();
-    expect(document.title).toBe(`${name} · fundlens`);
+    expect(await screen.findByText("Dataset pages are coming.")).toBeInTheDocument();
+    expect(document.title).toBe("Dataset · fundlens");
   });
 
   it.each([
@@ -22,6 +19,7 @@ describe("routes", () => {
     ["/committee/C00401224", "ACTBLUE"],
     ["/donor/412", "MARLOWE, AUGUSTINE MR."],
     ["/search?q=calloway", "Search: calloway"],
+    ["/methodology", "Methodology"],
   ])("%s renders its page", async (path, heading) => {
     renderApp(path);
 
@@ -35,13 +33,15 @@ describe("routes", () => {
     expect(document.title).toBe("Not found · fundlens");
   });
 
-  it("reaches the stubs from the footer links", async () => {
+  it("reaches the methodology page and the dataset stub from the footer links", async () => {
     const { router } = renderApp("/");
     const footer = screen.getByRole("contentinfo");
 
     fireEvent.click(within(footer).getByRole("link", { name: "Methodology" }));
     expect(router.state.location.pathname).toBe("/methodology");
-    expect(await screen.findByText("Methodology pages are coming.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Methodology" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(within(footer).getByRole("link", { name: "Dataset" }));
     expect(await screen.findByText("Dataset pages are coming.")).toBeInTheDocument();

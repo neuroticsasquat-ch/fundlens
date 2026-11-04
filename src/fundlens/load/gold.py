@@ -7,7 +7,8 @@ query that must return no rows), and writes each table as a CSV file under `scra
 one Postgres transaction, `gold_build` is dropped and recreated, each table gets its hand-written
 DDL (`sql/gold/ddl/`), its CSV streamed in with `COPY … FROM STDIN`, its indexes
 (`sql/gold/index/`) and an `ANALYZE`, `donor_redirect` a copy of `app.donor_redirect`, and `meta`
-its one row, with the live model's DIME figures for the cycle from `app.resolution_quality`. A
+its one row, with the live model's version, its run's record (`resolve.runner.RunRecord`) and
+its DIME figures for the cycle from `app.resolution_quality`. A
 failed load leaves no `gold_build` at all, never a partial one; a successful one writes the
 `loaded` marker.
 `fundlens publish` swaps the schema in.
@@ -17,7 +18,7 @@ import logging
 import shutil
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -34,6 +35,7 @@ from fundlens.fec.files import files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import model
+from fundlens.resolve.runner import run_record
 from fundlens.transform.runner import CHUNK_BYTES, Limits, check, literal, render
 
 log = logging.getLogger(__name__)
@@ -86,10 +88,14 @@ RESOLVED: frozenset[SilverTable] = frozenset({"contribution", "jfc_attribution"}
 
 @dataclass(frozen=True)
 class Quality:
-    """The live model's DIME figures for the cycle, as `meta` carries them (NEU-2054 §7): all
-    None but `model_version` when the cycle has not been validated under it."""
+    """The live model, what its run applied and its DIME figures for the cycle, as `meta`
+    carries them (NEU-2054 §7, NEU-2056): the run's fields None when it wrote no record, the
+    figures None when the cycle has not been validated under the model."""
 
     model_version: str | None
+    resolver_version: str | None = None
+    overrides_count: int | None = None
+    adjudications_applied: int | None = None
     precision: Decimal | None = None
     recall: Decimal | None = None
     precision_top: Decimal | None = None
@@ -228,10 +234,18 @@ def _copy_in(conn: Connection[TupleRow], table: GoldTable, csv: Path) -> None:
             copy.write(chunk)
 
 
-def _quality(conn: Connection[TupleRow], cycle: int, model_version: str | None) -> Quality:
-    """`model_version`'s figures for `cycle` from `app.resolution_quality`."""
+def _quality(
+    conn: Connection[TupleRow], store: R2, cycle: int, model_version: str | None
+) -> Quality:
+    """`model_version`'s run record, and its figures for `cycle` from `app.resolution_quality`."""
     if model_version is None:
         return Quality(None)
+    record = run_record(store, model_version)
+    run = (
+        Quality(model_version)
+        if record is None
+        else Quality(model_version, record.release, record.overrides, record.adjudications)
+    )
     scopes = {
         scope: rest
         for scope, *rest in conn.execute(
@@ -242,11 +256,17 @@ def _quality(conn: Connection[TupleRow], cycle: int, model_version: str | None) 
     }
     overall, top = scopes.get("overall"), scopes.get("top")
     if overall is None:
-        return Quality(model_version)
+        return run
     precision, recall, matched_rows, dime_version = overall
     precision_top, recall_top = (top[0], top[1]) if top is not None else (None, None)
-    return Quality(
-        model_version, precision, recall, precision_top, recall_top, matched_rows, dime_version
+    return replace(
+        run,
+        precision=precision,
+        recall=recall,
+        precision_top=precision_top,
+        recall_top=recall_top,
+        matched_rows=matched_rows,
+        dime_version=dime_version,
     )
 
 
@@ -283,11 +303,16 @@ def _load_postgres(
         conn.execute("ANALYZE gold_build.donor_redirect")
         conn.execute(_sql(sql_dir / "gold" / "ddl" / "meta.sql"))
         conn.execute(
-            "INSERT INTO gold_build.meta (build_id, published_at, precision, recall,"
+            "INSERT INTO gold_build.meta (build_id, published_at, resolver_version,"
+            " model_version, overrides_count, adjudications_applied, precision, recall,"
             " precision_top, recall_top, matched_rows, dime_version, cycles)"
-            " VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s)",
+            " VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 build_id,
+                quality.resolver_version,
+                quality.model_version,
+                quality.overrides_count,
+                quality.adjudications_applied,
                 quality.precision,
                 quality.recall,
                 quality.precision_top,
@@ -347,7 +372,7 @@ def load(
                 row_counts[table] = rows
         aggregate_s = time.monotonic() - aggregate_started
         cycles = {str(cycle): {"build_id": build_id, "source_dates": _source_dates(store, cycle)}}
-        quality = _quality(conn, cycle, model.latest_version(store))
+        quality = _quality(conn, store, cycle, model.latest_version(store))
         copy_started = time.monotonic()
         row_counts["donor_redirect"] = _load_postgres(
             conn,

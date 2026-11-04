@@ -51,15 +51,28 @@ class MetaCycle(BaseModel):
 
 
 class Meta(BaseModel):
-    """The live gold build (`gold.meta`, spec §7.1)."""
+    """The live gold build (`gold.meta`, spec §7.1): how its donors were resolved and how well
+    that scored against DIME, which the methodology page prints (NEU-2056)."""
 
     build_id: str
     published_at: datetime
-    # None until M3 publishes a resolved build (NEU-2039 §3).
+    # The release (commit) that resolved, and the Splink model's version: None before a
+    # resolved build, the release also where none was known.
     resolver_version: str | None
     model_version: str | None
+    # Override entries and adjudication verdicts the resolution applied: None when the model's
+    # run kept no record of them.
+    overrides_count: int | None
+    adjudications_applied: int | None
+    # Pairwise precision and recall against DIME, over every matched contributor and over the
+    # top 10,000 by matched dollars; the contributions they rest on; the DIME release. None until
+    # the cycle is validated under the live model (NEU-2054).
     precision: float | None
     recall: float | None
+    precision_top: float | None
+    recall_top: float | None
+    matched_rows: int | None
+    dime_version: str | None
     # Keyed by cycle, as a string ("2024"): JSON object keys are strings.
     cycles: dict[str, MetaCycle]
 

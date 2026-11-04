@@ -7,8 +7,14 @@ const meta: Meta = {
   published_at: "2024-11-03T08:00:00Z",
   resolver_version: null,
   model_version: null,
+  overrides_count: null,
+  adjudications_applied: null,
   precision: null,
   recall: null,
+  precision_top: null,
+  recall_top: null,
+  matched_rows: null,
+  dime_version: null,
   cycles: { "2024": { build_id: "20241103T060000Z", source_dates: { indiv: "2024-11-02" } } },
 };
 

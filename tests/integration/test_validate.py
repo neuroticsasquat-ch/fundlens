@@ -11,10 +11,12 @@ from typing import Any
 import duckdb
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, paths
+from fundlens.api.app import create_app
 from fundlens.r2 import R2
 from fundlens.resolve import adjudicate as adjudication
 from fundlens.resolve.validate import DIME_VERSION
@@ -39,6 +41,8 @@ from tests.unit.test_fec_fixture import DIME, counted, dime_cids, signed
 EXPECTED = fec_fixture.expected()
 VALIDATION = EXPECTED["validation"]
 TOP = VALIDATION["top"]["limit"]
+# The deployed release OTel names for the second resolve, which its run record keeps.
+RELEASE = "0123456789abcdef0123456789abcdef01234567"
 
 
 def run(*args: str) -> Result:
@@ -72,6 +76,7 @@ def resolved(transformed: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     adjudicated = run("adjudicate")
     assert adjudicated.exit_code == 0, adjudicated.output
     monkeypatch.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
+    monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", f"service.version={RELEASE}")
     get_settings.cache_clear()
     again = resolve("--full", "--build-id", AGAIN)
     assert again.exit_code == 0, again.output
@@ -251,6 +256,62 @@ def test_load_carries_the_live_models_figures_into_meta(resolved: Path, migrated
         VALIDATION["dime_version"],
     )
     assert "quality: precision 1.0000 recall 1.0000 (top 1.0000/1.0000)" in result.output
+    # The fixture overrides' merge and split, and the fake model's one confident merge.
+    assert (
+        meta["model_version"],
+        meta["resolver_version"],
+        meta["overrides_count"],
+        meta["adjudications_applied"],
+    ) == (AGAIN, RELEASE, 2, 1)
+    assert f"resolution: release {RELEASE}, 2 overrides, 1 adjudications applied" in (result.output)
+
+
+def test_meta_serves_the_fixture_builds_figures(resolved: Path, migrated_db: str) -> None:
+    assert dime().exit_code == 0
+    assert validate().exit_code == 0
+    assert load().exit_code == 0
+    # The publish swap, without its purge or marker: the fixture build is live.
+    with psycopg.connect(migrated_db, autocommit=True) as conn:
+        conn.execute("ALTER SCHEMA gold_build RENAME TO gold")
+        conn.execute("UPDATE gold.meta SET published_at = now()")
+    settings = get_settings().model_copy(update={"database_url": migrated_db})
+
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/v1/meta")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    overall, top = VALIDATION["overall"], VALIDATION["top"]
+    assert {
+        key: body[key] for key in body if key not in ("build_id", "published_at", "cycles")
+    } == {
+        "resolver_version": RELEASE,
+        "model_version": AGAIN,
+        "overrides_count": 2,
+        "adjudications_applied": 1,
+        "precision": overall["precision"],
+        "recall": overall["recall"],
+        "precision_top": top["precision"],
+        "recall_top": top["recall"],
+        "matched_rows": VALIDATION["matched_rows"],
+        "dime_version": VALIDATION["dime_version"],
+    }
+
+
+def test_load_of_a_model_without_a_run_record_leaves_its_fields_null(
+    resolved: Path, migrated_db: str, store: R2
+) -> None:
+    # As the model trained before NEU-2056 is: saved, with no record beside it.
+    store.delete_keys([paths.resolution_run(AGAIN)])
+
+    result = load()
+
+    assert result.exit_code == 0, result.output
+    [meta] = rows(migrated_db, "meta")
+    assert meta["model_version"] == AGAIN
+    columns = ("resolver_version", "overrides_count", "adjudications_applied")
+    assert [meta[column] for column in columns] == [None] * len(columns)
+    assert "resolution: " not in result.output
 
 
 def test_load_before_validation_leaves_the_figures_null(resolved: Path, migrated_db: str) -> None:
@@ -261,6 +322,8 @@ def test_load_before_validation_leaves_the_figures_null(resolved: Path, migrated
     columns = ("precision", "recall", "precision_top", "recall_top", "matched_rows", "dime_version")
     assert [meta[column] for column in columns] == [None] * len(columns)
     assert f"quality: not validated for model {AGAIN}" in result.output
+    # What the run applied does not wait for validation.
+    assert (meta["model_version"], meta["overrides_count"]) == (AGAIN, 2)
 
 
 def test_validating_the_working_files_clusters_writes_nothing(

@@ -485,19 +485,30 @@ export interface components {
         };
         /**
          * Meta
-         * @description The live gold build (`gold.meta`, spec §7.1).
+         * @description The live gold build (`gold.meta`, spec §7.1): how its donors were resolved and how well
+         *     that scored against DIME, which the methodology page prints (NEU-2056).
          */
         Meta: {
+            /** Adjudications Applied */
+            adjudications_applied: number | null;
             /** Build Id */
             build_id: string;
             /** Cycles */
             cycles: {
                 [key: string]: components["schemas"]["MetaCycle"];
             };
+            /** Dime Version */
+            dime_version: string | null;
+            /** Matched Rows */
+            matched_rows: number | null;
             /** Model Version */
             model_version: string | null;
+            /** Overrides Count */
+            overrides_count: number | null;
             /** Precision */
             precision: number | null;
+            /** Precision Top */
+            precision_top: number | null;
             /**
              * Published At
              * Format: date-time
@@ -505,6 +516,8 @@ export interface components {
             published_at: string;
             /** Recall */
             recall: number | null;
+            /** Recall Top */
+            recall_top: number | null;
             /** Resolver Version */
             resolver_version: string | null;
         };
