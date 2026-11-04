@@ -2,15 +2,13 @@
 a vetoed pair of first names or more keys than the cluster cap, on components made up here; and
 the components rebuilt from the kept edges at another cluster threshold (NEU-2182)."""
 
-import dataclasses
 from itertools import combinations
 
 import duckdb
 import pytest
-from splink import DuckDBAPI
 
-from fundlens.resolve import model
 from fundlens.resolve.cluster import components_at, recluster, recluster_component
+from tests.unit.test_resolve_model import NamePair, first_name_levels, nicknames_of
 
 VETOED = {frozenset(("ELIZABETH", "KIRSTEN"))}
 
@@ -102,104 +100,96 @@ def test_no_piece_exceeds_the_cap_or_holds_a_vetoed_pair() -> None:
     assert set().union(*found) == set(members)
 
 
-# Each pair of first names and whether the model's first-name comparison vetoes it.
-NAME_PAIRS = [
+# Each pair of first names, and the level of the model's first-name comparison it lands in.
+NAME_PAIRS: list[NamePair] = [
     ("JOHN", "JOHN"),  # exact
     ("ELIZABETH", "ELISABETH"),  # Jaro-Winkler ≥ 0.92
     ("CARL", "KARL"),  # Jaro-Winkler ≥ 0.8, different initials
-    ("EDWARD", "ELIZABETH"),  # one initial
-    ("E", "EDWARD"),  # initial-only, the same initial
-    ("E", "KIRSTEN"),  # initial-only, another initial
+    ("EDWARD", "ELIZABETH"),  # one initial, two full names: vetoed
+    ("MARGO", "MICHAEL"),  # one initial, two full names: vetoed
+    ("E", "EDWARD"),  # an initial pair
+    ("C", "CRAIG"),  # an initial pair
+    ("E", "KIRSTEN"),  # a single letter, another initial: vetoed
+    ("LOU", "LOUIS"),  # a nickname pair by prefix
+    ("BILL", "WILLIAM"),  # a nickname pair by the table, different initials
     (None, "KIRSTEN"),  # no first name
     ("BEATRICE", "DESMOND"),  # vetoed
 ]
 
-COLUMNS = (
-    "contributor_key",
-    "first_name",
-    "last_name",
-    "first_initial",
-    "last_name_soundex",
-    "zip5",
-    "zip3",
-    "city",
-    "state",
-    "employer_norm",
-    "occupation_norm",
-)
 
-
-def record(key: str, first_name: str | None) -> dict[str, str | None]:
-    return {
-        "contributor_key": key,
-        "first_name": first_name,
-        "last_name": "QUINLAN",
-        "first_initial": first_name[0] if first_name else None,
-        "last_name_soundex": "Q545",
-        "zip5": "21201",
-        "zip3": "212",
-        "city": "BALTIMORE",
-        "state": "MD",
-        "employer_norm": "ACME",
-        "occupation_norm": "ENGINEER",
-    }
+def contributors(con: duckdb.DuckDBPyConnection, names: dict[str, str | None]) -> None:
+    """The table `contributor` re-clustering reads: each key, its first name and the
+    `first_name_nicknames` `_load_contributors` gives it."""
+    con.execute(
+        "CREATE TABLE contributor (contributor_key VARCHAR, first_name VARCHAR,"
+        " first_name_nicknames VARCHAR[])"
+    )
+    con.executemany(
+        "INSERT INTO contributor VALUES (?, ?, ?)",
+        [[key, name, nicknames_of(name)] for key, name in names.items()],
+    )
 
 
 @pytest.fixture
-def model_vetoes() -> dict[tuple[str | None, str | None], bool]:
+def model_vetoes() -> dict[NamePair, bool]:
     """Whether the model's first-name comparison puts each of `NAME_PAIRS` at its else level."""
-    con = duckdb.connect()
-    con.execute(
-        "CREATE TABLE contributor AS SELECT "
-        + ", ".join(f"NULL::VARCHAR AS {column}" for column in COLUMNS)
-        + " LIMIT 0"
+    return {pair: level == "else" for pair, level in first_name_levels(NAME_PAIRS).items()}
+
+
+def pair_components(con: duckdb.DuckDBPyConnection, pairs: list[NamePair]) -> None:
+    """Each pair of first names a component of two keys, `{n}l` and `{n}r`, joined by one strong
+    edge."""
+    contributors(
+        con,
+        {
+            key: name
+            for n, (left, right) in enumerate(pairs)
+            for key, name in ((f"{n}l", left), (f"{n}r", right))
+        },
     )
-    # The comparison vector, which the run's settings drop from its predictions.
-    settings = dataclasses.replace(model.settings(), retain_intermediate_calculation_columns=True)
-    linker = model.linker(DuckDBAPI(con), "contributor", settings)
-    vetoes: dict[tuple[str | None, str | None], bool] = {}
-    for left, right in NAME_PAIRS:
-        [scored] = linker.inference.score_pair(
-            record("l", left), record("r", right)
-        ).as_record_list()
-        vetoes[left, right] = scored["gamma_first_name"] == 0
-    return vetoes
-
-
-def test_the_vetoed_pairs_recluster_finds_are_the_models_else_level(
-    model_vetoes: dict[tuple[str | None, str | None], bool],
-) -> None:
-    con = duckdb.connect()
-    con.execute("CREATE TABLE contributor (contributor_key VARCHAR, first_name VARCHAR)")
     con.execute("CREATE TABLE component (cluster_id VARCHAR, contributor_key VARCHAR)")
     con.execute(
         "CREATE TABLE edge (contributor_key_l VARCHAR, contributor_key_r VARCHAR,"
         " match_probability DOUBLE)"
     )
-    # Each pair a component of two keys, joined by one strong edge.
-    for n, (left, right) in enumerate(NAME_PAIRS):
+    for n in range(len(pairs)):
         lo, hi = f"{n}l", f"{n}r"
-        con.execute("INSERT INTO contributor VALUES (?, ?), (?, ?)", [lo, left, hi, right])
         con.execute("INSERT INTO component VALUES (?, ?), (?, ?)", [lo, lo, lo, hi])
         con.execute("INSERT INTO edge VALUES (?, ?, 0.99)", [lo, hi])
 
+
+def apart(con: duckdb.DuckDBPyConnection, pairs: list[NamePair]) -> dict[NamePair, bool]:
+    clusters = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
+    return {pair: clusters[f"{n}l"] != clusters[f"{n}r"] for n, pair in enumerate(pairs)}
+
+
+def test_the_vetoed_pairs_recluster_finds_are_the_models_else_level(
+    model_vetoes: dict[NamePair, bool],
+) -> None:
+    con = duckdb.connect()
+    pair_components(con, NAME_PAIRS)
+
     result = recluster(con, max_keys=200, cluster_threshold=0.95)
 
-    clusters = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
-    apart = {pair: clusters[f"{n}l"] != clusters[f"{n}r"] for n, pair in enumerate(NAME_PAIRS)}
-    assert apart == model_vetoes
-    assert sum(model_vetoes.values()) == 2
-    assert result.inconsistent == result.components == 2
+    assert apart(con, NAME_PAIRS) == model_vetoes
+    assert sum(model_vetoes.values()) == 4
+    assert result.inconsistent == result.components == 4
     assert result.oversized == 0
+
+
+def test_two_full_names_sharing_a_first_letter_are_cut_apart_and_a_nickname_is_left_whole() -> None:
+    pairs: list[NamePair] = [("MARGO", "MICHAEL"), ("BILL", "WILLIAM")]
+    con = duckdb.connect()
+    pair_components(con, pairs)
+
+    recluster(con, max_keys=200, cluster_threshold=0.95)
+
+    assert apart(con, pairs) == {("MARGO", "MICHAEL"): True, ("BILL", "WILLIAM"): False}
 
 
 def test_recluster_leaves_a_consistent_component_as_it_was_and_names_pieces_by_lowest_key() -> None:
     con = duckdb.connect()
-    con.execute(
-        "CREATE TABLE contributor AS SELECT * FROM (VALUES ('a', 'JOHN'), ('b', 'JOHN'),"
-        " ('c', 'JOHN'), ('x', 'MARY'), ('y', NULL), ('z', 'PETER')) AS t(contributor_key,"
-        " first_name)"
-    )
+    contributors(con, {"a": "JOHN", "b": "JOHN", "c": "JOHN", "x": "MARY", "y": None, "z": "PETER"})
     con.execute(
         "CREATE TABLE component AS SELECT * FROM (VALUES ('a', 'a'), ('a', 'b'), ('a', 'c'),"
         " ('x', 'x'), ('x', 'y'), ('x', 'z')) AS t(cluster_id, contributor_key)"
@@ -235,8 +225,7 @@ def test_recluster_leaves_a_consistent_component_as_it_was_and_names_pieces_by_l
 def edges_table(
     con: duckdb.DuckDBPyConnection, keys: list[str], edges: list[tuple[str, str, float]]
 ) -> None:
-    con.execute("CREATE TABLE contributor (contributor_key VARCHAR, first_name VARCHAR)")
-    con.executemany("INSERT INTO contributor VALUES (?, 'JOHN')", [[key] for key in keys])
+    contributors(con, dict.fromkeys(keys, "JOHN"))
     con.execute(
         "CREATE TABLE edge (contributor_key_l VARCHAR, contributor_key_r VARCHAR,"
         " match_probability DOUBLE)"

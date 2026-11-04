@@ -6,10 +6,11 @@ spec §6.5, §10.5; ADR-0005). The overrides live in [`resolution/overrides.yaml
 `src/fundlens/resolve/overrides.py` reads, checks and applies them. Repeat it for each override; append
 to the [Log](#log) at the bottom, never rewrite it.
 
-**When to use one.** Linkage keeps apart what only a reviewer can join (a nickname: MARGARET and PEGGY)
-and joins what only a reviewer can tell apart (father and son at one address, whose `JR` and `SR`
-normalization strips). An override is for a donor you can name and justify in a sentence. It is not a
-way to tune linkage across many donors: that is the thresholds (spec §6.4) and a `resolve --full`.
+**When to use one.** Linkage keeps apart what only a reviewer can join (a nickname the nickname table
+does not name: MARGARET and MEGGIE) and joins what only a reviewer can tell apart (father and son at
+one address, whose `JR` and `SR` normalization strips). An override is for a donor you can name and
+justify in a sentence. It is not a way to tune linkage across many donors: that is the thresholds
+(spec §6.4) and a `resolve --full`.
 
 **Not in this runbook:** adjudication (spec §6.8), tuning the model, re-resolving after a change to the
 model or normalization.
@@ -105,8 +106,8 @@ date +%F
 A merge:
 
 ```yaml
-- merge: ["KOWALCZYK, MARGARET|20910|MONTGOMERY COUNTY|LIBRARIAN", "KOWALCZYK, PEGGY|20910||"]
-  reason: PEGGY is MARGARET's nickname; one address, one librarian since retired.
+- merge: ["KOWALCZYK, MARGARET|20910|MONTGOMERY COUNTY|LIBRARIAN", "KOWALCZYK, MEGGIE|20910||"]
+  reason: MEGGIE is MARGARET's nickname; one address, one librarian since retired.
   added: 2026-10-31
 ```
 
@@ -131,7 +132,7 @@ task test -- tests/unit/test_overrides.py
 
 **Expected:** every test passes, `test_the_committed_file_is_valid` among them. A failure names the
 entry and the problem, e.g. `overrides: entry 2 split.from: Field required` or
-`overrides: 'KOWALCZYK, PEGGY|20910||' is in merge 1 and merge 2`. Fix the entry and run it again.
+`overrides: 'KOWALCZYK, MEGGIE|20910||' is in merge 1 and merge 2`. Fix the entry and run it again.
 
 The validator checks the file by itself. Whether each key is in the data and each `from` is a donor_id
 the crosswalk gave is checked by the run (step 5), against production; step 1 is where you got them, so

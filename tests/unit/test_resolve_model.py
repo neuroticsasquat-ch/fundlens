@@ -6,8 +6,9 @@ to three contributor keys each, a later key reporting another occupation, no emp
 neighbouring ZIP.
 """
 
+import dataclasses
 import random
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from itertools import combinations
 from typing import Any
 
@@ -15,7 +16,7 @@ import duckdb
 import pytest
 from splink import DuckDBAPI
 
-from fundlens.resolve import model
+from fundlens.resolve import model, nicknames
 from fundlens.resolve.cluster import cluster, cluster_fingerprint, recluster
 
 COLUMNS = (
@@ -33,6 +34,89 @@ COLUMNS = (
 )
 DONORS = 4000
 EMPLOYER_EXACT_PRIOR = 0.6
+
+# The first-name comparison's level labels (`model._first_name`), by their gamma value.
+FIRST_NAME_LEVELS = ("else", "initial", "jw ≥ 0.8", "jw ≥ 0.92", "nickname", "exact")
+
+type NamePair = tuple[str | None, str | None]
+
+
+def nicknames_of(name: str | None) -> list[str]:
+    """The `first_name_nicknames` `_load_contributors` gives a key whose first name is `name`."""
+    return sorted(other for each, other in nicknames.pairs() if each == name)
+
+
+def record(key: str, first_name: str | None) -> dict[str, Any]:
+    """A contributor row that agrees with every other `record` but on its first name."""
+    return {
+        "contributor_key": key,
+        "first_name": first_name,
+        "first_name_nicknames": nicknames_of(first_name),
+        "last_name": "QUINLAN",
+        "first_initial": first_name[0] if first_name else None,
+        "last_name_soundex": "Q545",
+        "zip5": "21201",
+        "zip3": "212",
+        "city": "BALTIMORE",
+        "state": "MD",
+        "employer_norm": "ACME",
+        "occupation_norm": "ENGINEER",
+    }
+
+
+def first_name_levels(pairs: Iterable[NamePair]) -> dict[NamePair, str]:
+    """The level of the model's first-name comparison each pair of first names lands in."""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE contributor AS SELECT "
+        + ", ".join(f"NULL::VARCHAR AS {column}" for column in COLUMNS)
+        + ", NULL::VARCHAR[] AS first_name_nicknames LIMIT 0"
+    )
+    # The comparison vector, which the run's settings drop from its predictions.
+    settings = dataclasses.replace(model.settings(), retain_intermediate_calculation_columns=True)
+    linker = model.linker(DuckDBAPI(con), "contributor", settings)
+    levels: dict[NamePair, str] = {}
+    for left, right in pairs:
+        [scored] = linker.inference.score_pair(
+            record("l", left), record("r", right)
+        ).as_record_list()
+        gamma = scored["gamma_first_name"]
+        levels[left, right] = "null" if gamma == -1 else FIRST_NAME_LEVELS[gamma]
+    return levels
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "level"),
+    [
+        # Two full names sharing a first letter are not an initial and its name.
+        ("MARGO", "MICHAEL", "else"),
+        ("JANE", "JOHN", "else"),
+        ("EDWARD", "ELIZABETH", "else"),
+        ("BEATRICE", "DESMOND", "else"),
+        ("C", "CRAIG", "initial"),
+        ("E", "EDWARD", "initial"),
+        ("E", "KIRSTEN", "else"),
+        # A prefix of three letters or more, or a pair the nickname table names.
+        ("LOU", "LOUIS", "nickname"),
+        ("MATT", "MATTHEW", "nickname"),
+        ("HAL", "HAROLD", "nickname"),
+        ("MIKE", "MICHAEL", "nickname"),
+        ("BILL", "WILLIAM", "nickname"),
+        ("WILLIAM", "BILL", "nickname"),
+        # Excluded from the table: two people.
+        ("AARON", "ERIN", "else"),
+        ("ELIZABETH", "ELISABETH", "jw ≥ 0.92"),
+        ("CARL", "KARL", "jw ≥ 0.8"),
+        ("JOHN", "JOHN", "exact"),
+        (None, "KIRSTEN", "null"),
+    ],
+)
+def test_a_first_name_pair_lands_in_its_level(left: str | None, right: str, level: str) -> None:
+    assert first_name_levels([(left, right)]) == {(left, right): level}
+
+
+def test_a_two_letter_prefix_is_not_a_nickname() -> None:
+    assert first_name_levels([("JO", "JOSEPH")])["JO", "JOSEPH"] != "nickname"
 
 
 @pytest.mark.parametrize(
@@ -108,6 +192,8 @@ def population() -> Iterator[tuple[duckdb.DuckDBPyConnection, dict[str, int]]]:
             + ")"
         )
         con.executemany(f"INSERT INTO contributor VALUES ({', '.join('?' * len(COLUMNS))})", rows)
+        # No synthetic first name is in the nickname table.
+        con.execute("ALTER TABLE contributor ADD COLUMN first_name_nicknames VARCHAR[] DEFAULT []")
         yield con, donor_of
 
 

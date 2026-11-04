@@ -6,6 +6,7 @@ import pytest
 
 from fundlens.resolve.diagnose import Band, Pattern, breakdown
 from fundlens.resolve.validate import score
+from tests.unit.test_resolve_model import nicknames_of
 
 CONTRIBUTOR_COLUMNS = (
     "contributor_key",
@@ -72,13 +73,13 @@ def working_file(
     con.execute(
         "CREATE TABLE run.contributor ("
         + ", ".join(f"{column} VARCHAR" for column in CONTRIBUTOR_COLUMNS)
-        + ")"
+        + ", first_name_nicknames VARCHAR[])"
     )
     con.executemany(
         "INSERT INTO run.contributor"
-        " VALUES (?, ?, ?, ?, '21201', 'BALTIMORE', 'MD', ?, 'ENGINEER')",
+        " VALUES (?, ?, ?, ?, '21201', 'BALTIMORE', 'MD', ?, 'ENGINEER', ?)",
         [
-            [key, first, last, first[0] if first else None, employer]
+            [key, first, last, first[0] if first else None, employer, nicknames_of(first)]
             for key, (first, last, employer, _) in keys.items()
         ],
     )
@@ -195,6 +196,10 @@ def test_the_sample_is_the_wrong_pairs_of_clusters_of_fifty_keys_or_fewer_in_a_f
         ("ELIZABETH", "ELISABETH", "jw ≥ 0.92"),
         ("CARL", "KARL", "jw ≥ 0.8"),
         ("E", "EDWARD", "initial only"),
+        ("C", "CRAIG", "initial only"),
+        ("MARGO", "MICHAEL", "other"),
+        ("LOU", "LOUIS", "nickname"),
+        ("MIKE", "MICHAEL", "nickname"),
         (None, "KIRSTEN", "null"),
         ("BEATRICE", "DESMOND", "other"),
     ],
