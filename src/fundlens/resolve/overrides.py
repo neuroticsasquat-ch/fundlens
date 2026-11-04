@@ -262,17 +262,11 @@ def _joined(merges: list[set[str]]) -> dict[str, str]:
     return {cluster_id: root(cluster_id) for cluster_id in parent if root(cluster_id) != cluster_id}
 
 
-def rewrite(con: duckdb.DuckDBPyConnection, overrides: Overrides) -> Applied:
-    """Merge and split `con`'s `cluster` table in place, merges first; every key `overrides` names
-    must be in it. A split key's `match_probability` becomes NULL: no pair joins it to anything."""
-    cluster_of = dict(
-        con.execute(
-            f"SELECT contributor_key, cluster_id FROM {CLUSTER_TABLE}"
-            " WHERE contributor_key IN (SELECT unnest($keys::VARCHAR[]))",
-            {"keys": sorted(overrides.keys())},
-        ).fetchall()
-    )
-    moves = _joined([{cluster_of[key] for key in merge.merge} for merge in overrides.merges])
+def join_clusters(con: duckdb.DuckDBPyConnection, merges: list[set[str]]) -> int:
+    """Join each set of cluster ids in `merges` into one cluster of `con`'s `cluster` table, the
+    lowest of the ids its sets link (`_joined`); how many clusters were joined into others.
+    Adjudication's merges (`resolve.adjudicate`) join clusters as an override's do."""
+    moves = _joined(merges)
     if moves:
         con.execute(
             f"""
@@ -283,6 +277,22 @@ def rewrite(con: duckdb.DuckDBPyConnection, overrides: Overrides) -> Applied:
             """,
             {"sources": list(moves), "targets": list(moves.values())},
         )
+    return len(moves)
+
+
+def rewrite(con: duckdb.DuckDBPyConnection, overrides: Overrides) -> Applied:
+    """Merge and split `con`'s `cluster` table in place, merges first; every key `overrides` names
+    must be in it. A split key's `match_probability` becomes NULL: no pair joins it to anything."""
+    cluster_of = dict(
+        con.execute(
+            f"SELECT contributor_key, cluster_id FROM {CLUSTER_TABLE}"
+            " WHERE contributor_key IN (SELECT unnest($keys::VARCHAR[]))",
+            {"keys": sorted(overrides.keys())},
+        ).fetchall()
+    )
+    joined = join_clusters(
+        con, [{cluster_of[key] for key in merge.merge} for merge in overrides.merges]
+    )
     split_keys = [split.split.contributor_key for split in overrides.splits]
     if split_keys:
         con.execute(
@@ -293,7 +303,7 @@ def rewrite(con: duckdb.DuckDBPyConnection, overrides: Overrides) -> Applied:
             """,
             {"prefix": SPLIT_CLUSTER_PREFIX, "keys": split_keys},
         )
-    applied = Applied(len(overrides.merges), len(split_keys), len(moves))
+    applied = Applied(len(overrides.merges), len(split_keys), joined)
     log.info(
         "overrides: %d merges joining %d clusters into others, %d splits",
         applied.merges,

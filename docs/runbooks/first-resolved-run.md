@@ -17,7 +17,7 @@ transformed it, touches `sql/silver`, `src/fundlens/transform`, `src/fundlens/fe
 or `resolution/` (checked 2026-10-31; step 1 checks again). A fresh transform would cost about 30 minutes
 and tell us nothing new.
 
-**Not in this runbook:** adjudication (NEU-2055), DIME precision and recall (NEU-2054),
+**Not in this runbook:** adjudication ([adjudicating.md](adjudicating.md), NEU-2055), DIME precision and recall (NEU-2054),
 `gold.meta.resolver_version` and `model_version`, which nothing writes yet (NEU-2056), other cycles
 (NEU-2060), incremental weekly resolution (NEU-2062), and the donor page in the frontend (NEU-2053).
 

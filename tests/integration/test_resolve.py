@@ -28,8 +28,9 @@ MODEL = "20261031T040000Z"
 AGAIN = "20261107T040000Z"
 # Well under what DuckDB would take by itself: the run has to fit, or spill, inside it.
 MEMORY_LIMIT = "256MB"
-# The hard cases linkage leaves alone: the fixture's overrides merge and split these.
-FOR_OVERRIDES = frozenset({"merge_override", "split_override"})
+# The hard cases linkage leaves alone: the fixture's overrides merge and split these, and its
+# adjudication merges the last (tests/integration/test_adjudicate.py).
+BEYOND_LINKAGE = frozenset({"merge_override", "split_override", "adjudication"})
 FIXTURE_OVERRIDES = REPO_ROOT / "tests" / "fixtures" / "resolution" / "overrides.yaml"
 RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "adding-an-override.md"
 
@@ -96,7 +97,7 @@ def test_resolve_full_clusters_the_fixture_as_its_donors(transformed: Path) -> N
     reserved = {
         key
         for name, keys in donor_keys.items()
-        if expected["donors"][name]["resolved_by"] in FOR_OVERRIDES
+        if expected["donors"][name]["resolved_by"] in BEYOND_LINKAGE
         for key in keys
     }
     donor_of = {key: name for name, keys in donor_keys.items() for key in keys}
@@ -159,7 +160,17 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
         "contribution": silver["contribution"],
     }
     logged = [record.getMessage() for record in caplog.records]
-    phases = ("load", "train", "cluster", "recluster", "overrides", "save", "crosswalk", "silver")
+    phases = (
+        "load",
+        "train",
+        "cluster",
+        "recluster",
+        "overrides",
+        "adjudications",
+        "save",
+        "crosswalk",
+        "silver",
+    )
     for phase in phases:
         assert any(message.startswith(f"resolve {phase}: ") for message in logged), phase
     assert any(

@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # below it the model keeps its prior parameters. Real cycles hold millions of keys.
     resolve_min_training_keys: int = Field(default=100_000, alias="RESOLVE_MIN_TRAINING_KEYS")
 
+    # Adjudication (spec §6.8): which ambiguous clusters a model is asked about, which model, and
+    # with which prompt. The prompt's file stem is its version (`adjudicate_v1`), recorded with
+    # every verdict. Time a model before changing it. The key is unset in dev and CI, where only
+    # `adjudicate --dry-run` runs; secret because it is billed.
+    deepinfra_api_key: SecretStr | None = Field(default=None, alias="DEEPINFRA_API_KEY")
+    adjudicate_model: str = Field(default="deepseek-ai/DeepSeek-V4-Flash", alias="ADJUDICATE_MODEL")
+    adjudicate_min_amount: int = Field(default=50_000, ge=0, alias="ADJUDICATE_MIN_AMOUNT")
+    adjudicate_prompt_path: Path = Field(
+        default=Path("/app/resolution/prompts/adjudicate_v1.md"), alias="ADJUDICATE_PROMPT_PATH"
+    )
+    # Requests in flight at once; each batch's verdicts are written as it returns.
+    adjudicate_batch_size: int = Field(default=10, ge=1, alias="ADJUDICATE_BATCH_SIZE")
+
     # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
     fec_bulk_url: str = Field(
         default="https://www.fec.gov/files/bulk-downloads", alias="FEC_BULK_URL"

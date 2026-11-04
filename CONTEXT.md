@@ -122,7 +122,8 @@ The persistent mapping from contributor key to donor ID, so weekly rebuilds do n
 A manual merge or split assertion applied after linkage, authored data that survives every rebuild.
 
 **Adjudication**:
-A model's judgment on an ambiguous high-value cluster, recorded as an override with its provenance.
+A model's verdict on an ambiguous high-dollar candidate: two clusters linkage kept apart but scored in its ambiguous band, or one cluster whose keys report different employers. Recorded in `app.adjudication` with its model, prompt version and confidence, and applied like an override when the model is confident; never written to the overrides file, which stays the human record.
+_Avoid_: LLM override, AI merge
 
 **Reference label**:
 The contributor id DIME (Bonica, Stanford) assigns to an FEC contribution, `bonica.cid`: the ground truth resolution is scored against. Never shown on the site and never a `donor_id`.

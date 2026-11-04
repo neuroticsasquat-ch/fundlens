@@ -16,9 +16,11 @@ from typer.testing import CliRunner, Result
 
 from fundlens import cli, paths
 from fundlens.r2 import R2
+from fundlens.resolve import adjudicate as adjudication
 from fundlens.resolve.validate import DIME_VERSION
-from fundlens.settings import get_settings
+from fundlens.settings import Settings, get_settings
 from tests import fec_fixture
+from tests.fake_adjudicator import FakeAdjudicator
 from tests.integration.test_load import load, rows
 from tests.integration.test_resolve import (
     AGAIN,
@@ -53,13 +55,22 @@ def validate(*args: str) -> Result:
 
 @pytest.fixture
 def resolved(transformed: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The fixture cycle resolved with the fixture overrides, as model `AGAIN`; the `DATA_DIR`.
+    """The fixture cycle resolved with the fixture overrides and the fake model's verdicts, as
+    model `AGAIN`; the `DATA_DIR`.
 
     Twice, as the overrides runbook does: the split names a donor_id, which only a first run
-    without overrides hands out.
+    without overrides hands out, and `adjudicate` chooses from the clusters of a run before it.
     """
     first = resolve("--full", "--build-id", MODEL)
     assert first.exit_code == 0, first.output
+    client = FakeAdjudicator()
+
+    def client_for(settings: Settings) -> FakeAdjudicator:
+        return client
+
+    monkeypatch.setattr(adjudication, "client_for", client_for)
+    adjudicated = run("adjudicate")
+    assert adjudicated.exit_code == 0, adjudicated.output
     monkeypatch.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
     get_settings.cache_clear()
     again = resolve("--full", "--build-id", AGAIN)

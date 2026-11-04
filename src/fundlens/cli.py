@@ -32,6 +32,7 @@ from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
+from fundlens.resolve import adjudicate as adjudication
 from fundlens.resolve import diagnose as diagnosis
 from fundlens.resolve import overrides
 from fundlens.resolve import runner as resolution
@@ -363,7 +364,8 @@ def resolve(
     ] = None,
 ) -> None:
     """Link every cycle's contributor keys into clusters of one person with Splink, save the
-    trained model, apply `resolution/overrides.yaml`, give each cluster its persistent donor_id,
+    trained model, apply `resolution/overrides.yaml` and the confident adjudications of the
+    configured model and prompt, give each cluster its persistent donor_id,
     write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
     if not full:
         # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
@@ -384,6 +386,8 @@ def resolve(
                 max_keys=settings.resolve_max_cluster_keys,
                 min_training_keys=settings.resolve_min_training_keys,
                 overrides_path=settings.overrides_path,
+                adjudication=_adjudication(settings),
+                adjudicate_min_amount=settings.adjudicate_min_amount,
                 conn=conn,
             )
     except (FileNotFoundError, overrides.OverridesError) as exc:
@@ -398,6 +402,7 @@ def resolve(
         f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
         f" into others, {overridden.splits} splits"
     )
+    typer.echo(f"adjudications: {result.adjudicated.summary()}")
     assigned = result.assigned
     typer.echo(
         f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"
@@ -427,9 +432,9 @@ def recluster(
     ] = None,
 ) -> None:
     """Rewrite the working file's clusters from its components under another cluster cap, then
-    apply `resolution/overrides.yaml`, as `resolve --full` would; nothing else changes: no
-    crosswalk, silver, marker or R2 (NEU-2122 §5.1). `--cluster-threshold` re-clusters components
-    rebuilt at another threshold (NEU-2182)."""
+    apply `resolution/overrides.yaml` and the confident adjudications, as `resolve --full` would;
+    nothing else changes: no crosswalk, silver, marker or R2 (NEU-2122 §5.1).
+    `--cluster-threshold` re-clusters components rebuilt at another threshold (NEU-2182)."""
     settings = get_settings()
     if cluster_threshold is not None and cluster_threshold < settings.resolve_match_threshold:
         # `edge` holds no pair under the match threshold: a lower one would need a re-predict.
@@ -445,6 +450,8 @@ def recluster(
                 max_keys=max_keys or settings.resolve_max_cluster_keys,
                 cluster_threshold=cluster_threshold or settings.resolve_cluster_threshold,
                 overrides_path=settings.overrides_path,
+                adjudication=_adjudication(settings),
+                adjudicate_min_amount=settings.adjudicate_min_amount,
                 conn=conn,
                 rebuild=cluster_threshold is not None,
             )
@@ -459,7 +466,85 @@ def recluster(
         f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
         f" into others, {overridden.splits} splits"
     )
+    typer.echo(f"adjudications: {result.adjudicated.summary()}")
     typer.echo(f"{result.clusters} clusters")
+
+
+def _adjudication(settings: Settings) -> adjudication.Version:
+    """The verdicts `resolve` applies and `adjudicate` records: the model's and the prompt's."""
+    return adjudication.Version(settings.adjudicate_model, settings.adjudicate_prompt_path.stem)
+
+
+@app.command()
+# No family, like `resolve`: run by hand between two resolves, and billed.
+@step("adjudicate")
+def adjudicate(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List the candidates; send nothing and write nothing."),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option(help="Ask about at most this many candidates, the most dollars first.", min=1),
+    ] = None,
+) -> None:
+    """Ask the configured model about the ambiguous high-dollar clusters of the working file that
+    it has no verdict on yet, and write its verdicts to app.adjudication (spec §6.8); the next
+    `resolve --full` applies the confident ones."""
+    settings = get_settings()
+    prompt = adjudication.Prompt.load(settings.adjudicate_prompt_path)
+    version = adjudication.Version(settings.adjudicate_model, prompt.version)
+    client = None if dry_run else adjudication.client_for(settings)
+    if not dry_run and client is None:
+        typer.echo("DEEPINFRA_API_KEY is not set: nothing can be sent (try --dry-run)", err=True)
+        raise typer.Exit(1)
+    try:
+        asserted = overrides.load(settings.overrides_path)
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            selected = adjudication.select(
+                R2.from_settings(settings),
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+                version=version,
+                min_amount=settings.adjudicate_min_amount,
+                overrides=asserted,
+                limit=limit,
+            )
+            typer.echo(
+                f"candidates: {selected.clusters} clusters, {selected.pairs} pairs of at least"
+                f" ${settings.adjudicate_min_amount}; {selected.already_decided} already decided"
+                f" by {version.model} {version.prompt_version}"
+            )
+            typer.echo(f"chosen: {len(selected.chosen)}")
+            if dry_run:
+                for candidate in selected.chosen:
+                    probability = (
+                        "" if candidate.probability is None else f" p={candidate.probability:.3f}"
+                    )
+                    typer.echo(
+                        f"{candidate.kind} {candidate.fingerprint[:12]} ${candidate.amount:.0f}"
+                        f"{probability}: {len(candidate.a)} keys | {len(candidate.b)} keys,"
+                        f" {candidate.a[0].contributor_key} | {candidate.b[0].contributor_key}"
+                    )
+                typer.echo("dry run: nothing sent, nothing written")
+                return
+            assert client is not None
+            result = adjudication.adjudicate(
+                selected.chosen,
+                client=client,
+                conn=conn,
+                version=version,
+                prompt=prompt,
+                batch_size=settings.adjudicate_batch_size,
+            )
+    except (FileNotFoundError, overrides.OverridesError, adjudication.AdjudicationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    for batch in result.batches:
+        typer.echo(batch.summary())
+    decisions = ", ".join(f"{n} {decision}" for decision, n in sorted(result.decisions.items()))
+    typer.echo(f"recorded: {decisions or 'nothing'}")
 
 
 def _figure(value: object | None) -> str:
