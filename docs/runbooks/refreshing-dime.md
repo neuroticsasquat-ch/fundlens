@@ -592,3 +592,110 @@ From `98acd28`: DIME v4.0, cycle 2024, build `20261103T163743Z`, model `20261103
   0.0982 precise). The threshold cuts them with 57,437 correct pairs and top-scope recall; fixing the level
   targets them alone. Two tickets follow: fix the first-initial level, then re-run this sweep on the fixed model
   and set the threshold.
+
+### 2026-11-03 — The first-name levels, 2024 (NEU-2188)
+
+From `a2ca75f`: DIME v4.0, cycle 2024, build `20261103T175128Z`, model `20261104T012451Z`. The first-name
+comparison's initial level now fires only for a single letter, a nickname level sits after exact match, and the
+veto reads no initials (`docs/specs/NEU-2188-first-name-levels.md`).
+
+- **Resolve** (§8.2): 5,620,495 contributor keys in 4,009,899 clusters. `recluster: 7,339 components (3 oversized,
+  7,339 inconsistent) into 18,975 pieces; largest 263 → 103`. Crosswalk: 197,265 new donors, 284,508 keys
+  re-pointed, 10,312 redirects; one override merge. Phases: load 10.01 s, train 174.71 s, cluster 112.62 s,
+  recluster 10.98 s, overrides 0.19 s, save 0.15 s, crosswalk 32.82 s, silver 197.31 s. Working file 9.4 GB.
+- **Validate** (§8.3), against 0.6288 / 0.9121 and 0.9516 / 0.8023 before:
+
+  | Scope | Precision | Recall | Keys | Correct | Predicted | True |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | overall | 0.8229 | 0.9105 | 4,283,076 | 2,036,148 | 2,474,404 | 2,236,402 |
+  | top 10,000 | 0.9739 | 0.7988 | 65,053 | 343,871 | 353,072 | 430,470 |
+
+  The ticket's floors: overall ≥ 0.70 / ≥ 0.90 met; top 10,000 not below 0.9516 / 0.8023 **missed on recall by
+  0.0035** (1,495 correct pairs). Accepted 2026-11-03: the same change cut the top 10,000's wrong pairs from
+  about 17,566 to 9,201. The top-scope recall target moves to NEU-2189, which re-tunes the threshold on this model.
+- **Crosswalk** (§8.6): no donor over 200 keys, `(0 rows)`.
+- **Plain recluster** (§9.2): the same `recluster:` line as the resolve.
+- **Diagnose** (§9.3): 2,474,404 pairs predicted, 2,036,148 correct, 438,256 wrong (precision 0.8229).
+
+  | Link | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | same key | 45,045 | 0 | 0.0000 |
+  | direct < 0.95 | 7,049 | 9,808 | 0.5818 |
+  | direct 0.95–0.99 | 16,559 | 13,404 | 0.4474 |
+  | direct 0.99–0.999 | 80,967 | 43,825 | 0.3512 |
+  | direct ≥ 0.999 | 207,789 | 1,915,744 | 0.9021 |
+  | chained | 80,847 | 53,367 | 0.3976 |
+
+  | Cluster keys | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | 1 | 20,630 | 0 | 0.0000 |
+  | 2 | 74,733 | 393,957 | 0.8405 |
+  | 3–5 | 157,300 | 706,016 | 0.8178 |
+  | 6–10 | 93,009 | 418,291 | 0.8181 |
+  | 11–25 | 67,057 | 347,228 | 0.8381 |
+  | 26–50 | 19,432 | 114,197 | 0.8546 |
+  | 51–200 | 6,095 | 56,459 | 0.9026 |
+
+  | Cluster dollars | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | < $1k | 91,390 | 409,187 | 0.8174 |
+  | $1k–10k | 189,722 | 831,993 | 0.8143 |
+  | $10k–50k | 87,999 | 417,687 | 0.8260 |
+  | ≥ $50k | 69,145 | 377,281 | 0.8451 |
+
+  | Keys sharing name | Wrong | Correct | Precision |
+  | --- | --- | --- | --- |
+  | 1 | 14,009 | 13,826 | 0.4967 |
+  | 2–10 | 191,884 | 1,239,591 | 0.8660 |
+  | 11–100 | 182,587 | 726,623 | 0.7992 |
+  | > 100 | 49,776 | 56,108 | 0.5299 |
+
+  The 20 commonest direct patterns (first name / last name / ZIP5 / employer / occupation):
+
+  | Pattern | Wrong | Correct |
+  | --- | --- | --- |
+  | exact / exact / exact / null / null | 49,118 | 565,631 |
+  | exact / exact / differ / exact / same | 41,176 | 42,184 |
+  | exact / exact / differ / null / null | 30,357 | 36,543 |
+  | exact / exact / differ / exact / differ | 19,715 | 33,139 |
+  | exact / exact / differ / differ / differ | 19,202 | 27,440 |
+  | jw ≥ 0.8 / exact / differ / null / null | 13,129 | 145 |
+  | nickname / exact / exact / null / null | 12,383 | 49,468 |
+  | initial only / exact / exact / null / null | 8,904 | 4,824 |
+  | nickname / exact / differ / null / null | 7,751 | 1,920 |
+  | jw ≥ 0.8 / exact / differ / differ / differ | 7,054 | 136 |
+  | exact / exact / differ / differ / same | 6,571 | 16,369 |
+  | exact / exact / exact / differ / differ | 6,081 | 284,300 |
+  | jw ≥ 0.8 / exact / exact / null / null | 6,056 | 3,514 |
+  | nickname / exact / differ / differ / differ | 5,121 | 2,009 |
+  | exact / exact / differ / null / differ | 5,092 | 12,010 |
+  | exact / exact / exact / exact / differ | 3,935 | 262,832 |
+  | exact / differ / exact / null / null | 3,460 | 12,096 |
+  | jw ≥ 0.92 / exact / exact / null / null | 3,122 | 5,761 |
+  | exact / exact / exact / null / differ | 2,994 | 159,056 |
+  | exact / differ / differ / null / null | 2,716 | 282 |
+
+  `initial only`: one pattern in the top 20, 8,904 wrong to 4,824 correct (the ticket's floor is under 50,000;
+  NEU-2182's top 20 held eight, 441,466 wrong). `nickname`: three, 25,255 wrong to 53,397 correct. `jw ≥ 0.8`:
+  three, 26,239 wrong to 3,795 correct, now the first-name level behind the most wrong pairs.
+- **Hand classification** of the 100 sampled pairs:
+
+  | Class | Pairs |
+  | --- | --- |
+  | DIME's error | 79 |
+  | household or Jr/Sr (family) | 4 |
+  | common name in one area | 12 |
+  | junk data | 0 |
+  | other | 5 (Jaro-Winkler-close first names that are two people: BARRY/LARRY, CLAIRE/LAURIE, BENTON/BRENT; a nickname and a surname drift, MELINDA PETERS/LINDA PETERSON; a chain through a shared employer) |
+
+  Of DIME's 79, 5 are `same key` and 11 are two `cid`s that differ by exactly 5×10¹⁵ (`3800298286` and
+  `5000003800298286`, sample 4): whether DIME numbers one contributor both ways is not yet checked against its
+  codebook. The households are JOAN/JON, PAMELA/PAUL, JOE/JON (Jaro-Winkler) and J MICHAEL/JEANNE (an initial
+  pair). Of the 13 pairs joined through the nickname level, 8 are DIME's error.
+- **Load and publish** (§5): `load` 3m9s, `publish` 1m38s; published build `20261103T175128Z` (previous
+  `20261103T163743Z`); `gold.meta` holds 0.8229 / 0.9105, top 0.9739 / 0.7988, 30,175,706 matched rows, DIME v4.0.
+- **What it means.** The fix removed what NEU-2182 traced to the first-initial level (54 of its 100 samples): no
+  sampled pair here is two full names sharing only a first letter. The remaining wrong pairs are mostly DIME's:
+  about 340,000 of the 432,161 in clusters of 50 keys or fewer if the sample holds (79 of 100; 95% interval about
+  300,000–370,000), which puts precision against the truth at about 0.95–0.97, not 0.8229. What linkage still gets wrong is common names in one area and first names close by
+  Jaro-Winkler; the `jw ≥ 0.8` patterns with a different ZIP are 20,183 wrong to 281 correct.
