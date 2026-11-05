@@ -1,14 +1,14 @@
 import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
-import type { Committee, CommitteeCycle } from "../api/client";
+import type { Committee, CommitteeCycle, TopOrganization } from "../api/client";
 import { CONTRIBUTION_PAGES } from "../api/contributions";
 import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
 import TopDonorsTable from "../components/TopDonorsTable";
-import { money } from "../components/format";
+import { count, money } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { committeeDesignation, committeeType } from "../domain/committees";
 import { partyColour } from "../theme";
@@ -17,6 +17,14 @@ import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
 import { useScrollToHash, useShownCycle } from "./entityCycle";
 import { RECIPIENT_COLUMNS } from "./recipientColumns";
+
+const ORGANIZATIONS_COLUMN: Column<CommitteeCycle> = {
+  key: "organizations",
+  header: "From organizations",
+  align: "right",
+  render: (row) => money(row.total_from_organizations),
+  sortValue: (row) => row.total_from_organizations,
+};
 
 const CYCLE_COLUMNS: Column<CommitteeCycle>[] = [
   {
@@ -61,6 +69,42 @@ const CYCLE_SERIES: CycleSeries<CommitteeCycle>[] = [
   { name: "Self-funding", value: (row) => row.self_funding },
 ];
 
+const ORGANIZATIONS_SERIES: CycleSeries<CommitteeCycle> = {
+  name: "From organizations",
+  value: (row) => row.total_from_organizations,
+};
+
+// After "From committees", in the table and the chart.
+const CYCLE_COLUMNS_WITH_ORGANIZATIONS = [
+  ...CYCLE_COLUMNS.slice(0, 3),
+  ORGANIZATIONS_COLUMN,
+  ...CYCLE_COLUMNS.slice(3),
+];
+const CYCLE_SERIES_WITH_ORGANIZATIONS = [
+  ...CYCLE_SERIES.slice(0, 2),
+  ORGANIZATIONS_SERIES,
+  ...CYCLE_SERIES.slice(2),
+];
+
+const ORGANIZATION_COLUMNS: Column<TopOrganization>[] = [
+  {
+    key: "rank",
+    header: "Rank",
+    align: "right",
+    render: (organization) => count(organization.rank),
+    sortValue: (organization) => organization.rank,
+  },
+  // Plain text: an organization is grouped by name, not resolved, so it has no page (ADR-0011).
+  { key: "organization", header: "Organization", render: (organization) => organization.name },
+  {
+    key: "amount",
+    header: "Amount",
+    align: "right",
+    render: (organization) => money(organization.amount),
+    sortValue: (organization) => organization.amount,
+  },
+];
+
 /** `/committee/:id`: a committee's money in every cycle; whom it gave to and got from in one. */
 function CommitteePage() {
   const id = useParams().id ?? "";
@@ -99,6 +143,8 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
   const [cycle, showCycle] = useShownCycle(cycles);
   const shown = committee.cycles.find((row) => row.cycle === cycle);
   const kind = [committeeType(committee.type), committeeDesignation(committee.designation)];
+  // Most committees take nothing from organizations; theirs is a column of zeros left out.
+  const fromOrganizations = committee.cycles.some((row) => row.total_from_organizations !== 0);
 
   return (
     <Stack gap="xl">
@@ -134,9 +180,12 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
           <Text c="dimmed">No money is recorded for this committee in any cycle.</Text>
         ) : (
           <Stack gap="md">
-            <CycleTotalsChart rows={committee.cycles} series={CYCLE_SERIES} />
+            <CycleTotalsChart
+              rows={committee.cycles}
+              series={fromOrganizations ? CYCLE_SERIES_WITH_ORGANIZATIONS : CYCLE_SERIES}
+            />
             <DataTable
-              columns={CYCLE_COLUMNS}
+              columns={fromOrganizations ? CYCLE_COLUMNS_WITH_ORGANIZATIONS : CYCLE_COLUMNS}
               rows={committee.cycles}
               rowKey={(row) => String(row.cycle)}
               rowProps={(row) => ({ id: `cycle-${row.cycle}` })}
@@ -171,6 +220,25 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
                 emptyMessage={`No resolved individual donors in ${shown.cycle}.`}
               />
             </section>
+            {shown.top_organizations.length > 0 && (
+              <section aria-labelledby="top-organizations">
+                <Title order={3} id="top-organizations">
+                  Top organizations
+                </Title>
+                <Text c="dimmed" size="sm" mb="sm">
+                  Grouped by reported name; not resolved like individual donors.{" "}
+                  <Anchor component={Link} to="/methodology">
+                    Methodology
+                  </Anchor>
+                </Text>
+                <DataTable
+                  key={shown.cycle}
+                  columns={ORGANIZATION_COLUMNS}
+                  rows={shown.top_organizations}
+                  rowKey={(organization) => organization.organization_key}
+                />
+              </section>
+            )}
             <section aria-labelledby="contributions">
               <Title order={3} id="contributions" mb="sm">
                 Contributions received

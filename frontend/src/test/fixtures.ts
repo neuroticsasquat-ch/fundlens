@@ -12,6 +12,7 @@ import type {
   RaceSummary,
   SearchResult,
   TopDonor,
+  TopOrganization,
 } from "../api/client";
 
 // The fixture cycle as the API serves it, from tests/fixtures/fec/2024/expected.yaml.
@@ -373,7 +374,62 @@ export const COMMITTEE_BRICKLAYERS: Committee = {
   ],
 };
 
-export const COMMITTEES: Committee[] = [COMMITTEE_ACTBLUE, COMMITTEE_OKAFOR, COMMITTEE_BRICKLAYERS];
+const organizations = (rows: [string, string, number][]): TopOrganization[] =>
+  rows.map(([organization_key, name, amount], index) => ({
+    rank: index + 1,
+    organization_key,
+    name,
+    amount,
+  }));
+
+/** The super PAC: one organization's gifts less a refund, under its most-money spelling. */
+export const COMMITTEE_MARYLAND_FORWARD: Committee = {
+  committee_id: "C00800201",
+  name: "MARYLAND FORWARD PAC",
+  type: "O",
+  designation: "U",
+  party: null,
+  connected_org: null,
+  is_conduit: false,
+  cycles: [
+    committeeCycle({
+      total_individual: 395875,
+      total_from_committees: 65000,
+      total_from_organizations: 72500,
+      ie_total: 670000,
+      top_organizations: organizations([["CHESAPEAKE STEEL", "CHESAPEAKE STEEL, INC.", 72500]]),
+    }),
+  ],
+};
+
+/** A candidate committee two companies gave to, most first. */
+export const COMMITTEE_PELL: Committee = {
+  committee_id: "C00800105",
+  name: "PELL FOR LIBERTY",
+  type: "S",
+  designation: "P",
+  party: "LIB",
+  connected_org: null,
+  is_conduit: false,
+  cycles: [
+    committeeCycle({
+      total_individual: 3250,
+      total_from_organizations: 8000,
+      top_organizations: organizations([
+        ["ACME CONCRETE", "ACME CONCRETE LLC", 5000],
+        ["ACME WIDGETS", "ACME WIDGETS INC", 3000],
+      ]),
+    }),
+  ],
+};
+
+export const COMMITTEES: Committee[] = [
+  COMMITTEE_ACTBLUE,
+  COMMITTEE_OKAFOR,
+  COMMITTEE_BRICKLAYERS,
+  COMMITTEE_MARYLAND_FORWARD,
+  COMMITTEE_PELL,
+];
 
 /** A counted contribution as the API serves it; the rest of the row is blank. */
 export const contribution = (
