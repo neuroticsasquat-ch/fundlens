@@ -103,6 +103,8 @@ class OrganizationReceipts(TypedDict):
     by_key: dict[str, int]
     by_committee: dict[str, int]
     total_amount: int
+    # Per committee, by rank: [organization_key, name, amount] (NEU-2133).
+    top_by_committee: dict[str, list[list[str | int]]]
     classified: list[int]
 
 

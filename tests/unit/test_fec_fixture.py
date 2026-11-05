@@ -352,8 +352,8 @@ def race_ids() -> dict[str, str | None]:
     }
 
 
-def sum_by(pairs: Iterable[tuple[str, int]]) -> dict[str, int]:
-    totals: dict[str, int] = defaultdict(int)
+def sum_by[K](pairs: Iterable[tuple[K, int]]) -> dict[K, int]:
+    totals: dict[K, int] = defaultdict(int)
     for key, value in pairs:
         totals[key] += value
     return totals
@@ -631,6 +631,28 @@ def test_the_expected_organization_receipts_match_the_fixture_and_feed_no_other_
         for donor in EXPECTED["donors"].values()
         for sub_id in donor["sub_ids"]
     )
+
+
+def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:
+    receipts = organization_receipts()
+    key_of = {r["SUB_ID"]: normalize.organization_key(r["NAME"]) or "" for r in receipts}
+    # The spelling with the most money, then the most receipts, names the key, as
+    # donor.display_name is chosen (spec §6.7).
+    spellings = sum_by(((key_of[r["SUB_ID"]], r["NAME"]), signed(r)) for r in receipts)
+    receipts_of = sum_by(((key_of[r["SUB_ID"]], r["NAME"]), 1) for r in receipts)
+    name_of: dict[str, str] = {}
+    for (key, name), _ in sorted(
+        spellings.items(), key=lambda item: (-item[1], -receipts_of[item[0]], item[0][1])
+    ):
+        name_of.setdefault(key, name)
+    given = sum_by(((r["CMTE_ID"], key_of[r["SUB_ID"]]), signed(r)) for r in receipts)
+    top: dict[str, list[list[str | int]]] = defaultdict(list)
+    for (committee, key), net in sorted(given.items(), key=lambda item: (-item[1], item[0][1])):
+        if net > 0:
+            top[committee].append([key, name_of[key], net])
+    assert EXPECTED["organization_receipts"]["top_by_committee"] == top
+    # One organization under two spellings is listed once.
+    assert len({r["NAME"] for r in receipts if key_of[r["SUB_ID"]] == "CHESAPEAKE STEEL"}) == 2
 
 
 def test_the_expected_name_matches_are_the_fixtures_pac_rows_without_an_id() -> None:
