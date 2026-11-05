@@ -2,6 +2,7 @@
 of its own (spec §5.5, NEU-2039 §4.1, §6)."""
 
 import shutil
+from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, get_args
@@ -22,7 +23,13 @@ from fundlens.transform.runner import ChecksFailed
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT
 from tests.integration.test_resolve import BEYOND_LINKAGE, MODEL
-from tests.integration.test_transform import BUILD, put_bronze, seats_report, transform
+from tests.integration.test_transform import (
+    BUILD,
+    failing_rows,
+    put_bronze,
+    seats_report,
+    transform,
+)
 
 NEWER = "20261031T030000Z"
 GOLD_TABLES: tuple[GoldTable, ...] = get_args(GoldTable)
@@ -121,13 +128,31 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
 
     committee_cycles = {row["committee_id"]: row for row in rows(migrated_db, "committee_cycle")}
     assert set(committee_cycles) == set(expected["committees"])
+    organizations = expected["organization_receipts"]
     for committee_id, totals in expected["committees"].items():
         row = committee_cycles[committee_id]
         assert dollars(row["total_individual"]) == totals["total_individual"], committee_id
         assert dollars(row["self_funding"]) == totals["self_funding"], committee_id
         assert dollars(row["total_from_committees"]) == totals["total_from_committees"]
         assert dollars(row["total_to_candidates"]) == totals["total_to_candidates"]
+        # Organization money (ADR-0011): the super PAC's is CHESAPEAKE STEEL's gifts less its
+        # refund, the party committee's the union's 31K; 0, never NULL, for the rest.
+        assert dollars(row["total_from_organizations"]) == organizations["by_committee"].get(
+            committee_id, 0
+        ), committee_id
         assert row["ie_total"] == 0
+
+    # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.
+    top_organizations: dict[str, list[list[str | int]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "committee_top_organization"),
+        key=lambda row: (row["committee_id"], row["rank"]),
+    ):
+        assert row["cycle"] == 2024
+        top_organizations[row["committee_id"]].append(
+            [row["organization_key"], row["name"], dollars(row["amount"])]
+        )
+    assert top_organizations == organizations["top_by_committee"]
 
     [cycle] = rows(migrated_db, "cycle")
     assert cycle["cycle"] == 2024
@@ -508,6 +533,31 @@ def test_a_top_donor_list_counting_own_money_fails_its_check(
     assert isinstance(result.exception, ChecksFailed)
     assert "gold_top_donor_not_self_funding.sql" in str(result.exception)
     assert not schema_exists(migrated_db, "gold_build")
+
+
+def test_the_top_organization_amount_check_fails_on_a_row_silver_does_not_add_up_to() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            "CREATE TABLE silver.organization_receipt AS SELECT * FROM (VALUES"
+            " ('C1', 'ACME', 'ACME INC', 500), ('C1', 'ACME', 'ACME, INC.', 250),"
+            " ('C1', 'BOLT', 'BOLT LLC', 100), ('C2', 'ACME', 'ACME INC', 75)"
+            ") AS t(recipient_committee_id, organization_key, organization_name, amount)"
+        )
+        con.execute(
+            "CREATE TABLE committee_top_organization AS SELECT * FROM (VALUES"
+            " ('C1', 1, 'ACME', 'ACME INC', 750), ('C1', 2, 'BOLT', 'BOLT LLC', 90),"
+            " ('C2', 1, 'ACME', 'ACME CORP', 75), ('C3', 1, 'ACME', 'ACME INC', 10)"
+            ") AS t(committee_id, rank, organization_key, name, amount)"
+        )
+
+        # BOLT's amount is not its net receipts, ACME CORP is no spelling ACME reported, and C3
+        # received nothing from ACME.
+        assert sorted(failing_rows(con, "gold_committee_top_organization_amount.sql")) == [
+            ("C1", "BOLT", "BOLT LLC", 90, 100),
+            ("C2", "ACME", "ACME CORP", 75, 75),
+            ("C3", "ACME", "ACME INC", 10, None),
+        ]
 
 
 def test_load_twice_for_the_same_build_rebuilds_gold_build(

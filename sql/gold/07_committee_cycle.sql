@@ -6,7 +6,9 @@
 -- total_to_candidates the disbursement side credited to a candidate (what it recorded giving; a 24K
 -- whose recipient raises for no candidate of the cycle is to none, NEU-2075): one side each, never
 -- both, so a gift on both sides is counted once in each figure, and a committee's top recipients
--- add up to its total_to_candidates. ie_total is 0 until NEU-2057.
+-- add up to its total_to_candidates. total_from_organizations is the organization receipts it
+-- recorded (ADR-0011), net of refunds: organization money is the committee's only, in no candidate,
+-- race, cycle or donor figure. ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -22,6 +24,11 @@ from_committees AS (
     WHERE side = 'receipt'
     GROUP BY to_committee_id
 ),
+from_organizations AS (
+    SELECT recipient_committee_id AS committee_id, sum(amount) AS total_from_organizations
+    FROM silver.organization_receipt
+    GROUP BY recipient_committee_id
+),
 to_candidates AS (
     SELECT from_committee_id AS committee_id, sum(amount) AS total_to_candidates
     FROM silver.committee_transfer
@@ -34,9 +41,12 @@ SELECT
     CAST(coalesce(received.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
     CAST(coalesce(received.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
+    CAST(coalesce(from_organizations.total_from_organizations, 0) AS DECIMAL(16, 2))
+        AS total_from_organizations,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(0 AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee
 LEFT JOIN received USING (committee_id)
 LEFT JOIN from_committees USING (committee_id)
+LEFT JOIN from_organizations USING (committee_id)
 LEFT JOIN to_candidates USING (committee_id);

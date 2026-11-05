@@ -62,6 +62,7 @@ GoldTable = Literal[
     "race_top_donor",
     "candidate_top_donor",
     "committee_top_donor",
+    "committee_top_organization",
 ]
 
 # `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
@@ -78,6 +79,7 @@ INPUTS: dict[SilverTable, str] = {
     "committee_transfer": "transform",
     "jfc_attribution": "transform",
     "contributor": "transform",
+    "organization_receipt": "transform",
     "race": "seats",
 }
 
