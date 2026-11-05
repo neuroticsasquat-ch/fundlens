@@ -825,3 +825,25 @@ this working file is the baseline (438,256 wrong pairs).
   (13.4 to 1), and costs top-scope recall 0.0373. With 79 of NEU-2188's 100 sampled wrong pairs DIME's own, many of
   the "wrong" pairs a higher threshold removes are likely one person DIME splits, though this sweep did not sample
   them.
+
+### 2026-11-04 — The adjudicated model, 2024 (NEU-2056)
+
+From `c7e8fbb` (NEU-2056's merge): DIME v4.0, cycle 2024, build `20261103T175128Z`, model `20261104T173004Z`, the
+`resolve --full` that applied NEU-2055's first adjudication run (357 merges, 458 splits; [adjudicating.md](adjudicating.md)
+Log).
+
+- **Validate** (§4) 3m45s: 30,175,706 of 51,014,276 matched (59.2%); **overall 0.8244 / 0.9075, top 10,000
+  0.9762 / 0.7867** (2,029,462 correct, 2,461,785 predicted, 2,236,402 true pairs overall; 338,642 correct,
+  346,911 predicted, 430,470 true over 65,053 keys in the top scope).
+- **Into `gold.meta`** (§5): the first `load` after the deploy ran before this validate and said `quality: not
+  validated for model 20261104T173004Z`; loaded again after it, `gold_build.meta` holds the figures above.
+  `publish` 1m41s republished build `20261103T175128Z` (previous the same build), and `/v1/meta` serves the
+  figures.
+  `resolver_version`, `overrides_count` and `adjudications_applied` stay NULL: the model was trained before
+  NEU-2056's run record existed, so the next `resolve --full` fills them.
+- **What it means.** Against model `20261104T012451Z` (NEU-2189's default, 0.8229 / 0.9105, top 0.9739 / 0.7988),
+  whose clusters before adjudication the retrain reproduces, the verdicts removed 5,933 wrong pairs overall
+  (438,256 → 432,323) for 6,686 correct ones (2,036,148 → 2,029,462). Among the top 10,000 they removed 932 wrong
+  pairs (9,201 → 8,269) for 5,229 correct ones (343,871 → 338,642): precision up 0.0023, recall down 0.0121. By
+  DIME's labels, then, most of what the splits separate is one donor, which fits splits made on differing
+  employers (someone who changed jobs); no pair was sampled to check whose error they are.
