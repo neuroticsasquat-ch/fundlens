@@ -1,9 +1,13 @@
 -- contribution (spec §4): one row per counted `indiv` contribution.
 --
 -- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one.
--- FEC fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual:
--- `indiv` holds individuals' contributions, and older cycles and paper filings would otherwise
--- count none. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
+-- FEC fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual
+-- unless the classifier (resolve.normalize.is_organization_name, the 2024 measurement's rule V8)
+-- calls its name an organization's (NEU-2132): `indiv` holds individuals' contributions, and older
+-- cycles and paper filings would otherwise count none, or count every organization's gift as a
+-- person's. A classified row is an organization receipt or a committee's gift
+-- (08_organization_receipt.sql, 05_committee_transfer.sql). A filled entity type is never
+-- second-guessed. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
 -- MEMO_CD = 'X' memo line and the conduit's 24T row are dropped, and the conduit is kept on the
 -- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain
 -- 15 whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'):
@@ -22,7 +26,8 @@
 -- value is normalized once, not each row: a cycle reports far fewer of each than it has rows. One
 -- scan of `indiv` and the JFC attribution lines collects all four. The four `contributor_*` tables,
 -- each a reported value and its normalized form, outlive this file: 06_jfc_attribution.sql and
--- 07_contributor.sql read them too.
+-- 07_contributor.sql read them too. So does `organization_name_class`, the classifier's call on
+-- each distinct name, which 05_committee_transfer.sql and 08_organization_receipt.sql read.
 --
 -- `handoff_link` is each handed-off committee (`handoff`, fec/handoffs.csv) linked twice, dated: to
 -- the candidate it was handed from until the handoff date, and to the one it was handed to from
@@ -41,10 +46,12 @@ SELECT committee_id, to_candidate_id AS candidate_id, handoff_date AS valid_from
     NULL::DATE AS valid_until
 FROM handoff;
 
--- `jfc_line` is every `oth` line 06_jfc_attribution.sql builds a JFC attribution from (spec §6.11):
--- a 15J memo line, where a joint fundraising committee's participant itemizes an individual (IND,
--- or blank as in `indiv`) behind its share of a JFC transfer, filed by a committee in `cm`.
-CREATE TEMP VIEW jfc_line AS
+-- `jfc_line_reported` is every `oth` line a JFC attribution may be built from (spec §6.11): a 15J
+-- memo line, where a joint fundraising committee's participant itemizes an individual (IND, or
+-- blank as in `indiv`) behind its share of a JFC transfer, filed by a committee in `cm`. Its names
+-- are classified with `indiv`'s; `jfc_line`, below, is these lines less the blank-type ones the
+-- classifier calls an organization's.
+CREATE TEMP VIEW jfc_line_reported AS
 SELECT *
 FROM oth
 WHERE TRANSACTION_TP = '15J'
@@ -57,12 +64,26 @@ SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION
 FROM (
     SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM indiv
     UNION ALL
-    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM jfc_line
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM jfc_line_reported
 )
 GROUP BY GROUPING SETS ((NAME), (ZIP_CODE), (EMPLOYER), (OCCUPATION));
 
 CREATE TEMP TABLE contributor_name AS
 SELECT NAME AS raw, normalize_name(NAME) AS name FROM contributor_value WHERE NAME IS NOT NULL;
+
+-- The classifier's call on each distinct name, made once per name (NEU-2132). Only a row with a
+-- blank entity type ever asks it.
+CREATE TEMP TABLE organization_name_class AS
+SELECT raw, is_organization_name(raw) AS is_organization FROM contributor_name;
+
+-- The lines 06_jfc_attribution.sql builds a JFC attribution from. A classified line is in no
+-- table: it was evidence about a person, and it is not about one.
+CREATE TEMP VIEW jfc_line AS
+SELECT *
+FROM jfc_line_reported
+WHERE nullif(trim(ENTITY_TP), '') IS NOT NULL
+    OR NAME IS NULL
+    OR NAME NOT IN (SELECT raw FROM organization_name_class WHERE is_organization);
 
 CREATE TEMP TABLE contributor_zip AS
 SELECT ZIP_CODE AS raw, zip5(ZIP_CODE) AS zip5 FROM contributor_value WHERE ZIP_CODE IS NOT NULL;
@@ -129,7 +150,16 @@ individual AS (
         -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
         CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
     FROM indiv
-    WHERE coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN')
+    WHERE (
+            trim(ENTITY_TP) IN ('IND', 'CAN')
+            OR (
+                nullif(trim(ENTITY_TP), '') IS NULL
+                AND (
+                    NAME IS NULL
+                    OR NAME NOT IN (SELECT raw FROM organization_name_class WHERE is_organization)
+                )
+            )
+        )
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND NOT (

@@ -11,7 +11,8 @@ loaded once). `register` makes them DuckDB functions, so the silver SQL applies 
 distinct value once rather than to every contribution row.
 
 `organization_key` (spec §4, ADR-0011) groups an organization's receipts by the same employer
-rule: no linkage, so two spellings share a key or they are two organizations.
+rule: no linkage, so two spellings share a key or they are two organizations. `is_organization_name`
+(spec §4, NEU-2132) decides whether a row FEC filed with no entity type is an organization's.
 """
 
 import re
@@ -179,6 +180,66 @@ def organization_key(raw: str | None) -> str | None:
     return normalize_employer(raw) or clean(raw) or None
 
 
+# The blank-entity-type classifier's lists: the 2024 measurement's rule V8
+# (docs/measurements/organization-money-2024.md, Q5), 99.66% row precision and 97.99% row recall on
+# 2024's filled entity types. Change them only by measuring again. A legal suffix that ends people's
+# names ('COX, JOHN T. MR. III PC', 'PERRETT, LP') is not strict: CO, COMPANY, PC and LP are out.
+STRICT_LEGAL_SUFFIXES = frozenset(
+    {"INC", "LLC", "CORP", "LTD", "LLP", "PLLC", "INCORPORATED", "CORPORATION", "LIMITED"}
+)
+# The words whose row precision, counted only in a segment of two tokens or more, was 98% or more.
+ORGANIZATION_WORDS = frozenset(
+    {
+        "UNION",
+        "INTERNATIONAL",
+        "INTL",
+        "LEAGUE",
+        "FEDERATION",
+        "PARTNERSHIP",
+        "PARTNERS",
+        "INSTITUTE",
+        "INDUSTRIES",
+        "SOCIETY",
+        "HOSPITAL",
+        "SCHOOL",
+        "ASSN",
+        "FUND",
+        "COALITION",
+        "ENTERPRISES",
+    }
+)
+
+
+def _name_tokens(raw: str) -> list[str]:
+    """`raw` uppercased, periods and apostrophes deleted ('L.L.C.' is 'LLC') and split on every
+    other run of non-alphanumerics, as the measurement's SQL tokenizes it."""
+    return re.sub(r"[^A-Z0-9]+", " ", re.sub(r"[.']", "", raw.upper())).split()
+
+
+def is_organization_name(raw: str | None) -> bool:
+    """Whether `raw`, a name FEC filed with a blank entity type, is an organization's (spec §4).
+    FEC fills ENTITY_TP only on electronic filings since April 2002, so on paper filings and in
+    older cycles the name alone tells an organization's gift from a person's. A filled entity type
+    is never second-guessed: this is never asked about one.
+
+    An organization's name has no comma ('FUTURE FORWARD USA ACTION'), ends in a strict legal
+    suffix ('ACME HOLDINGS, L.L.C.'), or has a comma-separated part of two words or more holding an
+    organization word ('NEA ADVOCACY FUND, ASSOCIATION'); a word alone in its part is a person's
+    surname or given name ('BANK, LISSY'). No name, or one of no words, is not an organization."""
+    if raw is None:
+        return False
+    tokens = _name_tokens(raw)
+    if not tokens:
+        return False
+    if "," not in raw or tokens[-1] in STRICT_LEGAL_SUFFIXES:
+        return True
+    for segment in raw.split(","):
+        words = _name_tokens(segment)
+        if len(words) >= 2 and ORGANIZATION_WORDS.intersection(words):
+            return True
+    return False
+
+
 def normalize_occupation(raw: str | None) -> str | None:
     """`raw` cleaned; None when it names no occupation ('RETIRED', 'N/A')."""
     if raw is None:
@@ -214,15 +275,16 @@ def _name_struct(raw: str | None) -> dict[str, str | None]:
 
 def register(con: duckdb.DuckDBPyConnection) -> None:
     """Make the normalizers DuckDB functions on `con`: `normalize_name` (a struct of the `Name`
-    parts and its `norm`), `zip5`, `normalize_employer`, `normalize_occupation` and
-    `organization_key`. They see a NULL as None, so a NULL name is a struct of NULL parts with an
-    empty `norm`."""
+    parts and its `norm`), `zip5`, `normalize_employer`, `normalize_occupation`,
+    `organization_key` and `is_organization_name`. They see a NULL as None, so a NULL name is a
+    struct of NULL parts with an empty `norm`, and no organization's."""
     udfs = (
         ("normalize_name", _name_struct, NAME_TYPE),
         ("zip5", zip5, "VARCHAR"),
         ("normalize_employer", normalize_employer, "VARCHAR"),
         ("normalize_occupation", normalize_occupation, "VARCHAR"),
         ("organization_key", organization_key, "VARCHAR"),
+        ("is_organization_name", is_organization_name, "BOOLEAN"),
     )
     for name, function, returns in udfs:
         # DuckDB's stub leaves one overload's return type unknown.

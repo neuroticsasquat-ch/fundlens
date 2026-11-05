@@ -35,6 +35,12 @@
 -- committee's id (`twin`: same recipient, giver, amount and date; 5 `indiv` rows, $70,000, in
 -- 2024), so nothing is counted twice. A JFC named by NAME is NEU-2124's rule, not this one, and
 -- has no twin rule. A matched row's amount is kept as filed, as every transfer's is.
+-- A counted `indiv` row with a blank entity type whose name the classifier calls an organization's
+-- (`organization_name_class`, 04_contribution.sql) takes the same rule (NEU-2132): before 2002
+-- party committees' non-federal accounts and dinner committees gave so. One naming several
+-- committees or none is an organization receipt instead (08_organization_receipt.sql): nothing
+-- says it is a committee's. A blank row the classifier calls a person's is never matched by name,
+-- nor is a blank entity type in `oth`.
 --
 -- A receipt's candidate is the one its recipient committee raises for, by contribution's rule
 -- (NEU-2124), so a JFC's transfer to a campaign is that candidate's (gold's
@@ -123,8 +129,9 @@ receipt AS (
     WHERE left(oth.TRANSACTION_TP, 1) IN ('1', '3') AND oth.MEMO_CD IS DISTINCT FROM 'X'
 ),
 named_gift AS (
-    -- A counted `indiv` row typed PAC, COM, CCM or PTY with no OTHER_ID, naming exactly one `cm`
-    -- committee that is not its recipient. `indiv` on the left: the join builds on `cm_named`.
+    -- A counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified an organization's,
+    -- with no OTHER_ID, naming exactly one `cm` committee that is not its recipient. `indiv` on the
+    -- left: the join builds on `cm_named`.
     SELECT
         indiv.SUB_ID,
         indiv.CMTE_ID,
@@ -135,7 +142,13 @@ named_gift AS (
         cm_named.committee_id AS giver
     FROM indiv
     JOIN cm_named ON cm_named.name_key = regexp_replace(upper(indiv.NAME), '[^A-Z0-9]', '', 'g')
-    WHERE trim(indiv.ENTITY_TP) IN ('PAC', 'COM', 'CCM', 'PTY')
+    WHERE (
+            trim(indiv.ENTITY_TP) IN ('PAC', 'COM', 'CCM', 'PTY')
+            OR (
+                nullif(trim(indiv.ENTITY_TP), '') IS NULL
+                AND indiv.NAME IN (SELECT raw FROM organization_name_class WHERE is_organization)
+            )
+        )
         AND coalesce(trim(indiv.OTHER_ID), '') = ''
         AND indiv.MEMO_CD IS DISTINCT FROM 'X'
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
