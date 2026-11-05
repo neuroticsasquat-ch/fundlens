@@ -494,7 +494,8 @@ step 6's. The four figures are step 5's.
 
 ```bash
 # laptop
-for c in C00835959 C00401224; do curl -sS -o /dev/null -w "$c %{http_code}\n" "https://api.fundlens.org/v1/committees/$c?nocache=$(date +%s)"; done
+curl -sS -o /dev/null -w "C00835959 %{http_code}\n" "https://api.fundlens.org/v1/committees/C00835959?nocache=$(date +%s)"
+curl -sS -o /dev/null -w "C00401224 %{http_code}\n" "https://api.fundlens.org/v1/committees/C00401224?nocache=$(date +%s)"
 curl -sS "https://api.fundlens.org/v1/committees/C00835959?cycle=2024" | jq '.cycles[] | select(.cycle == 2024) | {total_individual, total_from_committees, total_from_organizations, top_organizations: [.top_organizations[:5][] | {rank, name, amount}]}'
 ```
 
@@ -651,9 +652,15 @@ Gather the run's identifiers and step times in one file:
 } | tee run-record.txt
 ```
 
+The braces stay outside the quotes, so the laptop's shell expands them into one `hetzner-01:` path per file. Since
+OpenSSH 9, `scp` copies over SFTP, which does not expand braces in a remote path. The files go to a work dir of their
+own, outside the repo:
+
 ```bash
 # laptop
-scp hetzner-01:'fundlens-organization-run/{run-record.txt,transformed.json,old-transformed.json,candidates.txt,committees-before-after.txt,fec-committees.txt}' .
+mkdir -p ~/fundlens-organization-run
+cd ~/fundlens-organization-run
+scp hetzner-01:fundlens-organization-run/{run-record.txt,transformed.json,old-transformed.json,candidates.txt,committees-before-after.txt,fec-committees.txt} .
 ```
 
 **Expected:** `run-record.txt` holds the date, the SHA, the two builds, the model, four `step:<name>` lines with
@@ -678,3 +685,104 @@ redeploys `pipeline`, which is safe now that nothing is running.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-05 — 2024 with organization money (NEU-2136)
+
+Build `20261105T205814Z` (live before: `20261103T175128Z`), model `20261105T212431Z`, published at 22:09:56 UTC from
+`55c645c`. Every step 9 check passed, and nothing was rolled back. Transform 1,448 s, resolve 649 s, load 169 s, publish
+89 s.
+
+Step 3, beside the live build:
+
+| Table | Live | New | Change |
+| --- | ---: | ---: | ---: |
+| `organization_receipt` | — | 18,398 | new |
+| `contribution` | 51,014,276 | 51,014,206 | −70 |
+| `committee_transfer` | 356,451 | 358,920 | +2,469 |
+| `contributor` | 5,620,495 | 5,620,442 | −53 |
+| `jfc_attribution` | 17,037,819 | 17,037,819 | 0 |
+
+`committee_transfer` gains NEU-2131's 2,463 name-matched receipts, first published here (its trial build
+`20261105T145236Z` had 358,914), and the 6 classified rows that name one committee.
+
+Resolve: `5620442 contributor keys in 4009954 clusters`; `overrides: 1 merges joining 1 clusters into others, 0
+splits`; `adjudications: 7568 verdicts: 357 merges joining 357 clusters into others, 458 splits`; `crosswalk: 0 new
+donors, 0 keys re-pointed, 0 redirects`. Step 4.1: `chosen: 594`.
+
+Step 5: overall 0.8244 / 0.9075, top 10,000 0.9762 / 0.7867, NEU-2056's to four places. 30,175,706 of 51,014,206
+counted contributions matched (59.2%).
+
+Step 7.1: 70 rows left `contribution`, $218,399, and 0 joined. Every one is a blank-type row the classifier calls an
+organization. 64 ($158,615) went to `organization_receipt` as classified, and 6 ($59,784) to `committee_transfer` by
+name. The top ten recipients match NEU-2132's query row for row, `C90020454` first at 3 rows and $84,694.
+
+| Candidate | Moved | Left |
+| --- | ---: | ---: |
+| H3UT02017 | −3,849 | −3,849 |
+| H4IL13258 | 8,600 | 8,600 |
+| H4MO07156 | 3,100 | 3,100 |
+| H4MO08253 | 245 | 245 |
+| H4MT02072 | 27,069 | 27,069 |
+| H4NY04190 | −1,560 | −1,560 |
+| H4SC03152 | 7,002 | 7,002 |
+| H4TN04288 | 1,000 | 1,000 |
+| S4NV00387 | 15,128 | 15,128 |
+
+`candidates moved: 9; differing: 0`.
+
+Step 7.2: `total_individual` unchanged for all seven. `total_from_organizations` is Q7's figure for Fairshake
+($166,692,432), SMP ($117,131,062) and SLF ($79,260,000); RNC $131,772 and DNC $375,700. `total_from_committees` rose
+by NEU-2131's name match: SMP $60,739,639 to $69,378,634, MAGA Inc. $2,826,533 to $14,548,533, SLF $0 to $8,684,545,
+Never Back Down $0 to $5,000.
+
+Step 8: `gold_prev` holds `20261103T175128Z`; 0 silver builds pruned; `gold.committee_top_organization` 9,643 rows;
+4,009,954 donors.
+
+Steps 9.1 and 9.2: `/v1/meta` serves the build and model, 1 override, 815 adjudications and step 5's four figures.
+`C00835959` and `C00401224` answer 200. Fairshake's 2024: individuals $7,326,650, committees $0, organizations
+$166,692,432. Its top five: COINBASE $68,499,995, RIPPLE LABS INC. $45,000,000, COINBASE COMMERCE (EXCHANGE)
+$25,000,000, JUMP CRYPTO $25,000,000, CIRCLE INTERNET FINANCIAL $1,000,000. Coinbase appears twice because
+organizations are grouped by reported name (ADR-0011). Step 9.4's page showed both sections.
+
+Step 9.3, against `webk24.zip` with `Last-Modified: Thu, 05 Nov 2026 06:40:07 GMT` (newer than Q7's, the same figures
+for these committees):
+
+| Committee | FEC name | FEC INDV_CONTRIB | FEC INDV_REFUNDS | Individual | Organizations | fundlens | Gap | Gap net of refunds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C00835959 | FAIRSHAKE | 217,423,881 | 0 | 7,326,650 | 166,692,432 | 174,019,082 | 43,404,799 | 43,404,799 |
+| C00484642 | SMP | 288,693,799 | 217,041 | 154,500,491 | 117,131,062 | 271,631,553 | 17,062,246 | 16,845,205 |
+| C00834077 | NEVER BACK DOWN INC. | 144,591,259 | 236,800 | 45,416,704 | 95,122,013 | 140,538,717 | 4,052,542 | 3,815,742 |
+| C00825851 | MAKE AMERICA GREAT AGAIN INC. | 383,797,396 | 300,000 | 305,954,164 | 82,945,136 | 388,899,300 | -5,101,904 | -5,401,904 |
+| C00571703 | SENATE LEADERSHIP FUND | 220,738,384 | 0 | 176,050,171 | 79,260,000 | 255,310,171 | -34,571,787 | -34,571,787 |
+| C00003418 | REPUBLICAN NATIONAL COMMITTEE | 185,043,891 | 362,715 | 108,104,023 | 131,772 | 108,235,795 | 76,808,096 | 76,445,382 |
+| C00010603 | DNC SERVICES CORP / DEMOCRATIC NATIONAL COMMITTEE | 198,991,259 | 771,012 | 103,537,525 | 375,700 | 103,913,225 | 95,078,034 | 94,307,023 |
+
+- **Fairshake:** not unitemized money. A super PAC with 37 itemized individual gifts takes few small ones. NEU-2140.
+- **SMP:** plausibly unitemized money, with 82,361 itemized individual rows behind it. Not verified.
+- **Never Back Down:** plausibly unitemized money. Not verified.
+- **MAGA Inc.:** not unitemized money: fundlens is above FEC. NEU-2140.
+- **SLF:** not unitemized money: fundlens is above FEC. NEU-2140.
+- **RNC** and **DNC:** unitemized money; both take many small gifts.
+
+Steps 7.3 and 9.5: `24716` TIDES ADVOCACY and `1152256` GROUNDSWELL ACTION FUND were live donors, 0 in the new build,
+and both answer 404. Search lists no donor named GROUNDSWELL ACTION FUND.
+
+Step 9.6: the `api` service's `UndefinedTable` issue had no event after the publish and is resolved. No new
+`pipeline` issue.
+
+Two figures came out below their expectation. Both are silver's refund rule, not this run: silver counts every refund as
+`-abs(amount)` (`sql/silver/04_contribution.sql`), while NEU-2132's query and Q7b summed `TRANSACTION_AMT` as filed. A refund
+its filer wrote positive therefore counts twice its size apart. Neither is a deviation from the spec, so neither is
+filed:
+
+- **The 70 rows that left hold $218,399, not NEU-2132's $233,837.** All $15,438 of the difference is in the 64
+  classified rows ($158,615 against $174,053). 14 of the 70 are refunds, $7,719 in all (`20Y` 3 rows $2,210, `22Y` 11
+  rows $5,509), and $15,438 is twice that. The row counts, the 6 name-matched rows' $59,784 and the top ten recipients
+  all match.
+- **Never Back Down and MAGA Inc. have less organization money than Q7b's ORG-typed `indiv` dollars**: $95,122,013
+  against $95,595,613 ($473,600 less) and $82,945,136 against $83,345,136 ($400,000 less). Each has one ORG-typed
+  `20Y` refund, $236,800 and $200,000, and the differences are twice those. Never Back Down's is FEC's whole
+  `INDV_REFUNDS` for it. Step 9.3's gaps move by the same amounts, inside the runbook's $1M.
+
+Runbook fixes made with this entry: step 10's `scp` (OpenSSH 9 and later do not expand braces in a remote path), and
+step 9.2's committee loop, which pasted into zsh with `\;` in place of `;` and never closed.
