@@ -69,6 +69,7 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8279 (0.9741) | 0.9059 (0.7948) | 216 | T = 0.99, validate --clusters, nothing written (NEU-2189). 16,354 pieces, largest 238 → 102; 421,254 wrong pairs. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8714 (0.9865) | 0.8865 (0.7615) | 213 | T = 0.999, validate --clusters, nothing written (NEU-2189). 6,137 pieces, largest 148 → 97; 292,694 wrong pairs. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.9001 (0.9895) | 0.8468 (0.7118) | 211 | T = 0.9999, validate --clusters, nothing written (NEU-2189). 4,243 pieces, largest 122 → 96; 210,264 wrong pairs. |
+| 2026-11-04 | `20261104T173004Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8244 (0.9762) | 0.9075 (0.7867) | 225 | From `c7e8fbb`: NEU-2055's first adjudication run applied (357 merges, 458 splits); the live figures. 2,029,462 correct, 2,461,785 predicted, 2,236,402 true pairs overall; top 10,000: 338,642 correct, 346,911 predicted, 430,470 true. |
 
 ## Findings
 
