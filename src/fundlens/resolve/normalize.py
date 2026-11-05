@@ -9,6 +9,9 @@ or alias. Anything else, a middle initial against a middle name among them, is l
 The normalizers are pure functions of their input (the alias table they read is a packaged file,
 loaded once). `register` makes them DuckDB functions, so the silver SQL applies them to each
 distinct value once rather than to every contribution row.
+
+`organization_key` (spec §4, ADR-0011) groups an organization's receipts by the same employer
+rule: no linkage, so two spellings share a key or they are two organizations.
 """
 
 import re
@@ -166,6 +169,16 @@ def normalize_employer(raw: str | None) -> str | None:
     return employer_aliases().get(base, base)
 
 
+def organization_key(raw: str | None) -> str | None:
+    """The organization key (spec §4, ADR-0011): `raw`, an organization's reported name, as
+    `normalize_employer` spells it ('KOCH INDUSTRIES, INC.' is 'KOCH INDUSTRIES', and 'Space
+    Exploration Technologies Corp.' is 'SPACEX' by alias), or, when that names no employer ('NONE',
+    'N/A'), the cleaned name itself, so the receipt keeps a key; None for no name at all."""
+    if raw is None:
+        return None
+    return normalize_employer(raw) or clean(raw) or None
+
+
 def normalize_occupation(raw: str | None) -> str | None:
     """`raw` cleaned; None when it names no occupation ('RETIRED', 'N/A')."""
     if raw is None:
@@ -201,13 +214,15 @@ def _name_struct(raw: str | None) -> dict[str, str | None]:
 
 def register(con: duckdb.DuckDBPyConnection) -> None:
     """Make the normalizers DuckDB functions on `con`: `normalize_name` (a struct of the `Name`
-    parts and its `norm`), `zip5`, `normalize_employer` and `normalize_occupation`. They see a
-    NULL as None, so a NULL name is a struct of NULL parts with an empty `norm`."""
+    parts and its `norm`), `zip5`, `normalize_employer`, `normalize_occupation` and
+    `organization_key`. They see a NULL as None, so a NULL name is a struct of NULL parts with an
+    empty `norm`."""
     udfs = (
         ("normalize_name", _name_struct, NAME_TYPE),
         ("zip5", zip5, "VARCHAR"),
         ("normalize_employer", normalize_employer, "VARCHAR"),
         ("normalize_occupation", normalize_occupation, "VARCHAR"),
+        ("organization_key", organization_key, "VARCHAR"),
     )
     for name, function, returns in udfs:
         # DuckDB's stub leaves one overload's return type unknown.
