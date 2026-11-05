@@ -217,6 +217,18 @@ class CommitteeTopRecipient(BaseModel):
     amount: float
 
 
+class TopOrganization(BaseModel):
+    """`gold.committee_top_organization`: an organization among the 100 that gave a committee
+    most in a cycle, its gifts grouped by organization key, never resolved (ADR-0011)."""
+
+    rank: int
+    # The key's reported spelling with the most money; a receipt filed with no name has no key
+    # and is on no list.
+    name: str
+    organization_key: str
+    amount: float
+
+
 class CommitteeCycle(BaseModel):
     """`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
     gave most to it."""
@@ -225,11 +237,15 @@ class CommitteeCycle(BaseModel):
     total_individual: float
     self_funding: float
     total_from_committees: float
+    # Gifts from givers neither people nor committees, net of refunds: counted on the receiving
+    # committee only, in no race, candidate or cycle-wide figure (ADR-0011).
+    total_from_organizations: float
     total_to_candidates: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.
     top_donors: list[TopDonor]
+    top_organizations: list[TopOrganization]
 
 
 class Committee(BaseModel):

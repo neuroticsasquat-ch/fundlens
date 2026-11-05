@@ -312,10 +312,14 @@ export interface components {
             self_funding: number;
             /** Top Donors */
             top_donors: components["schemas"]["TopDonor"][];
+            /** Top Organizations */
+            top_organizations: components["schemas"]["TopOrganization"][];
             /** Top Recipients */
             top_recipients: components["schemas"]["CommitteeTopRecipient"][];
             /** Total From Committees */
             total_from_committees: number;
+            /** Total From Organizations */
+            total_from_organizations: number;
             /** Total Individual */
             total_individual: number;
             /** Total To Candidates */
@@ -724,6 +728,21 @@ export interface components {
             /** Rank */
             rank: number;
         };
+        /**
+         * TopOrganization
+         * @description `gold.committee_top_organization`: an organization among the 100 that gave a committee
+         *     most in a cycle, its gifts grouped by organization key, never resolved (ADR-0011).
+         */
+        TopOrganization: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string;
+            /** Organization Key */
+            organization_key: string;
+            /** Rank */
+            rank: number;
+        };
         /** ValidationErrorDetail */
         ValidationErrorDetail: {
             /** Loc */
@@ -781,6 +800,7 @@ export type RaceTopDonorCandidate = components['schemas']['RaceTopDonorCandidate
 export type SearchKind = components['schemas']['SearchKind'];
 export type SearchResult = components['schemas']['SearchResult'];
 export type TopDonor = components['schemas']['TopDonor'];
+export type TopOrganization = components['schemas']['TopOrganization'];
 export type ValidationErrorDetail = components['schemas']['ValidationErrorDetail'];
 export type ValidationProblem = components['schemas']['ValidationProblem'];
 export type $defs = Record<string, never>;
