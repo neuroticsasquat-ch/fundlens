@@ -279,6 +279,13 @@
             "title": "Top Donors",
             "type": "array"
           },
+          "top_organizations": {
+            "items": {
+              "$ref": "#/components/schemas/TopOrganization"
+            },
+            "title": "Top Organizations",
+            "type": "array"
+          },
           "top_recipients": {
             "items": {
               "$ref": "#/components/schemas/CommitteeTopRecipient"
@@ -288,6 +295,10 @@
           },
           "total_from_committees": {
             "title": "Total From Committees",
+            "type": "number"
+          },
+          "total_from_organizations": {
+            "title": "Total From Organizations",
             "type": "number"
           },
           "total_individual": {
@@ -304,10 +315,12 @@
           "total_individual",
           "self_funding",
           "total_from_committees",
+          "total_from_organizations",
           "total_to_candidates",
           "ie_total",
           "top_recipients",
-          "top_donors"
+          "top_donors",
+          "top_organizations"
         ],
         "title": "CommitteeCycle",
         "type": "object"
@@ -1500,6 +1513,35 @@
           "amount"
         ],
         "title": "TopDonor",
+        "type": "object"
+      },
+      "TopOrganization": {
+        "description": "`gold.committee_top_organization`: an organization among the 100 that gave a committee\nmost in a cycle, its gifts grouped by organization key, never resolved (ADR-0011).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_key": {
+            "title": "Organization Key",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "name",
+          "organization_key",
+          "amount"
+        ],
+        "title": "TopOrganization",
         "type": "object"
       },
       "ValidationErrorDetail": {
