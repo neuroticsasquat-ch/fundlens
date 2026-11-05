@@ -24,8 +24,20 @@
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
 #   blank, the designation-J committee whose name NAME is, compared after uppercasing and dropping
-#   all but letters and digits; naming no JFC, the row is no receipt. A committee's gift to a
-#   candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
+#   all but letters and digits, else, for a row typed PAC, COM, CCM or PTY, the one committee in
+#   `cm` whose name NAME is (NEU-2131); naming none, the row is no receipt. The same name rule
+#   makes a counted `indiv` row typed PAC, COM, CCM or PTY with a blank OTHER_ID a receipt from the
+#   one committee its NAME names, dropped when it names none or its own recipient, or when `oth`
+#   already holds the gift under that committee's id (same recipient, amount and date). A
+#   committee's gift to a candidate is in both files (the giver's 24K, the recipient's 18K): no
+#   figure adds the two.
+# - An organization receipt (NEU-2131, ADR-0011) is an `indiv` row typed ORG that would otherwise
+#   count (MEMO_CD not X, not 24T, not a conduit's side, to a committee in `cm`), its refunds
+#   subtracted as a contribution's are, or an `oth` receipt (1x or 3x, MEMO_CD not X) typed ORG
+#   with no committee id in OTHER_ID (blank or not C-prefixed), naming no JFC, not a 15J nor a loan
+#   (16C, 16F, 16G), and mirroring no counted `indiv` row (same recipient, name, amount and date).
+#   Grouped by organization key, normalize_employer over the name. Organization money, in no total
+#   here: NEU-2133's gold reads it.
 # - total_jfc_transfers on a candidate: the `oth` receipts above from a designation-J committee,
 #   whatever their type, a joint fundraising committee's transfer of the candidate's share,
 #   credited to the candidate the receiving committee is linked to. In neither total_individual
@@ -43,22 +55,24 @@ rows:
   cm: 19
   cn: 15
   ccl: 15
-  indiv: 320
+  indiv: 326
   pas2: 21
-  oth: 27
+  oth: 28
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
-# every `oth` receipt from a committee (recorded by the receiving committee) plus every `pas2` 24K
-# row not filed by a conduit (a disbursement, recorded by the giver): the one gift on both sides,
-# each side its own row.
+# every `oth` receipt from a committee (recorded by the receiving committee), every `indiv` row a
+# committee's by the name rule (`name_matched` below), plus every `pas2` 24K row not filed by a
+# conduit (a disbursement, recorded by the giver): the one gift on both sides, each side its own
+# row. organization_receipt is one row per `organization_receipts` receipt below.
 silver:
   committee: 19
   candidate: 15
   candidate_committee_link: 15
   contribution: 293
   independent_expenditure: 9
-  committee_transfer: 25
+  committee_transfer: 27
+  organization_receipt: 5
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -74,7 +88,9 @@ contributions:
   dropped_conduit_side: 1
   # A gift to a committee missing from `cm`.
   dropped_unknown_recipient: 1
-  dropped_not_individual: 1
+  # Rows of another entity type: organizations' (ORG) and committees' (PAC), each counted elsewhere
+  # or dropped (`organization_receipts`, `name_matched`).
+  dropped_not_individual: 7
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT.
@@ -83,6 +99,40 @@ contributions:
     C00694323: 7
   # Every counted contribution, self-funding included.
   total_amount: 2395080
+
+# Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file by the rule above, each
+# the receiving committee's and no candidate's or donor's.
+organization_receipts:
+  # Every receipt's SUB_ID, with its organization key: two spellings of CHESAPEAKE STEEL and its
+  # refund share one key.
+  keys:
+    4240100000000000025: ACME CONCRETE
+    4240100000000000321: CHESAPEAKE STEEL
+    4240100000000000322: CHESAPEAKE STEEL
+    4240100000000000323: CHESAPEAKE STEEL
+    4240300000000000026: IRONWORKERS LOCAL 16 # the union's 31K to the party's building account, in oth
+  # Net amount by organization key, refunds subtracted.
+  by_key:
+    ACME CONCRETE: 5000
+    CHESAPEAKE STEEL: 72500
+    IRONWORKERS LOCAL 16: 4000
+  # Net amount by receiving committee.
+  by_committee:
+    C00800105: 5000
+    C00800201: 72500
+    C00800203: 4000
+  total_amount: 81500
+
+# The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), by SUB_ID: the
+# committee each is a committee_transfer receipt from, by the name rule above, or null when it is
+# dropped (CHESAPEAKE LABOR COUNCIL PAC names no committee; MARYLAND FORWARD PAC names its own
+# recipient). BRICKLAYERS UNITED PAC's is in the super PAC's total_from_committees. The same rule
+# makes `oth`'s blank-OTHER_ID 18K from BRICKLAYERS UNITED PAC to OKAFOR (4240300000000000022) a
+# receipt, in OKAFOR FOR MARYLAND's total_from_committees.
+name_matched:
+  4240100000000000324: C00800202
+  4240100000000000325: null
+  4240100000000000326: null
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
@@ -278,10 +328,10 @@ committees:
     total_from_committees: 2500
     total_to_candidates: 0
     ie_total: 0
-  C00800103: # OKAFOR FOR MARYLAND: its JFC's transfers in total_from_committees, 15J lines nowhere
+  C00800103: # OKAFOR FOR MARYLAND: its JFC's transfers and BRICKLAYERS' name-matched 18K in total_from_committees, 15J lines nowhere
     total_individual: 37550
     self_funding: 5000
-    total_from_committees: 44500
+    total_from_committees: 45500
     total_to_candidates: 0
     ie_total: 0
   C00800113: # FRIENDS OF DIANA OKAFOR (authorized)
@@ -344,10 +394,10 @@ committees:
     total_from_committees: 1000
     total_to_candidates: 0
     ie_total: 0
-  C00800201: # MARYLAND FORWARD PAC: the super PAC
+  C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' name-matched `indiv` gift is a receipt
     total_individual: 395875
     self_funding: 0
-    total_from_committees: 50000
+    total_from_committees: 65000
     total_to_candidates: 0
     ie_total: 670000
   C00800202: # BRICKLAYERS UNITED PAC

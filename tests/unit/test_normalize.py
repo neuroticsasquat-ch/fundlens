@@ -10,6 +10,7 @@ from fundlens.resolve.normalize import (
     normalize_employer,
     normalize_name,
     normalize_occupation,
+    organization_key,
     zip5,
 )
 
@@ -170,6 +171,31 @@ def test_normalize_occupation(raw: str | None, expected: str | None) -> None:
     assert normalize_occupation(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # The employer rule: cleaned, the legal form stripped, the alias applied (ADR-0011).
+        ("KOCH INDUSTRIES, INC.", "KOCH INDUSTRIES"),
+        ("KOCH INDUSTRIES INC", "KOCH INDUSTRIES"),
+        ("Koch Industries", "KOCH INDUSTRIES"),
+        ("Space Exploration Technologies Corp.", "SPACEX"),
+        ("IRONWORKERS LOCAL 16", "IRONWORKERS LOCAL 16"),
+        ("ACME HOLDINGS, L.L.C.", "ACME HOLDINGS"),
+        # A name the employer rule nulls keeps the cleaned name as its key: a receipt always has
+        # one.
+        ("NONE", "NONE"),
+        ("N/A", "N A"),
+        ("INC", "INC"),
+        # No name at all is no key.
+        (None, None),
+        ("", None),
+        (" . ", None),
+    ],
+)
+def test_organization_key(raw: str | None, expected: str | None) -> None:
+    assert organization_key(raw) == expected
+
+
 def test_contributor_key_joins_the_four_values_with_an_absent_one_empty() -> None:
     assert (
         contributor_key("MARLOWE, AUGUSTINE", "90250", "ASTRAX", "CEO")
@@ -206,7 +232,8 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         row = con.execute(
             "SELECT normalize_name('MARLOWE,AUGUSTINE JR.'), zip5('902501234'),"
             " normalize_employer('Space Exploration Technologies Corp.'),"
-            " normalize_occupation('RETIRED'), normalize_name(NULL)"
+            " normalize_occupation('RETIRED'), normalize_name(NULL),"
+            " organization_key('Koch Industries, Inc.'), organization_key(NULL)"
         ).fetchone()
     assert row == (
         {
@@ -220,4 +247,6 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         "SPACEX",
         None,
         {"first": None, "middle": None, "last": None, "suffix": None, "norm": ""},
+        "KOCH INDUSTRIES",
+        None,
     )

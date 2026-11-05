@@ -28,6 +28,7 @@ TABLES: tuple[SilverTable, ...] = (
     "candidate_committee_link",
     "contribution",
     "committee_transfer",
+    "organization_receipt",
     "jfc_attribution",
     "contributor",
 )
@@ -47,12 +48,31 @@ OTH_NOT_RECEIPTS = {
     4240300000000000012,  # WHITLOCK's 16C loan to his campaign
     # More 15J memo lines (spec §6.11): JFC attributions, an organization's, one to no committee.
     *range(4240300000000000015, 4240300000000000020),
-    4240300000000000022,  # a blank OTHER_ID naming a committee that is no JFC
     # 15J memo lines in the filings of the JFC's 18G and of its blank-OTHER_ID 15J.
     4240300000000000024,
     4240300000000000025,
+    4240300000000000026,  # a union's gift to the party's building account: an organization's
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
+# Organization money (NEU-2131, ADR-0011): ACME's gift to PELL; CHESAPEAKE STEEL's two gifts to the
+# super PAC under two spellings and the refund of the first; the union's 31K in `oth`.
+ACME = 4240100000000000025
+CHESAPEAKE, CHESAPEAKE_AGAIN, CHESAPEAKE_REFUND = (
+    4240100000000000321,
+    4240100000000000322,
+    4240100000000000323,
+)
+UNION_RECEIPT = 4240300000000000026
+SUPER_PAC, PARTY, BRICKLAYERS = "C00800201", "C00800203", "C00800202"
+# PAC-typed `indiv` rows with no OTHER_ID (NEU-2131): BRICKLAYERS' gift to the super PAC by name, a
+# name that is no committee's, and the super PAC's own name; and `oth`'s blank-OTHER_ID 18K from
+# BRICKLAYERS to OKAFOR, a receipt by the same rule.
+NAMED_GIFT, NAMES_NONE, NAMES_SELF = (
+    4240100000000000324,
+    4240100000000000325,
+    4240100000000000326,
+)
+OTH_NAMED_GIFT = 4240300000000000022
 # OKAFOR VICTORY FUND's 18J transfer to OKAFOR, and the 15J lines of the people behind it: one known
 # from no contribution, and VANTERPOOL, who gave to the super PAC. An organization's 15J line and
 # one to a committee missing from `cm` are no attribution.
@@ -271,6 +291,30 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "attribution_count",
         "first_cycle",
         "last_cycle",
+    ]
+
+    receipts = read_silver(store, "organization_receipt", tmp_path)
+    assert list(receipts[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "organization_name",
+        "organization_key",
+        "city",
+        "state",
+        "zip",
+        "recipient_committee_id",
+        "amount",
+        "date",
+        "transaction_type",
+        "entity_type",
+        "report_type",
+        "amendment_indicator",
+        "memo_text",
+        "image_num",
+        "file_num",
+        "classified",
     ]
 
     attributions = read_silver(store, "jfc_attribution", tmp_path)
@@ -854,6 +898,89 @@ def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alia
         ]
 
 
+def test_the_organization_receipt_key_check_fails_on_a_repeated_or_missing_key() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES"
+            " (2024, 'fec', 1), (2024, 'fec', 1), (2024, 'fec', NULL), (2024, 'fec', 2)"
+            ") AS t(cycle, source, source_record_id)"
+        )
+
+        assert sorted(
+            failing_rows(con, "silver_organization_receipt_key.sql"), key=lambda r: str(r[2])
+        ) == [(2024, "fec", 1, 2), (2024, "fec", None, 1)]
+
+
+def test_the_organization_receipt_recipient_check_fails_on_a_committee_cm_lacks() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE committee AS SELECT * FROM (VALUES ('C1')) AS t(committee_id)")
+        con.execute(
+            "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES"
+            " (1, 'C1', 100), (2, 'C9', 200)"
+            ") AS t(source_record_id, recipient_committee_id, amount)"
+        )
+
+        assert failing_rows(con, "silver_organization_receipt_recipient.sql") == [(2, "C9", 200)]
+
+
+def test_the_organization_receipt_disjoint_check_fails_on_a_row_another_table_holds() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES (1), (2), (3))"
+            " AS t(source_record_id)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES (2), (4)) AS t(source_record_id)"
+        )
+        con.execute(
+            "CREATE TABLE committee_transfer AS SELECT * FROM (VALUES (3), (5))"
+            " AS t(source_record_id)"
+        )
+
+        assert sorted(failing_rows(con, "silver_organization_receipt_disjoint.sql")) == [
+            (2, "contribution"),
+            (3, "committee_transfer"),
+        ]
+
+
+def test_the_name_match_twin_check_fails_on_a_receipt_oth_holds_under_the_givers_id() -> None:
+    with duckdb.connect() as con:
+        # Receipt 1 is an `indiv` row named by name, receipt 7 an `oth` row with a blank OTHER_ID:
+        # `oth` holds each gift from the giver's id too (rows 9 and 8). Receipt 9 carries the id
+        # on its own row, receipt 3's only twin is a memo line, and receipt 5 is from a JFC named
+        # by NAME (NEU-2124's rule, with no twin rule): none of those fails.
+        con.execute(
+            "CREATE TABLE committee AS SELECT * FROM (VALUES ('C1', 'P'), ('C2', 'U'), ('C3', 'J')"
+            ") AS t(committee_id, designation)"
+        )
+        con.execute(
+            "CREATE TABLE committee_transfer AS SELECT * FROM (VALUES"
+            " (1, 'C2', 'C1', 100, DATE '2024-01-15', 'receipt'),"
+            " (7, 'C2', 'C1', 300, DATE '2024-02-15', 'receipt'),"
+            " (9, 'C2', 'C1', 100, DATE '2024-01-15', 'receipt'),"
+            " (3, 'C2', 'C1', 500, DATE '2024-03-15', 'receipt'),"
+            " (5, 'C3', 'C1', 700, DATE '2024-04-15', 'receipt'),"
+            " (4, 'C1', 'C2', 100, DATE '2024-01-15', 'disbursement')"
+            ") AS t(source_record_id, from_committee_id, to_committee_id, amount, date, side)"
+        )
+        con.execute(
+            "CREATE TABLE oth AS SELECT * FROM (VALUES"
+            " (9, 'C1', 'C2', 100, '01152024', '18K', NULL),"
+            " (7, 'C1', '', 300, '02152024', '18K', NULL),"
+            " (8, 'C1', 'C2', 300, '02152024', '18K', NULL),"
+            " (6, 'C1', 'C2', 500, '03152024', '18K', 'X'),"
+            " (5, 'C1', '', 700, '04152024', '18G', NULL),"
+            " (2, 'C1', 'C3', 700, '04152024', '18G', NULL)"
+            ") AS t(SUB_ID, CMTE_ID, OTHER_ID, TRANSACTION_AMT, TRANSACTION_DT, TRANSACTION_TP,"
+            " MEMO_CD)"
+        )
+
+        assert sorted(failing_rows(con, "silver_committee_transfer_name_match_twin.sql")) == [
+            (1, "C2", "C1", 100, 9),
+            (7, "C2", "C1", 300, 8),
+        ]
+
+
 def test_transform_without_bronze_says_to_extract(store: R2, cli_env: Path) -> None:
     result = transform()
 
@@ -878,13 +1005,14 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     receipts = [row for row in rows if row["side"] == "receipt"]
     disbursements = [row for row in rows if row["side"] == "disbursement"]
 
-    # Every `oth` receipt from a committee is a receipt; every 24K `pas2` row a disbursement;
-    # nothing else is here. `oth`'s repeat of a pas2 24K and 24A, its 15J memo line and the 16C
-    # candidate loan are none of those (NEU-2070); the 31K party-account receipt is one.
+    # Every `oth` receipt from a committee is a receipt, and the one `indiv` row a committee's by
+    # name (NEU-2131); every 24K `pas2` row a disbursement; nothing else is here. `oth`'s repeat
+    # of a pas2 24K and 24A, its 15J memo line, the 16C candidate loan and the union's gift are
+    # none of those (NEU-2070); the 31K party-account receipt is one.
     receipt_ids = {row["source_record_id"] for row in receipts}
     assert receipt_ids & OTH_NOT_RECEIPTS == set()
     assert OTH_PARTY_ACCOUNT_RECEIPT in receipt_ids
-    assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS)
+    assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS) + 1
     assert len(disbursements) == len(rows) - len(receipts)
     assert len(rows) == expected["silver"]["committee_transfer"]
     assert {row["transaction_type"] for row in disbursements} == {"24K"}
@@ -958,6 +1086,194 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         for candidate_id, totals in candidates.items()
         if totals["total_jfc_transfers"]
     }
+
+
+def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_no_total(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    expected = fec_fixture.expected()
+    rows = read_silver(store, "organization_receipt", tmp_path)
+    by_id = {row["source_record_id"]: row for row in rows}
+
+    # Every ORG row of either file that counts, and nothing else: the 15J line of an
+    # organization (NOT_ATTRIBUTIONS) is evidence, not a receipt.
+    assert by_id.keys() == {int(sub_id) for sub_id in expected["organization_receipts"]["keys"]}
+    assert len(rows) == expected["silver"]["organization_receipt"]
+    assert {sub_id: row["organization_key"] for sub_id, row in by_id.items()} == {
+        int(sub_id): key for sub_id, key in expected["organization_receipts"]["keys"].items()
+    }
+    assert sum_by(rows, "organization_key") == expected["organization_receipts"]["by_key"]
+    assert (
+        sum_by(rows, "recipient_committee_id")
+        == (expected["organization_receipts"]["by_committee"])
+    )
+    # Two spellings, a legal form and its punctuation apart, are one key; the refund, written
+    # positive, subtracts.
+    assert [by_id[sub_id]["organization_name"] for sub_id in (CHESAPEAKE, CHESAPEAKE_AGAIN)] == [
+        "CHESAPEAKE STEEL, INC.",
+        "CHESAPEAKE STEEL INC",
+    ]
+    assert (by_id[CHESAPEAKE_REFUND]["amount"], by_id[CHESAPEAKE_REFUND]["date"]) == (
+        -2500,
+        date(2024, 5, 1),
+    )
+    # The union's gift is read from `oth`, with its party-account type.
+    union = by_id[UNION_RECEIPT]
+    assert (union["recipient_committee_id"], union["transaction_type"], union["amount"]) == (
+        PARTY,
+        "31K",
+        4000,
+    )
+    assert {row["entity_type"] for row in rows} == {"ORG"}
+    assert not any(row["classified"] for row in rows)
+    assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
+        ("fec", "US", 2024)
+    }
+    # No contribution, no transfer and no contributor reads them (ADR-0011).
+    contributions = read_silver(store, "contribution", tmp_path)
+    assert {row["source_record_id"] for row in contributions}.isdisjoint(by_id)
+    assert len(contributions) == expected["silver"]["contribution"]
+    transfers = read_silver(store, "committee_transfer", tmp_path)
+    assert {row["source_record_id"] for row in transfers}.isdisjoint(by_id)
+    contributors = read_silver(store, "contributor", tmp_path)
+    assert len(contributors) == expected["silver"]["contributor"]
+    assert "CHESAPEAKE STEEL" not in {row["employer_norm"] for row in contributors}
+
+
+def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_name_names(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    expected = fec_fixture.expected()
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+
+    # BRICKLAYERS' gift to the super PAC, filed in `indiv` under its name alone, is a receipt from
+    # BRICKLAYERS, kept as filed, to no candidate: the super PAC raises for none.
+    named = transfers[NAMED_GIFT]
+    assert (
+        named["from_committee_id"],
+        named["to_committee_id"],
+        named["candidate_id"],
+        named["amount"],
+        named["date"],
+        named["transaction_type"],
+        named["side"],
+    ) == (BRICKLAYERS, SUPER_PAC, None, 15000, date(2024, 9, 20), "15", "receipt")
+    # `oth`'s 18K from BRICKLAYERS with OTHER_ID blank, to OKAFOR, is one too, credited to her.
+    assert (
+        transfers[OTH_NAMED_GIFT]["from_committee_id"],
+        transfers[OTH_NAMED_GIFT]["candidate_id"],
+    ) == (BRICKLAYERS, "S4MD00103")
+    # A row naming no committee, or its own recipient, is in no table.
+    everywhere = {
+        row["source_record_id"]
+        for table in ("contribution", "committee_transfer", "organization_receipt")
+        for row in read_silver(store, cast(SilverTable, table), tmp_path)
+    }
+    assert {NAMES_NONE, NAMES_SELF}.isdisjoint(everywhere)
+    assert {NAMED_GIFT, OTH_NAMED_GIFT} <= everywhere
+    assert {
+        sub_id: transfers[sub_id]["from_committee_id"] if sub_id in transfers else None
+        for sub_id in (NAMED_GIFT, NAMES_NONE, NAMES_SELF)
+    } == {int(sub_id): c for sub_id, c in expected["name_matched"].items()}
+    receipts = [row for row in transfers.values() if row["side"] == "receipt"]
+    assert (
+        sum_by(receipts, "to_committee_id")[SUPER_PAC]
+        == (expected["committees"][SUPER_PAC]["total_from_committees"])
+    )
+
+
+def test_a_name_matched_gift_oth_holds_under_the_givers_id_is_read_once(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # The super PAC also files BRICKLAYERS' gift as an 18K with BRICKLAYERS' id: the `indiv` row is
+    # its twin and is dropped, so the gift is counted once, from the row that names its giver.
+    oth = fec_fixture.bulk_text("oth") + (
+        f"{SUPER_PAC}|N|Q3|G2024|1|18K|PAC|BRICKLAYERS UNITED PAC|WASHINGTON|DC|20005|||09202024|"
+        f"15000|{BRICKLAYERS}|SA12.00499|1900201|||4249999999999999960\n"
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    assert NAMED_GIFT not in transfers
+    assert transfers[4249999999999999960]["from_committee_id"] == BRICKLAYERS
+    receipts = [row for row in transfers.values() if row["side"] == "receipt"]
+    assert (
+        sum_by(receipts, "to_committee_id")[SUPER_PAC]
+        == (fec_fixture.expected()["committees"][SUPER_PAC]["total_from_committees"])
+    )
+
+
+def test_an_oth_receipt_mirroring_a_counted_indiv_row_is_read_once_from_indiv(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # The super PAC files CHESAPEAKE STEEL's first gift in `oth` too, as an 18U under another
+    # SUB_ID: the same recipient, name, amount and date, so it is the `indiv` row's mirror.
+    oth = fec_fixture.bulk_text("oth") + (
+        f"{SUPER_PAC}|N|Q2|P2024|1|18U|ORG|CHESAPEAKE STEEL, INC.|SPARROWS POINT|MD|21219|||"
+        "04152024|50000||SA12.00498|1900201|||4249999999999999961\n"
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    rows = read_silver(store, "organization_receipt", tmp_path)
+    by_id = {row["source_record_id"]: row for row in rows}
+    assert 4249999999999999961 not in by_id
+    assert CHESAPEAKE in by_id
+    assert len(rows) == fec_fixture.expected()["silver"]["organization_receipt"]
+
+
+def test_an_organizations_loan_and_attribution_line_are_no_receipts(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # A bank's 16F loan and its 16G repayment, an organization's 16C and 15J, and an ORG row whose
+    # OTHER_ID names a committee `cm` lacks (a committee's money, in committee_transfer as today).
+    lines = [
+        ("16F", "CHESAPEAKE BANK", "", "4249999999999999951"),
+        ("16G", "CHESAPEAKE BANK", "", "4249999999999999952"),
+        ("16C", "CHESAPEAKE BANK", "", "4249999999999999953"),
+        ("15J", "CHESAPEAKE BANK", "", "4249999999999999954"),
+        ("18U", "CHESAPEAKE BANK", "C00899998", "4249999999999999955"),
+    ]
+    oth = fec_fixture.bulk_text("oth") + "".join(
+        f"{SUPER_PAC}|N|Q2|P2024|1|{kind}|ORG|{name}|BALTIMORE|MD|21201|||04012024|9000|{other}|"
+        f"SA12.{sub_id[-3:]}|1900201|||{sub_id}\n"
+        for kind, name, other, sub_id in lines
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    receipts = {
+        row["source_record_id"] for row in read_silver(store, "organization_receipt", tmp_path)
+    }
+    assert receipts.isdisjoint(int(sub_id) for _, _, _, sub_id in lines)
+    transfers = {
+        row["source_record_id"]: row["from_committee_id"]
+        for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    assert transfers[4249999999999999955] == "C00899998"
+    assert 4249999999999999951 not in transfers
 
 
 def test_a_duplicated_committee_receipt_aborts_the_run_before_any_upload(

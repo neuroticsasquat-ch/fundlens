@@ -98,6 +98,13 @@ class CommitteeTotals(TypedDict):
     ie_total: int
 
 
+class OrganizationReceipts(TypedDict):
+    keys: dict[int, str]
+    by_key: dict[str, int]
+    by_committee: dict[str, int]
+    total_amount: int
+
+
 class Donor(TypedDict):
     bonica_cid: int
     resolved_by: str
@@ -132,6 +139,8 @@ class Expected(TypedDict):
     rows: dict[str, int]
     silver: dict[str, int]
     contributions: dict[str, Any]
+    organization_receipts: OrganizationReceipts
+    name_matched: dict[int, str | None]
     unmatched_filings: list[str]
     aliases: dict[str, str]
     races: dict[str, RaceTotals]

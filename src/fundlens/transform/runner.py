@@ -14,7 +14,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
-  `normalize_employer`, `normalize_occupation`), from which the contributor key is built.
+  `normalize_employer`, `normalize_occupation`), from which the contributor key is built, and
+  `organization_key`, which groups organization receipts (ADR-0011).
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
 `<table>`, may leave temporary tables a later file reads, and may fill in a column of an earlier
