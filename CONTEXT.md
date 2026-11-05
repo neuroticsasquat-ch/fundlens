@@ -26,13 +26,17 @@ _Avoid_: JFC contribution, attributed contribution
 A joint fundraising committee's transfer of its participants' shares to a participant committee: a receipt from a designation-J committee, whatever type the filer gave it (mostly 18G, some 18J and 15J). Counted for a candidate when the participant raises for one, apart from the candidate's contributions and committee gifts. Committee money, never a contribution.
 _Avoid_: JFC contribution
 
+**Organization receipt**:
+One itemized gift from an organization to a committee, as reported to the regulator, held in `organization_receipt`. Organization money, never a contribution: in no individual total, no top-donor list and no race or candidate total; counted on the committee that received it. Loans (16C, 16F, 16G) and 15J memo lines are not receipts.
+_Avoid_: organization contribution, corporate donation, corporate money (unions and tribes give too)
+
 **Self-funding**:
 A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 
 ### Parties
 
 **Donor**:
-A resolved individual: the persistent identity behind many contributor-name, employer and address variants. Only individuals need resolution; committees and candidates already carry regulator IDs.
+A resolved individual: the persistent identity behind many contributor-name, employer and address variants. Only individuals need resolution; committees and candidates already carry regulator IDs, and organizations are grouped by organization key, not resolved.
 _Avoid_: contributor (that is the raw, unresolved name on a record), person, entity
 
 **Contributor**:
@@ -40,6 +44,10 @@ The raw name, employer, occupation and address as reported on a single contribut
 
 **Committee**:
 A regulator-registered fundraising entity (candidate committee, PAC, party committee, super PAC) identified by its regulator ID.
+
+**Organization**:
+A giver that is neither an individual nor a committee: a corporation, union, trade association, tribe, 527 or other group, identified only by the name it is reported under. It carries no regulator ID and is never resolved; its receipts are grouped by organization key.
+_Avoid_: corporate donor, entity (that is FEC's word for every giver type), business, non-individual
 
 **Candidate**:
 A person seeking an office in a cycle, identified by their regulator ID.
@@ -80,6 +88,10 @@ _Avoid_: duplicate candidate, merged candidate
 
 **Contributor key**:
 The exact normalized tuple (name, ZIP5, employer, occupation) that identifies one unique contributor string across all its contributions. Resolution runs over contributor keys, not over contributions.
+
+**Organization key**:
+The normalized name that groups one organization's receipts: the reported name cleaned, its legal form stripped and its employer alias applied, by the same `normalize_employer` rule that normalizes a contributor's employer. Exact grouping, no linkage: two spellings share a key or they are two organizations.
+_Avoid_: organization id (there is none), resolved organization
 
 **Cluster**:
 The set of contributor keys that probabilistic linkage judges to be the same person in one resolution run.
