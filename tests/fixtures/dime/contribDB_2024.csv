@@ -292,3 +292,4 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00291,15,25000,2024-09-03,100000110,"halvorsen, kathryn",halvorsen,kathryn,I,arnold,MD,21409,consultant,halvorsen consulting,maryland forward pac,comm100007,SA11AI.00318,C00800201
 2024,dime00292,15,50000,2024-07-10,100000111,"thorsby, oscar",thorsby,oscar,I,bethesda,MD,20814,investor,thorsby capital,maryland forward pac,comm100007,SA11AI.00319,C00800201
 2024,dime00293,15,30000,2024-09-12,100000111,"thorsby, oscar",thorsby,oscar,I,bethesda,MD,20814,investor,northbridge partners,maryland forward pac,comm100007,SA11AI.00320,C00800201
+2024,dime00294,15,600,2024-07-15,100000112,"banks, john",banks,john,I,baltimore,MD,21209,owner,banks hardware,fenwick for congress,comm100012,SA11AI.00328,C00800109

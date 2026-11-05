@@ -7,6 +7,7 @@ from fundlens.resolve import normalize
 from fundlens.resolve.normalize import (
     Name,
     contributor_key,
+    is_organization_name,
     normalize_employer,
     normalize_name,
     normalize_occupation,
@@ -196,6 +197,47 @@ def test_organization_key(raw: str | None, expected: str | None) -> None:
     assert organization_key(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # The measurement's Decisions table (NEU-2129), with the call the rule makes, not what the
+        # name really is. A word alone in its comma-separated part is a person's name.
+        ("BANK, LISSY", False),
+        ("WOOTEN, COUNCIL", False),
+        ("NATION, MARK", False),
+        # CO, COMPANY, PC and LP end people's names: not strict legal suffixes.
+        ("COX, JOHN T. MR. III PC", False),
+        ("PERRETT, LP", False),
+        ("WEITZ & LUXENBERG, P.C.", False),
+        # A hyphen splits a part into two words.
+        ("LEAGUE-PASCUAL, JAMES", True),
+        ("LARSON, BEV MS. LLC", True),
+        ("SMITH, PATRICIA J LLC", True),
+        # No comma.
+        (" UPDIKE", True),
+        ("LOFTUS", True),
+        ("FUTURE FORWARD USA ACTION", True),
+        # COUNCIL and NATION are not organization words.
+        ("TRIBAL COUNCIL, PRAIRIE ISLAND", False),
+        ("NATION, CHEROKEE", False),
+        ("NEA ADVOCACY FUND, ASSOCIATION", True),
+        # Periods are deleted, so the last word is LLC.
+        ("ACME HOLDINGS, L.L.C.", True),
+        ("LEAGUE OF CONSERVATION VOTERS, INC.", True),
+        # The fixture's blank-entity-type rows.
+        ("ACME WIDGETS INC", True),
+        ("BANKS, JOHN", False),
+        ("OLD LINE REPUBLICAN COMMITTEE", True),
+        # No name, or one of no words, is not an organization.
+        (None, False),
+        ("", False),
+        (" . ", False),
+    ],
+)
+def test_is_organization_name(raw: str | None, expected: bool) -> None:
+    assert is_organization_name(raw) is expected
+
+
 def test_contributor_key_joins_the_four_values_with_an_absent_one_empty() -> None:
     assert (
         contributor_key("MARLOWE, AUGUSTINE", "90250", "ASTRAX", "CEO")
@@ -233,7 +275,8 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
             "SELECT normalize_name('MARLOWE,AUGUSTINE JR.'), zip5('902501234'),"
             " normalize_employer('Space Exploration Technologies Corp.'),"
             " normalize_occupation('RETIRED'), normalize_name(NULL),"
-            " organization_key('Koch Industries, Inc.'), organization_key(NULL)"
+            " organization_key('Koch Industries, Inc.'), organization_key(NULL),"
+            " is_organization_name('ACME WIDGETS INC'), is_organization_name(NULL)"
         ).fetchone()
     assert row == (
         {
@@ -249,4 +292,6 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         {"first": None, "middle": None, "last": None, "suffix": None, "norm": ""},
         "KOCH INDUSTRIES",
         None,
+        True,
+        False,
     )

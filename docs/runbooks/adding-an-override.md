@@ -24,7 +24,7 @@ model or normalization.
 | Overrides file | `resolution/overrides.yaml` in the repo; `/app/resolution/overrides.yaml` in the image (`OVERRIDES_PATH`) |
 | Where the keys come from | resolution's DuckDB working file, `/data/fundlens/resolution/resolve.duckdb` in `pipeline`: the `contributor` table (every cycle's silver `contributor` partition as one table, one row per key) and the `crosswalk` table (each key's `donor_id`), both as the last `fundlens resolve --full` left them. The file also holds `edge` (the predicted pairs) and `component` (linkage's components before re-clustering, NEU-2122) |
 | What applies the overrides | `fundlens resolve --full`, after clustering and re-clustering and before the crosswalk (`fundlens recluster` applies them too, to the working file alone). An override is applied unconstrained: a merge may build a cluster over the cluster cap (`RESOLVE_MAX_CLUSTER_KEYS`) or holding two first names the model vetoes, which re-clustering would not. Nothing else: there is no weekly run yet (`fundlens run` is NEU-2061, the schedule NEU-2063) and no incremental resolution (spec §6.10), so an override takes effect when this runbook's step 5 runs it by hand |
-| What stops a run | a malformed file, a key in two entries, a key that is in no cycle's silver, a split `from` that is no donor_id the crosswalk gave. The run stops before the crosswalk changes and names every problem |
+| What stops a run | a malformed file, a key in two entries, a key that is in no cycle's silver, a split `from` that is no donor_id the crosswalk gave. The run stops before the crosswalk changes and names every problem. A key in no cycle's silver includes one the blank-entity-type classifier (NEU-2132) now calls an organization: its rows are organization receipts and the key no longer exists. The fix is a PR removing the entry |
 
 **What a merge does.** Every cluster holding one of the listed keys becomes one cluster, so list one key
 from each donor to join; the crosswalk then keeps the id with the most dollars and redirects the others
@@ -82,7 +82,10 @@ normalized name, ZIP5, employer and occupation joined by `|`, an absent one empt
   Say so in the PR.
 
 No rows: the surname is spelled differently in the filings (change `=` to `LIKE` and set `SURNAME` to a prefix and `%`, e.g. `ABERN%`), or
-the donor's cycle has not been resolved since it was transformed.
+the donor's cycle has not been resolved since it was transformed, or the rows were filed with no entity
+type and the blank-entity-type classifier (NEU-2132) calls the name an organization's: they are
+organization receipts, never a donor's, and there is nothing to override. An entry already naming such
+a key stops the run; remove it in a PR.
 
 ## 2. Write the entry
 

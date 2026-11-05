@@ -1,10 +1,13 @@
 -- organization_receipt (spec §4, ADR-0011): one row per organization receipt, an itemized gift
 -- to a committee from a giver that is neither an individual nor a committee: entity type ORG, in
 -- `indiv` or in `oth`. Organization money, never a contribution: no candidate_id, no contributor
--- key, no donor_id, and 07_contributor.sql never reads it. The classifier (NEU-2132) adds the rows
--- whose blank entity type it calls an organization, with `classified` true; every row here is
--- false. PAC, COM, CCM and PTY rows are committees' money (05_committee_transfer.sql) or dropped,
--- in neither table.
+-- key, no donor_id, and 07_contributor.sql never reads it. The classifier (NEU-2132,
+-- `organization_name_class` from 04_contribution.sql) adds the `indiv` rows whose blank entity
+-- type it calls an organization, with `classified` true, less the ones naming exactly one `cm`
+-- committee other than their recipient, by 05_committee_transfer.sql's name match: that
+-- committee's gift, a transfer there, or dropped there when `oth` holds it already, so counted
+-- once either way. PAC, COM, CCM and PTY rows are committees' money (05_committee_transfer.sql)
+-- or dropped, in neither table.
 --
 -- From `indiv`: a counted row by contribution's rules (04_contribution.sql): no memo line
 -- (MEMO_CD = 'X'), no conduit's 24T, no conduit's own line for an earmark it passed on
@@ -31,9 +34,15 @@ CREATE TABLE organization_receipt AS
 WITH individual AS (
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
-        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM
+        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, OTHER_ID
     FROM indiv
-    WHERE trim(ENTITY_TP) = 'ORG'
+    WHERE (
+            trim(ENTITY_TP) = 'ORG'
+            OR (
+                nullif(trim(ENTITY_TP), '') IS NULL
+                AND NAME IN (SELECT raw FROM organization_name_class WHERE is_organization)
+            )
+        )
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND NOT (
@@ -41,6 +50,27 @@ WITH individual AS (
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
         )
         AND CMTE_ID IN (SELECT committee_id FROM committee)
+),
+cm_named AS (
+    -- Each committee of the cycle by name, as in 05_committee_transfer.sql.
+    SELECT
+        regexp_replace(upper(name), '[^A-Z0-9]', '', 'g') AS name_key,
+        min(committee_id) AS committee_id
+    FROM committee
+    GROUP BY name_key
+    HAVING count(*) = 1
+),
+classified_kept AS (
+    -- The `indiv` rows less the classified ones the name match makes a committee's gift. Joined
+    -- on the few organization rows, never on `indiv`.
+    SELECT individual.*
+    FROM individual
+    LEFT JOIN cm_named
+        ON nullif(trim(individual.ENTITY_TP), '') IS NULL
+        AND coalesce(trim(individual.OTHER_ID), '') = ''
+        AND cm_named.name_key = regexp_replace(upper(individual.NAME), '[^A-Z0-9]', '', 'g')
+        AND cm_named.committee_id <> individual.CMTE_ID
+    WHERE cm_named.committee_id IS NULL
 ),
 other AS (
     SELECT
@@ -81,7 +111,7 @@ kept AS (
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
         TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM
-    FROM individual
+    FROM classified_kept
     UNION ALL
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
@@ -132,6 +162,7 @@ SELECT
     kept.MEMO_TEXT AS memo_text,
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num,
-    false AS classified
+    -- Filed with no entity type, so the classifier put it here; the `oth` rows are all ORG.
+    nullif(trim(kept.ENTITY_TP), '') IS NULL AS classified
 FROM kept
 LEFT JOIN organization_name ON organization_name.raw = kept.NAME;

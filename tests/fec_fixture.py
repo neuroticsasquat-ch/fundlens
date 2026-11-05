@@ -103,6 +103,7 @@ class OrganizationReceipts(TypedDict):
     by_key: dict[str, int]
     by_committee: dict[str, int]
     total_amount: int
+    classified: list[int]
 
 
 class Donor(TypedDict):

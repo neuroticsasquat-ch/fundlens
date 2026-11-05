@@ -73,6 +73,16 @@ NAMED_GIFT, NAMES_NONE, NAMES_SELF = (
     4240100000000000326,
 )
 OTH_NAMED_GIFT = 4240300000000000022
+# Rows filed with no entity type (NEU-2132): ACME WIDGETS INC, an organization by the classifier;
+# BANKS, JOHN, an individual; OLD LINE REPUBLICAN COMMITTEE, an organization naming one committee;
+# and CHESAPEAKE STEEL INC's 15J line, an organization's.
+ACME_WIDGETS, BANKS, OLD_LINE_BLANK = (
+    4240100000000000327,
+    4240100000000000328,
+    4240100000000000329,
+)
+CLASSIFIED_LINE = 4240300000000000027
+DRISCOLL_COMMITTEE = "C00800107"
 # OKAFOR VICTORY FUND's 18J transfer to OKAFOR, and the 15J lines of the people behind it: one known
 # from no contribution, and VANTERPOOL, who gave to the super PAC. An organization's 15J line and
 # one to a committee missing from `cm` are no attribution.
@@ -82,7 +92,7 @@ JFC, JFC_TRANSFER = "C00800115", 4240300000000000014
 JFC_18G, JFC_NAMED_ONLY = 4240300000000000020, 4240300000000000021
 ACHTERBERG, VANTERPOOL_LINE = 4240300000000000015, 4240300000000000016
 VANTERPOOL = 4240100000000000030
-NOT_ATTRIBUTIONS = {4240300000000000018, 4240300000000000019}
+NOT_ATTRIBUTIONS = {4240300000000000018, 4240300000000000019, CLASSIFIED_LINE}
 # The Musk case's first contribution, and the same contributor written again with a comma and a JR.
 MUSK, MUSK_AGAIN = 4240100000000000007, 4240100000000000011
 # 24K gifts whose giver wrote a stale candidate id, and whose recipient raises for no candidate.
@@ -943,6 +953,20 @@ def test_the_organization_receipt_disjoint_check_fails_on_a_row_another_table_ho
         ]
 
 
+def test_the_organization_receipt_classified_check_fails_on_a_flag_its_type_contradicts() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES"
+            " (1, 'ORG', false), (2, NULL, true), (3, '', true), (4, 'ORG', true), (5, NULL, false)"
+            ") AS t(source_record_id, entity_type, classified)"
+        )
+
+        assert sorted(failing_rows(con, "silver_organization_receipt_classified.sql")) == [
+            (4, "ORG", True),
+            (5, None, False),
+        ]
+
+
 def test_the_name_match_twin_check_fails_on_a_receipt_oth_holds_under_the_givers_id() -> None:
     with duckdb.connect() as con:
         # Receipt 1 is an `indiv` row named by name, receipt 7 an `oth` row with a blank OTHER_ID:
@@ -1128,8 +1152,14 @@ def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_
         "31K",
         4000,
     )
-    assert {row["entity_type"] for row in rows} == {"ORG"}
-    assert not any(row["classified"] for row in rows)
+    # Every receipt is typed ORG but the one filed with no type, which the classifier put here.
+    assert (
+        {sub_id for sub_id, row in by_id.items() if row["classified"]}
+        == {ACME_WIDGETS}
+        == {int(sub_id) for sub_id in expected["organization_receipts"]["classified"]}
+    )
+    assert {row["entity_type"] for row in rows if not row["classified"]} == {"ORG"}
+    assert by_id[ACME_WIDGETS]["entity_type"] is None
     assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
         ("fec", "US", 2024)
     }
@@ -1183,13 +1213,94 @@ def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_nam
     assert {NAMED_GIFT, OTH_NAMED_GIFT} <= everywhere
     assert {
         sub_id: transfers[sub_id]["from_committee_id"] if sub_id in transfers else None
-        for sub_id in (NAMED_GIFT, NAMES_NONE, NAMES_SELF)
+        for sub_id in (NAMED_GIFT, NAMES_NONE, NAMES_SELF, OLD_LINE_BLANK)
     } == {int(sub_id): c for sub_id, c in expected["name_matched"].items()}
     receipts = [row for row in transfers.values() if row["side"] == "receipt"]
     assert (
         sum_by(receipts, "to_committee_id")[SUPER_PAC]
         == (expected["committees"][SUPER_PAC]["total_from_committees"])
     )
+
+
+def test_a_blank_entity_type_the_classifier_calls_an_organization_is_no_contribution(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    expected = fec_fixture.expected()
+    contributions = {
+        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+    }
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    receipts = {
+        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+    }
+
+    # ACME WIDGETS INC is an organization receipt, classified, and no contribution or contributor.
+    assert ACME_WIDGETS not in contributions and ACME_WIDGETS not in transfers
+    assert (receipts[ACME_WIDGETS]["organization_key"], receipts[ACME_WIDGETS]["classified"]) == (
+        "ACME WIDGETS",
+        True,
+    )
+    contributors = read_silver(store, "contributor", tmp_path)
+    assert not any(row["name_raw"] == "ACME WIDGETS INC" for row in contributors)
+    # BANKS, JOHN is an individual's contribution, as a blank type was before the classifier.
+    banks = contributions[BANKS]
+    assert (banks["entity_type"], banks["candidate_id"], banks["contributor_key"]) == (
+        None,
+        BAD,
+        "BANKS, JOHN|21209|BANKS HARDWARE|OWNER",
+    )
+    assert any(row["contributor_key"] == banks["contributor_key"] for row in contributors)
+    # OLD LINE REPUBLICAN COMMITTEE names one committee: a receipt from it, as a PAC-typed row is.
+    old_line = transfers[OLD_LINE_BLANK]
+    assert (
+        old_line["from_committee_id"],
+        old_line["to_committee_id"],
+        old_line["candidate_id"],
+        old_line["amount"],
+        old_line["side"],
+    ) == (PARTY, DRISCOLL_COMMITTEE, DRISCOLL, 2000, "receipt")
+    assert OLD_LINE_BLANK not in contributions and OLD_LINE_BLANK not in receipts
+    # The organization's 15J line is in no table.
+    attributions = read_silver(store, "jfc_attribution", tmp_path)
+    assert CLASSIFIED_LINE not in {row["source_record_id"] for row in attributions}
+    assert len(attributions) == expected["silver"]["jfc_attribution"]
+
+
+def test_a_classified_gift_oth_holds_under_the_named_committees_id_is_read_once(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # DRISCOLL's committee also files OLD LINE REPUBLICAN COMMITTEE's blank-type gift as an 18K
+    # with the party's id: the `indiv` row is its twin, in neither committee_transfer nor
+    # organization_receipt, so the gift is counted once.
+    oth = fec_fixture.bulk_text("oth") + (
+        f"{DRISCOLL_COMMITTEE}|N|Q3|G2024|1|18K|PTY|OLD LINE REPUBLICAN COMMITTEE|ANNAPOLIS|MD|"
+        f"21401|||09102024|2000|{PARTY}|SA12.00497|1900107|||4249999999999999962\n"
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    transfers = {
+        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+    }
+    assert OLD_LINE_BLANK not in transfers
+    assert transfers[4249999999999999962]["from_committee_id"] == PARTY
+    receipts = {
+        row["source_record_id"] for row in read_silver(store, "organization_receipt", tmp_path)
+    }
+    assert OLD_LINE_BLANK not in receipts
+    contributions = {
+        row["source_record_id"] for row in read_silver(store, "contribution", tmp_path)
+    }
+    assert OLD_LINE_BLANK not in contributions
 
 
 def test_a_name_matched_gift_oth_holds_under_the_givers_id_is_read_once(

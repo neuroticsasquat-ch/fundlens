@@ -126,10 +126,24 @@ def counts(row: dict[str, str]) -> bool:
     )
 
 
+def is_classified(row: dict[str, str]) -> bool:
+    """An `indiv` row filed with no entity type whose name the classifier calls an
+    organization's (NEU-2132)."""
+    return not row["ENTITY_TP"].strip() and normalize.is_organization_name(row["NAME"])
+
+
+def is_individual(row: dict[str, str]) -> bool:
+    """An `indiv` row from an individual or a candidate: typed IND or CAN, or blank and not
+    classified (NEU-2132)."""
+    return row["ENTITY_TP"] in ("IND", "CAN") or (
+        not row["ENTITY_TP"].strip() and not is_classified(row)
+    )
+
+
 def counted() -> list[dict[str, str]]:
     """The `indiv` rows the contribution table keeps: individuals and candidates, earmarks once,
     to committees of the cycle."""
-    return [row for row in rows("indiv") if row["ENTITY_TP"] in ("IND", "CAN") and counts(row)]
+    return [row for row in rows("indiv") if is_individual(row) and counts(row)]
 
 
 def name_key(name: str) -> str:
@@ -175,10 +189,11 @@ def is_receipt_line(row: dict[str, str]) -> bool:
     return row["TRANSACTION_TP"][:1] in ("1", "3") and row["MEMO_CD"] != "X"
 
 
-def named_committee(row: dict[str, str]) -> str | None:
+def named_committee(row: dict[str, str], *, classified: bool = False) -> str | None:
     """The one `cm` committee a row typed PAC, COM, CCM or PTY with a blank OTHER_ID names
-    (NEU-2131), never its own recipient; None when it names several, none, or itself."""
-    if row["ENTITY_TP"] not in COMMITTEE_TYPES or row["OTHER_ID"]:
+    (NEU-2131), or a `classified` `indiv` row does (NEU-2132), never its own recipient; None when
+    it names several, none, or itself."""
+    if (row["ENTITY_TP"] not in COMMITTEE_TYPES and not classified) or row["OTHER_ID"]:
         return None
     named = [r["CMTE_ID"] for r in rows("cm") if name_key(r["CMTE_NM"]) == name_key(row["NAME"])]
     return named[0] if len(named) == 1 and named[0] != row["CMTE_ID"] else None
@@ -224,12 +239,21 @@ def committee_receipts() -> list[dict[str, str]]:
 def name_matched() -> dict[str, str | None]:
     """Each counted `indiv` row typed PAC, COM, CCM or PTY with a blank OTHER_ID, by SUB_ID, and
     the committee it is a receipt from (NEU-2131): the one its NAME names, unless `oth` holds the
-    gift under that id already; None when it is dropped."""
+    gift under that id already; None when it is dropped. A classified row (NEU-2132) is here only
+    when its NAME names one committee: naming none, it is an organization receipt."""
     found: dict[str, str | None] = {}
     for row in rows("indiv"):
-        if row["ENTITY_TP"] in COMMITTEE_TYPES and not row["OTHER_ID"] and counts(row):
+        if row["OTHER_ID"] or not counts(row):
+            continue
+        if row["ENTITY_TP"] in COMMITTEE_TYPES:
             named = named_committee(row)
-            found[row["SUB_ID"]] = named if named and not has_twin(row, named) else None
+        elif is_classified(row):
+            named = named_committee(row, classified=True)
+            if named is None:
+                continue
+        else:
+            continue
+        found[row["SUB_ID"]] = named if named and not has_twin(row, named) else None
     return found
 
 
@@ -254,11 +278,19 @@ def mirrors_counted_row(row: dict[str, str]) -> bool:
 
 def organization_receipts() -> list[dict[str, str]]:
     """The rows of either file that are organization receipts (NEU-2131, ADR-0011): a counted
-    `indiv` row typed ORG, or an `oth` receipt typed ORG from no committee id, naming no JFC,
-    neither an attribution line nor a loan, to a committee of the cycle, mirroring no counted
-    `indiv` row."""
+    `indiv` row typed ORG, or classified and naming no one committee (NEU-2132), or an `oth`
+    receipt typed ORG from no committee id, naming no JFC, neither an attribution line nor a
+    loan, to a committee of the cycle, mirroring no counted `indiv` row."""
     committees = {row["CMTE_ID"] for row in rows("cm")}
-    return [row for row in rows("indiv") if row["ENTITY_TP"] == ORGANIZATION and counts(row)] + [
+    return [
+        row
+        for row in rows("indiv")
+        if counts(row)
+        and (
+            row["ENTITY_TP"] == ORGANIZATION
+            or (is_classified(row) and named_committee(row, classified=True) is None)
+        )
+    ] + [
         row
         for row in rows("oth")
         if is_receipt_line(row)
@@ -273,14 +305,14 @@ def organization_receipts() -> list[dict[str, str]]:
 
 def attributions() -> list[dict[str, str]]:
     """The `oth` rows that are JFC attributions (spec §6.11): 15J memo lines from an individual
-    (IND, or blank) filed by a committee of the cycle."""
+    (IND, or blank and not classified, NEU-2132) filed by a committee of the cycle."""
     committees = {row["CMTE_ID"] for row in rows("cm")}
     return [
         row
         for row in rows("oth")
         if row["TRANSACTION_TP"] == "15J"
         and row["MEMO_CD"] == "X"
-        and row["ENTITY_TP"] in ("IND", "")
+        and (row["ENTITY_TP"] == "IND" or (not row["ENTITY_TP"] and not is_classified(row)))
         and row["CMTE_ID"] in committees
     ]
 
@@ -565,7 +597,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
             is_conduit_side(r) and r["TRANSACTION_TP"] != "24T" for r in indiv
         ),
         "dropped_unknown_recipient": sum(r["CMTE_ID"] not in committees for r in indiv),
-        "dropped_not_individual": sum(r["ENTITY_TP"] not in ("IND", "CAN") for r in indiv),
+        "dropped_not_individual": sum(not is_individual(r) for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),
         "earmarked": dict(sorted(conduits.items())),
         "total_amount": sum(signed(r) for r in contributions),
@@ -583,6 +615,9 @@ def test_the_expected_organization_receipts_match_the_fixture_and_feed_no_other_
     assert expected["by_key"] == sum_by((keys[int(r["SUB_ID"])], signed(r)) for r in receipts)
     assert expected["by_committee"] == sum_by((r["CMTE_ID"], signed(r)) for r in receipts)
     assert expected["total_amount"] == sum(signed(r) for r in receipts)
+    # Classified exactly when filed with no entity type (NEU-2132).
+    assert expected["classified"] == [int(r["SUB_ID"]) for r in receipts if is_classified(r)]
+    assert expected["classified"] == [int(r["SUB_ID"]) for r in receipts if not r["ENTITY_TP"]]
     # Two spellings of one organization share a key; a refund nets its organization's total.
     assert len(set(keys.values())) < len(keys)
     assert any(is_refund(r) for r in receipts)
@@ -600,9 +635,12 @@ def test_the_expected_organization_receipts_match_the_fixture_and_feed_no_other_
 
 def test_the_expected_name_matches_are_the_fixtures_pac_rows_without_an_id() -> None:
     assert EXPECTED["name_matched"] == {int(s): c for s, c in name_matched().items()}
-    # One joins committee_transfer; one names no committee; one names its own recipient.
+    # Two join committee_transfer, one of them a classified blank-type row (NEU-2132); one names
+    # no committee; one names its own recipient.
     kept = [c for c in EXPECTED["name_matched"].values() if c]
-    assert len(kept) == 1 and len(EXPECTED["name_matched"]) == 3
+    assert len(kept) == 2 and len(EXPECTED["name_matched"]) == 4
+    by_sub_id = {int(r["SUB_ID"]): r for r in rows("indiv")}
+    assert any(is_classified(by_sub_id[s]) for s, c in EXPECTED["name_matched"].items() if c)
     by_id = {r["SUB_ID"]: r for r in rows("indiv")}
     names = {r["CMTE_ID"]: name_key(r["CMTE_NM"]) for r in rows("cm")}
     dropped = [by_id[str(s)] for s, c in EXPECTED["name_matched"].items() if c is None]
