@@ -23,9 +23,10 @@ committee ID, and which name pattern calls a blank-entity-type giver an organiza
 - **Organizations gave $2.26 billion in 2024 that fundlens does not count.** 18,233 counted `indiv`
   rows carry entity type ORG. $1.42B of it went to super PACs and $815M to other committees that are neither a
   candidate's nor a party's; candidates got $9.3M. Organization receipts in `oth` whose giver is no committee are small beside it:
-  $24.0M (Q2).
-- **PAC/COM/CCM/PTY rows with no committee ID hold another $807.0M**, $792.0M of it in `indiv`.
-  79.7% of those dollars name exactly one `cm` committee, short of the 95% bar, so by the rule this
+  $24.0M of ORG with a blank or non-committee giver ID, $23.1M of it gifts rather than loans or
+  15J lines (Q2).
+- **PAC/COM/CCM/PTY rows with no committee ID hold another $788.4M**, $778.5M of it in `indiv`.
+  80.6% of those dollars name exactly one `cm` committee, short of the 95% bar, so by the rule this
   ticket was given they are **dropped** (Q3). Q7 shows they are real committee money that FEC
   counts. NEU-2130 should look at the note under [Decisions](#decisions).
 - **`indiv` and `oth` barely overlap on organizations**: 2 of 1,080 `oth` organization receipts
@@ -44,7 +45,8 @@ Save the setup script as `setup.py`, each block below as `qN.py`, and the classi
 `classifier.py`, then run each block after the setup:
 
 ```bash
-# VM
+# VM, in tmux. Container names change on every deploy (first-run.md).
+fl() { docker ps --format '{{.Names}}' | grep "^$1-lvch8zyndujjzkz16ksys8im" | head -1; }
 cat setup.py q1.py | docker exec -i "$(fl pipeline)" python - 2>&1 | grep -v '^{' | tee q1.out
 cat setup.py classifier.py q5b.py | docker exec -i "$(fl pipeline)" python - 2>&1 | grep -v '^{' | tee q5b.out
 ```
@@ -52,7 +54,8 @@ cat setup.py classifier.py q5b.py | docker exec -i "$(fl pipeline)" python - 2>&
 Run them one at a time: they share the container's DuckDB limits, and none may run beside a
 pipeline step. Do not merge to `main` while they run, because a deploy restarts `pipeline`. The
 first block unpacks the 2024 files into `/data/fundlens/scratch/measure-organization-money-2024`,
-and later blocks reuse them. The run peaked at 19 GB there. Delete the directory at the end:
+and later blocks reuse them. The run peaked at 19 GB there. Delete the directory at the end. This run did, on 2026-11-05 after
+its last block:
 
 ```bash
 # VM
@@ -231,10 +234,20 @@ WHERE entity_type IN ('ORG', 'PAC', 'COM', 'CCM', 'PTY')
 GROUP BY ALL
 ORDER BY entity_type, net_dollars DESC
 """)
+from fundlens.transform.runner import _register_conduits
+
+_register_conduits(con)
+show("Q1c: counted indiv rows that are a conduit's side of an earmark, which 04_contribution.sql drops", """
+SELECT entity_type, count(*) AS rows, sum(TRANSACTION_AMT) AS net_dollars
+FROM counted
+WHERE CMTE_ID IN (SELECT committee_id FROM conduit)
+    AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\\(C[0-9]{8}\\)')
+GROUP BY ALL ORDER BY entity_type
+""")
 ```
 
 
-**Q1a: counted indiv rows by entity type and recipient group  (11 s)**
+**Q1a: counted indiv rows by entity type and recipient group  (12 s)**
 
 | entity_type | recipient_group | rows | net_dollars | refund_rows | refund_dollars | committees |
 |---|---|---|---|---|---|---|
@@ -333,6 +346,15 @@ ORDER BY entity_type, net_dollars DESC
 | PTY | 15 | 3 | 3,700 |
 | PTY | 11 | 1 | 1,000 |
 | PTY | 15E | 1 | 144 |
+
+**Q1c: counted indiv rows that are a conduit's side of an earmark, which 04_contribution.sql drops  (11 s)**
+
+| entity_type | rows | net_dollars |
+|---|---|---|
+| IND | 106,102 | 7,299,752 |
+
+No organization row is a conduit's side of an earmark (Q1c): all 106,102 such rows are IND, so
+04_contribution.sql's earmark rule removes nothing from organizations in 2024.
 
 **Reading.** ORG is the money: 18,233 rows, $2,257,182,796 net, 63% to super PACs and 36% to other committees (neither candidates' nor parties'). PAC ($606.5M) and COM ($173.1M) rows are mostly committees giving to super PACs, reported on
 the recipient's Schedule A without the giver's ID (Q3). In 2024 the blank entity type is almost
@@ -525,37 +547,39 @@ and stay out, as do the other loan types (16F from a bank, 16G from a person). 1
 
 ## Q3: PAC/COM/CCM/PTY rows without a committee ID
 
-Counted `indiv` rows and Q2's `non-committee id`/`blank` receipts with entity type PAC, COM, CCM or
-PTY, split by whether their name key (uppercased, letters and digits only, as both silver files
+Counted `indiv` rows and Q2's `blank` receipts with entity type PAC, COM, CCM or PTY and a blank
+`OTHER_ID`, split by whether their name key (uppercased, letters and digits only, as both silver files
 compare names) names one, several or no `cm` committee. Then the 95% bar. Then the same entity
-types where `indiv` does carry a `cm` committee ID, and whether `oth` holds the same gift.
+types where `indiv` does carry a `cm` committee ID, and whether `oth` holds the same gift (Q3d).
+Then, for the `indiv` rows naming one committee, whether `oth` holds the gift from that committee
+(Q3e). Q3c's `entity_type` is `any_value`: a name filed under two types shows one.
 
 ```python
 con.execute("""
 -- How many `cm` committees each name key names.
 CREATE TABLE cm_named AS
-SELECT regexp_replace(upper(CMTE_NM), '[^A-Z0-9]', '', 'g') AS name_key, count(*) AS committees
+SELECT regexp_replace(upper(CMTE_NM), '[^A-Z0-9]', '', 'g') AS name_key, count(*) AS committees,
+    min(CMTE_ID) AS committee_id
 FROM cm GROUP BY name_key;
 
--- PAC/COM/CCM/PTY rows with no committee id: OTHER_ID not a C-prefixed id.
+-- PAC/COM/CCM/PTY rows with no committee id: a blank OTHER_ID (spec §4.2 Q3).
 CREATE TABLE no_id AS
-SELECT 'indiv' AS file, entity_type, SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT,
-    CASE WHEN coalesce(trim(OTHER_ID), '') = '' THEN 'blank' ELSE 'non-committee id' END AS other_id
+SELECT 'indiv' AS file, entity_type, SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT, TRANSACTION_DT
 FROM counted
-WHERE entity_type IN ('PAC', 'COM', 'CCM', 'PTY') AND coalesce(trim(OTHER_ID), '') NOT LIKE 'C%'
+WHERE entity_type IN ('PAC', 'COM', 'CCM', 'PTY') AND coalesce(trim(OTHER_ID), '') = ''
 UNION ALL
-SELECT 'oth', entity_type, SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT, giver_status
+SELECT 'oth', entity_type, SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT, TRANSACTION_DT
 FROM receipt
-WHERE entity_type IN ('PAC', 'COM', 'CCM', 'PTY') AND giver_status IN ('non-committee id', 'blank');
+WHERE entity_type IN ('PAC', 'COM', 'CCM', 'PTY') AND giver_status = 'blank';
 """)
 show("Q3a: PAC/COM/CCM/PTY rows with no committee id, by how many cm committees the name names", """
-SELECT file, entity_type, other_id,
+SELECT file, entity_type,
     CASE coalesce(cm_named.committees, 0) WHEN 0 THEN 'none' WHEN 1 THEN 'one' ELSE 'several' END AS names,
     count(*) AS rows, sum(TRANSACTION_AMT) AS net_dollars
 FROM no_id
 LEFT JOIN cm_named ON cm_named.name_key = regexp_replace(upper(no_id.NAME), '[^A-Z0-9]', '', 'g')
-GROUP BY GROUPING SETS ((file, entity_type, other_id, names), (names))
-ORDER BY file NULLS LAST, entity_type, other_id, names
+GROUP BY GROUPING SETS ((file, entity_type, names), (names))
+ORDER BY file NULLS LAST, entity_type, names
 """)
 show("Q3b: the 95% bar, indiv and oth together", """
 SELECT
@@ -609,61 +633,73 @@ LEFT JOIN with_id_same AS s USING (SUB_ID)
 LEFT JOIN with_id_mirrored AS m USING (SUB_ID)
 GROUP BY ALL ORDER BY in_oth
 """)
+show("Q3e: no-id rows naming one cm committee, and whether oth already holds the gift from that committee", """
+WITH named AS (
+    SELECT no_id.*, cm_named.committee_id AS named_committee
+    FROM no_id
+    JOIN cm_named ON cm_named.name_key = regexp_replace(upper(no_id.NAME), '[^A-Z0-9]', '', 'g')
+    WHERE cm_named.committees = 1 AND no_id.file = 'indiv'
+),
+twin AS (
+    SELECT DISTINCT named.SUB_ID
+    FROM receipt
+    JOIN named
+        ON receipt.CMTE_ID = named.CMTE_ID
+        AND trim(receipt.OTHER_ID) = named.named_committee
+        AND receipt.TRANSACTION_AMT = named.TRANSACTION_AMT
+        AND receipt.TRANSACTION_DT = named.TRANSACTION_DT
+)
+SELECT CASE WHEN twin.SUB_ID IS NOT NULL THEN 'twin in oth' ELSE 'not in oth' END AS in_oth,
+    count(*) AS rows, sum(named.TRANSACTION_AMT) AS net_dollars
+FROM named LEFT JOIN twin USING (SUB_ID)
+GROUP BY ALL ORDER BY in_oth
+""")
 ```
 
 
 **Q3a: PAC/COM/CCM/PTY rows with no committee id, by how many cm committees the name names  (0 s)**
 
-| file | entity_type | other_id | names | rows | net_dollars |
-|---|---|---|---|---|---|
-| indiv | CCM | blank | none | 43 | 310,739 |
-| indiv | CCM | blank | one | 113 | 5,116,926 |
-| indiv | CCM | blank | several | 1 | 5,000 |
-| indiv | CCM | non-committee id | none | 11 | 9,830,155 |
-| indiv | CCM | non-committee id | one | 73 | 3,741,894 |
-| indiv | CCM | non-committee id | several | 3 | 1,326 |
-| indiv | COM | blank | none | 712 | 53,205,593 |
-| indiv | COM | blank | one | 484 | 114,017,881 |
-| indiv | COM | blank | several | 10 | 5,870,275 |
-| indiv | PAC | blank | none | 661 | 69,257,820 |
-| indiv | PAC | blank | one | 1,939 | 516,079,117 |
-| indiv | PAC | blank | several | 32 | 14,137,184 |
-| indiv | PTY | blank | none | 20 | 303,995 |
-| indiv | PTY | blank | one | 10 | 163,152 |
-| oth | CCM | blank | none | 3 | 5,700 |
-| oth | CCM | blank | one | 4 | 42,303 |
-| oth | CCM | non-committee id | none | 51 | 1,472,103 |
-| oth | CCM | non-committee id | one | 159 | 3,536,349 |
-| oth | CCM | non-committee id | several | 3 | 15,000 |
-| oth | COM | blank | none | 10 | 8,326,327 |
-| oth | COM | non-committee id | one | 1 | 100 |
-| oth | PAC | blank | none | 2 | 10,000 |
-| oth | PAC | blank | one | 3 | 80,000 |
-| oth | PTY | blank | none | 3 | 1,389,589 |
-| oth | PTY | blank | one | 2 | 90,000 |
-| oth | PTY | non-committee id | one | 1 | 7,000 |
-|  |  |  | none | 1,516 | 144,112,021 |
-|  |  |  | one | 2,789 | 642,874,722 |
-|  |  |  | several | 49 | 20,028,785 |
+| file | entity_type | names | rows | net_dollars |
+|---|---|---|---|---|
+| indiv | CCM | none | 43 | 310,739 |
+| indiv | CCM | one | 113 | 5,116,926 |
+| indiv | CCM | several | 1 | 5,000 |
+| indiv | COM | none | 712 | 53,205,593 |
+| indiv | COM | one | 484 | 114,017,881 |
+| indiv | COM | several | 10 | 5,870,275 |
+| indiv | PAC | none | 661 | 69,257,820 |
+| indiv | PAC | one | 1,939 | 516,079,117 |
+| indiv | PAC | several | 32 | 14,137,184 |
+| indiv | PTY | none | 20 | 303,995 |
+| indiv | PTY | one | 10 | 163,152 |
+| oth | CCM | none | 3 | 5,700 |
+| oth | CCM | one | 4 | 42,303 |
+| oth | COM | none | 10 | 8,326,327 |
+| oth | PAC | none | 2 | 10,000 |
+| oth | PAC | one | 3 | 80,000 |
+| oth | PTY | none | 3 | 1,389,589 |
+| oth | PTY | one | 2 | 90,000 |
+|  |  | none | 1,454 | 132,809,763 |
+|  |  | one | 2,555 | 635,589,379 |
+|  |  | several | 43 | 20,012,459 |
 
 **Q3b: the 95% bar, indiv and oth together  (0 s)**
 
 | net_dollars | names_one | names_several_or_none | share_net | share_gross | share_rows |
 |---|---|---|---|---|---|
-| 807,015,528 | 642,874,722 | 164,140,806 | 79.66% | 78.02% | 64.06% |
+| 788,411,601 | 635,589,379 | 152,822,222 | 80.62% | 80.60% | 63.06% |
 
 **Q3c: the largest names with no committee id that name no single cm committee  (0 s)**
 
 | NAME | entity_type | rows | net_dollars |
 |---|---|---|---|
-| SAVE AMERICA | PAC | 5 | 17,250,000 |
+| SAVE AMERICA | COM | 5 | 17,250,000 |
 | REPUBLICAN GOVERNORS ASSOCIATION | COM | 11 | 12,200,000 |
-| JIM A NORRIS FOR THE UNITED STATES PRESIDENT | CCM | 11 | 11,030,000 |
 | TRUMP 47 COMMITTEE | COM | 1 | 8,308,404 |
-| WORKING FOR WORKING AMERICANS | COM | 7 | 7,810,000 |
+| WORKING FOR WORKING AMERICANS | PAC | 7 | 7,810,000 |
 | HOUSE MAJORITY PAC | PAC | 20 | 5,098,582 |
 | VOTE NURSES VALUES PAC | COM | 3 | 5,020,000 |
-| SEIU COPE | PAC | 9 | 3,915,170 |
+| SEIU COPE | COM | 9 | 3,915,170 |
 | SENATE MAJORITY PAC | PAC | 5 | 3,850,000 |
 | SEIU COPE (SERVICES EMPLOYEES INTERNATIONAL UNION COMMITTEE ON POLITICAL EDUCATION) | PAC | 2 | 3,500,000 |
 | AMERICA VOTES | COM | 7 | 3,175,000 |
@@ -676,6 +712,7 @@ GROUP BY ALL ORDER BY in_oth
 | ADVOCACY ACTION FUND, INC. | COM | 1 | 2,000,000 |
 | SIXTEEN THIRTY FUND | COM | 2 | 1,900,000 |
 | ENGINEERS POLITICAL EDUCATION COMMITTEE | PAC | 8 | 1,725,000 |
+| OHIO EDUCATION ASSOCIATION EDUCATORS PCE | COM | 6 | 1,669,329 |
 
 **Q3d: PAC/COM/CCM/PTY counted indiv rows whose OTHER_ID is a cm committee, and their oth twin  (0 s)**
 
@@ -683,12 +720,20 @@ GROUP BY ALL ORDER BY in_oth
 |---|---|---|
 | not in oth | 107 | 7,065,850 |
 
-**Reading.** $807,015,528 in 4,354 rows, $792,041,057 of it in `indiv`. A unique name match covers
-$642.9M (79.66% net, 78.02% gross, 64.06% of rows). The rest name no committee, because the
+**Q3e: no-id rows naming one cm committee, and whether oth already holds the gift from that committee  (3 s)**
+
+| in_oth | rows | net_dollars |
+|---|---|---|
+| not in oth | 2,541 | 635,307,076 |
+| twin in oth | 5 | 70,000 |
+
+**Reading.** $788,411,601 in 4,052 rows, $778,467,682 of it in `indiv`. A unique name match covers
+$635.6M (80.62% net, 80.60% gross, 63.06% of rows). The rest name no committee, because the
 reported name differs from FEC's (`SAVE AMERICA`, `HOUSE MAJORITY PAC`, `SEIU COPE`), or name a
 state committee or an unregistered one (`REPUBLICAN GOVERNORS ASSOCIATION`, a 527). The 107 rows
 ($7.07M) that do carry a `cm` committee ID have no twin in `oth`, by `SUB_ID` or by mirror, so
-`committee_transfer` does not hold them either.
+`committee_transfer` does not hold them either. Of the `indiv` rows naming one committee, 5
+($70,000) have a twin in `oth` from that committee; the other 2,541 ($635,307,076) do not (Q3e).
 
 ## Q4: `indiv` and `oth` overlap
 
@@ -2402,7 +2447,7 @@ GROUP BY CMTE_ID ORDER BY net_dollars DESC LIMIT 10""")
 
 **Reading.** Every 1998 and 2000 row is blank, so the classifier decides each of them. V8 calls
 2.58% (1998) and 2.64% (2000) of rows organizations, about 20% of dollars. That is close to the
-dollar share of the organization types on 2024's filled rows (24%), though far above their row share
+dollar share of the organization types on 2024's filled rows (23.6%), though far above their row share
 (0.04%), as expected while corporations and unions could still give soft money through `indiv`.
 It does not call masses of people organizations: 97.4% of 1998's blank rows have a comma, so the `LAST, FIRST` convention
 holds before 2002. The hits are real organizations: Philip Morris, Pfizer, Bell Atlantic, Bank of
@@ -2760,11 +2805,11 @@ GROUP BY ALL ORDER BY CMTE_ID, net_dollars DESC
 
 Together:
 
-| Committee | FEC total receipts | fundlens counts | Gap | ORG in `indiv` | PAC/COM in `indiv` | Gap left |
+| Committee | FEC total receipts | fundlens counts | Gap | ORG in `indiv` | PAC/COM/CCM in `indiv` | Gap left |
 | --- | --- | --- | --- | --- | --- | --- |
 | FAIRSHAKE (C00835959) | 260,070,709 | 7,326,650 | 252,744,059 | 166,692,432 | 0 | 86,051,627 |
 | SMP (C00484642) | 389,968,278 | 215,240,130 | 174,728,148 | 117,131,062 | 12,945,443 | 44,651,643 |
-| NEVER BACK DOWN INC. (C00834077) | 145,723,169 | 45,416,704 | 100,306,465 | 95,595,613 | 55,000 | 4,655,852 |
+| NEVER BACK DOWN INC. (C00834077) | 145,723,169 | 45,416,704 | 100,306,465 | 95,595,613 | 68,731 | 4,642,121 |
 | MAKE AMERICA GREAT AGAIN INC. (C00825851) | 410,509,931 | 308,780,697 | 101,729,234 | 83,345,136 | 29,072,000 | -10,687,902 |
 | SENATE LEADERSHIP FUND (C00571703) | 298,859,707 | 176,050,171 | 122,809,536 | 79,260,000 | 8,934,545 | 34,614,991 |
 
@@ -2778,20 +2823,23 @@ What remains does not split cleanly by committee. FEC's `fec_other_receipts` (to
 affiliates) is $42.6M for Fairshake and $69.2M for SLF, and Fairshake has $43.4M of
 `INDV_CONTRIB` that its counted `indiv` rows do not reach. For SLF and MAGA Inc. the reverse
 holds: their IND and ORG rows exceed FEC's `INDV_CONTRIB` (SLF $255.3M against $220.7M), so FEC's
-summary puts some of those gifts on another line. This measurement does not say which one. The runbook ticket
-(NEU-2128's eighth child) starts from this table.
+summary puts some of those gifts on another line. This measurement does not say which one.
+`TTL_RECEIPTS` also holds what never appears in `indiv`: unitemized contributions ($200 or less,
+in `INDV_CONTRIB`), loans, offsets to operating expenditures and other receipts. The runbook
+ticket (NEU-2128's eighth child) starts from this table.
 
 ## Decisions
 
-**PAC/COM/CCM/PTY rows with no committee ID: drop.** $642,874,722 of their $807,015,528 (79.66%
-net, 78.02% gross) names exactly one `cm` committee by name key, below the 95% bar. The other
-$164,140,806 names several committees or none. Under the rule both sides are dropped: $807.0M stays
+**PAC/COM/CCM/PTY rows with no committee ID: drop.** $635,589,379 of their $788,411,601 (80.62%
+net, 80.60% gross) names exactly one `cm` committee by name key, below the 95% bar. The other
+$152,822,222 names several committees or none. Under the rule both sides are dropped: $788.4M stays
 out of `committee_transfer` and out of `organization_receipt`, and nothing is counted twice.
 
 *Note for NEU-2130.* The bar decides all-or-nothing, and the evidence argues against dropping.
 Q7 shows these rows are committee gifts that FEC counts (SLF to within $3, SMP to within $6.1k).
-Q3d shows `oth` holds no twin of the with-ID ones. A split rule would recover $642.9M with no
-double count: join the rows that name exactly one committee, drop the rest. This ticket applies the
+Q3e shows `oth` holds a twin for 5 of the 2,546 `indiv` rows that name one committee ($70,000).
+A split rule would recover $635.3M without counting anything twice: join the rows that name
+exactly one committee and have no twin, and drop the rest. This ticket applies the
 pinned rule. Changing it is NEU-2130's call.
 
 **Classifier: V8.** Over the tokenized name, `trim(regexp_replace(regexp_replace(upper(NAME),
@@ -2842,8 +2890,9 @@ shares a `SUB_ID` with an `indiv` row. 2 rows ($133,900) mirror a counted `indiv
 
 ## For NEU-2130, NEU-2131 and NEU-2132
 
-- **NEU-2130 (glossary, spec, ADR 0010).** Organization money in 2024: $2,257,182,796 in `indiv`
-  (ORG), $23.9M in `oth`, against $9.82B from individuals. The PAC/COM rule above, and the note on
+- **NEU-2130 (glossary, spec, the organizations ADR).** Organization money in 2024: $2,257,182,796 in `indiv`
+  (ORG), $23.1M in `oth` (ORG gifts with a blank or non-committee giver ID; 15J lines and loans
+  excluded), against $9.82B from individuals. The PAC/COM rule above, and the note on
   it. Some C-prefixed givers that 05_committee_transfer.sql counts point at committee IDs `cm`
   does not hold (Q2 `unknown id`: 689 rows, $21.3M). They are counted today, and the ADR should
   say whether that stands.
