@@ -167,7 +167,7 @@ SELECT
     -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10, 10J or
     -- 20Y to or from a committee typed V or W, kept out of committee_cycle.total_from_organizations.
     coalesce(
-        kept.TRANSACTION_TP IN ('10', '10J', '20Y') AND recipient.type IN ('V', 'W'), false
+        fec_line(kept.TRANSACTION_TP, recipient.type) = 'non-contribution account', false
     ) AS is_non_contribution_account
 FROM kept
 JOIN committee AS recipient ON recipient.committee_id = kept.CMTE_ID

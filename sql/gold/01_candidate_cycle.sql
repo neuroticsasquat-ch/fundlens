@@ -5,10 +5,11 @@
 -- once.
 --
 -- total_individual is every counted contribution to a committee raising for the candidate that is
--- not the candidate's own money; self_funding is that own money (silver's is_self_funding), and
--- neither includes the other. total_committee is the committees' gifts to the candidate: the
--- disbursement side of committee_transfer only (the recipient's 18K twin would count each gift
--- twice). total_jfc_transfers is the receipts of the committees raising for the candidate from a
+-- not the candidate's own money, nor on a line FEC's itemized figure leaves out (silver's
+-- is_other_line, NEU-2193: a transfer, an earmark's conduit side, a loan); self_funding is that
+-- own money (silver's is_self_funding), and neither includes the other. total_committee is the
+-- committees' gifts to the candidate: the disbursement side of committee_transfer only (the
+-- recipient's 18K twin would count each gift twice). total_jfc_transfers is the receipts of the committees raising for the candidate from a
 -- joint fundraising committee (designation J): its transfers of the candidate's share (NEU-2124),
 -- whatever receipt type the filer gave them (18G mostly, some 18J and 15J; FEC's own transfers-in
 -- totals take them all). It is in neither figure above, and counts nothing twice: the JFC's own
@@ -21,9 +22,11 @@ CREATE TABLE candidate_cycle AS
 WITH money AS (
     SELECT
         candidate_id,
-        coalesce(sum(amount) FILTER (WHERE NOT is_self_funding), 0) AS total_individual,
+        coalesce(sum(amount) FILTER (WHERE NOT is_self_funding AND NOT is_other_line), 0)
+            AS total_individual,
         coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding,
-        count(DISTINCT donor_id) FILTER (WHERE NOT is_self_funding) AS contributor_count
+        count(DISTINCT donor_id) FILTER (WHERE NOT is_self_funding AND NOT is_other_line)
+            AS contributor_count
     FROM silver.contribution
     WHERE candidate_id IS NOT NULL
     GROUP BY candidate_id

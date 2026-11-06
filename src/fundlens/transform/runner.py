@@ -15,7 +15,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
   `normalize_employer`, `normalize_occupation`), from which the contributor key is built, and
-  `organization_key`, which groups organization receipts (ADR-0011).
+  `organization_key`, which groups organization receipts (ADR-0011);
+- `fec_line`, the Form 3/3X line FEC files a transaction type on (`fec.lines`, NEU-2193).
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
 `<table>`, may leave temporary tables a later file reads, and may fill in a column of an earlier
@@ -47,6 +48,7 @@ from psycopg import Connection
 from psycopg.rows import TupleRow
 
 from fundlens import markers, paths
+from fundlens.fec import lines
 from fundlens.fec.files import VARCHAR, BulkFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
@@ -346,6 +348,7 @@ def transform(
             _register_handoffs(con, cycle)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
+            lines.register(con)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))

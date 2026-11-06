@@ -47,6 +47,13 @@
 #   receipts, but in neither total_individual nor total_from_organizations (NEU-2192). So is a
 #   refund there to a giver of such a 10, by NAME. A 10 to any other committee, a super PAC's, is an
 #   ordinary contribution.
+# - A counted row whose type FEC files on a line other than 11(a)(i) (NEU-2193): a national
+#   party's convention, headquarters or recount account (30, 31, 32 and variants, refunded as 40Y,
+#   41Y, 42Y), a loan (16x), a transfer or other receipt (18G, 18J, 18K, 18L, 18U, 18H), a Form 9
+#   donation (19, 19J) or an earmark's conduit side (24I). Kept, the donor's, but in no
+#   total_individual, the committee's, the candidate's or the race's: the committee's
+#   total_other_lines (`other_lines` below). A candidate's own money is self-funding whatever its
+#   type, and a 15C stays in total_individual.
 # - total_jfc_transfers on a candidate: the `oth` receipts above from a designation-J committee,
 #   whatever their type, a joint fundraising committee's transfer of the candidate's share,
 #   credited to the candidate the receiving committee is linked to. In neither total_individual
@@ -64,7 +71,7 @@ rows:
   cm: 20
   cn: 15
   ccl: 15
-  indiv: 336
+  indiv: 339
   pas2: 21
   oth: 29
 
@@ -78,7 +85,7 @@ silver:
   committee: 20
   candidate: 15
   candidate_committee_link: 15
-  contribution: 300
+  contribution: 303
   independent_expenditure: 9
   committee_transfer: 28
   organization_receipt: 7
@@ -108,7 +115,7 @@ contributions:
     C00401224: 5
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2423930
+  total_amount: 2432430
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -168,6 +175,15 @@ non_contribution_account:
     C00800204: 270000
   organizations_by_committee:
     C00800204: 250000
+
+# Money on a line no total_individual counts (NEU-2193), by SUB_ID: GALLAGHER's gift to the party's
+# headquarters account and its refund, and her loan to WHITLOCK FOR SENATE. by_committee is their
+# net amount, gold's total_other_lines; 0 at every other committee.
+other_lines:
+  contributions: [4240100000000000337, 4240100000000000338, 4240100000000000339]
+  by_committee:
+    C00800203: 7500
+    C00800104: 1000
 
 # The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
 # blank-type ones naming one committee (NEU-2132), by SUB_ID: the committee each is a
@@ -608,7 +624,7 @@ validation:
   dime_version: "4.0"
   # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
   # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
-  matched_rows: 299
+  matched_rows: 302
   # Contributor keys with a dated counted contribution: 122 less the 15J-only key and VOSS's.
   labelled_keys: 120
   overall: {precision: 1.0, recall: 1.0}

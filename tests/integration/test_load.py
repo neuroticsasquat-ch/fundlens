@@ -146,6 +146,10 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(row["total_non_contribution_account"]) == non_contribution[
             "by_committee"
         ].get(committee_id, 0), committee_id
+        # Money on a line no total_individual counts is in its own figure (NEU-2193).
+        assert dollars(row["total_other_lines"]) == expected["other_lines"]["by_committee"].get(
+            committee_id, 0
+        ), committee_id
         assert row["ie_total"] == 0
 
     # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.
