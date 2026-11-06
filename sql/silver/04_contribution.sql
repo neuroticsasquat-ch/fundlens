@@ -258,14 +258,17 @@ SELECT
         ),
         false
     ) AS is_self_funding,
-    -- Money a hybrid PAC (CMTE_TP V or W) took into its non-contribution account (NEU-2192): the
-    -- account outside the contribution limits, whose receipts FEC types 10 (10J a JFC's share of
-    -- them) and the committee reports on no Form 3X line 11(a)(i). Kept, since donors gave it, and
-    -- marked, so committee_cycle can keep it out of total_individual. At any other committee a 10
-    -- is an ordinary contribution: a super PAC (O, U) reports it on line 11(a)(i). A refund to
-    -- the same giver is marked below.
+    -- Money a hybrid PAC (CMTE_TP V or W) took into or refunded from its non-contribution account
+    -- (NEU-2192): the account outside the contribution limits, whose receipts FEC types 10 (10J a
+    -- JFC's share of them) and whose refunds 20Y, none of them on Form 3X line 11(a)(i). Kept,
+    -- since donors gave it, and marked, so committee_cycle can keep it out of total_individual.
+    -- Judged by type, not by matching a refund to a giver: most of a hybrid PAC's 20Ys name no one
+    -- it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M), and a 22Y is
+    -- a refund of an ordinary contribution even to someone who gave the other account too. At any
+    -- other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its 10s on line
+    -- 11(a)(i) and refunds them as 20Ys.
     coalesce(
-        kept.TRANSACTION_TP IN ('10', '10J') AND recipient.type IN ('V', 'W'), false
+        kept.TRANSACTION_TP IN ('10', '10J', '20Y') AND recipient.type IN ('V', 'W'), false
     ) AS is_non_contribution_account,
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num
@@ -280,21 +283,3 @@ LEFT JOIN contributor_name AS cname ON cname.raw = kept.NAME
 LEFT JOIN contributor_zip AS czip ON czip.raw = kept.ZIP_CODE
 LEFT JOIN contributor_employer AS cemployer ON cemployer.raw = kept.EMPLOYER
 LEFT JOIN contributor_occupation AS coccupation ON coccupation.raw = kept.OCCUPATION;
-
--- A refund (a 2nY or 4nY type) names no account, so a hybrid PAC's refund is its
--- non-contribution account's money when the committee holds a counted 10 or 10J from the same
--- giver, judged by NAME as `reversal` judges it (NEU-2192): a hybrid PAC refunds that account's
--- givers far more than its contribution account's (FF PAC's 2024 refunds, $135,041, against
--- $6,250 itemized on line 11(a)(i)), and its contribution account would otherwise net negative.
--- A reversal of such a refund is the same giver's, so it is marked too. Read from the table
--- itself, so the givers are exactly the counted rows marked above.
-UPDATE contribution
-SET is_non_contribution_account = true
-FROM (
-    SELECT DISTINCT recipient_committee_id, contributor_name
-    FROM contribution
-    WHERE is_non_contribution_account
-) AS account_giver
-WHERE regexp_matches(contribution.transaction_type, '^[24][0-9]Y$')
-    AND contribution.recipient_committee_id = account_giver.recipient_committee_id
-    AND contribution.contributor_name = account_giver.contributor_name;
