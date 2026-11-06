@@ -85,13 +85,22 @@ HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN = (
 )
 # 24Is (NEU-2203): BRICKLAYERS passing LACROIX's gift on to OKAFOR, and OKAFOR's own row of it; its
 # 24I to WHITLOCK, who itemized none; the super PAC's receipt of an earmark through ActBlue, filed
-# 24I; and the hybrid PAC's, to its non-contribution account.
-INTERMEDIARY_24I, INTERMEDIARY_TWIN, INTERMEDIARY_ONLY, RECIPIENT_24I, HYBRID_PAC_24I = (
+# 24I; and the hybrid PAC's, to its non-contribution account under a memo naming it, and to its
+# contribution account without one (NEU-2207).
+(
+    INTERMEDIARY_24I,
+    INTERMEDIARY_TWIN,
+    INTERMEDIARY_ONLY,
+    RECIPIENT_24I,
+    HYBRID_PAC_24I,
+    HYBRID_PAC_CONTRIBUTION_24I,
+) = (
     4240100000000000340,
     4240100000000000341,
     4240100000000000342,
     4240100000000000343,
     4240100000000000344,
+    4240100000000000345,
 )
 # PAC-typed `indiv` rows with no OTHER_ID (NEU-2131): BRICKLAYERS' gift to the super PAC by name, a
 # name that is no committee's, and the super PAC's own name; and `oth`'s blank-OTHER_ID 18K from
@@ -1338,15 +1347,22 @@ def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24
             contributions[s]["is_other_line"],
             contributions[s]["is_non_contribution_account"],
         )
-        for s in (INTERMEDIARY_TWIN, INTERMEDIARY_ONLY, RECIPIENT_24I, HYBRID_PAC_24I)
+        for s in (
+            INTERMEDIARY_TWIN,
+            INTERMEDIARY_ONLY,
+            RECIPIENT_24I,
+            HYBRID_PAC_24I,
+            HYBRID_PAC_CONTRIBUTION_24I,
+        )
     ] == [
         ("15E", "C00800103", "S4MD00103", 1000, None, "11(a)(i)", False, False),
         # The only record of the gift, the intermediary's.
         ("24I", BRICKLAYERS, None, 500, None, "11(a)(i)", False, False),
         # Filers' own receipts of an earmark, coded 24I: line 11(a)(i), or a hybrid PAC's
-        # non-contribution account, as its 10s are.
+        # non-contribution account when its memo names the account, as its 10s are (NEU-2207).
         ("24I", SUPER_PAC, None, 250, ACTBLUE, "11(a)(i)", False, False),
         ("24I", HYBRID_PAC, None, 1000, ACTBLUE, "non-contribution account", False, True),
+        ("24I", HYBRID_PAC, None, 500, ACTBLUE, "11(a)(i)", False, False),
     ]
 
 
@@ -1399,28 +1415,36 @@ def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts
         )
         con.execute(
             "CREATE TABLE contribution AS SELECT * FROM (VALUES"
-            " (1, 'C1', '10', true), (2, 'C1', '15', false), (3, 'C2', '10J', false),"
-            " (4, 'C3', '10', true), (5, 'C3', '10', false), (9, 'C1', '20Y', true),"
-            " (10, 'C1', '20Y', false), (11, 'C1', '22Y', false), (12, 'C1', '22Y', true),"
-            " (13, 'C3', '20Y', false)"
-            ") AS t(source_record_id, recipient_committee_id, transaction_type,"
+            " (1, 'C1', '10', NULL, true), (2, 'C1', '15', NULL, false),"
+            " (3, 'C2', '10J', NULL, false), (4, 'C3', '10', NULL, true),"
+            " (5, 'C3', '10', NULL, false), (9, 'C1', '20Y', NULL, true),"
+            " (10, 'C1', '20Y', NULL, false), (11, 'C1', '22Y', NULL, false),"
+            " (12, 'C1', '22Y', NULL, true), (13, 'C3', '20Y', NULL, false),"
+            " (15, 'C2', '24I', '* NON-CONTRIBUTION ACCOUNT', true),"
+            " (16, 'C1', '24I', '* NON-CONTRIBUTION ACCOUNT', false),"
+            " (17, 'C2', '24I', 'EARMARKED', false), (18, 'C1', '24I', NULL, true),"
+            " (19, 'C3', '24I', '* NON-CONTRIBUTION ACCOUNT', false)"
+            ") AS t(source_record_id, recipient_committee_id, transaction_type, memo_text,"
             " is_non_contribution_account)"
         )
         con.execute(
             "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES"
-            " (6, 'C2', '10', true), (7, 'C2', '10', false), (8, 'C1', '22Y', true),"
-            " (14, 'C2', '20Y', true)"
-            ") AS t(source_record_id, recipient_committee_id, transaction_type,"
+            " (6, 'C2', '10', NULL, true), (7, 'C2', '10', NULL, false),"
+            " (8, 'C1', '22Y', NULL, true), (14, 'C2', '20Y', NULL, true)"
+            ") AS t(source_record_id, recipient_committee_id, transaction_type, memo_text,"
             " is_non_contribution_account)"
         )
 
         # An unmarked 10J to a W, a marked 10 to a super PAC, an unmarked 20Y and a marked 22Y at
-        # a V; an unmarked 10 to a W, and a marked 22Y at a V.
+        # a V, an unmarked 24I under the account's memo and a marked one without it (NEU-2207);
+        # an unmarked 10 to a W, and a marked 22Y at a V.
         assert sorted(failing_rows(con, "silver_non_contribution_account.sql")) == [
             ("contribution", 3, "10J", "W", False),
             ("contribution", 4, "10", "O", True),
             ("contribution", 10, "20Y", "V", False),
             ("contribution", 12, "22Y", "V", True),
+            ("contribution", 16, "24I", "V", False),
+            ("contribution", 18, "24I", "V", True),
             ("organization_receipt", 7, "10", "W", False),
             ("organization_receipt", 8, "22Y", "V", True),
         ]

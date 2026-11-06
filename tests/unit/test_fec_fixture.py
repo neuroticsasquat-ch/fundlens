@@ -38,9 +38,12 @@ COMMITTEE_TYPES = ("PAC", "COM", "CCM", "PTY")
 # `oth` lines that are no organization receipt: a JFC attribution, and a loan or its repayment.
 NOT_GIFTS = ("15J", "16C", "16F", "16G")
 # A hybrid PAC's committee types, and the transaction types of its non-contribution account's
-# receipts and refunds (NEU-2192; a 24I is an earmark through a conduit there, NEU-2203).
+# receipts and refunds (NEU-2192). A 24I, an earmark through a conduit, is one of them when its
+# memo begins with the account's name (NEU-2203, NEU-2207); a hybrid PAC files its other 24Is on
+# line 11(a)(i).
 HYBRID_PACS = ("V", "W")
-NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "24I", "20Y")
+NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "20Y")
+NON_CONTRIBUTION_MEMO = "* NON-CONTRIBUTION ACCOUNT"
 # The transaction types FEC files on a line no total_individual counts (NEU-2193): loans, transfers
 # and other non-contribution receipts, Form 9 donations, and a national party's convention,
 # headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
@@ -159,15 +162,21 @@ def counts(row: dict[str, str]) -> bool:
 
 def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]]:
     """The rows of one table, the counted contributions or the organization receipts, a hybrid PAC
-    took into or refunded from its non-contribution account (NEU-2192): a 10, 10J, 24I or 20Y to
-    or from a committee typed V or W, whoever the giver. At any other committee a 10 is an ordinary
-    contribution."""
+    took into or refunded from its non-contribution account (NEU-2192): a 10, 10J or 20Y to or
+    from a committee typed V or W, or a 24I there whose memo names the account (NEU-2207), whoever
+    the giver. At any other committee a 10 is an ordinary contribution."""
     types = {committee["CMTE_ID"]: committee["CMTE_TP"] for committee in rows("cm")}
     return [
         row
         for row in table
-        if row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
-        and types.get(row["CMTE_ID"]) in HYBRID_PACS
+        if types.get(row["CMTE_ID"]) in HYBRID_PACS
+        and (
+            row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
+            or (
+                row["TRANSACTION_TP"] == "24I"
+                and row["MEMO_TEXT"].upper().startswith(NON_CONTRIBUTION_MEMO)
+            )
+        )
     ]
 
 

@@ -73,7 +73,7 @@ rows:
   cm: 20
   cn: 15
   ccl: 15
-  indiv: 344
+  indiv: 345
   pas2: 21
   oth: 29
 
@@ -87,7 +87,7 @@ silver:
   committee: 20
   candidate: 15
   candidate_committee_link: 15
-  contribution: 307
+  contribution: 308
   independent_expenditure: 9
   committee_transfer: 28
   organization_receipt: 7
@@ -114,12 +114,12 @@ contributions:
   dropped_not_individual: 10
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
-  # conduit only in MEMO_TEXT. Two of ActBlue's are filed 24I by their recipients.
+  # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
   earmarked:
-    C00401224: 7
+    C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2435180
+  total_amount: 2435680
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -166,8 +166,9 @@ organization_receipts:
   classified: [4240100000000000327]
 
 # A hybrid PAC's non-contribution account (NEU-2192): the counted `indiv` rows and organization
-# receipts typed 10, 10J or 24I (NEU-2203) to a committee typed V or W, and the 20Y refunds there,
-# by SUB_ID, each kept in its table and marked (the 20Y to HAYWARD, not the 22Y to TREVELYAN).
+# receipts typed 10 or 10J to a committee typed V or W, or 24I there with a memo naming the
+# account (NEU-2203, NEU-2207), and the 20Y refunds there, by SUB_ID, each kept in its table and
+# marked (the 20Y to HAYWARD, not the 22Y to TREVELYAN, nor his 24I with no such memo).
 # by_committee is their net amount, individuals' and organizations' alike: gold's
 # total_non_contribution_account, in neither total_individual (`committees` below holds the
 # contribution account alone) nor total_from_organizations, which is `organization_receipts`'
@@ -482,7 +483,7 @@ committees:
     total_to_candidates: 6000
     ie_total: 45000
   C00800204: # TIDEWATER ACTION FUND: a hybrid PAC, its contribution account only (NEU-2192)
-    total_individual: 3250
+    total_individual: 3750
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -635,7 +636,7 @@ validation:
   dime_version: "4.0"
   # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
   # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
-  matched_rows: 306
+  matched_rows: 307
   # Contributor keys with a dated counted contribution: 123 less the 15J-only key and VOSS's.
   labelled_keys: 121
   overall: {precision: 1.0, recall: 1.0}

@@ -69,7 +69,9 @@ only.
   DCCC and the DSCC are over, by money B counts that FEC files on line 17.
 - **A 24I is mostly a recipient's own earmark receipt, not a conduit's side** (NEU-2203, Q10).
   136,731 of 2024's 138,156 counted 24Is ($4.17M of $4.66M) name ActBlue or WinRed, and every
-  counted 24I is on line 11(a)(i) but two hybrid PACs' 151, on line 17. 262 ($235,403) are an
+  counted 24I is on line 11(a)(i) but two hybrid PACs' 151, on line 17 under a memo naming their
+  non-contribution account, which is how a hybrid PAC's 24Is are told apart (Q10j, NEU-2207;
+  committee type does not do it). 262 ($235,403) are an
   intermediary's side whose recipient itemized the gift too, counted twice until NEU-2203 dropped
   them.
 
@@ -4336,8 +4338,9 @@ called a 24I an earmark's conduit side, FEC's "earmarked intermediary out", and 
 them out of `total_individual` for it. NEU-2203 asked how many 2024 24Is there are, and whether
 each has a recipient-side twin that counts the same dollar again. Few do. Most 24Is are a
 recipient's own receipt of an earmark through ActBlue or WinRed, coded 24I instead of 15E. Every
-counted 24I is filed on Form 3X line 11(a)(i), except a hybrid PAC's, which files it on line 17
-for its non-contribution account. This also answers NEU-2074's question.
+counted 24I is filed on Form 3X line 11(a)(i), except two hybrid PACs', which file theirs on line
+17 for their non-contribution account. This also answers NEU-2074's question. Q10j, added for
+NEU-2207, finds which of a hybrid PAC's 24Is go there.
 
 Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
 container, as Q9 did.
@@ -4708,18 +4711,232 @@ FROM grp""")
   did not itemize the gift, so the 24I is the only record of it.
 - **Every counted 24I is filed on line 11(a)(i), except the two W committees' 151 ($22,920) on
   line 17** (Q10e, Q10f). FEC's `INDV_ITEM_CONTB` includes them, intermediaries' and recipients'
-  alike. The one other hybrid-PAC 24I, THE SCHOOL BOARD PROJECT's (V, $1,000), is on 11(a)(i).
+  alike. The other hybrid PACs' 24Is, four V committees' 21 ($5,740), are on 11(a)(i) (Q10j;
+  Q10c, which lists only filers of 100 rows or $10,000, shows one of them).
 - **No gift is dropped for want of a twin** (Q10i). A twin may pair with several 24Is, a donor's
   repeated gifts of one amount, but in none of the 242 donor, recipient and amount groups does
   the rule drop more 24Is than the recipient holds rows.
 
-**What changed (NEU-2203).** `fec_line` puts a 24I where it puts a 10: line 11(a)(i), or the
-non-contribution account at a hybrid PAC. `04_contribution.sql`'s `intermediary_earmark` drops the
-262 intermediary 24Is whose recipient itemized them, $235,403, at five filers (Q10g, Q10h). The rest
-of the counted $4,664,149 returns to `total_individual`, $4,404,826, but the hybrid PACs' $23,920,
-which goes to their `total_non_contribution_account`: the two W committees' $22,920 and THE SCHOOL
-BOARD PROJECT's $1,000, which it filed on 11(a)(i), the one 24I the type rule misplaces. The 1,162
-the recipients did not itemize stay, counted to the intermediary. ADR-0004 carries the rule.
+**What changed (NEU-2203).** `fec_line` put a 24I where it puts a 10: line 11(a)(i), or the
+non-contribution account at a hybrid PAC (NEU-2207 replaced that with the memo rule of Q10j).
+`04_contribution.sql`'s `intermediary_earmark` drops the 262 intermediary 24Is whose recipient
+itemized them, $235,403, at five filers (Q10g, Q10h). The rest of the counted $4,664,149 was to
+return to `total_individual`, a predicted $4,404,826, but the hybrid PACs' $23,920, which went to
+their `total_non_contribution_account`: the two W committees' $22,920 and THE SCHOOL BOARD
+PROJECT's $1,000. NEU-2203's rebuild put $28,660 there and $4,400,086 in `total_individual`: the
+type rule took every hybrid PAC's 24I, and four V committees filed 21 ($5,740) on 11(a)(i), not
+the one Q10c shows (Q10j). The 1,162 the recipients did not itemize stay, counted to the intermediary.
+ADR-0004 carries the rule.
+
+### Q10j: the line a hybrid PAC's 24I is filed on (NEU-2207)
+
+Measured for [NEU-2207](https://linear.app/neuroticsasquatch/issue/NEU-2207) on 2026-11-06.
+NEU-2203's rebuild put $28,660 of 24Is in the hybrid PACs' `total_non_contribution_account`
+against the $23,920 Q10 predicted, so Q10c's cut-off had hidden some. This lists every counted
+hybrid-PAC 24I by the line its raw filing puts it on, for 2024 and for the two cycles beside it,
+to see whether the committee type (V or W) tells line 17 from 11(a)(i).
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-06 21:45–22:12 UTC, `app` container of the local dev stack, DuckDB 2.0.0 |
+| Code | branch `fix/NEU-2207-v-hybrid-24i-line-11ai` off `main` at `48435be`; the scripts read no repository file |
+| `indiv22.zip`, `cm22.zip` | `https://www.fec.gov/files/bulk-downloads/2022/…`, `Last-Modified: Sun, 01 Nov 2026 16:54:24 GMT` and `Fri, 06 Nov 2026 06:39:38 GMT`, downloaded 2026-11-06T21:45Z |
+| `indiv24.zip`, `cm24.zip` | `…/2024/…`, `Last-Modified: Sun, 01 Nov 2026 21:34:38 GMT` (Q10's) and `Fri, 06 Nov 2026 06:39:39 GMT`, downloaded 2026-11-06T21:49Z |
+| `indiv26.zip`, `cm26.zip` | `…/2026/…`, `Last-Modified: Sun, 01 Nov 2026 16:35:15 GMT` and `Fri, 06 Nov 2026 06:39:41 GMT`, downloaded 2026-11-06T21:58Z |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec` for each filing the rows name: 2022 two (formats 8.3, 8.4), 2024 fourteen (8.4), 2026 five (four 8.4, one 8.5) |
+
+**Method.** The hybrid PACs are `cm`'s committees typed V or W. Every `indiv` 24I to one of them,
+each `SUB_ID` once, is counted as in Q10: no memo line, an individual's (IND, CAN or blank, the
+blank-type classifier left out). Each row's filed line comes from its raw filing, joined on
+(`FILE_NUM`, `TRAN_ID`) ignoring case, as in Q10e. Q10's `grab.sh` fetches the filings.
+
+```bash
+# Host, from the repository root, dev stack up. Y is the cycle: 2024, 2022 and 2026 were run.
+# About 2.4–5.2 GB of download per cycle; ~10 minutes.
+Y=2024; R=$PWD; W=$(mktemp -d); S=$(mktemp -d); cd "$W"
+B=https://www.fec.gov/files/bulk-downloads/$Y; yy=${Y#20}
+curl -sSLO $B/indiv$yy.zip && curl -sSLO $B/cm$yy.zip
+# Save Q10's grab.sh and the two scripts below as $S/grab.sh, $S/extract_hybrid.sh and
+# $S/q10j.py, chmod +x the shell scripts, then:
+"$S/extract_hybrid.sh" "$W" "$yy"
+mkdir -p fec && cut -d'|' -f18 h24.txt | sort -un > files.txt
+xargs -P 6 -I{} "$S/grab.sh" {} fec < files.txt && cat fec/*.sa > sa.txt
+cd "$R" && docker compose exec -T app mkdir -p /tmp/m
+for f in "$W/h24.txt" "$W/hybrid.txt" "$W/sa.txt" "$S/q10j.py"; do
+    docker compose cp "$f" app:/tmp/m/; done
+docker compose exec -T app uv run python /tmp/m/q10j.py "$Y" > "$S/q10j-$Y.out"
+docker compose exec -T app rm -rf /tmp/m && rm -rf "$W"
+```
+
+`extract_hybrid.sh`:
+
+```sh
+#!/bin/sh
+# Usage: extract_hybrid.sh <dir holding indivYY.zip and cmYY.zip> <YY>. Writes hybrid.txt (the
+# hybrid PACs, cm's CMTE_TP V or W) and h24.txt (their 24I rows, each SUB_ID once: the zip repeats
+# itcont.txt split by date).
+set -e
+cd "$1"
+unzip -oq cm$2.zip
+LC_ALL=C awk -F'|' '$10 == "V" || $10 == "W"' cm.txt > hybrid.txt
+unzip -p indiv$2.zip | LC_ALL=C awk -F'|' '
+  FILENAME == "hybrid.txt" { h[$1] = 1; next }
+  $6 == "24I" && ($1 in h) && !seen[$21]++
+' hybrid.txt - > h24.txt
+wc -l hybrid.txt h24.txt
+```
+
+`q10j.py`:
+
+```python
+import sys
+import time
+from decimal import Decimal
+
+import duckdb
+
+W = "/tmp/m"
+con = duckdb.connect()
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else f"{v:.2%}" if isinstance(v, float) else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+BULK = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+        "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+        "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+        "MEMO_TEXT", "SUB_ID"]
+CM = ["CMTE_ID", "CMTE_NM", "TRES_NM", "CMTE_ST1", "CMTE_ST2", "CMTE_CITY", "CMTE_ST",
+      "CMTE_ZIP", "CMTE_DSGN", "CMTE_TP", "CMTE_PTY_AFFILIATION", "CMTE_FILING_FREQ",
+      "ORG_TP", "CONNECTED_ORG_NM", "CAND_ID"]
+
+
+def columns(names: list[str]) -> str:
+    return "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in names) + "}"
+
+
+con.execute(f"""
+CREATE TABLE h24 AS
+SELECT *, CAST(TRANSACTION_AMT AS DECIMAL(16, 2)) AS amount
+FROM read_csv('{W}/h24.txt', delim = '|', quote = '', escape = '', header = false,
+    auto_detect = false, columns = {columns(BULK)});
+CREATE TABLE cm AS SELECT * FROM read_csv('{W}/hybrid.txt', delim = '|', quote = '', escape = '',
+    header = false, auto_detect = false, columns = {columns(CM)});
+CREATE TABLE sa AS SELECT * FROM read_csv('{W}/sa.txt', delim = '|', quote = '', escape = '',
+    header = false, auto_detect = false, columns = {{'file_num': 'VARCHAR', 'line': 'VARCHAR',
+    'tran_id': 'VARCHAR', 'ver': 'VARCHAR'}});
+
+-- Each hybrid PAC's 24I, counted as contribution counts it (no memo line, an individual's: IND,
+-- CAN or blank, the blank-type classifier left out), with the line its raw filing puts it on.
+CREATE TABLE lined AS
+SELECT h24.*, cm.CMTE_NM, cm.CMTE_TP,
+    (SELECT string_agg(DISTINCT s.line, ',' ORDER BY s.line) FROM sa AS s
+        WHERE s.file_num = h24.FILE_NUM AND upper(s.tran_id) = upper(h24.TRAN_ID)) AS filed_line
+FROM h24 JOIN cm USING (CMTE_ID)
+WHERE h24.MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(nullif(trim(h24.ENTITY_TP), ''), 'IND') IN ('IND', 'CAN');
+""")
+cycle = sys.argv[1]
+show(f"Q10j ({cycle}): counted hybrid-PAC 24I rows by committee type and filed line", """
+SELECT CMTE_TP AS type, coalesce(filed_line, '(no row in the filing)') AS filed_line,
+    count(*) AS rows, sum(amount) AS dollars, count(DISTINCT CMTE_ID) AS committees
+FROM lined GROUP BY ALL ORDER BY type DESC, filed_line""")
+show(f"Q10j ({cycle}): those rows by committee", """
+SELECT CMTE_ID AS committee, CMTE_NM AS name, CMTE_TP AS type,
+    coalesce(filed_line, '(no row in the filing)') AS filed_line, count(*) AS rows,
+    sum(amount) AS dollars
+FROM lined GROUP BY ALL ORDER BY type DESC, dollars DESC, committee""")
+```
+
+#### Results
+
+**Q10j (2024): counted hybrid-PAC 24I rows by committee type and filed line**
+
+| type | filed_line | rows | dollars | committees |
+|---|---|---|---|---|
+| W | SA17 | 151 | 22,920 | 2 |
+| V | SA11AI | 21 | 5,740 | 4 |
+
+**Q10j (2024): those rows by committee**
+
+| committee | name | type | filed_line | rows | dollars |
+|---|---|---|---|---|---|
+| C00842104 | FIGHT LIKE HELL PAC | W | SA17 | 39 | 16,936 |
+| C00760827 | DEMAND JUSTICE PAC | W | SA17 | 112 | 5,984 |
+| C00774497 | BIPARTISAN CLIMATE FUND | V | SA11AI | 4 | 3,918 |
+| C00859066 | THE SCHOOL BOARD PROJECT | V | SA11AI | 1 | 1,000 |
+| C00751982 | VOTING RIGHTS DEFENSE FUND | V | SA11AI | 9 | 487 |
+| C00707091 | GRASSROOTS DEMOCRATS HQ | V | SA11AI | 7 | 335 |
+
+**Q10j (2022): counted hybrid-PAC 24I rows by committee type and filed line**
+
+| type | filed_line | rows | dollars | committees |
+|---|---|---|---|---|
+
+(2022's hybrid PACs have eight 24Is, all VOTE MAMA's (W) and all memo lines, `MEMO_CD = 'X'`.)
+
+**Q10j (2026): counted hybrid-PAC 24I rows by committee type and filed line**
+
+| type | filed_line | rows | dollars | committees |
+|---|---|---|---|---|
+| W | SA11AI | 166 | 37,794 | 3 |
+| V | SA11AI | 210 | 10,678 | 1 |
+
+**Q10j (2026): those rows by committee**
+
+| committee | name | type | filed_line | rows | dollars |
+|---|---|---|---|---|---|
+| C00679191 | ZINC COLLECTIVE PAC | W | SA11AI | 9 | 23,675 |
+| C00833103 | VOTERS OF TOMORROW PAC | W | SA11AI | 155 | 7,119 |
+| C00692137 | VOTE MAMA | W | SA11AI | 2 | 7,000 |
+| C00856153 | NEW. DIGITAL. NOW. | V | SA11AI | 210 | 10,678 |
+
+**Memo text of those rows** (a tally of `MEMO_TEXT` over the same counted rows, from `h24.txt` on
+the host):
+
+| Cycle | Type | Line | `MEMO_TEXT` | Rows |
+| -- | -- | -- | -- | -- |
+| 2024 | W | SA17 | `* NON-CONTRIBUTION ACCOUNT; EARMARKED CONTRIBUTION: SEE BELOW` | 151 |
+| 2024 | V | SA11AI | blank | 20 |
+| 2024 | V | SA11AI | `* EARMARKED CONTRIBUTION: SEE BELOW` | 1 |
+| 2026 | V | SA11AI | blank | 210 |
+| 2026 | W | SA11AI | blank | 155 |
+| 2026 | W | SA11AI | `* EARMARKED CONTRIBUTION: SEE BELOW` | 3 |
+| 2026 | W | SA11AI | `EARMARKED FOR <candidate committee>` | 8 |
+
+#### Findings
+
+- **In 2024 the committee type splits the lines cleanly**: both W committees' 151 24Is ($22,920)
+  on line 17, all four V committees' 21 ($5,740) on 11(a)(i). Q10c's cut-off showed one V.
+- **In 2026 it does not.** Three W committees filed all 166 of theirs ($37,794) on 11(a)(i), as
+  the one V committee did its 210 ($10,678). A rule that sent a W committee's 24I to the
+  non-contribution account would misplace all of 2026's.
+- **2022 says nothing**: no counted hybrid-PAC 24I.
+- **The memo does split them, in both cycles.** Every line-17 24I's `MEMO_TEXT` begins
+  `* NON-CONTRIBUTION ACCOUNT`, and none of the 11(a)(i) ones' does. The leading `* ` looks like
+  filing software's, as on the `* EARMARKED CONTRIBUTION: SEE BELOW` rows; asserted, not measured.
+
+**What changed (NEU-2207).** `fec_line` takes the row's memo text. A hybrid PAC's 24I is
+`non-contribution account` when its `MEMO_TEXT` begins `* NON-CONTRIBUTION ACCOUNT`
+(case-insensitive), and every other 24I is `11(a)(i)`. On 2024 that keeps the two W committees'
+$22,920 in their `total_non_contribution_account` and returns the four V committees' $5,740 to
+their `total_individual`. Keying on the committee type alone (W only) was rejected for 2026's
+$37,794; leaving every hybrid PAC's 24I in the account for the $5,740 and the $48,472; sending
+every 24I to 11(a)(i) for 2024's $22,920 on line 17. ADR-0004 carries the rule.
 
 ## Decisions
 

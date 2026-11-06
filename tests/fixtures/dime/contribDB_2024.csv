@@ -306,3 +306,4 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00305,24I,500,2024-09-23,100000115,"lacroix, pierre",lacroix,pierre,I,hyattsville,MD,20781,bricklayer,maryland building trades,bricklayers united pac,comm100013,SA11AI.00342,C00800202
 2024,dime00306,24I,250,2024-08-20,100000115,"lacroix, pierre",lacroix,pierre,I,hyattsville,MD,20781,bricklayer,maryland building trades,maryland forward pac,comm100007,SA11AI.00343,C00800201
 2024,dime00307,24I,1000,2024-08-05,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SA17.00344,C00800204
+2024,dime00308,24I,500,2024-08-12,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SA11AI.00345,C00800204

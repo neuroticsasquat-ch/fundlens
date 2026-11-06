@@ -303,16 +303,19 @@ SELECT
     ) AS is_self_funding,
     -- Money a hybrid PAC (CMTE_TP V or W) took into or refunded from its non-contribution account
     -- (NEU-2192): the account outside the contribution limits, whose receipts FEC types 10 (10J a
-    -- JFC's share of them, 24I an earmark through a conduit, NEU-2203) and whose refunds 20Y, none
-    -- of them on Form 3X line 11(a)(i). Kept, since donors gave it, and marked, so committee_cycle
-    -- can keep it out of total_individual.
-    -- Judged by type, not by matching a refund to a giver: most of a hybrid PAC's 20Ys name no one
-    -- it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M), and a 22Y is
-    -- a refund of an ordinary contribution even to someone who gave the other account too. At any
-    -- other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its 10s on line
-    -- 11(a)(i) and refunds them as 20Ys.
+    -- JFC's share of them, 24I an earmark through a conduit whose memo begins "* NON-CONTRIBUTION
+    -- ACCOUNT", NEU-2203, NEU-2207) and whose refunds 20Y, none of them on Form 3X line 11(a)(i).
+    -- Kept, since donors gave it, and marked, so committee_cycle can keep it out of
+    -- total_individual.
+    -- A refund is judged by its type, not by matching it to a giver: most of a hybrid PAC's 20Ys
+    -- name no one it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M),
+    -- and a 22Y is a refund of an ordinary contribution even to someone who gave the other account
+    -- too. At any other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its
+    -- 10s on line 11(a)(i) and refunds them as 20Ys.
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type) = 'non-contribution account', false
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+            = 'non-contribution account',
+        false
     ) AS is_non_contribution_account,
     -- The Form 3/3X line FEC files the row's type on (fec.lines, NEU-2193), and whether that is a
     -- line no total_individual counts: neither 11(a)(i), a candidate's 15C, a refund of either nor
@@ -322,9 +325,9 @@ SELECT
     -- kept, since donors gave them, and marked, so committee
     -- and candidate totals compare with FEC's itemized figure (INDV_ITEM_CONTB). A type the rule
     -- does not place counts, as every type did before it: `indiv` is individuals' contributions.
-    fec_line(kept.TRANSACTION_TP, recipient.type) AS fec_line,
+    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT) AS fec_line,
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type)
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
             NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
         false
     ) AS is_other_line,
