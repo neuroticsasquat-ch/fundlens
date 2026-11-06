@@ -299,3 +299,6 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00298,20Y,-5000,2024-08-01,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SB28A.00334,C00800204
 2024,dime00299,15,1000,2024-06-20,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SA11AI.00335,C00800204
 2024,dime00300,22Y,-250,2024-07-20,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SB28A.00336,C00800204
+2024,dime00301,31,10000,2024-08-15,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,comm100005,SA17.00337,C00800203
+2024,dime00302,41Y,-2500,2024-09-01,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,comm100005,SB29.00338,C00800203
+2024,dime00303,16G,1000,2024-08-20,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,comm100002,SC10.00339,C00800104

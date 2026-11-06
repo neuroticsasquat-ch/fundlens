@@ -268,8 +268,22 @@ SELECT
     -- other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its 10s on line
     -- 11(a)(i) and refunds them as 20Ys.
     coalesce(
-        kept.TRANSACTION_TP IN ('10', '10J', '20Y') AND recipient.type IN ('V', 'W'), false
+        fec_line(kept.TRANSACTION_TP, recipient.type) = 'non-contribution account', false
     ) AS is_non_contribution_account,
+    -- The Form 3/3X line FEC files the row's type on (fec.lines, NEU-2193), and whether that is a
+    -- line no total_individual counts: neither 11(a)(i), a candidate's 15C, a refund of either nor
+    -- the non-contribution account, which has its own figure. A national party's convention,
+    -- headquarters and recount accounts (30, 31, 32 and their variants, refunded as 40Y, 41Y,
+    -- 42Y), a gift from an unregistered committee (18U), a transfer (18G) and an earmark's
+    -- conduit side (24I) are among them: kept, since donors gave them, and marked, so committee
+    -- and candidate totals compare with FEC's itemized figure (INDV_ITEM_CONTB). A type the rule
+    -- does not place counts, as every type did before it: `indiv` is individuals' contributions.
+    fec_line(kept.TRANSACTION_TP, recipient.type) AS fec_line,
+    coalesce(
+        fec_line(kept.TRANSACTION_TP, recipient.type)
+            NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
+        false
+    ) AS is_other_line,
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num
 FROM kept

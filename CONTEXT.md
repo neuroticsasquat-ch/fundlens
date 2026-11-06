@@ -34,6 +34,14 @@ _Avoid_: organization contribution, corporate donation, corporate money (unions 
 A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
 _Avoid_: Carey account, soft money, super PAC account
 
+**Party account**:
+One of a national party committee's three accounts outside its main one, a convention, a headquarters and a recount account, whose receipts the regulator types 30, 31 and 32 (with variants such as 31T and 32E) and whose refunds 40Y, 41Y and 42Y. Individuals' gifts to one are kept as contributions, the donors', and counted in the committee's other-lines figure, never in its individual total, which holds what the regulator files on line 11(a)(i).
+_Avoid_: building fund, soft money, special account
+
+**Other-lines money**:
+An individual's counted money the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H), a Form 9 donation or an earmark's conduit side (24I). Kept, as contributions, in the donor's figures, the committee's own figure and no individual total; a candidate's own money is self-funding whatever its line.
+_Avoid_: off-book money, non-itemized money
+
 **Self-funding**:
 A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 

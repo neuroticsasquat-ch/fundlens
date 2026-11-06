@@ -41,6 +41,10 @@ NOT_GIFTS = ("15J", "16C", "16F", "16G")
 # receipts and refunds (NEU-2192).
 HYBRID_PACS = ("V", "W")
 NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "20Y")
+# The transaction types FEC files on a line no total_individual counts (NEU-2193): loans, transfers
+# and other non-contribution receipts, Form 9 donations, an earmark's conduit side, and a national
+# party's convention, headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
+OTHER_LINES = r"16[CFGHJKLR]|18[GHJKLU]|19J?|24I|3[012][A-Z]?|4[012]Y"
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
@@ -142,6 +146,12 @@ def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]
         if row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
         and types.get(row["CMTE_ID"]) in HYBRID_PACS
     ]
+
+
+def is_other_line(row: dict[str, str]) -> bool:
+    """A counted row whose type FEC files on a line no total_individual counts (NEU-2193); a
+    candidate's own money is self-funding whatever its line."""
+    return re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None
 
 
 def is_classified(row: dict[str, str]) -> bool:
@@ -383,7 +393,7 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     individual = sum_by(
         (r["CMTE_ID"], signed(r))
         for r in contributions
-        if not is_self_funding(r) and r["SUB_ID"] not in account
+        if not is_self_funding(r) and r["SUB_ID"] not in account and not is_other_line(r)
     )
     self_funding = sum_by((r["CMTE_ID"], signed(r)) for r in contributions if is_self_funding(r))
     from_committees = sum_by(
@@ -443,7 +453,9 @@ def tally_candidates() -> dict[str, CandidateTotals]:
     individual = sum_by(
         (c, signed(r))
         for r in contributions
-        if not is_self_funding(r) and (c := candidate_of(r["CMTE_ID"], r)) is not None
+        if not is_self_funding(r)
+        and not is_other_line(r)
+        and (c := candidate_of(r["CMTE_ID"], r)) is not None
     )
     self_funding = sum_by(
         (c, signed(r))
@@ -680,6 +692,17 @@ def test_the_expected_non_contribution_account_is_the_hybrid_pacs_type_10_rows()
         for r in unmarked
     )
     assert any(r["TRANSACTION_TP"] == "20Y" and r["NAME"] not in givers for r in contributions)
+
+
+def test_the_expected_other_lines_are_the_counted_rows_off_line_11ai() -> None:
+    other = [r for r in counted() if is_other_line(r) and not is_self_funding(r)]
+    expected = EXPECTED["other_lines"]
+    assert expected["contributions"] == [int(r["SUB_ID"]) for r in other]
+    assert expected["by_committee"] == sum_by((r["CMTE_ID"], signed(r)) for r in other)
+    # A party account's refund goes with its receipts, and a loan with the candidate's committee:
+    # both are the donor's money all the same, in no total_individual.
+    assert {r["TRANSACTION_TP"] for r in other} >= {"31", "41Y", "16G"}
+    assert any(linked_candidates().get(r["CMTE_ID"]) for r in other)
 
 
 def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:

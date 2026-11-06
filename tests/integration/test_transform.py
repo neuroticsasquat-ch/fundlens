@@ -76,6 +76,13 @@ CONTRIBUTION_ACCOUNT, NON_CONTRIBUTION_ACCOUNT, PATAPSCO, SUPER_PAC_TYPE_10 = (
     4240100000000000333,
 )
 MARKED_REFUND, UNMARKED_REFUND = 4240100000000000334, 4240100000000000336
+# Money on a line no total_individual counts (NEU-2193): GALLAGHER's gift to the party's
+# headquarters account, its refund, and her loan to WHITLOCK FOR SENATE.
+HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN = (
+    4240100000000000337,
+    4240100000000000338,
+    4240100000000000339,
+)
 # PAC-typed `indiv` rows with no OTHER_ID (NEU-2131): BRICKLAYERS' gift to the super PAC by name, a
 # name that is no committee's, and the super PAC's own name; and `oth`'s blank-OTHER_ID 18K from
 # BRICKLAYERS to OKAFOR, a receipt by the same rule.
@@ -276,6 +283,8 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "conduit_committee_id",
         "is_self_funding",
         "is_non_contribution_account",
+        "fec_line",
+        "is_other_line",
         "image_num",
         "file_num",
     ]
@@ -406,7 +415,11 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
     assert PARK_EARMARK_CONDUIT_SIDE not in by_id
 
     individual = [
-        row for row in rows if not row["is_self_funding"] and not row["is_non_contribution_account"]
+        row
+        for row in rows
+        if not row["is_self_funding"]
+        and not row["is_non_contribution_account"]
+        and not row["is_other_line"]
     ]
     self_funding = [row for row in rows if row["is_self_funding"]]
     assert len(self_funding) == expected["contributions"]["self_funding"]
@@ -1238,6 +1251,52 @@ def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account
     assert (receipts[PATAPSCO]["recipient_committee_id"], receipts[PATAPSCO]["amount"]) == (
         HYBRID_PAC,
         250000,
+    )
+
+
+def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    contributions = {
+        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+    }
+
+    assert {
+        s for s, row in contributions.items() if row["is_other_line"] and not row["is_self_funding"]
+    } == set(fec_fixture.expected()["other_lines"]["contributions"])
+    # The candidate's own loan is on line 13 too, and stays self-funding (gold's self_funding).
+    [loan] = [row for row in contributions.values() if row["transaction_type"] == "16C"]
+    assert (loan["fec_line"], loan["is_other_line"], loan["is_self_funding"]) == (
+        "13 loans",
+        True,
+        True,
+    )
+    # The party account's refund goes with its receipt; the loan stays the candidate's committee's.
+    assert [
+        (
+            contributions[s]["transaction_type"],
+            contributions[s]["amount"],
+            contributions[s]["fec_line"],
+            contributions[s]["candidate_id"],
+        )
+        for s in (HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN)
+    ] == [
+        ("31", 10000, "party account 31", None),
+        ("41Y", -2500, "party account 31", None),
+        ("16G", 1000, "13 loans", "S4MD00104"),
+    ]
+    # Line 11(a)(i) money and its refunds are unmarked, as is the non-contribution account, which
+    # has its own flag.
+    assert contributions[CONTRIBUTION_ACCOUNT]["fec_line"] == "11(a)(i)"
+    assert contributions[UNMARKED_REFUND]["fec_line"] == "20 refunds"
+    assert contributions[NON_CONTRIBUTION_ACCOUNT]["fec_line"] == "non-contribution account"
+    assert not any(
+        contributions[s]["is_other_line"]
+        for s in (CONTRIBUTION_ACCOUNT, UNMARKED_REFUND, NON_CONTRIBUTION_ACCOUNT)
     )
 
 
