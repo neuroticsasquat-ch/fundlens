@@ -10,7 +10,8 @@
 -- or dropped, in neither table.
 --
 -- From `indiv`: a counted row by contribution's rules (04_contribution.sql): no memo line
--- (MEMO_CD = 'X'), no conduit's 24T, no conduit's own line for an earmark it passed on
+-- (MEMO_CD = 'X'), no conduit's 24T, no intermediary's 24I its recipient itemized too
+-- (`intermediary_earmark`, NEU-2203), no conduit's own line for an earmark it passed on
 -- (ADR-0004), to a committee in `cm` (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
 -- on a conduit's side; the rule stands for other cycles. A refund (a 2nY or 4nY type) subtracts
 -- whichever sign its filer wrote, and a negative refund mirroring a positive one reverses it and
@@ -45,6 +46,7 @@ WITH individual AS (
         )
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -99,6 +101,7 @@ mirrored AS (
         AND other.name_key = regexp_replace(upper(indiv.NAME), '[^A-Z0-9]', '', 'g')
     WHERE indiv.MEMO_CD IS DISTINCT FROM 'X'
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND NOT (
             indiv.CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(indiv.MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -164,8 +167,9 @@ SELECT
     kept.FILE_NUM AS file_num,
     -- Filed with no entity type, so the classifier put it here; the `oth` rows are all ORG.
     nullif(trim(kept.ENTITY_TP), '') IS NULL AS classified,
-    -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10, 10J or
-    -- 20Y to or from a committee typed V or W, kept out of committee_cycle.total_from_organizations.
+    -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10, 10J, 24I
+    -- or 20Y to or from a committee typed V or W, kept out of
+    -- committee_cycle.total_from_organizations.
     coalesce(
         fec_line(kept.TRANSACTION_TP, recipient.type) = 'non-contribution account', false
     ) AS is_non_contribution_account

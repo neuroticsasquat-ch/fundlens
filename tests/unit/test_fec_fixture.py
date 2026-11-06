@@ -38,13 +38,13 @@ COMMITTEE_TYPES = ("PAC", "COM", "CCM", "PTY")
 # `oth` lines that are no organization receipt: a JFC attribution, and a loan or its repayment.
 NOT_GIFTS = ("15J", "16C", "16F", "16G")
 # A hybrid PAC's committee types, and the transaction types of its non-contribution account's
-# receipts and refunds (NEU-2192).
+# receipts and refunds (NEU-2192; a 24I is an earmark through a conduit there, NEU-2203).
 HYBRID_PACS = ("V", "W")
-NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "20Y")
+NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "24I", "20Y")
 # The transaction types FEC files on a line no total_individual counts (NEU-2193): loans, transfers
-# and other non-contribution receipts, Form 9 donations, an earmark's conduit side, and a national
-# party's convention, headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
-OTHER_LINES = r"16[CFGHJKLR]|18[GHJKLU]|19J?|24I|3[012][A-Z]?|4[012]Y"
+# and other non-contribution receipts, Form 9 donations, and a national party's convention,
+# headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
+OTHER_LINES = r"16[CFGHJKLR]|18[GHJKLU]|19J?|3[012][A-Z]?|4[012]Y"
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
@@ -122,13 +122,36 @@ def is_conduit_side(row: dict[str, str]) -> bool:
     )
 
 
+def is_intermediary_earmark(row: dict[str, str]) -> bool:
+    """An intermediary's 24I that its recipient itemized too (NEU-2203): OTHER_ID a committee of
+    the cycle, no conduit and not the filer, holding a row of the same name and amount, no memo
+    line, refund, 24T or 24I, dated within 30 days of it."""
+    others = {c["CMTE_ID"] for c in rows("cm")} - set(CONDUITS.values()) - {row["CMTE_ID"]}
+    if row["TRANSACTION_TP"] != "24I" or row["MEMO_CD"] == "X" or row["OTHER_ID"] not in others:
+        return False
+    dated = datetime.strptime(row["TRANSACTION_DT"], "%m%d%Y").date()
+    return any(
+        twin["CMTE_ID"] == row["OTHER_ID"]
+        and twin["MEMO_CD"] != "X"
+        and twin["TRANSACTION_TP"] not in ("24T", "24I")
+        and not is_refund(twin)
+        and name_key(twin["NAME"]) == name_key(row["NAME"])
+        and amount(twin) == amount(row)
+        and twin["TRANSACTION_DT"] != ""
+        and abs((datetime.strptime(twin["TRANSACTION_DT"], "%m%d%Y").date() - dated).days) <= 30
+        for twin in rows("indiv")
+    )
+
+
 def counts(row: dict[str, str]) -> bool:
-    """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no conduit's
-    own line for an earmark, to a committee of the cycle."""
+    """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no
+    intermediary's 24I its recipient itemized too, no conduit's own line for an earmark, to a
+    committee of the cycle."""
     committees = {row["CMTE_ID"] for row in rows("cm")}
     return (
         row["MEMO_CD"] != "X"
         and row["TRANSACTION_TP"] != "24T"
+        and not is_intermediary_earmark(row)
         and not is_conduit_side(row)
         and row["CMTE_ID"] in committees
     )
@@ -136,8 +159,8 @@ def counts(row: dict[str, str]) -> bool:
 
 def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]]:
     """The rows of one table, the counted contributions or the organization receipts, a hybrid PAC
-    took into or refunded from its non-contribution account (NEU-2192): a 10, 10J or 20Y to or
-    from a committee typed V or W, whoever the giver. At any other committee a 10 is an ordinary
+    took into or refunded from its non-contribution account (NEU-2192): a 10, 10J, 24I or 20Y to
+    or from a committee typed V or W, whoever the giver. At any other committee a 10 is an ordinary
     contribution."""
     types = {committee["CMTE_ID"]: committee["CMTE_TP"] for committee in rows("cm")}
     return [
@@ -628,6 +651,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
     assert EXPECTED["contributions"] == {
         "dropped_memo": sum(r["MEMO_CD"] == "X" for r in indiv),
         "dropped_conduit_24t": sum(r["TRANSACTION_TP"] == "24T" for r in indiv),
+        "dropped_intermediary_24i": sum(is_intermediary_earmark(r) for r in indiv),
         "dropped_conduit_side": sum(
             is_conduit_side(r) and r["TRANSACTION_TP"] != "24T" for r in indiv
         ),
