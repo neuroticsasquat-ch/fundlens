@@ -1,20 +1,24 @@
 """The Form 3/3X line FEC files each `indiv` transaction type on (NEU-2193).
 
-`fec_line(transaction_type, committee_type)` is a DuckDB macro: the line a receipt or refund of
-that type goes on at a recipient of that `cm.CMTE_TP`, as FEC's summary files total it. It is
-the `fec_line` CASE of `docs/measurements/summary-files-2024.md` Q6, with two additions so that
-an account's refunds go with its receipts: a hybrid PAC's 20Y is its non-contribution account's
-(NEU-2192), and a national party's 40Y, 41Y and 42Y are its convention, headquarters and recount
-accounts' (FEC: "Convention Account refund to an individual", and so on). The committee type
-matters only there and for types 10 and 24I, a hybrid PAC's (V, W) non-contribution account and
-line 11(a)(i) money anywhere else. A type it does not place, a blank one among them, is NULL.
+`fec_line(transaction_type, committee_type, memo_text)` is a DuckDB macro: the line a receipt
+or refund of that type goes on at a recipient of that `cm.CMTE_TP`, as FEC's summary files total
+it. It is the `fec_line` CASE of `docs/measurements/summary-files-2024.md` Q6, with two additions
+so that an account's refunds go with its receipts: a hybrid PAC's 20Y is its non-contribution
+account's (NEU-2192), and a national party's 40Y, 41Y and 42Y are its convention, headquarters and
+recount accounts' (FEC: "Convention Account refund to an individual", and so on). The committee type
+matters only there and for type 10, a hybrid PAC's (V, W) non-contribution account and line
+11(a)(i) money anywhere else, and for type 24I, whose memo text decides it at a hybrid PAC
+(below). A type it does not place, a blank one among them, is NULL.
 
 A 24I is FEC's earmarked-intermediary-out code, which Q6 called an earmark's conduit side. Filers
-write it on line 11(a)(i), mostly on their own receipts of earmarks through ActBlue, except at a
-hybrid PAC, which writes it on line 17 for its non-contribution account. Of 2024's counted 24Is,
-two W committees' 151 ($22,920) are on line 17 and every other one is on 11(a)(i), a V
-committee's single 24I among them (`docs/measurements/summary-files-2024.md` Q10, NEU-2203). So
-a 24I goes where a 10 does, which misplaces that one ($1,000) for the other 151.
+write it on line 11(a)(i), mostly on their own receipts of earmarks through ActBlue, a hybrid
+PAC's among them, except where a hybrid PAC writes it on line 17 for its non-contribution
+account. Neither committee type tells the two apart: in 2024 two W committees filed their 151
+($22,920) on line 17 and four V committees their 21 ($5,740) on 11(a)(i), but in 2026 three W
+committees filed all 166 of theirs ($37,794) on 11(a)(i). The memo does: every line-17 24I's
+`MEMO_TEXT` begins `* NON-CONTRIBUTION ACCOUNT`, and no other hybrid PAC's does
+(`docs/measurements/summary-files-2024.md` Q10j, NEU-2207). So a hybrid PAC's 24I with that memo
+goes where its 10 does, and every other 24I on line 11(a)(i).
 An intermediary's 24I that its recipient itemized too is no contribution at all
 (`sql/silver/04_contribution.sql`).
 
@@ -25,10 +29,17 @@ Only the 11(a)(i) lines, a candidate's 15C and the refunds of either are in a `t
 import duckdb
 
 FEC_LINE = r"""
-CREATE MACRO fec_line(transaction_type, committee_type) AS CASE
+CREATE MACRO fec_line(transaction_type, committee_type, memo_text) AS CASE
     WHEN transaction_type IN ('15', '15E', '15I', '15T', '11', '11J', '15Z') THEN '11(a)(i)'
-    WHEN transaction_type IN ('10', '10J', '24I') THEN
+    WHEN transaction_type IN ('10', '10J') THEN
         CASE WHEN committee_type IN ('V', 'W') THEN 'non-contribution account' ELSE '11(a)(i)' END
+    WHEN transaction_type = '24I' THEN
+        CASE
+            WHEN committee_type IN ('V', 'W')
+                AND starts_with(upper(memo_text), '* NON-CONTRIBUTION ACCOUNT')
+                THEN 'non-contribution account'
+            ELSE '11(a)(i)'
+        END
     WHEN transaction_type = '20Y' AND committee_type IN ('V', 'W') THEN 'non-contribution account'
     WHEN transaction_type = '15C' THEN '11(d) candidate'
     WHEN transaction_type IN ('16C', '16F', '16G', '16H', '16J', '16K', '16L', '16R')

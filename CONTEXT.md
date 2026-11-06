@@ -31,7 +31,7 @@ One itemized gift from an organization to a committee, as reported to the regula
 _Avoid_: organization contribution, corporate donation, corporate money (unions and tribes give too)
 
 **Non-contribution account**:
-A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 (24I for an earmark through a conduit) and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
+A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 (24I for an earmark through a conduit, when its memo names the account; a 24I without that memo is the contribution account's) and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
 _Avoid_: Carey account, soft money, super PAC account
 
 **Party account**:
