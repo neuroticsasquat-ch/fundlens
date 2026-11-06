@@ -8,13 +8,20 @@
 -- both, so a gift on both sides is counted once in each figure, and a committee's top recipients
 -- add up to its total_to_candidates. total_from_organizations is the organization receipts it
 -- recorded (ADR-0011), net of refunds: organization money is the committee's only, in no candidate,
--- race, cycle or donor figure. ie_total is 0 until NEU-2057.
+-- race, cycle or donor figure. total_non_contribution_account is a hybrid PAC's non-contribution
+-- account (NEU-2192), individuals' and organizations' money alike: in neither total_individual nor
+-- total_from_organizations, which hold its contribution account, the money FEC's itemized figure
+-- (line 11(a)(i)) counts. 0 at every other committee. ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
         recipient_committee_id AS committee_id,
-        coalesce(sum(amount) FILTER (WHERE NOT is_self_funding), 0) AS total_individual,
-        coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding
+        coalesce(
+            sum(amount) FILTER (WHERE NOT is_self_funding AND NOT is_non_contribution_account), 0
+        ) AS total_individual,
+        coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding,
+        coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
+            AS non_contribution_account
     FROM silver.contribution
     GROUP BY recipient_committee_id
 ),
@@ -25,7 +32,12 @@ from_committees AS (
     GROUP BY to_committee_id
 ),
 from_organizations AS (
-    SELECT recipient_committee_id AS committee_id, sum(amount) AS total_from_organizations
+    SELECT
+        recipient_committee_id AS committee_id,
+        coalesce(sum(amount) FILTER (WHERE NOT is_non_contribution_account), 0)
+            AS total_from_organizations,
+        coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
+            AS non_contribution_account
     FROM silver.organization_receipt
     GROUP BY recipient_committee_id
 ),
@@ -43,6 +55,11 @@ SELECT
     CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
     CAST(coalesce(from_organizations.total_from_organizations, 0) AS DECIMAL(16, 2))
         AS total_from_organizations,
+    CAST(
+        coalesce(received.non_contribution_account, 0)
+            + coalesce(from_organizations.non_contribution_account, 0)
+        AS DECIMAL(16, 2)
+    ) AS total_non_contribution_account,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(0 AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee

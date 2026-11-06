@@ -108,6 +108,13 @@ class OrganizationReceipts(TypedDict):
     classified: list[int]
 
 
+class NonContributionAccount(TypedDict):
+    contributions: list[int]
+    organization_receipts: list[int]
+    by_committee: dict[str, int]
+    organizations_by_committee: dict[str, int]
+
+
 class Donor(TypedDict):
     bonica_cid: int
     resolved_by: str
@@ -143,6 +150,7 @@ class Expected(TypedDict):
     silver: dict[str, int]
     contributions: dict[str, Any]
     organization_receipts: OrganizationReceipts
+    non_contribution_account: NonContributionAccount
     name_matched: dict[int, str | None]
     unmatched_filings: list[str]
     aliases: dict[str, str]

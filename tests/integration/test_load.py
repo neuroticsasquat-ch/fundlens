@@ -129,6 +129,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     committee_cycles = {row["committee_id"]: row for row in rows(migrated_db, "committee_cycle")}
     assert set(committee_cycles) == set(expected["committees"])
     organizations = expected["organization_receipts"]
+    non_contribution = expected["non_contribution_account"]
     for committee_id, totals in expected["committees"].items():
         row = committee_cycles[committee_id]
         assert dollars(row["total_individual"]) == totals["total_individual"], committee_id
@@ -136,10 +137,15 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(row["total_from_committees"]) == totals["total_from_committees"]
         assert dollars(row["total_to_candidates"]) == totals["total_to_candidates"]
         # Organization money (ADR-0011): the super PAC's is CHESAPEAKE STEEL's gifts less its
-        # refund, the party committee's the union's 31K; 0, never NULL, for the rest.
+        # refund, the party committee's the union's 31K; 0, never NULL, for the rest. The hybrid
+        # PAC's non-contribution account is in neither this nor total_individual, but in its own
+        # figure (NEU-2192).
         assert dollars(row["total_from_organizations"]) == organizations["by_committee"].get(
             committee_id, 0
-        ), committee_id
+        ) - non_contribution["organizations_by_committee"].get(committee_id, 0), committee_id
+        assert dollars(row["total_non_contribution_account"]) == non_contribution[
+            "by_committee"
+        ].get(committee_id, 0), committee_id
         assert row["ie_total"] == 0
 
     # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.

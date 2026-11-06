@@ -64,6 +64,18 @@ CHESAPEAKE, CHESAPEAKE_AGAIN, CHESAPEAKE_REFUND = (
 )
 UNION_RECEIPT = 4240300000000000026
 SUPER_PAC, PARTY, BRICKLAYERS = "C00800201", "C00800203", "C00800202"
+# A hybrid PAC's two accounts (NEU-2192): TREVELYAN's 15 to its contribution account and 10 to
+# its non-contribution account, PATAPSCO HOLDINGS' 10 to the second, and TREVELYAN's 10 to the
+# super PAC; and its refunds to TREVELYAN, who gave the second, and to HAYWARD, who gave the first
+# alone.
+HYBRID_PAC = "C00800204"
+CONTRIBUTION_ACCOUNT, NON_CONTRIBUTION_ACCOUNT, PATAPSCO, SUPER_PAC_TYPE_10 = (
+    4240100000000000330,
+    4240100000000000331,
+    4240100000000000332,
+    4240100000000000333,
+)
+MARKED_REFUND, UNMARKED_REFUND = 4240100000000000334, 4240100000000000336
 # PAC-typed `indiv` rows with no OTHER_ID (NEU-2131): BRICKLAYERS' gift to the super PAC by name, a
 # name that is no committee's, and the super PAC's own name; and `oth`'s blank-OTHER_ID 18K from
 # BRICKLAYERS to OKAFOR, a receipt by the same rule.
@@ -263,6 +275,7 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "memo_text",
         "conduit_committee_id",
         "is_self_funding",
+        "is_non_contribution_account",
         "image_num",
         "file_num",
     ]
@@ -325,6 +338,7 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "image_num",
         "file_num",
         "classified",
+        "is_non_contribution_account",
     ]
 
     attributions = read_silver(store, "jfc_attribution", tmp_path)
@@ -391,7 +405,9 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
     ]
     assert PARK_EARMARK_CONDUIT_SIDE not in by_id
 
-    individual = [row for row in rows if not row["is_self_funding"]]
+    individual = [
+        row for row in rows if not row["is_self_funding"] and not row["is_non_contribution_account"]
+    ]
     self_funding = [row for row in rows if row["is_self_funding"]]
     assert len(self_funding) == expected["contributions"]["self_funding"]
     committees = expected["committees"]
@@ -1172,6 +1188,89 @@ def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_
     contributors = read_silver(store, "contributor", tmp_path)
     assert len(contributors) == expected["silver"]["contributor"]
     assert "CHESAPEAKE STEEL" not in {row["employer_norm"] for row in contributors}
+
+
+def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account_money(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    expected = fec_fixture.expected()["non_contribution_account"]
+    contributions = {
+        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+    }
+    receipts = {
+        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+    }
+
+    # Only the hybrid PAC's 10s, and its refund to a giver of one, are marked: its 15 is the
+    # contribution account, and a 10 to the super PAC is line 11(a)(i) money.
+    assert {s for s, row in contributions.items() if row["is_non_contribution_account"]} == set(
+        expected["contributions"]
+    )
+    assert {s for s, row in receipts.items() if row["is_non_contribution_account"]} == set(
+        expected["organization_receipts"]
+    )
+    # A refund names no account: it is the account's its giver gave, by name.
+    assert [
+        (contributions[s]["amount"], contributions[s]["is_non_contribution_account"])
+        for s in (MARKED_REFUND, UNMARKED_REFUND)
+    ] == [(-5000, True), (-250, False)]
+    assert [
+        (contributions[s]["recipient_committee_id"], contributions[s]["transaction_type"])
+        for s in (CONTRIBUTION_ACCOUNT, NON_CONTRIBUTION_ACCOUNT, SUPER_PAC_TYPE_10)
+    ] == [(HYBRID_PAC, "15"), (HYBRID_PAC, "10"), (SUPER_PAC, "10")]
+    assert not contributions[CONTRIBUTION_ACCOUNT]["is_non_contribution_account"]
+    assert not contributions[SUPER_PAC_TYPE_10]["is_non_contribution_account"]
+    # The account's money is still the donor's: a contributor key, no candidate.
+    assert contributions[NON_CONTRIBUTION_ACCOUNT]["candidate_id"] is None
+    assert (
+        contributions[NON_CONTRIBUTION_ACCOUNT]["contributor_key"]
+        == (contributions[CONTRIBUTION_ACCOUNT]["contributor_key"])
+    )
+    assert (receipts[PATAPSCO]["recipient_committee_id"], receipts[PATAPSCO]["amount"]) == (
+        HYBRID_PAC,
+        250000,
+    )
+
+
+def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee AS SELECT * FROM (VALUES ('C1', 'V'), ('C2', 'W'), ('C3', 'O'))"
+            " AS t(committee_id, type)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES"
+            " (1, 'C1', '10', 'GIVER', true), (2, 'C1', '15', 'GIVER', false),"
+            " (3, 'C2', '10J', 'GIVER', false), (4, 'C3', '10', 'GIVER', true),"
+            " (5, 'C3', '10', 'GIVER', false), (9, 'C1', '22Y', 'GIVER', true),"
+            " (10, 'C1', '22Y', 'GIVER', false), (11, 'C1', '22Y', 'STRANGER', false),"
+            " (12, 'C1', '22Y', 'STRANGER', true), (13, 'C3', '22Y', 'GIVER', false)"
+            ") AS t(source_record_id, recipient_committee_id, transaction_type, contributor_name,"
+            " is_non_contribution_account)"
+        )
+        con.execute(
+            "CREATE TABLE organization_receipt AS SELECT * FROM (VALUES"
+            " (6, 'C2', '10', 'ACME', true), (7, 'C2', '10', 'ACME', false),"
+            " (8, 'C1', '22Y', 'ACME', true), (14, 'C2', '22Y', 'ACME', true)"
+            ") AS t(source_record_id, recipient_committee_id, transaction_type, organization_name,"
+            " is_non_contribution_account)"
+        )
+
+        # An unmarked 10J to a W, a marked 10 to a super PAC, an unmarked refund to a giver of the
+        # account and a marked one to a stranger to it; an unmarked 10 to a W, and a marked refund
+        # at a committee the organization gave nothing to.
+        assert sorted(failing_rows(con, "silver_non_contribution_account.sql")) == [
+            ("contribution", 3, "10J", "W", False),
+            ("contribution", 4, "10", "O", True),
+            ("contribution", 10, "22Y", "V", False),
+            ("contribution", 12, "22Y", "V", True),
+            ("organization_receipt", 7, "10", "W", False),
+            ("organization_receipt", 8, "22Y", "V", True),
+        ]
 
 
 def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_name_names(

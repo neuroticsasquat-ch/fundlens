@@ -23,6 +23,9 @@ C00800109,FENWICK FOR CONGRESS,"HALE, DORIS",1000 FALLS RD,,BALTIMORE,MD,21209,P
 C00800201,MARYLAND FORWARD PAC,"ASHWORTH, NINA",1100 PRATT ST,,BALTIMORE,MD,21202,U,O,,Q,,,
 C00800202,BRICKLAYERS UNITED PAC,"DUFFY, SEAN",1200 K ST NW,,WASHINGTON,DC,20005,B,Q,,M,L,BRICKLAYERS UNITED,
 C00800203,OLD LINE REPUBLICAN COMMITTEE,"GRANT, WALTER",1300 WEST ST,,ANNAPOLIS,MD,21401,U,Y,REP,M,,,
+# TIDEWATER ACTION FUND is a hybrid PAC (CMTE_TP V): a contribution account and a non-contribution
+# account, whose receipts `indiv` files as type 10 (NEU-2192).
+C00800204,TIDEWATER ACTION FUND,"MORROW, ELLEN",1400 LIGHT ST,,BALTIMORE,MD,21230,U,V,,Q,,,
 # The one real campaign (NEU-2126): Biden's 2024 committee, HARRIS FOR PRESIDENT since he withdrew
 # on 2024-07-21, under its real id and named as `cm` names it today, as the vendored handoff list
 # (fec/handoffs.csv) names it. Its money is Biden's before that date and Harris's from it on.

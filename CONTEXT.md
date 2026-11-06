@@ -30,6 +30,10 @@ _Avoid_: JFC contribution
 One itemized gift from an organization to a committee, as reported to the regulator, held in `organization_receipt`. Organization money, never a contribution: in no individual total, no top-donor list and no race or candidate total; counted on the committee that received it. Loans (16C, 16F, 16G) and 15J memo lines are not receipts.
 _Avoid_: organization contribution, corporate donation, corporate money (unions and tribes give too)
 
+**Non-contribution account**:
+A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with the refunds to the same givers, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
+_Avoid_: Carey account, soft money, super PAC account
+
 **Self-funding**:
 A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 
