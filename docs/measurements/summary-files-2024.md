@@ -7,7 +7,8 @@ files. This document measures which file holds what, how a candidate's figures r
 committees', what `TTL_INDIV_CONTRIB` means, and how far fundlens's itemized totals sit from FEC's
 reported itemized figure for every 2024 committee. It repeats what it can for 2004. It fixes the
 decisions NEU-2141 writes into spec §4. Nothing under `sql/`, `src/` or `frontend/` changed, and no
-silver, gold or marker was written.
+silver, gold or marker was written. Q9 was added later for NEU-2202 and has its own provenance
+table.
 
 | What | Value |
 | --- | --- |
@@ -60,6 +61,12 @@ only.
   memo attributions to the partners, which silver drops (NEU-2198) (Q7).
 - Two more fundlens bugs surfaced on the way: WinRed's `total_individual` is −$48.2M because
   conduit refunds of earmarks are counted (NEU-2199, Q5l), and the 15C self-funding miss (NEU-2194).
+- **The national parties file their 3x receipts on line 17, not 11(a)(i)** (NEU-2202, Q9). Only
+  4 of 10,524 receipts are on 11(a)(i), netting −$20,000. After NEU-2193, five of the six sit
+  2–8% below `INDV_ITEM_CONTB`. That is refunds, which B nets and FEC's figure does not, plus what
+  FEC's bulk files lack: 11(a)(i) rows, one DSCC report, and the cents of their amounts. Gross of
+  refunds, against the 11(a)(i) money the bulk files hold, four of the six are within 1%. The
+  DCCC and the DSCC are over, by money B counts that FEC files on line 17.
 
 ## How to re-run
 
@@ -3745,6 +3752,577 @@ show("Q8h: which 2004 columns carry values", " UNION ALL ".join(parts))
   - House and Senate candidate committees have no committee-grain row before 2008 (`webk04` holds
     only 54 candidate committees).
 
+## Q9: the line the national parties file 3x receipts on, and why five sit below FEC
+
+Measured for [NEU-2202](https://linear.app/neuroticsasquatch/issue/NEU-2202) on 2026-11-06. By then
+NEU-2193 had taken the parties' party-account receipts (types 30, 31, 32 and variants, refunds 40Y,
+41Y, 42Y) out of `total_individual`, and five of the six national parties sat 2–8% below
+`INDV_ITEM_CONTB`. NEU-2202 asked whether FEC files part of that money on line 11(a)(i). It does
+not. Each party's gap has measured causes (Q9d), and none of them is `fec_line`.
+
+Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
+container, not on the VM. B is gold's, from build `20261106T163318Z` (NEU-2193's comment of
+2026-11-06), on Q5's basis: `total_individual + total_from_organizations`, net of refunds.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-06 18:03–18:41 UTC, `app` container of the local dev stack, DuckDB 2.0.0 |
+| Code | `main` at `74b2b04` (`fec_line` from `src/fundlens/fec/lines.py`) |
+| `indiv24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip`, `Last-Modified: Sun, 01 Nov 2026 21:34:38 GMT`, downloaded 2026-11-06 |
+| `oth24.zip` | `…/2024/oth24.zip`, `Last-Modified: Sun, 01 Nov 2026 21:37:05 GMT`, downloaded 2026-11-06 |
+| `committee_summary_2024.csv` | `…/2024/committee_summary_2024.csv`, `Last-Modified: Fri, 06 Nov 2026 10:13:43 GMT`, downloaded 2026-11-06 |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec` for each of the 142 filings the six parties' `indiv` rows name, all `.fec` format 8.4 |
+| Gold B | RNC 85,117,269; DNC 100,361,512; DCCC 105,843,722; NRSC 96,715,817; DSCC 102,372,775; NRCC 41,676,251 |
+
+**Method.** NEU-2202 named FEC's `/schedules/schedule_a/` API as the source of each row's line.
+That was not workable here: the API served `DEMO_KEY` at 10 calls an hour, and the six parties
+hold 5.9M `indiv` rows. The raw filings carry the same line. Each Schedule A row of a raw filing
+starts with its line (`SA11AI`, `SA17` …) and carries its `TRAN_ID`. Each bulk row carries the
+filing it came from (`FILE_NUM`) and the same `TRAN_ID`. Joining the two on (`FILE_NUM`,
+`TRAN_ID`) gives every bulk row its filed line. No filing repeats a `TRAN_ID` among its Schedule A
+rows. Refunds (2nY, 4nY) are Schedule B rows and join to none. Each filing's summary row
+(`F3XN`/`F3XA`) gives line 11(a)(i) for its period, field 30 of the 8.4 layout. The 142 filings
+are one per report: 24 for each party, 23 at the DSCC and the NRCC (Q9h).
+
+The script below runs on the host with `curl`, `unzip` and `awk` only, and runs the Python part
+in the `app` container. There is no `task` target for a one-off measurement. `b_row` rebuilds B
+from the two bulk files with silver's filters, less two refinements: the negative-refund reversal
+(NEU-2073) and the classifier for blank entity types (NEU-2132). Q9c shows the cost, at most
+$49,896 (NRCC).
+
+```bash
+# Host, from the repository root, dev stack up. About 5 GB of downloads; ~10 minutes.
+R=$PWD; W=$(mktemp -d); cd "$W"
+P='$1=="C00003418"||$1=="C00010603"||$1=="C00000935"||$1=="C00027466"||$1=="C00042366"||$1=="C00075820"'
+B=https://www.fec.gov/files/bulk-downloads/2024
+curl -sSLO $B/indiv24.zip && curl -sSLO $B/oth24.zip && curl -sSLO $B/committee_summary_2024.csv
+# indiv24.zip holds itcont.txt and the same rows split by date: keep each SUB_ID once.
+unzip -p indiv24.zip | LC_ALL=C awk -F'|' "$P" | LC_ALL=C awk -F'|' '!seen[$21]++' > indiv_parties.txt
+unzip -p oth24.zip itoth.txt | LC_ALL=C awk -F'|' "$P" > oth_parties.txt
+# Each filing the parties' indiv rows name: its F3X summary row, and every Schedule A row's line,
+# TRAN_ID, entity type, amount and memo code (.fec 8.4 fields 1, 3, 6, 21 and 43, \034-separated).
+mkdir -p sa && cut -d'|' -f18 indiv_parties.txt | sort -un > files.txt
+cat > grab.sh <<'SH'
+#!/bin/sh
+n=$1
+curl -sS --retry 3 "https://docquery.fec.gov/dcdev/posted/$n.fec" | LC_ALL=C awk -F'\034' -v n="$n" -v f3x=sa/$n.f3x '
+  $1 ~ /^F3X/ {print n"|"$1"|"$2"|"$10"|"$14"|"$15"|"$30 > f3x}
+  $1 ~ /^SA/  {print n"|"$1"|"$3"|"$6"|"$21"|"$43}' > sa/$n.part && mv sa/$n.part sa/$n.sa
+SH
+chmod +x grab.sh && xargs -P 6 -n 1 ./grab.sh < files.txt
+cat sa/*.f3x > f3x.txt && cat sa/*.sa > sa.txt
+# Save the Python block below as $W/q9.py, then:
+cd "$R" && docker compose exec -T app mkdir -p /tmp/m
+for f in indiv_parties.txt oth_parties.txt sa.txt f3x.txt committee_summary_2024.csv q9.py; do
+    docker compose cp "$W/$f" app:/tmp/m/$f; done
+docker compose exec -T app uv run python /tmp/m/q9.py > q9.out
+docker compose exec -T app rm -rf /tmp/m && rm -rf "$W"
+```
+
+```python
+import time
+from decimal import Decimal
+
+import duckdb
+
+from fundlens.fec import lines
+
+W = "/tmp/m"
+PARTIES = ("C00003418", "C00010603", "C00000935", "C00027466", "C00042366", "C00075820")
+con = duckdb.connect()
+lines.register(con)
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else f"{v:.2%}" if isinstance(v, float) else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+BULK = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+        "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+        "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+        "MEMO_TEXT", "SUB_ID"]
+columns = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in BULK) + "}"
+for name in ("indiv", "oth"):
+    con.execute(f"""
+    CREATE TABLE {name} AS
+    SELECT * REPLACE (CAST(TRANSACTION_AMT AS DECIMAL(16, 2)) AS TRANSACTION_AMT)
+    FROM read_csv('{W}/{name}_parties.txt', delim = '|', quote = '', escape = '', header = false,
+        auto_detect = false, columns = {columns})""")
+con.execute(f"""
+-- Every Schedule A row of the filings the bulk rows come from: its line (SA11AI, SA17 ...),
+-- TRAN_ID, entity, amount and memo code. One row per (filing, TRAN_ID): checked, no duplicates.
+CREATE TABLE sa AS
+SELECT * REPLACE (CAST(nullif(amount, '') AS DECIMAL(16, 2)) AS amount)
+FROM read_csv('{W}/sa.txt', delim = '|', quote = '', escape = '', header = false,
+    auto_detect = false, columns = {{'file_num': 'VARCHAR', 'line': 'VARCHAR',
+    'tran_id': 'VARCHAR', 'entity': 'VARCHAR', 'amount': 'VARCHAR', 'memo': 'VARCHAR'}});
+-- Each filing's summary page: report, coverage, line 11(a)(i) for the period.
+CREATE TABLE report AS
+SELECT * FROM read_csv('{W}/f3x.txt', delim = '|', header = false, auto_detect = false,
+    columns = {{'file_num': 'VARCHAR', 'form': 'VARCHAR', 'committee_id': 'VARCHAR',
+    'rpt': 'VARCHAR', 'cvg_start': 'VARCHAR', 'cvg_end': 'VARCHAR',
+    'line_11ai': 'DECIMAL(16, 2)'}});
+CREATE TABLE cs AS
+SELECT DISTINCT CMTE_ID AS committee_id, CAST(INDV_ITEM_CONTB AS DECIMAL(16, 2)) AS item,
+    CAST(INDV_REF AS DECIMAL(16, 2)) AS indv_ref
+FROM read_csv('{W}/committee_summary_2024.csv', header = true, all_varchar = true)
+WHERE CMTE_ID IN {PARTIES};
+-- Gold B for build 20261106T163318Z (NEU-2193's comment of 2026-11-06).
+CREATE TABLE gold_b (committee_id VARCHAR, party VARCHAR, b DECIMAL(16, 2));
+INSERT INTO gold_b VALUES ('C00003418', 'RNC', 85117269), ('C00010603', 'DNC', 100361512),
+    ('C00000935', 'DCCC', 105843722), ('C00027466', 'NRSC', 96715817),
+    ('C00042366', 'DSCC', 102372775), ('C00075820', 'NRCC', 41676251);
+
+-- B's rows, as silver keeps them: 04_contribution.sql's and 08_organization_receipt.sql's filters
+-- over `indiv`, and 08's over `oth`, with each row's filed line. Refunds subtract; the
+-- negative-refund reversal and the classifier for blank entity types are left out.
+CREATE TABLE b_row AS
+SELECT i.CMTE_ID AS committee_id, i.TRANSACTION_TP, i.ENTITY_TP, 'indiv' AS source, sa.line,
+    regexp_matches(i.TRANSACTION_TP, '^[24][0-9]Y$') AS is_refund, sa.amount AS filed,
+    CASE WHEN regexp_matches(i.TRANSACTION_TP, '^[24][0-9]Y$') THEN -abs(i.TRANSACTION_AMT)
+        ELSE i.TRANSACTION_AMT END AS amount
+FROM indiv AS i
+LEFT JOIN sa ON sa.file_num = i.FILE_NUM AND sa.tran_id = i.TRAN_ID
+WHERE i.MEMO_CD IS DISTINCT FROM 'X' AND i.TRANSACTION_TP IS DISTINCT FROM '24T'
+    AND coalesce(trim(i.ENTITY_TP), '') NOT IN ('PAC', 'COM', 'CCM', 'PTY')
+    AND (trim(i.ENTITY_TP) = 'ORG' OR coalesce(fec_line(i.TRANSACTION_TP, 'Y'), '11(a)(i)')
+        IN ('11(a)(i)', '11(d) candidate', '20 refunds'))
+UNION ALL
+SELECT o.CMTE_ID, o.TRANSACTION_TP, o.ENTITY_TP, 'oth', sa.line, false, sa.amount,
+    o.TRANSACTION_AMT
+FROM oth AS o
+LEFT JOIN sa ON sa.file_num = o.FILE_NUM AND sa.tran_id = o.TRAN_ID
+WHERE trim(o.ENTITY_TP) = 'ORG' AND left(o.TRANSACTION_TP, 1) IN ('1', '3')
+    AND o.TRANSACTION_TP NOT IN ('15J', '16C', '16F', '16G') AND o.MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(trim(o.OTHER_ID), '') NOT LIKE 'C%'
+    AND NOT EXISTS (
+        SELECT 1 FROM indiv AS i
+        WHERE i.CMTE_ID = o.CMTE_ID AND i.TRANSACTION_AMT = o.TRANSACTION_AMT
+            AND i.TRANSACTION_DT = o.TRANSACTION_DT AND i.MEMO_CD IS DISTINCT FROM 'X'
+            AND regexp_replace(upper(i.NAME), '[^A-Z0-9]', '', 'g')
+                = regexp_replace(upper(o.NAME), '[^A-Z0-9]', '', 'g'));
+
+-- The filed 11(a)(i) rows neither bulk file holds.
+CREATE TABLE omitted AS
+SELECT report.committee_id, report.rpt, sa.* FROM sa JOIN report USING (file_num)
+WHERE sa.line = 'SA11AI' AND sa.memo IS DISTINCT FROM 'X'
+    AND NOT EXISTS (SELECT 1 FROM indiv WHERE FILE_NUM = sa.file_num AND TRAN_ID = sa.tran_id)
+    AND NOT EXISTS (SELECT 1 FROM oth WHERE FILE_NUM = sa.file_num AND TRAN_ID = sa.tran_id);
+""")
+
+con.execute("""
+-- The parties' counted 3x receipts and their refunds (4nY), individuals' only: the rows NEU-2193
+-- moved to total_other_lines. Organizations' 3x receipts are in b_row.
+CREATE TABLE counted_3x AS
+SELECT g.party, i.TRANSACTION_TP AS type, i.TRANSACTION_TP LIKE '4%' AS is_refund,
+    i.TRANSACTION_AMT AS amount, sa.line
+FROM indiv AS i JOIN gold_b AS g ON g.committee_id = i.CMTE_ID
+LEFT JOIN sa ON sa.file_num = i.FILE_NUM AND sa.tran_id = i.TRAN_ID
+WHERE regexp_matches(i.TRANSACTION_TP, '^(3[012][A-Z]?|4[012]Y)$')
+    AND i.MEMO_CD IS DISTINCT FROM 'X' AND coalesce(trim(i.ENTITY_TP), '') IN ('IND', 'CAN', '');
+-- Per party: FEC's figure, the reports' line 11(a)(i), their non-memo SA11AI rows, and the
+-- SA11AI rows neither bulk file holds.
+CREATE TABLE party AS
+SELECT g.committee_id, g.party, g.b AS gold_b, cs.item AS indv_item_contb,
+    (SELECT sum(line_11ai) FROM report WHERE report.committee_id = g.committee_id) AS line_11ai,
+    (SELECT sum(amount) FROM sa JOIN report USING (file_num)
+     WHERE report.committee_id = g.committee_id AND sa.line = 'SA11AI'
+         AND sa.memo IS DISTINCT FROM 'X') AS sa11ai_amount,
+    (SELECT sum(amount) FROM omitted WHERE omitted.committee_id = g.committee_id) AS omitted_amount
+FROM gold_b AS g JOIN cs USING (committee_id);
+""")
+
+show("Q9a. The parties' counted 3x rows and their refunds, by the line each was filed on", """
+SELECT party, type, count(*) AS rows,
+    sum(amount) FILTER (WHERE line = 'SA11AI') AS on_11ai,
+    sum(amount) FILTER (WHERE line = 'SA17') AS on_line_17,
+    sum(amount) FILTER (WHERE line IS NULL) AS no_schedule_a_row,
+    string_agg(DISTINCT line, ', ') AS lines
+FROM counted_3x GROUP BY ALL ORDER BY party, type""")
+
+show("Q9a2. The same rows by party: total_other_lines, and how many receipts are on 11(a)(i)", """
+SELECT party, count(*) AS rows, count(*) FILTER (WHERE NOT is_refund) AS receipts,
+    sum(amount) FILTER (WHERE NOT is_refund) AS receipt_amount,
+    sum(CASE WHEN is_refund THEN -abs(amount) ELSE amount END) AS total_other_lines,
+    count(*) FILTER (WHERE line = 'SA11AI') AS receipts_on_11ai,
+    sum(amount) FILTER (WHERE line = 'SA11AI') AS on_11ai,
+    count(*) FILTER (WHERE NOT is_refund AND line IS NULL) AS receipts_no_schedule_a_row
+FROM counted_3x GROUP BY ALL
+UNION ALL
+SELECT 'all', count(*), count(*) FILTER (WHERE NOT is_refund), sum(amount) FILTER (WHERE NOT is_refund),
+    sum(CASE WHEN is_refund THEN -abs(amount) ELSE amount END), count(*) FILTER (WHERE line = 'SA11AI'),
+    sum(amount) FILTER (WHERE line = 'SA11AI'), count(*) FILTER (WHERE NOT is_refund AND line IS NULL)
+FROM counted_3x
+ORDER BY party = 'all', party""")
+
+show("Q9b. FEC's INDV_ITEM_CONTB against the filings' own line 11(a)(i)", """
+SELECT party, (SELECT count(*) FROM report WHERE report.committee_id = party.committee_id) AS reports,
+    line_11ai, indv_item_contb, line_11ai - indv_item_contb AS line_11ai_minus_fec, sa11ai_amount
+FROM party ORDER BY party""")
+
+show("Q9c. Rebuilt B against gold B", """
+SELECT g.party, g.b AS gold_b, sum(b_row.amount) AS rebuilt_b,
+    g.b - sum(b_row.amount) AS gold_minus_rebuilt
+FROM b_row JOIN gold_b AS g USING (committee_id) GROUP BY g.party, g.b ORDER BY g.party""")
+
+show("Q9d. Gold B − FEC, by cause (the causes sum to the first column)", """
+WITH parts AS (
+    SELECT committee_id,
+        sum(amount) AS rebuilt_b,
+        sum(amount) FILTER (WHERE is_refund) AS refunds,
+        coalesce(sum(amount) FILTER (WHERE NOT is_refund AND line IS DISTINCT FROM 'SA11AI'), 0)
+            AS counted_off_11ai,
+        sum(amount - filed) FILTER (WHERE NOT is_refund AND line = 'SA11AI') AS whole_dollars
+    FROM b_row GROUP BY 1
+)
+SELECT party, gold_b - indv_item_contb AS gold_b_minus_fec,
+    sa11ai_amount - indv_item_contb AS reports_not_in_bulk, -omitted_amount AS rows_not_in_bulk,
+    refunds, counted_off_11ai, whole_dollars,
+    -- Filed on 11(a)(i) and in a bulk file, but not in B by its type: a 15J in oth, a 3x in indiv.
+    (gold_b - indv_item_contb) - (sa11ai_amount - indv_item_contb) + omitted_amount - refunds
+        - counted_off_11ai - whole_dollars - (gold_b - rebuilt_b) AS on_11ai_outside_b,
+    gold_b - rebuilt_b AS gold_minus_rebuilt
+FROM party JOIN parts USING (committee_id) ORDER BY party""")
+
+show("Q9e. Gold B against FEC: as measured, gross of refunds, and against the 11(a)(i) money the bulk files hold", """
+WITH parts AS (
+    SELECT committee_id, sum(amount) FILTER (WHERE is_refund) AS refunds FROM b_row GROUP BY 1
+)
+SELECT party, (gold_b - indv_item_contb) / indv_item_contb::DOUBLE AS as_measured,
+    (gold_b - refunds - indv_item_contb) / indv_item_contb::DOUBLE AS gross_of_refunds,
+    (gold_b - refunds - (sa11ai_amount - omitted_amount))
+        / (sa11ai_amount - omitted_amount)::DOUBLE AS gross_against_rows_in_bulk
+FROM party JOIN parts USING (committee_id) ORDER BY party""")
+
+show("Q9f. The filed 11(a)(i) rows neither bulk file holds, by size and giver type", """
+SELECT party, count(*) AS rows, sum(amount) AS amount,
+    count(*) FILTER (WHERE amount > 0 AND amount < 200) AS rows_under_200,
+    sum(amount) FILTER (WHERE amount > 0 AND amount < 200) AS amount_under_200,
+    count(*) FILTER (WHERE amount < 0) AS rows_negative,
+    sum(amount) FILTER (WHERE amount < 0) AS amount_negative,
+    sum(amount) FILTER (WHERE entity = 'ORG') AS org_amount,
+    count(DISTINCT file_num) AS filings
+FROM omitted JOIN gold_b USING (committee_id) GROUP BY ALL
+UNION ALL
+SELECT 'all', count(*), sum(amount), NULL, NULL, NULL, NULL, NULL, count(DISTINCT file_num)
+FROM omitted
+ORDER BY party = 'all', party""")
+
+show("Q9g. The five filings with the most omitted 11(a)(i) money", """
+SELECT g.party, file_num, rpt, count(*) AS rows, sum(amount) AS amount,
+    (SELECT count(*) FROM sa WHERE sa.file_num = omitted.file_num AND line = 'SA11AI') AS filing_11ai_rows
+FROM omitted JOIN gold_b AS g USING (committee_id) GROUP BY ALL
+ORDER BY abs(sum(amount)) DESC LIMIT 5""")
+
+show("Q9h. Months with no report among the bulk rows' filings, and the bulk rows dated in them", """
+WITH months AS (
+    SELECT g.committee_id, g.party, m::DATE AS month
+    FROM gold_b AS g, generate_series(DATE '2023-01-01', DATE '2024-12-01', INTERVAL 1 MONTH) AS t(m)
+)
+SELECT party, strftime(month, '%Y-%m') AS month,
+    (SELECT count(*) FROM indiv WHERE indiv.CMTE_ID = months.committee_id
+        AND TRANSACTION_DT LIKE strftime(month, '%m') || '__' || strftime(month, '%Y')) AS indiv_rows_dated
+FROM months
+WHERE NOT EXISTS (
+    SELECT 1 FROM report WHERE report.committee_id = months.committee_id
+        AND strptime(cvg_start, '%Y%m%d') <= months.month + INTERVAL 1 MONTH - INTERVAL 1 DAY
+        AND strptime(cvg_end, '%Y%m%d') >= months.month)
+ORDER BY party, month""")
+
+show("Q9i. B's receipts filed off 11(a)(i) (Q9d's counted_off_11ai), by line, type and giver type", """
+SELECT g.party, line, TRANSACTION_TP AS type, coalesce(trim(ENTITY_TP), '') AS entity_tp, source,
+    count(*) AS rows, sum(amount) AS amount
+FROM b_row JOIN gold_b AS g USING (committee_id)
+WHERE NOT is_refund AND line IS DISTINCT FROM 'SA11AI'
+GROUP BY ALL ORDER BY g.party, abs(sum(amount)) DESC""")
+
+show("Q9j. Whole dollars: indiv's amounts against the filed ones, on the SA11AI rows in B", """
+SELECT g.party, TRANSACTION_TP AS type, count(*) AS rows, sum(filed) AS filed, sum(amount) AS in_indiv,
+    sum(amount - filed) AS whole_dollars,
+    count(*) FILTER (WHERE filed % 1 <> 0) AS rows_filed_with_cents,
+    count(*) FILTER (WHERE amount % 1 <> 0) AS rows_in_indiv_with_cents
+FROM b_row JOIN gold_b AS g USING (committee_id)
+WHERE NOT is_refund AND line = 'SA11AI' AND source = 'indiv'
+GROUP BY ALL HAVING sum(amount - filed) <> 0 ORDER BY g.party, type""")
+
+show("Q9k. The SA11AI rows in B whose indiv amount is a dollar or more from the filed one", """
+SELECT g.party, TRANSACTION_TP AS type, count(*) AS rows, sum(filed) AS filed, sum(amount) AS in_indiv
+FROM b_row JOIN gold_b AS g USING (committee_id)
+WHERE NOT is_refund AND line = 'SA11AI' AND abs(amount - filed) >= 1
+GROUP BY ALL ORDER BY g.party, type""")
+```
+
+The two reports Q9h finds missing, from FEC's API (one call each):
+
+```bash
+for c in "C00042366 M7" "C00075820 M10"; do set -- $c
+  curl -sS "https://api.open.fec.gov/v1/committee/$1/reports/?cycle=2024&report_type=$2&api_key=DEMO_KEY" \
+    | jq -c '.results[] | [.file_number, .amendment_indicator, .most_recent, .receipt_date, .coverage_start_date, .means_filed, .individual_itemized_contributions_period]'
+done
+```
+
+```text
+[-1145448,"A",null,"2024-07-20","2024-06-01T00:00:00","paper",null]
+[-1147700,"A",null,"2024-10-23","2024-06-01T00:00:00","paper",null]
+[1804570,"N",true,"2024-07-19","2024-06-01T00:00:00","e-file","5918977.17"]
+[1716331,"N",true,"2023-07-20","2023-06-01T00:00:00","e-file","3401041.37"]
+[1876290,"A",null,"2024-10-21","2024-09-01T00:00:00","paper","0.00"]
+[1882886,"A",null,"2024-10-23","2024-09-01T00:00:00","paper","0.00"]
+[1833804,"N",true,"2024-10-20","2024-09-01T00:00:00","e-file","4778633.02"]
+[1732972,"N",false,"2023-10-20","2023-09-01T00:00:00","e-file","1399743.06"]
+[1733481,"A",true,"2023-10-23","2023-09-01T00:00:00","e-file","1399743.06"]
+```
+
+### Results
+
+
+**Q9a. The parties' counted 3x rows and their refunds, by the line each was filed on  (0 s)**
+
+| party | type | rows | on_11ai | on_line_17 | no_schedule_a_row | lines |
+|---|---|---|---|---|---|---|
+| DCCC | 31 | 1,422 |  | 12,469,907 | 13,385 | SA17 |
+| DCCC | 31E | 1,266 |  | 272,898 |  | SA17 |
+| DCCC | 32 | 94 | 0 | 5,824,791 |  | SA17, SA11AI |
+| DCCC | 32E | 30 |  | 19,447 |  | SA17 |
+| DNC | 30 | 7 |  | 321,700 |  | SA17 |
+| DNC | 31 | 35 |  | 1,211,662 |  | SA17 |
+| DNC | 31E | 24 |  | 51,223 |  | SA17 |
+| DNC | 32 | 50 |  | 1,766,961 |  | SA17 |
+| DNC | 32E | 98 |  | 200,167 |  | SA17 |
+| DSCC | 31 | 70 |  | 6,111,600 |  | SA17 |
+| DSCC | 31E | 7 |  | 26,950 |  | SA17 |
+| DSCC | 32 | 337 |  | 12,570,987 |  | SA17 |
+| DSCC | 32E | 353 |  | 2,141,095 |  | SA17 |
+| DSCC | 41Y | 1 |  |  | 5 |  |
+| NRCC | 31 | 1,303 | -20,000 | 2,022,981 |  | SA17, SA11AI |
+| NRCC | 31E | 1,715 |  | 313,595 |  | SA17 |
+| NRCC | 32 | 93 |  | 1,060,602 |  | SA17 |
+| NRCC | 32E | 177 |  | 139,017 |  | SA17 |
+| NRCC | 41Y | 5 |  |  | 1,300 |  |
+| NRSC | 31 | 53 |  | 3,280,479 |  | SA17 |
+| NRSC | 32 | 1,661 |  | 8,685,785 |  | SA17 |
+| NRSC | 32E | 123 |  | 4,684 |  | SA17 |
+| NRSC | 42Y | 19 |  |  | 52,189 |  |
+| RNC | 30 | 303 |  | 4,262,719 |  | SA17 |
+| RNC | 30E | 2 |  | 134,800 |  | SA17 |
+| RNC | 31 | 291 |  | 9,892,029 |  | SA17 |
+| RNC | 31E | 837 |  | 1,632,378 |  | SA17 |
+| RNC | 32 | 145 |  | 6,809,164 |  | SA17 |
+| RNC | 32E | 28 |  | 387,436 |  | SA17 |
+
+**Q9a2. The same rows by party: total_other_lines, and how many receipts are on 11(a)(i)  (0 s)**
+
+| party | rows | receipts | receipt_amount | total_other_lines | receipts_on_11ai | on_11ai | receipts_no_schedule_a_row |
+|---|---|---|---|---|---|---|---|
+| DCCC | 2,812 | 2,812 | 18,600,428 | 18,600,428 | 2 | 0 | 1 |
+| DNC | 214 | 214 | 3,551,713 | 3,551,713 | 0 |  | 0 |
+| DSCC | 768 | 767 | 20,850,632 | 20,850,627 | 0 |  | 0 |
+| NRCC | 3,293 | 3,288 | 3,516,195 | 3,514,895 | 2 | -20,000 | 0 |
+| NRSC | 1,856 | 1,837 | 11,970,948 | 11,918,759 | 0 |  | 0 |
+| RNC | 1,606 | 1,606 | 23,118,526 | 23,118,526 | 0 |  | 0 |
+| all | 10,549 | 10,524 | 81,608,442 | 81,554,948 | 4 | -20,000 | 1 |
+
+**Q9b. FEC's INDV_ITEM_CONTB against the filings' own line 11(a)(i)  (0 s)**
+
+| party | reports | line_11ai | indv_item_contb | line_11ai_minus_fec | sa11ai_amount |
+|---|---|---|---|---|---|
+| DCCC | 24 | 105,517,956 | 105,517,956 | 0 | 105,517,956 |
+| DNC | 24 | 102,425,946 | 102,425,946 | 0 | 102,425,946 |
+| DSCC | 23 | 104,970,591 | 110,889,568 | -5,918,977 | 104,970,591 |
+| NRCC | 23 | 44,264,299 | 44,264,299 | 0 | 44,264,299 |
+| NRSC | 24 | 101,098,477 | 101,098,477 | 0 | 101,093,477 |
+| RNC | 24 | 87,269,680 | 87,269,680 | 0 | 87,269,680 |
+
+**Q9c. Rebuilt B against gold B  (0 s)**
+
+| party | gold_b | rebuilt_b | gold_minus_rebuilt |
+|---|---|---|---|
+| DCCC | 105,843,722 | 105,843,122 | 600 |
+| DNC | 100,361,512 | 100,349,480 | 12,032 |
+| DSCC | 102,372,775 | 102,372,475 | 300 |
+| NRCC | 41,676,251 | 41,626,355 | 49,896 |
+| NRSC | 96,715,817 | 96,715,817 | 0 |
+| RNC | 85,117,269 | 85,115,353 | 1,916 |
+
+**Q9d. Gold B − FEC, by cause (the causes sum to the first column)  (0 s)**
+
+| party | gold_b_minus_fec | reports_not_in_bulk | rows_not_in_bulk | refunds | counted_off_11ai | whole_dollars | on_11ai_outside_b | gold_minus_rebuilt |
+|---|---|---|---|---|---|---|---|---|
+| DCCC | 325,766 | 0 | -172,716 | -674,087 | 1,244,700 | -103,332 | 30,600 | 600 |
+| DNC | -2,064,434 | 0 | -1,733,072 | -663,904 | 323,700 | -3,190 | 0 | 12,032 |
+| DSCC | -8,516,793 | -5,918,977 | -1,636,448 | -2,526,450 | 1,568,650 | -3,868 | 0 | 300 |
+| NRCC | -2,588,048 | 0 | -1,921,222 | -975,772 | 360,865 | -121,815 | 20,000 | 49,896 |
+| NRSC | -4,382,660 | -5,000 | -244,721 | -3,658,154 | 80,400 | -555,185 | 0 | 0 |
+| RNC | -2,152,411 | 0 | -1,858,427 | -366,340 | 129,523 | -59,083 | 0 | 1,916 |
+
+**Q9e. Gold B against FEC: as measured, gross of refunds, and against the 11(a)(i) money the bulk files hold  (0 s)**
+
+| party | as_measured | gross_of_refunds | gross_against_rows_in_bulk |
+|---|---|---|---|
+| DCCC | 0.31% | 0.95% | 1.11% |
+| DNC | -2.02% | -1.37% | 0.33% |
+| DSCC | -7.68% | -5.40% | 1.51% |
+| NRCC | -5.85% | -3.64% | 0.73% |
+| NRSC | -4.34% | -0.72% | -0.47% |
+| RNC | -2.47% | -2.05% | 0.08% |
+
+**Q9f. The filed 11(a)(i) rows neither bulk file holds, by size and giver type  (0 s)**
+
+| party | rows | amount | rows_under_200 | amount_under_200 | rows_negative | amount_negative | org_amount | filings |
+|---|---|---|---|---|---|---|---|---|
+| DCCC | 2,361 | 172,716 | 1,900 | 49,972 | 439 | -27,631 | 148,325 | 24 |
+| DNC | 20,962 | 1,733,072 | 20,394 | 943,111 | 56 | -47,610 | 699,776 | 23 |
+| DSCC | 49,008 | 1,636,448 | 48,783 | 1,430,238 | 11 | -1,890 | 167,300 | 23 |
+| NRCC | 26,704 | 1,921,222 | 25,318 | 923,322 | 1 | -50 | 138,920 | 6 |
+| NRSC | 36 | 244,721 | 2 | 212 | 0 |  | 244,721 | 15 |
+| RNC | 8,494 | 1,858,427 | 1,425 | 24,170 | 7,011 | -229,736 | 2,063,568 | 24 |
+| all | 107,565 | 7,566,606 |  |  |  |  |  | 115 |
+
+**Q9g. The five filings with the most omitted 11(a)(i) money  (0 s)**
+
+| party | file_num | rpt | rows | amount | filing_11ai_rows |
+|---|---|---|---|---|---|
+| NRCC | 1818288 | M6 | 26,698 | 1,851,982 | 38,729 |
+| DNC | 1894543 | M10 | 3,218 | 405,705 | 117,246 |
+| DNC | 1812395 | M8 | 5,770 | 333,099 | 100,018 |
+| DSCC | 1857612 | 30G | 8,758 | 282,506 | 268,538 |
+| DNC | 1894533 | M9 | 3,902 | 253,381 | 101,442 |
+
+**Q9h. Months with no report among the bulk rows' filings, and the bulk rows dated in them  (0 s)**
+
+| party | month | indiv_rows_dated |
+|---|---|---|
+| DSCC | 2024-06 | 0 |
+| NRCC | 2024-09 | 0 |
+
+**Q9i. B's receipts filed off 11(a)(i) (Q9d's counted_off_11ai), by line, type and giver type  (0 s)**
+
+| party | line | type | entity_tp | source | rows | amount |
+|---|---|---|---|---|---|---|
+| DCCC | SA17 | 31T | ORG | indiv | 10 | 583,500 |
+| DCCC | SA17 | 32T | ORG | indiv | 5 | 325,400 |
+| DCCC | SA17 | 31 | ORG | indiv | 4 | 261,500 |
+| DCCC | SA17 | 32 | ORG | indiv | 1 | 100,000 |
+| DCCC | SA17 | 15 | IND | indiv | 1 | -34,400 |
+| DCCC | SA17 | 11 | ORG | indiv | 1 | 8,700 |
+| DNC | SA17 | 32T | ORG | indiv | 1 | 123,900 |
+| DNC | SA17 | 31T | ORG | indiv | 1 | 123,900 |
+| DNC | SA17 | 30T | ORG | indiv | 1 | 75,900 |
+| DSCC | SA17 | 15 | IND | indiv | 17 | 1,080,589 |
+| DSCC | SA17 | 32T | ORG | indiv | 4 | 221,100 |
+| DSCC | SA17 | 15E | IND | indiv | 11 | 125,337 |
+| DSCC | SA17 | 32J | ORG | oth | 2 | 117,400 |
+| DSCC | SA17 | 32 | ORG | indiv | 2 | 21,659 |
+| DSCC | SA15 | 15 | IND | indiv | 11 | 2,565 |
+| NRCC | SA17 | 31T | ORG | indiv | 8 | 242,000 |
+| NRCC | SA17 | 32T | ORG | indiv | 3 | 96,000 |
+| NRCC | SA17 | 31 | ORG | indiv | 1 | 21,300 |
+| NRCC | SA17 | 15E | IND | indiv | 14 | 1,180 |
+| NRCC | SA15 | 15 | IND | indiv | 1 | 385 |
+| NRSC | SA17 | 32 | ORG | indiv | 5 | 80,400 |
+| RNC | SA17 | 31E | ORG | indiv | 1 | 123,900 |
+| RNC | SA17 | 31 | ORG | indiv | 2 | 2,373 |
+| RNC | SA17 | 30 | ORG | indiv | 1 | 2,189 |
+| RNC | SA17 | 15E | IND | indiv | 6 | 696 |
+| RNC | SA17 | 32 | ORG | indiv | 1 | 365 |
+
+**Q9j. Whole dollars: indiv's amounts against the filed ones, on the SA11AI rows in B  (0 s)**
+
+| party | type | rows | filed | in_indiv | whole_dollars | rows_filed_with_cents | rows_in_indiv_with_cents |
+|---|---|---|---|---|---|---|---|
+| DCCC | 15 | 102,070 | 57,054,279 | 56,954,179 | -100,100 | 291 | 0 |
+| DCCC | 15E | 769,686 | 48,259,462 | 48,256,230 | -3,232 | 7,990 | 0 |
+| DNC | 15 | 150,005 | 46,960,909 | 46,960,260 | -649 | 1,681 | 0 |
+| DNC | 15E | 405,087 | 53,731,965 | 53,729,424 | -2,541 | 5,645 | 0 |
+| DSCC | 15 | 68,651 | 51,757,309 | 51,757,224 | -85 | 186 | 0 |
+| DSCC | 15E | 723,975 | 51,207,734 | 51,203,951 | -3,783 | 8,477 | 0 |
+| NRCC | 15 | 45,833 | 13,802,988 | 13,802,955 | -33 | 189 | 0 |
+| NRCC | 15E | 600,075 | 28,223,488 | 28,101,707 | -121,781 | 253,743 | 0 |
+| NRSC | 15 | 68,862 | 32,824,686 | 32,824,554 | -132 | 524 | 0 |
+| NRSC | 15E | 1,880,602 | 67,941,270 | 67,386,217 | -555,053 | 942,285 | 0 |
+| RNC | 15 | 308,783 | 63,151,873 | 63,152,585 | 712 | 5,667 | 0 |
+| RNC | 15E | 635,442 | 22,259,381 | 22,199,585 | -59,796 | 128,305 | 0 |
+
+**Q9k. The SA11AI rows in B whose indiv amount is a dollar or more from the filed one  (0 s)**
+
+| party | type | rows | filed | in_indiv |
+|---|---|---|---|---|
+| DCCC | 15 | 1 | 50,000 | -50,000 |
+
+**Reading.**
+
+- **The parties file their party-account receipts on line 17, other federal receipts** (Q9a),
+  whatever the type or account. Of the 10,524 counted 3x receipts ($81.6M, Q9a2), 4 are on line
+  11(a)(i) and they net to −$20,000: two NRCC 31s (−$20,000) and two DCCC 32s ($0). One DCCC 31
+  ($13,385) joins no Schedule A row of its filing, so its line is unknown. Every other one is on
+  line 17. NEU-2193's rule holds and `fec_line` does not change. NEU-2202's suspected cause is not
+  the cause: the 11(a)(i) share closes none of any party's gap. The refunds (4nY) are Schedule B
+  rows, and Q9a2's `total_other_lines` matches each party's gold figure exactly.
+- **`INDV_ITEM_CONTB` is the sum of the reports' own line 11(a)(i) at five of the six parties**
+  (Q9b), and at each of the six the non-memo `SA11AI` rows equal the summary pages, except the
+  NRSC's, which are $5,000 short. The DSCC's bulk-file reports fall $5,918,977 short of
+  `INDV_ITEM_CONTB`, because one of its reports is not among them (Q9h).
+- **Gold B − FEC, cause by cause** (Q9d). The columns sum to the first one:
+  1. **Refunds** (`refunds`). B nets them, but `INDV_ITEM_CONTB` is gross. They range from
+     −$366,340 (RNC) to −$3,658,154 (NRSC), the largest cause at the NRSC. This is the measure's
+     basis, not an error.
+  2. **Filed 11(a)(i) rows FEC's bulk files leave out** (`rows_not_in_bulk`). 107,565 rows
+     ($7,566,606) are in neither `indiv` nor `oth` (Q9f).
+     - At the DNC, DSCC and NRCC, most are under $200: 20,394 of the DNC's 20,962 rows, and
+       48,783 of the DSCC's 49,008.
+     - One NRCC filing, M6 2024 (1818288), lacks 26,698 of its 38,729 rows (Q9g).
+     - The NRSC's 36 are organization receipts ($244,721).
+     - The RNC's net $1,858,427 is $2,063,568 of organization receipts, less 7,011 negative rows
+       (−$229,736).
+  3. **A report missing from the bulk file** (`reports_not_in_bulk`). The DSCC's June 2024
+     monthly is e-filing 1804570, with $5,918,977.17 itemized. `indiv` holds no row from it and no
+     DSCC row dated June 2024 (Q9h). FEC's API lists that filing as most recent, beside two paper
+     amendments (2024-07-20, 2024-10-23), and `INDV_ITEM_CONTB` counts it.
+  4. **Whole dollars** (`whole_dollars`). `indiv` writes every amount in whole dollars (Q9j: no
+     row with cents), nearly always dropping the cents: a filed $4.95 is 4. Where gifts are small
+     and many, that adds up to −$555,053 over the NRSC's 1.88M 15E rows and −$121,781 over the
+     NRCC's 600,075. The one larger difference is a DCCC 15 filed at $50,000 that `indiv` writes
+     as −$50,000 (Q9k), −$100,000 in all.
+  5. **B counts money FEC files off 11(a)(i)** (`counted_off_11ai`, Q9i). This is the one cause
+     that raises B. Nearly all of it is on line 17:
+     - Organizations' 3x receipts, in `total_from_organizations`: DCCC $1,270,400, DSCC $360,159,
+       NRCC $359,300, DNC $323,700, RNC $128,827, NRSC $80,400. NEU-2202 left these out of
+       scope.
+     - The DSCC's 28 individual 15 and 15E rows on line 17, $1,205,926.
+     - A few small rows, including the DCCC's 15 (−$34,400) and 11 ($8,700).
+  6. **Rows on 11(a)(i) that B leaves out by type** (`on_11ai_outside_b`): the DCCC's 15Js in
+     `oth` (−$30,600) and the NRCC's two 31s (−$20,000).
+
+  `gold_minus_rebuilt` is Q9c's cost of the rebuild's two shortcuts.
+- **On the definition of done's own measure, only the DCCC is within 1%** (Q9e `as_measured`).
+  Measured gross of refunds, against the 11(a)(i) money the bulk files actually hold (FEC's
+  figure less causes 2 and 3), four of the six are within 1%:
+  - RNC +0.08%, DNC +0.33%, NRSC −0.47%, NRCC +0.73%.
+  - The DCCC (+1.11%) and the DSCC (+1.51%) are over by cause 5.
+- **The NRCC's September 2024 is missing from both sides.** The NRCC's monthly for September 2024
+  is e-filing 1833804, with $4,778,633.02 itemized. It has no row in `indiv` (Q9h), and
+  `INDV_ITEM_CONTB` leaves it out too, since Q9b's 23 reports sum to FEC's figure exactly. Two
+  paper amendments report $0.00 itemized. B − FEC does not show this gap, but both figures are
+  short by that amount.
+- **What fundlens can do.** Causes 2–4, and the NRCC's missing month, come from FEC's bulk files:
+  each is money `indiv` does not carry, or carries in whole dollars. Only the raw filings have it.
+  That would be a new source, which is P-NEU-107 M5's question (the NEU-2181 spike), and it needs
+  an ADR first. Cause 5's organization 3x receipts are `total_from_organizations`' own question.
+  Cause 1 is how B is defined.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to
@@ -3785,6 +4363,13 @@ show("Q8h: which 2004 columns carry values", " UNION ALL ".join(parts))
    of `committee_summary`'s own P/A rows (2,315 of 2,321). Decision 1 does not read it, and it adds
    no column a candidate page needs that `committee_summary` lacks. `webl` repeats `weball`.
    Catalogue `weball` (1980–), `webk` (1996–) and `committee_summary` (2008–).
+7. **`fec_line` stays as NEU-2193 left it (NEU-2202, Q9).** The national parties file 30, 31 and
+   32 receipts on line 17, so all of them stay out of `total_individual`. Five parties' B is below
+   `INDV_ITEM_CONTB` for two kinds of reason. Refunds are the measure's basis: B nets them, FEC's
+   figure is gross. The rest is FEC's bulk files: the 11(a)(i) rows and the report they omit, and
+   amounts written in whole dollars. Money B counts that FEC files on line 17, mostly organizations'
+   3x receipts, offsets part of it. Recovering the omitted money needs the raw filings as a
+   source, which is P-NEU-107 M5's question (NEU-2181).
 
 ## For NEU-2141, NEU-2142 and NEU-2143
 
