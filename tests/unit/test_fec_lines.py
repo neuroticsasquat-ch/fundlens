@@ -28,12 +28,15 @@ def fec_line(transaction_type: str | None, committee_type: str | None) -> str | 
         # Receipts that are no individual's contribution on line 11(a)(i).
         ("18U", "X", "11(c) unregistered committee"),
         ("18G", "W", "12 transfers"),
-        ("24I", "V", "earmark, conduit side (24I)"),
         ("16G", "H", "13 loans"),
         ("19", "I", "electioneering"),
         # Line 11(a)(i), a candidate's own gift, and their refunds.
         ("15", "H", "11(a)(i)"),
         ("15E", "Q", "11(a)(i)"),
+        # A 24I, which most filers write on their own receipt of an earmark, goes where a 10 does
+        # (NEU-2203).
+        ("24I", "O", "11(a)(i)"),
+        ("24I", "W", "non-contribution account"),
         ("15C", "S", "11(d) candidate"),
         ("22Y", "Y", "20 refunds"),
         # A hybrid PAC's non-contribution account (NEU-2192); a 10 or 20Y anywhere else is not one.

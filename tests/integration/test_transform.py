@@ -83,6 +83,16 @@ HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN = (
     4240100000000000338,
     4240100000000000339,
 )
+# 24Is (NEU-2203): BRICKLAYERS passing LACROIX's gift on to OKAFOR, and OKAFOR's own row of it; its
+# 24I to WHITLOCK, who itemized none; the super PAC's receipt of an earmark through ActBlue, filed
+# 24I; and the hybrid PAC's, to its non-contribution account.
+INTERMEDIARY_24I, INTERMEDIARY_TWIN, INTERMEDIARY_ONLY, RECIPIENT_24I, HYBRID_PAC_24I = (
+    4240100000000000340,
+    4240100000000000341,
+    4240100000000000342,
+    4240100000000000343,
+    4240100000000000344,
+)
 # PAC-typed `indiv` rows with no OTHER_ID (NEU-2131): BRICKLAYERS' gift to the super PAC by name, a
 # name that is no committee's, and the super PAC's own name; and `oth`'s blank-OTHER_ID 18K from
 # BRICKLAYERS to OKAFOR, a receipt by the same rule.
@@ -1298,6 +1308,87 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
         contributions[s]["is_other_line"]
         for s in (CONTRIBUTION_ACCOUNT, UNMARKED_REFUND, NON_CONTRIBUTION_ACCOUNT)
     )
+
+
+def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24i_counts(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    put_bronze(store)
+    seats_report()
+
+    assert transform().exit_code == 0
+    contributions = {
+        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+    }
+
+    # The intermediary's side is in no table; the recipient's own row of the gift counts, OKAFOR's.
+    assert INTERMEDIARY_24I not in contributions
+    for table in ("committee_transfer", "organization_receipt"):
+        assert INTERMEDIARY_24I not in {
+            row["source_record_id"] for row in read_silver(store, table, tmp_path)
+        }
+    assert [
+        (
+            contributions[s]["transaction_type"],
+            contributions[s]["recipient_committee_id"],
+            contributions[s]["candidate_id"],
+            contributions[s]["amount"],
+            contributions[s]["conduit_committee_id"],
+            contributions[s]["fec_line"],
+            contributions[s]["is_other_line"],
+            contributions[s]["is_non_contribution_account"],
+        )
+        for s in (INTERMEDIARY_TWIN, INTERMEDIARY_ONLY, RECIPIENT_24I, HYBRID_PAC_24I)
+    ] == [
+        ("15E", "C00800103", "S4MD00103", 1000, None, "11(a)(i)", False, False),
+        # The only record of the gift, the intermediary's.
+        ("24I", BRICKLAYERS, None, 500, None, "11(a)(i)", False, False),
+        # Filers' own receipts of an earmark, coded 24I: line 11(a)(i), or a hybrid PAC's
+        # non-contribution account, as its 10s are.
+        ("24I", SUPER_PAC, None, 250, ACTBLUE, "11(a)(i)", False, False),
+        ("24I", HYBRID_PAC, None, 1000, ACTBLUE, "non-contribution account", False, True),
+    ]
+
+
+def test_the_conduit_side_check_fails_on_a_24t_and_on_a_24i_whose_recipient_itemized_it() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee AS SELECT * FROM (VALUES ('C1', false), ('C2', false),"
+            " ('C3', false), ('A1', true)) AS t(committee_id, is_conduit)"
+        )
+        con.execute(
+            "CREATE TABLE indiv AS SELECT * FROM (VALUES (1, 'C2'), (2, 'C2'), (3, 'C2'),"
+            " (4, 'A1'), (5, 'C1'), (6, 'C3'), (7, 'C2')) AS t(SUB_ID, OTHER_ID)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES"
+            # 24Is at C1 passing gifts on: to C2, which itemized ADAMS (10 days on) and BAKER (40
+            # days on); through a conduit; to itself; to C3, which itemized none.
+            " (1, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-01', '24I'),"
+            " (2, 'C1', 'BAKER, BO', 100, DATE '2024-03-01', '24I'),"
+            " (3, 'C1', 'COLE, CY', 100, DATE '2024-03-01', '24I'),"
+            " (4, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-01', '24I'),"
+            " (5, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-01', '24I'),"
+            " (6, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-01', '24I'),"
+            " (7, 'C1', 'DOYLE, DI', 100, DATE '2024-03-01', '24T'),"
+            # C2's rows of ADAMS's gift and BAKER's, and a 22Y to COLE counted positive, as a
+            # voided refund is (NEU-2073). ADAMS's gifts to C1 and to the conduit A1: the twins of
+            # the 24Is naming them, were those an intermediary's.
+            " (11, 'C2', 'ADAMS ANN', 100, DATE '2024-03-11', '15E'),"
+            " (12, 'C2', 'BAKER, BO', 100, DATE '2024-04-10', '15E'),"
+            " (13, 'C2', 'COLE, CY', 100, DATE '2024-03-02', '22Y'),"
+            " (14, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15'),"
+            " (15, 'A1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15')"
+            ") AS t(source_record_id, recipient_committee_id, contributor_name, amount, date,"
+            " transaction_type)"
+        )
+
+        # The 24T, and ADAMS's 24I to C2, whose row there is a twin though its name lacks the
+        # comma.
+        assert sorted(failing_rows(con, "silver_contribution_no_conduit_side.sql")) == [
+            ("24I", 1, "C1", 100, 11),
+            ("24T", 7, "C1", 100, None),
+        ]
 
 
 def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts() -> None:

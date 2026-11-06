@@ -15,7 +15,7 @@ Money a committee spends for or against a candidate without coordinating with th
 _Avoid_: IE spend, outside money, super PAC money
 
 **Earmark**:
-A contribution routed through a conduit (ActBlue, WinRed) to its final recipient. The regulator reports it twice, on the conduit side and the recipient side; fundlens counts it once.
+A contribution routed through a conduit (ActBlue, WinRed) to its final recipient. The regulator reports it twice, on the conduit side and the recipient side; fundlens counts it once. A committee passing on a gift it did not deposit (Senate Conservatives Fund's to a candidate, type 24I) is an earmark too: its side is dropped when the recipient itemized the gift, and kept, the committee's, when that side is the only record. Most 24Is are not this: they are recipients' own receipts of earmarks through a conduit.
 _Avoid_: conduit contribution, pass-through
 
 **JFC attribution**:
@@ -31,7 +31,7 @@ One itemized gift from an organization to a committee, as reported to the regula
 _Avoid_: organization contribution, corporate donation, corporate money (unions and tribes give too)
 
 **Non-contribution account**:
-A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
+A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 (24I for an earmark through a conduit) and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution.
 _Avoid_: Carey account, soft money, super PAC account
 
 **Party account**:
@@ -39,7 +39,7 @@ One of a national party committee's three accounts outside its main one, a conve
 _Avoid_: building fund, soft money, special account
 
 **Other-lines money**:
-An individual's counted money the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H), a Form 9 donation or an earmark's conduit side (24I). Kept, as contributions, in the donor's figures, the committee's own figure and no individual total; a candidate's own money is self-funding whatever its line.
+An individual's counted money the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H) or a Form 9 donation. Kept, as contributions, in the donor's figures, the committee's own figure and no individual total; a candidate's own money is self-funding whatever its line.
 _Avoid_: off-book money, non-itemized money
 
 **Self-funding**:

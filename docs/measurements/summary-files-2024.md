@@ -7,8 +7,8 @@ files. This document measures which file holds what, how a candidate's figures r
 committees', what `TTL_INDIV_CONTRIB` means, and how far fundlens's itemized totals sit from FEC's
 reported itemized figure for every 2024 committee. It repeats what it can for 2004. It fixes the
 decisions NEU-2141 writes into spec §4. Nothing under `sql/`, `src/` or `frontend/` changed, and no
-silver, gold or marker was written. Q9 was added later for NEU-2202 and has its own provenance
-table.
+silver, gold or marker was written. Q9 and Q10 were added later, for NEU-2202 and NEU-2203, and
+have their own provenance tables.
 
 | What | Value |
 | --- | --- |
@@ -67,6 +67,11 @@ only.
   FEC's bulk files lack: 11(a)(i) rows, one DSCC report, and the cents of their amounts. Gross of
   refunds, against the 11(a)(i) money the bulk files hold, four of the six are within 1%. The
   DCCC and the DSCC are over, by money B counts that FEC files on line 17.
+- **A 24I is mostly a recipient's own earmark receipt, not a conduit's side** (NEU-2203, Q10).
+  136,731 of 2024's 138,156 counted 24Is ($4.17M of $4.66M) name ActBlue or WinRed, and every
+  counted 24I is on line 11(a)(i) but two hybrid PACs' 151, on line 17. 262 ($235,403) are an
+  intermediary's side whose recipient itemized the gift too, counted twice until NEU-2203 dropped
+  them.
 
 ## How to re-run
 
@@ -2068,7 +2073,8 @@ counted twice. D8 is per committee and comes last. The spec's list changed in th
   first pass without the exclusion called their gifts committee money.
 - **D5 is memo lines only.** The spec also counts 15E/15I/15T rows, but FEC puts those on line
   11(a)(i) at the recipient, so they explain no excess. A surviving conduit-side row would be a 24I
-  or an "EARMARKED FOR" 15, and D3 catches the 24I.
+  or an "EARMARKED FOR" 15, and D3 catches the 24I. Q10 later found most 24Is, D3's 40 among
+  them, to be recipients' own rows, filed on 11(a)(i) or a hybrid PAC's line 17.
 - **D7 matches by transaction type 15C or by name**, not by `contributor_key`. A contributor key
   includes ZIP code, employer and occupation, so the candidate's own gift under a different
   employer would be missed. The name test is 04_contribution.sql's own.
@@ -4322,6 +4328,398 @@ done
   That would be a new source, which is P-NEU-107 M5's question (the NEU-2181 spike), and it needs
   an ADR first. Cause 5's organization 3x receipts are `total_from_organizations`' own question.
   Cause 1 is how B is defined.
+
+## Q10: what a 24I is, and which ones count twice
+
+Measured for [NEU-2203](https://linear.app/neuroticsasquatch/issue/NEU-2203) on 2026-11-06. Q6's D3
+called a 24I an earmark's conduit side, FEC's "earmarked intermediary out", and NEU-2193 took
+them out of `total_individual` for it. NEU-2203 asked how many 2024 24Is there are, and whether
+each has a recipient-side twin that counts the same dollar again. Few do. Most 24Is are a
+recipient's own receipt of an earmark through ActBlue or WinRed, coded 24I instead of 15E. Every
+counted 24I is filed on Form 3X line 11(a)(i), except a hybrid PAC's, which files it on line 17
+for its non-contribution account. This also answers NEU-2074's question.
+
+Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
+container, as Q9 did.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-06 19:07–19:52 UTC; the script as printed re-run, Q10i added, at 20:14 UTC. `app` container of the local dev stack, DuckDB 2.0.0 |
+| Code | branch `fix/NEU-2203-24i-conduit-earmarks` off `main` at `4df9540`; Q10g reads `intermediary_earmark` from its `sql/silver/04_contribution.sql` |
+| `indiv24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip`, `Last-Modified: Sun, 01 Nov 2026 21:34:38 GMT`, downloaded 2026-11-06T19:12:19Z |
+| `cm24.zip` | `…/2024/cm24.zip`, `Last-Modified: Fri, 06 Nov 2026 06:39:39 GMT`, downloaded 2026-11-06 |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec` for each of the 172 filings the 24I rows name: 171 `.fec` format 8.4, 1 format 8.5 |
+
+**Method.** Three extracts from `indiv`, each `SUB_ID` once: every 24I row; every other row at a
+committee some 24I's `OTHER_ID` names (a twin candidate); and every ActBlue or WinRed 24T or 24I
+whose `OTHER_ID` is a 24I's filer (a conduit's side of the same gift). A 24I is *counted* as
+`contribution` read it before NEU-2203: no memo line, an individual's (IND, CAN or blank; the
+blank-type classifier is left out) and to a committee in `cm`.
+
+- **`twin_exact`**: a non-memo row at the committee `OTHER_ID` names, with the same name key
+  (uppercased, letters and digits), ZIP5, amount and date. This is the ticket's rule.
+- **`twin_near`**: the same with no ZIP and the date within 30 days.
+- **`conduit_twin`**: a conduit's 24T or 24I to this filer, with the same name key and amount,
+  within 30 days. Such a 24I is the recipient's row of an earmark, with the conduit's code on it.
+
+Each 24I's filed line comes from its raw filing, joined on (`FILE_NUM`, `TRAN_ID`) as in Q9. The
+bulk files uppercase the `TRAN_ID` (`11AI-001054006` against the filing's `11ai-001054006`), so
+the join ignores case. No filing repeats a `TRAN_ID` among its Schedule A and B rows (Q10d).
+
+```bash
+# Host, from the repository root, dev stack up. About 4.3 GB of downloads; ~10 minutes.
+R=$PWD; W=$(mktemp -d); S=$(mktemp -d); cd "$W"
+B=https://www.fec.gov/files/bulk-downloads/2024
+curl -sSLO $B/indiv24.zip && curl -sSLO $B/cm24.zip && unzip -q cm24.zip
+# Save the two scripts below as $S/extract.sh and $S/grab.sh, chmod +x both, then:
+"$S/extract.sh" "$W"
+mkdir -p fec && cut -d'|' -f18 i24.txt | sort -un > files.txt
+xargs -P 6 -I{} "$S/grab.sh" {} fec < files.txt && cat fec/*.sa > sa.txt
+# Save the Python block below as $S/q10.py, then:
+cd "$R" && docker compose exec -T app mkdir -p /tmp/m
+for f in "$W/i24.txt" "$W/twin.txt" "$W/conduit.txt" "$W/cm.txt" "$W/sa.txt" "$S/q10.py"; do
+    docker compose cp "$f" app:/tmp/m/; done
+docker compose exec -T app uv run python /tmp/m/q10.py > "$S/q10.out"
+docker compose exec -T app rm -rf /tmp/m && rm -rf "$W"
+```
+
+`extract.sh`:
+
+```sh
+#!/bin/sh
+# Usage: extract.sh <dir holding indiv24.zip>. Writes i24.txt (every 24I row), twin.txt (every
+# non-24I row at a 24I's OTHER_ID committee, except a conduit's) and conduit.txt (a conduit's
+# 24T or 24I rows whose OTHER_ID is a 24I filer). Each SUB_ID once: the zip repeats itcont.txt
+# split by date, and only kept rows are remembered.
+set -e
+cd "$1"
+unzip -p indiv24.zip | LC_ALL=C awk -F'|' '$6=="24I" && !seen[$21]++' > i24.txt
+cut -d'|' -f16 i24.txt | sort -u | grep . > other_ids.txt
+cut -d'|' -f1 i24.txt | sort -u > filers.txt
+unzip -p indiv24.zip | LC_ALL=C awk -F'|' '
+  FILENAME == "other_ids.txt" { other[$1] = 1; next }
+  FILENAME == "filers.txt" { filer[$1] = 1; next }
+  ($1 == "C00401224" || $1 == "C00694323") {
+    if (($6 == "24T" || $6 == "24I") && ($16 in filer) && !seen[$21]++) print > "conduit.txt"
+    next
+  }
+  ($1 in other) && $6 != "24I" && !seen[$21]++ { print > "twin.txt" }
+' other_ids.txt filers.txt -
+touch twin.txt conduit.txt
+wc -l i24.txt other_ids.txt filers.txt twin.txt conduit.txt
+```
+
+`grab.sh`:
+
+```sh
+#!/bin/sh
+# One raw filing's Schedule A and B rows: filing, line (SA11AI, SB23 ...), TRAN_ID, memo code.
+n=$1; d=$2
+curl -sS --retry 3 "https://docquery.fec.gov/dcdev/posted/$n.fec" | LC_ALL=C awk -F'\034' -v n="$n" '
+  NR == 1 {ver = $3}
+  $1 ~ /^S[AB]/ {print n"|"$1"|"$3"|"ver}' > $d/$n.part && mv $d/$n.part $d/$n.sa
+```
+
+```python
+import time
+from decimal import Decimal
+from pathlib import Path
+
+import duckdb
+
+W = "/tmp/m"
+CONDUITS = ("C00401224", "C00694323")
+con = duckdb.connect()
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else f"{v:.2%}" if isinstance(v, float) else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+BULK = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+        "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+        "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+        "MEMO_TEXT", "SUB_ID"]
+columns = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in BULK) + "}"
+for name in ("i24", "twin", "conduit"):
+    con.execute(f"""
+    CREATE TABLE {name} AS
+    SELECT *, CAST(TRANSACTION_AMT AS DECIMAL(16, 2)) AS amount,
+        regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g') AS name_key,
+        left(coalesce(ZIP_CODE, ''), 5) AS zip5,
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS dt
+    FROM read_csv('{W}/{name}.txt', delim = '|', quote = '', escape = '', header = false,
+        auto_detect = false, columns = {columns})""")
+CM = ["CMTE_ID", "CMTE_NM", "TRES_NM", "CMTE_ST1", "CMTE_ST2", "CMTE_CITY", "CMTE_ST",
+      "CMTE_ZIP", "CMTE_DSGN", "CMTE_TP", "CMTE_PTY_AFFILIATION", "CMTE_FILING_FREQ",
+      "ORG_TP", "CONNECTED_ORG_NM", "CAND_ID"]
+cm_columns = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in CM) + "}"
+con.execute(f"""
+CREATE TABLE cm AS SELECT * FROM read_csv('{W}/cm.txt', delim = '|', quote = '', escape = '',
+    header = false, auto_detect = false, columns = {cm_columns});
+
+-- Each 24I, as contribution would read it today: counted when no memo line, an individual's
+-- (IND, CAN or blank) and to a committee in cm. The blank-type classifier is left out.
+CREATE TABLE r AS
+SELECT i.*,
+    i.MEMO_CD IS DISTINCT FROM 'X' AND coalesce(nullif(trim(i.ENTITY_TP), ''), 'IND') IN ('IND', 'CAN')
+        AND i.CMTE_ID IN (SELECT CMTE_ID FROM cm) AS counted,
+    CASE WHEN coalesce(trim(i.OTHER_ID), '') = '' THEN 'blank'
+        WHEN i.OTHER_ID IN {CONDUITS} THEN 'a conduit'
+        WHEN i.OTHER_ID IN (SELECT CMTE_ID FROM cm) THEN 'a cm committee'
+        ELSE 'other id' END AS other_kind,
+    -- The recipient's own row: at the committee OTHER_ID names, not a memo line, same name key,
+    -- ZIP5, amount and date (exact), or same name key and amount within 30 days (near).
+    EXISTS (SELECT 1 FROM twin AS t WHERE t.CMTE_ID = i.OTHER_ID AND t.MEMO_CD IS DISTINCT FROM 'X'
+        AND t.name_key = i.name_key AND t.zip5 = i.zip5 AND t.amount = i.amount AND t.dt = i.dt)
+        AS twin_exact,
+    EXISTS (SELECT 1 FROM twin AS t WHERE t.CMTE_ID = i.OTHER_ID AND t.MEMO_CD IS DISTINCT FROM 'X'
+        AND t.name_key = i.name_key AND t.amount = i.amount AND abs(t.dt - i.dt) <= 30)
+        AS twin_near,
+    -- The recipient's memo line for it (MEMO_CD X), which the counted twin usually travels with.
+    EXISTS (SELECT 1 FROM twin AS t WHERE t.CMTE_ID = i.OTHER_ID AND t.MEMO_CD = 'X'
+        AND t.name_key = i.name_key AND t.amount = i.amount AND abs(t.dt - i.dt) <= 30)
+        AS twin_memo,
+    -- The other way round: a conduit's 24T or 24I to this filer for the same gift, which makes the
+    -- 24I the recipient's row of an earmark, filed under the conduit's code.
+    EXISTS (SELECT 1 FROM conduit AS c WHERE c.CMTE_ID = i.OTHER_ID AND c.OTHER_ID = i.CMTE_ID
+        AND c.name_key = i.name_key AND c.amount = i.amount AND abs(c.dt - i.dt) <= 30)
+        AS conduit_twin
+FROM i24 AS i;
+""")
+
+show("Q10a: every 2024 indiv 24I row, by what OTHER_ID names", """
+SELECT other_kind, counted, count(*) AS rows, sum(amount) AS dollars,
+    count(DISTINCT CMTE_ID) AS filers
+FROM r GROUP BY ALL ORDER BY other_kind, counted DESC""")
+
+show("Q10b: counted 24I rows, matched", """
+SELECT other_kind,
+    count(*) AS rows, sum(amount) AS dollars,
+    count(*) FILTER (WHERE twin_exact) AS twin_exact, sum(amount) FILTER (WHERE twin_exact) AS twin_exact_dollars,
+    count(*) FILTER (WHERE twin_near) AS twin_near, sum(amount) FILTER (WHERE twin_near) AS twin_near_dollars,
+    count(*) FILTER (WHERE twin_memo) AS twin_memo,
+    count(*) FILTER (WHERE conduit_twin) AS conduit_twin, sum(amount) FILTER (WHERE conduit_twin) AS conduit_twin_dollars,
+    count(*) FILTER (WHERE NOT twin_near AND NOT conduit_twin) AS neither,
+    sum(amount) FILTER (WHERE NOT twin_near AND NOT conduit_twin) AS neither_dollars
+FROM r WHERE counted GROUP BY ALL ORDER BY rows DESC""")
+
+show("Q10c: counted 24I rows by filer, every filer with 100 rows or $10,000 and the two Q6 names", """
+SELECT r.CMTE_ID AS filer, cm.CMTE_NM AS name, cm.CMTE_TP AS type,
+    count(*) AS rows, sum(amount) AS dollars,
+    string_agg(DISTINCT other_kind, ', ' ORDER BY other_kind) AS other_id_names,
+    count(*) FILTER (WHERE twin_exact) AS twin_exact,
+    count(*) FILTER (WHERE twin_near) AS twin_near,
+    count(*) FILTER (WHERE conduit_twin) AS conduit_twin,
+    count(*) FILTER (WHERE NOT twin_near AND NOT conduit_twin) AS neither
+FROM r LEFT JOIN cm USING (CMTE_ID)
+WHERE counted
+GROUP BY ALL
+HAVING count(*) >= 100 OR sum(amount) >= 10000 OR r.CMTE_ID IN ('C00842104', 'C00859066')
+ORDER BY rows DESC, filer""")
+
+con.execute("""
+CREATE TABLE sa AS SELECT * FROM read_csv('/tmp/m/sa.txt', delim = '|', quote = '', escape = '',
+    header = false, auto_detect = false, columns = {'file_num': 'VARCHAR', 'line': 'VARCHAR',
+    'tran_id': 'VARCHAR', 'ver': 'VARCHAR'});
+CREATE TABLE lined AS
+SELECT r.*, (SELECT string_agg(DISTINCT s.line, ',' ORDER BY s.line) FROM sa AS s
+    WHERE s.file_num = r.FILE_NUM AND upper(s.tran_id) = upper(r.TRAN_ID)) AS filed_line
+FROM r;
+""")
+show("Q10d: (filing, TRAN_ID) keys on more than one Schedule A or B row", """
+SELECT count(*) AS keys FROM (SELECT file_num, upper(tran_id) FROM sa GROUP BY ALL HAVING count(*) > 1)""")
+show("Q10e: counted 24I rows by what OTHER_ID names and the line they are filed on", """
+SELECT other_kind, coalesce(filed_line, '(no row in the filing)') AS filed_line, count(*) AS rows,
+    sum(amount) AS dollars, count(DISTINCT CMTE_ID) AS filers
+FROM lined WHERE counted GROUP BY ALL ORDER BY other_kind, rows DESC""")
+show("Q10f: counted 24I rows filed on line 17", """
+SELECT CMTE_ID AS filer, cm.CMTE_NM AS name, cm.CMTE_TP AS type, other_kind, count(*) AS rows,
+    sum(amount) AS dollars
+FROM lined LEFT JOIN cm USING (CMTE_ID) WHERE counted AND filed_line = 'SA17'
+GROUP BY ALL ORDER BY rows DESC""")
+con.execute("""
+CREATE VIEW indiv AS
+SELECT * EXCLUDE (amount, name_key, zip5, dt) REPLACE (amount AS TRANSACTION_AMT) FROM i24
+UNION ALL
+SELECT * EXCLUDE (amount, name_key, zip5, dt) REPLACE (amount AS TRANSACTION_AMT) FROM twin;
+CREATE TABLE committee AS SELECT CMTE_ID AS committee_id,
+    CMTE_ID IN ('C00401224', 'C00694323') AS is_conduit FROM cm;
+""")
+sql = Path("/app/sql/silver/04_contribution.sql").read_text()
+rule = sql[sql.index("CREATE TEMP TABLE intermediary_earmark"):sql.index("<= 30;") + len("<= 30;")]
+con.execute(rule)
+show("Q10g: the 24Is 04_contribution.sql's intermediary_earmark drops", """
+SELECT count(*) AS rows, sum(r.amount) AS dollars, count(*) FILTER (WHERE r.counted) AS counted_rows,
+    sum(r.amount) FILTER (WHERE r.counted) AS counted_dollars, count(DISTINCT r.CMTE_ID) AS filers
+FROM intermediary_earmark JOIN r USING (SUB_ID)""")
+show("Q10h: those 24Is by filer", """
+SELECT r.CMTE_ID AS filer, cm.CMTE_NM AS name, count(*) AS rows, sum(r.amount) AS dollars
+FROM intermediary_earmark JOIN r USING (SUB_ID) LEFT JOIN cm USING (CMTE_ID)
+GROUP BY ALL ORDER BY rows DESC""")
+show("Q10i: per donor, recipient and amount, the dropped 24Is against the twins they pair with", """
+WITH pair AS (
+    SELECT e.SUB_ID AS earmark, t.SUB_ID AS twin, e.OTHER_ID,
+        regexp_replace(upper(e.NAME), '[^A-Z0-9]', '', 'g') AS name_key, e.TRANSACTION_AMT AS amount
+    FROM intermediary_earmark AS d
+    JOIN indiv AS e ON e.SUB_ID = d.SUB_ID
+    JOIN indiv AS t ON t.CMTE_ID = e.OTHER_ID
+        AND regexp_replace(upper(t.NAME), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(e.NAME), '[^A-Z0-9]', '', 'g')
+        AND t.TRANSACTION_AMT = e.TRANSACTION_AMT AND t.MEMO_CD IS DISTINCT FROM 'X'
+        AND coalesce(t.TRANSACTION_TP, '') NOT IN ('24T', '24I')
+        AND NOT regexp_matches(coalesce(t.TRANSACTION_TP, ''), '^[24][0-9]Y$')
+        AND abs(CAST(try_strptime(t.TRANSACTION_DT, '%m%d%Y') AS DATE)
+            - CAST(try_strptime(e.TRANSACTION_DT, '%m%d%Y') AS DATE)) <= 30
+), grp AS (
+    SELECT OTHER_ID, name_key, amount, count(DISTINCT earmark) AS earmarks, count(DISTINCT twin) AS twins
+    FROM pair GROUP BY ALL
+)
+SELECT count(*) AS groups, sum(earmarks) AS dropped_24is, sum(twins) AS twins,
+    count(*) FILTER (WHERE earmarks > twins) AS groups_short_of_twins,
+    sum(earmarks - twins) FILTER (WHERE earmarks > twins) AS earmarks_beyond_twins,
+    sum((earmarks - twins) * amount) FILTER (WHERE earmarks > twins) AS dollars_beyond_twins
+FROM grp""")
+```
+
+### Results
+
+**Q10a: every 2024 indiv 24I row, by what OTHER_ID names  (0 s)**
+
+| other_kind | counted | rows | dollars | filers |
+|---|---|---|---|---|
+| a cm committee | True | 1,424 | 496,673 | 6 |
+| a cm committee | False | 8,171 | 14,313,978 | 17 |
+| a conduit | True | 127,655 | 4,002,553 | 23 |
+| a conduit | False | 71 | 14,047 | 2 |
+| blank | True | 9,076 | 164,423 | 1 |
+| blank | False | 195 | 180,400 | 4 |
+| other id | True | 1 | 500 | 1 |
+| other id | False | 207 | 98,842 | 5 |
+
+**Q10b: counted 24I rows, matched  (0 s)**
+
+| other_kind | rows | dollars | twin_exact | twin_exact_dollars | twin_near | twin_near_dollars | twin_memo | conduit_twin | conduit_twin_dollars | neither | neither_dollars |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| a conduit | 127,655 | 4,002,553 | 0 |  | 0 |  | 0 | 30,451 | 1,882,338 | 97,204 | 2,120,215 |
+| blank | 9,076 | 164,423 | 0 |  | 0 |  | 0 | 0 |  | 9,076 | 164,423 |
+| a cm committee | 1,424 | 496,673 | 212 | 174,573 | 262 | 235,403 | 4 | 0 |  | 1,162 | 261,270 |
+| other id | 1 | 500 | 0 |  | 0 |  | 0 | 0 |  | 1 | 500 |
+
+**Q10c: counted 24I rows by filer, every filer with 100 rows or $10,000 and the two Q6 names  (0 s)**
+
+| filer | name | type | rows | dollars | other_id_names | twin_exact | twin_near | conduit_twin | neither |
+|---|---|---|---|---|---|---|---|---|---|
+| C00483883 | RETIRED AMERICANS PAC | O | 112,595 | 2,191,489 | a conduit, blank | 0 | 0 | 28,239 | 84,356 |
+| C00484642 | SMP | O | 10,103 | 1,063,517 | a conduit | 0 | 0 | 1,192 | 8,911 |
+| C00880401 | RETIRED DEMS 2024 | O | 4,732 | 160,177 | a conduit | 0 | 0 | 75 | 4,657 |
+| C00884510 | BATTLEGROUND DEMOCRATS | O | 3,999 | 136,721 | a conduit | 0 | 0 | 76 | 3,923 |
+| C00872887 | OUR GREAT TASK, INC. | O | 3,190 | 440,020 | a conduit | 0 | 0 | 576 | 2,614 |
+| C00766659 | NOVEMBER COALITION | O | 1,139 | 70,863 | a conduit | 0 | 0 | 70 | 1,069 |
+| C00448696 | SENATE CONSERVATIVES FUND | Q | 1,134 | 217,885 | a cm committee, a conduit | 172 | 194 | 0 | 940 |
+| C00836320 | CAMPAIGN FOR DEMOCRACY PAC | N | 389 | 10,839 | a conduit | 0 | 0 | 13 | 376 |
+| C00552851 | HOUSE FREEDOM FUND | Q | 219 | 136,715 | a cm committee | 34 | 49 | 0 | 170 |
+| C00836346 | CAMPAIGN FOR DEMOCRACY COMMITTEE | N | 139 | 3,918 | a conduit | 0 | 0 | 0 | 139 |
+| C00760827 | DEMAND JUSTICE PAC | W | 112 | 5,984 | a conduit | 0 | 0 | 112 | 0 |
+| C00754044 | TEAM RONNY | N | 101 | 11,649 | a conduit | 0 | 0 | 16 | 85 |
+| C00409730 | NEW DEMOCRAT COALITION ACTION FUND | Q | 45 | 20,574 | a conduit | 0 | 0 | 40 | 5 |
+| C00009985 | NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE (NABPAC) | Q | 41 | 36,650 | a cm committee, other id | 0 | 5 | 0 | 36 |
+| C00842104 | FIGHT LIKE HELL PAC | W | 39 | 16,936 | a conduit | 0 | 0 | 14 | 25 |
+| C00432260 | CLUB FOR GROWTH PAC | Q | 26 | 101,525 | a cm committee | 6 | 13 | 0 | 13 |
+| C00826362 | WINNING FOR AMERICA PAC | Q | 17 | 16,075 | a conduit | 0 | 0 | 17 | 0 |
+| C00831693 | MOSKOWITZ VICTORY FUND | N | 1 | 11,600 | a conduit | 0 | 0 | 1 | 0 |
+| C00859066 | THE SCHOOL BOARD PROJECT | V | 1 | 1,000 | a conduit | 0 | 0 | 1 | 0 |
+
+**Q10d: (filing, TRAN_ID) keys on more than one Schedule A or B row  (0 s)**
+
+| keys |
+|---|
+| 0 |
+
+**Q10e: counted 24I rows by what OTHER_ID names and the line they are filed on  (0 s)**
+
+| other_kind | filed_line | rows | dollars | filers |
+|---|---|---|---|---|
+| a cm committee | SA11AI | 1,424 | 496,673 | 6 |
+| a conduit | SA11AI | 127,504 | 3,979,633 | 21 |
+| a conduit | SA17 | 151 | 22,920 | 2 |
+| blank | SA11AI | 9,076 | 164,423 | 1 |
+| other id | SA11AI | 1 | 500 | 1 |
+
+**Q10f: counted 24I rows filed on line 17  (0 s)**
+
+| filer | name | type | other_kind | rows | dollars |
+|---|---|---|---|---|---|
+| C00760827 | DEMAND JUSTICE PAC | W | a conduit | 112 | 5,984 |
+| C00842104 | FIGHT LIKE HELL PAC | W | a conduit | 39 | 16,936 |
+
+**Q10g: the 24Is 04_contribution.sql's intermediary_earmark drops  (0 s)**
+
+| rows | dollars | counted_rows | counted_dollars | filers |
+|---|---|---|---|---|
+| 262 | 235,403 | 262 | 235,403 | 5 |
+
+**Q10h: those 24Is by filer  (0 s)**
+
+| filer | name | rows | dollars |
+|---|---|---|---|
+| C00448696 | SENATE CONSERVATIVES FUND | 194 | 118,123 |
+| C00552851 | HOUSE FREEDOM FUND | 49 | 73,680 |
+| C00432260 | CLUB FOR GROWTH PAC | 13 | 40,600 |
+| C00009985 | NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE (NABPAC) | 5 | 2,750 |
+| C00473249 | GRAND CANYON STATE CAUCUS | 1 | 250 |
+
+**Q10i: per donor, recipient and amount, the dropped 24Is against the twins they pair with  (1 s)**
+
+| groups | dropped_24is | twins | groups_short_of_twins | earmarks_beyond_twins | dollars_beyond_twins |
+|---|---|---|---|---|---|
+| 242 | 262 | 309 | 0 |  |  |
+
+### Findings
+
+- **2024 has 146,800 24I rows. 138,156 of them, $4,664,149, count** (Q10a). The other 8,644
+  ($14,607,267) are memo lines, 8,636 rows ($7,682,267, 7,419 of them IND), dropped as every memo
+  line is, and 8 PAC-typed rows ($6,925,000) that name their giver in `OTHER_ID`, which no table
+  reads. No ORG row is a non-memo 24I. One counted 24I ($500) names an id `cm` lacks.
+- **136,731 counted 24Is ($4,166,976) are the recipient's own row of an earmark** (Q10b). Their
+  `OTHER_ID` is ActBlue or WinRed, or blank under "EARMARKED THROUGH ACT BLUE". Not one has a twin
+  at the committee `OTHER_ID` names, since that committee is the conduit. 30,451 of them ($1.88M)
+  have the conduit's own 24T beside them, which ADR-0004 already drops. They are 23 filers'
+  (Q10a, Q10c), super PACs mostly: Retired Americans PAC alone is 112,595 rows, $2.19M.
+- **The 40 Q6 D3 rows are of this kind.** FIGHT LIKE HELL PAC's 39 and THE SCHOOL BOARD
+  PROJECT's 1 name ActBlue in `OTHER_ID`. None is a double count. FIGHT LIKE HELL's are on line
+  17, its non-contribution account (Q10f), which is why D3 found it over FEC's itemized figure.
+- **1,424 counted 24Is ($496,673) are an intermediary's side**: Senate Conservatives Fund, House
+  Freedom Fund, Club for Growth PAC and three others passing an individual's gift on to the
+  candidate committee `OTHER_ID` names. 212 ($174,573) have the recipient's twin on the same date
+  and ZIP, and 262 ($235,403) within 30 days. The other 1,162 ($261,270) have none: the recipient
+  did not itemize the gift, so the 24I is the only record of it.
+- **Every counted 24I is filed on line 11(a)(i), except the two W committees' 151 ($22,920) on
+  line 17** (Q10e, Q10f). FEC's `INDV_ITEM_CONTB` includes them, intermediaries' and recipients'
+  alike. The one other hybrid-PAC 24I, THE SCHOOL BOARD PROJECT's (V, $1,000), is on 11(a)(i).
+- **No gift is dropped for want of a twin** (Q10i). A twin may pair with several 24Is, a donor's
+  repeated gifts of one amount, but in none of the 242 donor, recipient and amount groups does
+  the rule drop more 24Is than the recipient holds rows.
+
+**What changed (NEU-2203).** `fec_line` puts a 24I where it puts a 10: line 11(a)(i), or the
+non-contribution account at a hybrid PAC. `04_contribution.sql`'s `intermediary_earmark` drops the
+262 intermediary 24Is whose recipient itemized them, $235,403, at five filers (Q10g, Q10h). The rest
+of the counted $4,664,149 returns to `total_individual`, $4,404,826, but the hybrid PACs' $23,920,
+which goes to their `total_non_contribution_account`: the two W committees' $22,920 and THE SCHOOL
+BOARD PROJECT's $1,000, which it filed on 11(a)(i), the one 24I the type rule misplaces. The 1,162
+the recipients did not itemize stay, counted to the intermediary. ADR-0004 carries the rule.
 
 ## Decisions
 

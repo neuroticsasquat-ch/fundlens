@@ -214,7 +214,7 @@ def test_a_race_page_counts_jfc_transfers_apart_from_its_other_money(client: Tes
         "S4MD00111": 0,
     }
     okafor = next(c for c in race["candidates"] if c["candidate_id"] == "S4MD00103")
-    assert (okafor["total_individual"], okafor["total_committee"]) == (49700, 5000)
+    assert (okafor["total_individual"], okafor["total_committee"]) == (50700, 5000)
 
 
 def test_a_race_page_names_its_committees(client: TestClient) -> None:

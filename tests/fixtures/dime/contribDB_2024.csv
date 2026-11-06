@@ -302,3 +302,7 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00301,31,10000,2024-08-15,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,comm100005,SA17.00337,C00800203
 2024,dime00302,41Y,-2500,2024-09-01,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,old line republican committee,comm100005,SB29.00338,C00800203
 2024,dime00303,16G,1000,2024-08-20,100000081,"gallagher, elena",gallagher,elena,I,columbia,MD,21045,administrator,state of maryland,whitlock for senate,comm100002,SC10.00339,C00800104
+2024,dime00304,15E,1000,2024-09-10,100000115,"lacroix, pierre",lacroix,pierre,I,hyattsville,MD,20781,bricklayer,maryland building trades,okafor for maryland,comm100001,SA11AI.00341,C00800103
+2024,dime00305,24I,500,2024-09-23,100000115,"lacroix, pierre",lacroix,pierre,I,hyattsville,MD,20781,bricklayer,maryland building trades,bricklayers united pac,comm100013,SA11AI.00342,C00800202
+2024,dime00306,24I,250,2024-08-20,100000115,"lacroix, pierre",lacroix,pierre,I,hyattsville,MD,20781,bricklayer,maryland building trades,maryland forward pac,comm100007,SA11AI.00343,C00800201
+2024,dime00307,24I,1000,2024-08-05,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SA17.00344,C00800204

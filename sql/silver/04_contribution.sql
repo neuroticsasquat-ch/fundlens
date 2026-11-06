@@ -1,7 +1,7 @@
 -- contribution (spec §4): one row per counted `indiv` contribution.
 --
--- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one.
--- FEC fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual
+-- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one. FEC
+-- fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual
 -- unless the classifier (resolve.normalize.is_organization_name, the 2024 measurement's rule V8)
 -- calls its name an organization's (NEU-2132): `indiv` holds individuals' contributions, and older
 -- cycles and paper filings would otherwise count none, or count every organization's gift as a
@@ -9,15 +9,17 @@
 -- (08_organization_receipt.sql, 05_committee_transfer.sql). A filled entity type is never
 -- second-guessed. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
 -- MEMO_CD = 'X' memo line and the conduit's 24T row are dropped, and the conduit is kept on the
--- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain
--- 15 whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'):
--- dropped as its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE')
--- is an ordinary contribution, with no conduit. A gift to a committee missing from `cm` (a few
--- fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or 4nY
--- type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total. Most
--- filers write a refund positive, some negative, so its sign is not trusted: every refund counts
--- as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which reverses
--- it and adds back (NEU-2073).
+-- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain 15
+-- whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'): dropped as
+-- its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE') is an
+-- ordinary contribution, with no conduit. A 24I is dropped only when it is an intermediary's side
+-- of an earmark whose recipient itemized it too (`intermediary_earmark`, below): most 24Is are a
+-- recipient's own earmark receipts, coded 24I (NEU-2203). A gift to a committee missing from `cm`
+-- (a few fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or
+-- 4nY type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total.
+-- Most filers write a refund positive, some negative, so its sign is not trusted: every refund
+-- counts as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which
+-- reverses it and adds back (NEU-2073).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -100,6 +102,46 @@ WHERE OCCUPATION IS NOT NULL;
 
 DROP TABLE contributor_value;
 
+-- A 24I is FEC's earmarked-intermediary-out code, but most 2024 filers write it on their own
+-- receipts of earmarks through a conduit: OTHER_ID ActBlue or WinRed, or blank, 136,731 rows,
+-- $4.17M, every one on Form 3X line 11(a)(i) (docs/measurements/summary-files-2024.md Q10).
+-- Those are the recipient's row and count. A 24I whose OTHER_ID is a committee of the cycle
+-- other than a conduit and its own filer is an intermediary's side: Senate Conservatives Fund,
+-- House Freedom Fund and Club for Growth passing an individual's gift on to a candidate
+-- (1,424 rows, $496,673). It is dropped, as a 24T is (ADR-0004), when the recipient itemized the
+-- same gift: a row at the committee OTHER_ID names, not a memo line, refund, 24T or 24I, with
+-- the same name, compared as names are, and amount, dated within 30 days of it, since a
+-- recipient often dates the receipt later (262 rows, $235,403). One the recipient did not
+-- itemize is the only record of the gift, and counts. 05_committee_transfer.sql and
+-- 08_organization_receipt.sql drop these rows too. `indiv` is on the left of the join, so it
+-- builds on the few 24Is and reads `indiv` once more without holding it.
+CREATE TEMP TABLE intermediary_earmark AS
+WITH earmark AS (
+    SELECT
+        SUB_ID,
+        OTHER_ID,
+        regexp_replace(upper(NAME), '[^A-Z0-9]', '', 'g') AS name_key,
+        TRANSACTION_AMT,
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
+    FROM indiv
+    WHERE TRANSACTION_TP = '24I'
+        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND OTHER_ID <> CMTE_ID
+        AND OTHER_ID IN (SELECT committee_id FROM committee WHERE NOT is_conduit)
+)
+SELECT DISTINCT earmark.SUB_ID
+FROM indiv AS twin
+JOIN earmark
+    ON twin.CMTE_ID = earmark.OTHER_ID
+    AND regexp_replace(upper(twin.NAME), '[^A-Z0-9]', '', 'g') = earmark.name_key
+    AND twin.TRANSACTION_AMT = earmark.TRANSACTION_AMT
+WHERE twin.CMTE_ID IN (SELECT OTHER_ID FROM earmark)
+    AND twin.MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(twin.TRANSACTION_TP, '') NOT IN ('24T', '24I')
+    AND NOT regexp_matches(coalesce(twin.TRANSACTION_TP, ''), '^[24][0-9]Y$')
+    AND abs(CAST(try_strptime(twin.TRANSACTION_DT, '%m%d%Y') AS DATE) - earmark.transaction_date)
+        <= 30;
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
@@ -162,6 +204,7 @@ individual AS (
         )
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -260,8 +303,9 @@ SELECT
     ) AS is_self_funding,
     -- Money a hybrid PAC (CMTE_TP V or W) took into or refunded from its non-contribution account
     -- (NEU-2192): the account outside the contribution limits, whose receipts FEC types 10 (10J a
-    -- JFC's share of them) and whose refunds 20Y, none of them on Form 3X line 11(a)(i). Kept,
-    -- since donors gave it, and marked, so committee_cycle can keep it out of total_individual.
+    -- JFC's share of them, 24I an earmark through a conduit, NEU-2203) and whose refunds 20Y, none
+    -- of them on Form 3X line 11(a)(i). Kept, since donors gave it, and marked, so committee_cycle
+    -- can keep it out of total_individual.
     -- Judged by type, not by matching a refund to a giver: most of a hybrid PAC's 20Ys name no one
     -- it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M), and a 22Y is
     -- a refund of an ordinary contribution even to someone who gave the other account too. At any
@@ -274,8 +318,8 @@ SELECT
     -- line no total_individual counts: neither 11(a)(i), a candidate's 15C, a refund of either nor
     -- the non-contribution account, which has its own figure. A national party's convention,
     -- headquarters and recount accounts (30, 31, 32 and their variants, refunded as 40Y, 41Y,
-    -- 42Y), a gift from an unregistered committee (18U), a transfer (18G) and an earmark's
-    -- conduit side (24I) are among them: kept, since donors gave them, and marked, so committee
+    -- 42Y), a gift from an unregistered committee (18U) and a transfer (18G) are among them:
+    -- kept, since donors gave them, and marked, so committee
     -- and candidate totals compare with FEC's itemized figure (INDV_ITEM_CONTB). A type the rule
     -- does not place counts, as every type did before it: `indiv` is individuals' contributions.
     fec_line(kept.TRANSACTION_TP, recipient.type) AS fec_line,
