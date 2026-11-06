@@ -164,24 +164,11 @@ SELECT
     kept.FILE_NUM AS file_num,
     -- Filed with no entity type, so the classifier put it here; the `oth` rows are all ORG.
     nullif(trim(kept.ENTITY_TP), '') IS NULL AS classified,
-    -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10 or 10J
-    -- to a committee typed V or W, kept out of committee_cycle.total_from_organizations.
+    -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10, 10J or
+    -- 20Y to or from a committee typed V or W, kept out of committee_cycle.total_from_organizations.
     coalesce(
-        kept.TRANSACTION_TP IN ('10', '10J') AND recipient.type IN ('V', 'W'), false
+        kept.TRANSACTION_TP IN ('10', '10J', '20Y') AND recipient.type IN ('V', 'W'), false
     ) AS is_non_contribution_account
 FROM kept
 JOIN committee AS recipient ON recipient.committee_id = kept.CMTE_ID
 LEFT JOIN organization_name ON organization_name.raw = kept.NAME;
-
--- A hybrid PAC's refund to an organization it holds a counted 10 or 10J from is that account's
--- money, by contribution's rule (04_contribution.sql, NEU-2192).
-UPDATE organization_receipt
-SET is_non_contribution_account = true
-FROM (
-    SELECT DISTINCT recipient_committee_id, organization_name
-    FROM organization_receipt
-    WHERE is_non_contribution_account
-) AS account_giver
-WHERE regexp_matches(organization_receipt.transaction_type, '^[24][0-9]Y$')
-    AND organization_receipt.recipient_committee_id = account_giver.recipient_committee_id
-    AND organization_receipt.organization_name = account_giver.organization_name;
