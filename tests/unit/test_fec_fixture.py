@@ -37,6 +37,10 @@ ORGANIZATION = "ORG"
 COMMITTEE_TYPES = ("PAC", "COM", "CCM", "PTY")
 # `oth` lines that are no organization receipt: a JFC attribution, and a loan or its repayment.
 NOT_GIFTS = ("15J", "16C", "16F", "16G")
+# A hybrid PAC's committee types, and the transaction types of its non-contribution account's
+# receipts (NEU-2192).
+HYBRID_PACS = ("V", "W")
+NON_CONTRIBUTION_ACCOUNT = ("10", "10J")
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
@@ -124,6 +128,24 @@ def counts(row: dict[str, str]) -> bool:
         and not is_conduit_side(row)
         and row["CMTE_ID"] in committees
     )
+
+
+def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]]:
+    """The rows of one table, the counted contributions or the organization receipts, a hybrid PAC
+    took into its non-contribution account (NEU-2192): a 10 or 10J to a committee typed V or W, and
+    a refund there to a giver, by NAME, it holds one from. At any other committee a 10 is an
+    ordinary contribution."""
+    types = {committee["CMTE_ID"]: committee["CMTE_TP"] for committee in rows("cm")}
+    gifts = [
+        row
+        for row in table
+        if row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
+        and types.get(row["CMTE_ID"]) in HYBRID_PACS
+    ]
+    givers = {(row["CMTE_ID"], row["NAME"]) for row in gifts}
+    return gifts + [
+        row for row in table if is_refund(row) and (row["CMTE_ID"], row["NAME"]) in givers
+    ]
 
 
 def is_classified(row: dict[str, str]) -> bool:
@@ -361,7 +383,12 @@ def sum_by[K](pairs: Iterable[tuple[K, int]]) -> dict[K, int]:
 
 def tally_committees() -> dict[str, CommitteeTotals]:
     contributions = counted()
-    individual = sum_by((r["CMTE_ID"], signed(r)) for r in contributions if not is_self_funding(r))
+    account = {r["SUB_ID"] for r in non_contribution_account(contributions)}
+    individual = sum_by(
+        (r["CMTE_ID"], signed(r))
+        for r in contributions
+        if not is_self_funding(r) and r["SUB_ID"] not in account
+    )
     self_funding = sum_by((r["CMTE_ID"], signed(r)) for r in contributions if is_self_funding(r))
     from_committees = sum_by(
         (r["CMTE_ID"], amount(r)) for r in [*committee_receipts(), *name_matched_gifts()]
@@ -631,6 +658,27 @@ def test_the_expected_organization_receipts_match_the_fixture_and_feed_no_other_
         for donor in EXPECTED["donors"].values()
         for sub_id in donor["sub_ids"]
     )
+
+
+def test_the_expected_non_contribution_account_is_the_hybrid_pacs_type_10_rows() -> None:
+    contributions = non_contribution_account(counted())
+    receipts = non_contribution_account(organization_receipts())
+    expected = EXPECTED["non_contribution_account"]
+    assert expected["contributions"] == [int(r["SUB_ID"]) for r in contributions]
+    assert expected["organization_receipts"] == [int(r["SUB_ID"]) for r in receipts]
+    assert expected["by_committee"] == sum_by(
+        (r["CMTE_ID"], signed(r)) for r in [*contributions, *receipts]
+    )
+    assert expected["organizations_by_committee"] == sum_by(
+        (r["CMTE_ID"], signed(r)) for r in receipts
+    )
+    # A 10 to a super PAC is line 11(a)(i) money, an ordinary contribution, in its total_individual;
+    # a hybrid PAC's refund to a giver of its contribution account alone is that account's.
+    marked = {r["SUB_ID"] for r in contributions}
+    unmarked = [r for r in counted() if r["SUB_ID"] not in marked]
+    assert any(r["TRANSACTION_TP"] == "10" for r in unmarked)
+    assert any(is_refund(r) and r["CMTE_ID"] == "C00800204" for r in unmarked)
+    assert any(is_refund(r) for r in contributions)
 
 
 def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:

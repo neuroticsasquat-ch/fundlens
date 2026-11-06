@@ -293,3 +293,9 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00292,15,50000,2024-07-10,100000111,"thorsby, oscar",thorsby,oscar,I,bethesda,MD,20814,investor,thorsby capital,maryland forward pac,comm100007,SA11AI.00319,C00800201
 2024,dime00293,15,30000,2024-09-12,100000111,"thorsby, oscar",thorsby,oscar,I,bethesda,MD,20814,investor,northbridge partners,maryland forward pac,comm100007,SA11AI.00320,C00800201
 2024,dime00294,15,600,2024-07-15,100000112,"banks, john",banks,john,I,baltimore,MD,21209,owner,banks hardware,fenwick for congress,comm100012,SA11AI.00328,C00800109
+2024,dime00295,15,2500,2024-06-10,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SA11AI.00330,C00800204
+2024,dime00296,10,25000,2024-06-10,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SA11AI.00331,C00800204
+2024,dime00297,10,5000,2024-07-15,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,maryland forward pac,comm100007,SA11AI.00333,C00800201
+2024,dime00298,22Y,-5000,2024-08-01,100000113,"trevelyan, colin",trevelyan,colin,I,chevy chase,MD,20815,executive,trevelyan holdings,tidewater action fund,comm100018,SB28A.00334,C00800204
+2024,dime00299,15,1000,2024-06-20,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SA11AI.00335,C00800204
+2024,dime00300,22Y,-250,2024-07-20,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SB28A.00336,C00800204
