@@ -9,7 +9,10 @@
 -- is_other_line, NEU-2193: a transfer, an earmark's conduit side, a loan); self_funding is that
 -- own money (silver's is_self_funding), and neither includes the other. total_committee is the
 -- committees' gifts to the candidate: the disbursement side of committee_transfer only (the
--- recipient's 18K twin would count each gift twice). total_jfc_transfers is the receipts of the committees raising for the candidate from a
+-- recipient's 18K twin would count each gift twice), less a giver whose 24Ks to the candidate net
+-- below 0 for the cycle: returned gifts, voids of an earlier cycle's, in the giver's
+-- total_returned_by_candidates and never the candidate's (NEU-2204).
+-- total_jfc_transfers is the receipts of the committees raising for the candidate from a
 -- joint fundraising committee (designation J): its transfers of the candidate's share (NEU-2124),
 -- whatever receipt type the filer gave them (18G mostly, some 18J and 15J; FEC's own transfers-in
 -- totals take them all). It is in neither figure above, and counts nothing twice: the JFC's own
@@ -36,8 +39,13 @@ resolved AS (
 ),
 from_committees AS (
     SELECT candidate_id, sum(amount) AS total_committee
-    FROM silver.committee_transfer
-    WHERE side = 'disbursement' AND candidate_id IS NOT NULL
+    FROM (
+        SELECT from_committee_id, candidate_id, sum(amount) AS amount
+        FROM silver.committee_transfer
+        WHERE side = 'disbursement' AND candidate_id IS NOT NULL
+        GROUP BY from_committee_id, candidate_id
+        HAVING sum(amount) >= 0
+    ) AS given
     GROUP BY candidate_id
 ),
 jfc_transfers AS (

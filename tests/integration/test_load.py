@@ -136,6 +136,9 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(row["self_funding"]) == totals["self_funding"], committee_id
         assert dollars(row["total_from_committees"]) == totals["total_from_committees"]
         assert dollars(row["total_to_candidates"]) == totals["total_to_candidates"]
+        assert dollars(row["total_returned_by_candidates"]) == expected["returned_by_candidates"][
+            "by_committee"
+        ].get(committee_id, 0), committee_id
         # Organization money (ADR-0011): the super PAC's is CHESAPEAKE STEEL's gifts less its
         # refund, the party committee's the union's 31K; 0, never NULL, for the rest. The hybrid
         # PAC's non-contribution account is in neither this nor total_individual, but in its own
@@ -203,6 +206,21 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         key=lambda pair: (-pair[0], pair[1]),
     )
     assert {row["recipient_kind"] for row in recipients} == {"candidate"}
+    # A same-cycle refund nets inside its gift: BRICKLAYERS' to YANG, $2,500 less $500 (NEU-2204).
+    assert {row["recipient_id"]: dollars(row["amount"]) for row in recipients}["H4MD05108"] == 2000
+
+    # A void of an earlier cycle's gift, the giver's only 24K to the candidate this cycle, is a
+    # return, not a gift: OLD LINE REPUBLICAN COMMITTEE's of a 2022 gift to CALLOWAY is in neither
+    # its total_to_candidates nor its top recipients, nor in CALLOWAY's total_committee.
+    old_line = committee_cycles["C00800203"]
+    assert dollars(old_line["total_returned_by_candidates"]) == -1000
+    assert dollars(old_line["total_to_candidates"]) == 6000
+    assert "H4MD05106" not in {
+        row["recipient_id"]
+        for row in rows(migrated_db, "committee_top_recipient")
+        if row["committee_id"] == "C00800203"
+    }
+    assert dollars(candidate_cycles["H4MD05106"]["total_committee"]) == 10000
     assert all(row["name"] for row in recipients)
     senate = sorted(
         (
@@ -567,6 +585,39 @@ def test_the_top_organization_amount_check_fails_on_a_row_silver_does_not_add_up
             ("C1", "BOLT", "BOLT LLC", 90, 100),
             ("C2", "ACME", "ACME CORP", 75, 75),
             ("C3", "ACME", "ACME INC", 10, None),
+        ]
+
+
+def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', 500, -1000), ('C2', -2000, 0), ('C3', 0, 250)"
+            ") AS t(committee_id, total_to_candidates, total_returned_by_candidates)"
+        )
+        con.execute(
+            "CREATE TABLE committee_top_recipient AS SELECT * FROM (VALUES"
+            " ('C1', 'H1', 500), ('C2', 'H2', -1000)"
+            ") AS t(committee_id, recipient_id, amount)"
+        )
+        con.execute(
+            "CREATE TABLE candidate_cycle AS SELECT * FROM (VALUES ('H1', 500), ('H2', -1000))"
+            " AS t(candidate_id, total_committee)"
+        )
+        con.execute(
+            "CREATE TABLE race_top_committee AS SELECT * FROM (VALUES"
+            " ('2024-H-MD-05', 'C1', 500), ('2024-H-MD-05', 'C2', -1000)"
+            ") AS t(race_id, committee_id, amount)"
+        )
+
+        # C1's return of an earlier cycle's gift is where it belongs (NEU-2204); C2's is netted
+        # into its gifts, and C3's return is positive.
+        assert sorted(failing_rows(con, "gold_given_not_negative.sql")) == [
+            ("candidate_cycle.total_committee", "H2", -1000),
+            ("committee_cycle.total_returned_by_candidates", "C3", 250),
+            ("committee_cycle.total_to_candidates", "C2", -2000),
+            ("committee_top_recipient.amount", "C2 H2", -1000),
+            ("race_top_committee.amount", "2024-H-MD-05 C2", -1000),
         ]
 
 

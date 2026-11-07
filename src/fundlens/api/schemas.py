@@ -241,6 +241,9 @@ class CommitteeCycle(BaseModel):
     # committee only, in no race, candidate or cycle-wide figure (ADR-0011).
     total_from_organizations: float
     total_to_candidates: float
+    # Its 24Ks to each candidate they net below 0 for, summed, so 0 or less: voids and refunds of
+    # earlier cycles' gifts, in no total_to_candidates or top recipient (NEU-2204).
+    total_returned_by_candidates: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.

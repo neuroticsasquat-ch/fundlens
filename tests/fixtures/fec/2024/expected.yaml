@@ -24,6 +24,9 @@
 #   filed by a conduit (a conduit's 24K is its side of an earmark, ADR-0004), credited
 #   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
 #   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).
+#   Summed per giver and candidate, a pair netting below 0 (a void or refund of an earlier cycle's
+#   gift, NEU-2204) is in neither figure either, but in the giver's total_returned_by_candidates
+#   (`returned_by_candidates` below); one netting 0 or more counts its corrections with its gifts.
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
@@ -74,7 +77,7 @@ rows:
   cn: 15
   ccl: 15
   indiv: 345
-  pas2: 21
+  pas2: 24
   oth: 29
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
@@ -89,7 +92,7 @@ silver:
   candidate_committee_link: 15
   contribution: 308
   independent_expenditure: 9
-  committee_transfer: 28
+  committee_transfer: 31
   organization_receipt: 7
   # One row per `attributions` line below.
   jfc_attribution: 6
@@ -190,6 +193,15 @@ other_lines:
     C00800203: 7500
     C00800104: 1000
 
+# The 24Ks of a giver->candidate pair netting below 0 for the cycle (NEU-2204), by SUB_ID: OLD LINE
+# REPUBLICAN COMMITTEE's 2023 void of a 2022 gift to CALLOWAY. Kept in committee_transfer, in no
+# total_to_candidates, top recipient or total_committee. by_committee is gold's
+# total_returned_by_candidates, their net amount; 0 at every other committee.
+returned_by_candidates:
+  disbursements: [4240200000000000022]
+  by_committee:
+    C00800203: -1000
+
 # The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
 # blank-type ones naming one committee (NEU-2132), by SUB_ID: the committee each is a
 # committee_transfer receipt from, by the name rule above, or null when it is dropped (CHESAPEAKE
@@ -231,7 +243,7 @@ races:
   2024-H-MD-05:
     candidate_count: 4
     total_individual: 68050
-    total_committee: 12500
+    total_committee: 14500
     total_jfc_transfers: 0
     ie_support: 28000
     ie_oppose: 15000
@@ -342,10 +354,10 @@ candidates:
     self_funding: 0
     ie_support: 0
     ie_oppose: 15000
-  H4MD05108: # YANG
+  H4MD05108: # YANG: BRICKLAYERS' gift, net of its same-cycle refund
     race_id: 2024-H-MD-05
     total_individual: 6400
-    total_committee: 0
+    total_committee: 2000
     total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
@@ -474,7 +486,7 @@ committees:
     total_individual: 4550
     self_funding: 0
     total_from_committees: 0
-    total_to_candidates: 21000
+    total_to_candidates: 23000
     ie_total: 3000
   C00800203: # OLD LINE REPUBLICAN COMMITTEE
     total_individual: 14300

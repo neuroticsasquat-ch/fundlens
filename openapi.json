@@ -305,6 +305,10 @@
             "title": "Total Individual",
             "type": "number"
           },
+          "total_returned_by_candidates": {
+            "title": "Total Returned By Candidates",
+            "type": "number"
+          },
           "total_to_candidates": {
             "title": "Total To Candidates",
             "type": "number"
@@ -317,6 +321,7 @@
           "total_from_committees",
           "total_from_organizations",
           "total_to_candidates",
+          "total_returned_by_candidates",
           "ie_total",
           "top_recipients",
           "top_donors",
