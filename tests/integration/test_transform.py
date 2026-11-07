@@ -1137,14 +1137,24 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
         for committee_id, totals in committees.items()
         if totals["total_from_committees"]
     }
+    # A pair of giver and candidate netting below 0 (NEU-2204) is kept here, and gold sets it
+    # apart: the void of CALLOWAY's 2022 gift is in its giver's total_returned_by_candidates.
+    returned = expected["returned_by_candidates"]
+    assert set(returned["disbursements"]) <= set(by_sub_id)
     credited = [row for row in disbursements if row["candidate_id"] is not None]
-    assert sum_by(credited, "from_committee_id") == {
+    gifts = [row for row in credited if row["source_record_id"] not in returned["disbursements"]]
+    assert sum_by(gifts, "from_committee_id") == {
         committee_id: totals["total_to_candidates"]
         for committee_id, totals in committees.items()
         if totals["total_to_candidates"]
     }
+    assert {
+        committee_id: total - committees[str(committee_id)]["total_to_candidates"]
+        for committee_id, total in sum_by(credited, "from_committee_id").items()
+        if total != committees[str(committee_id)]["total_to_candidates"]
+    } == returned["by_committee"]
     candidates = expected["candidates"]
-    assert sum_by(disbursements, "candidate_id") == {
+    assert sum_by(gifts, "candidate_id") == {
         candidate_id: totals["total_committee"]
         for candidate_id, totals in candidates.items()
         if totals["total_committee"]

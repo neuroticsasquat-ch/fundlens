@@ -221,13 +221,16 @@ def test_a_race_page_names_its_committees(client: TestClient) -> None:
     race = ok(client.get(race_url("2024-H-MD-05")))
 
     assert race["slug"] == "2024/house/MD-05"
+    # BRICKLAYERS' gifts to CALLOWAY, DRISCOLL and YANG, the last net of its refund. OLD LINE
+    # REPUBLICAN COMMITTEE's void of a 2022 gift to CALLOWAY is no gift here (NEU-2204).
     assert race["top_committees"][0] == {
         "rank": 1,
         "committee_id": "C00800202",
         "name": "BRICKLAYERS UNITED PAC",
-        "amount": 7500.0,
+        "amount": 9500.0,
         "kind": "contribution",
     }
+    assert "C00800203" not in {c["committee_id"] for c in race["top_committees"]}
 
 
 def test_an_unknown_race_is_a_404(client: TestClient) -> None:

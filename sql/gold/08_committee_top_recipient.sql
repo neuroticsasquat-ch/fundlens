@@ -1,5 +1,7 @@
 -- committee_top_recipient (spec §7.1): the 100 candidates a committee gave most to, from the
--- disbursement side of committee_transfer summed by candidate. Committee recipients
+-- disbursement side of committee_transfer summed by candidate, a pair netting below 0 left out: it
+-- is returned gifts, in committee_cycle.total_returned_by_candidates (NEU-2204),
+-- so the list adds up to total_to_candidates. Committee recipients
 -- (recipient_kind = 'committee') arrive with NEU-2057, which owns the rule against counting a 24K
 -- row beside its `oth` twin.
 CREATE TABLE committee_top_recipient AS
@@ -8,6 +10,7 @@ WITH given AS (
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND candidate_id IS NOT NULL
     GROUP BY from_committee_id, candidate_id
+    HAVING sum(amount) >= 0
 ),
 ranked AS (
     SELECT

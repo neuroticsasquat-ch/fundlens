@@ -6,16 +6,22 @@
 -- total_to_candidates the disbursement side credited to a candidate (what it recorded giving; a 24K
 -- whose recipient raises for no candidate of the cycle is to none, NEU-2075): one side each, never
 -- both, so a gift on both sides is counted once in each figure, and a committee's top recipients
--- add up to its total_to_candidates. total_from_organizations is the organization receipts it
--- recorded (ADR-0011), net of refunds: organization money is the committee's only, in no candidate,
--- race, cycle or donor figure. total_non_contribution_account is a hybrid PAC's non-contribution
--- account (NEU-2192), individuals' and organizations' money alike: in neither total_individual nor
--- total_from_organizations, which hold its contribution account, the money FEC's itemized figure
--- (line 11(a)(i)) counts. 0 at every other committee. total_other_lines is individuals' money FEC
--- files on a line no total_individual counts (silver's is_other_line, NEU-2193): a national
--- party's convention, headquarters and recount accounts above all, a host committee's 18U gifts
--- from unregistered committees, transfers and earmarks' conduit sides. The candidate's own money
--- is self_funding whatever its line (a loan's is line 13). ie_total is 0 until NEU-2057.
+-- add up to its total_to_candidates. A giver->candidate pair whose 24Ks net negative for the cycle
+-- is returned gifts, not gifts (NEU-2204): a void or refund is filed when it happens, and one of a
+-- gift made last cycle has nothing here to net against. Such a pair is in
+-- total_returned_by_candidates (a negative figure), not total_to_candidates, so neither goes below
+-- 0 and the two add up to the giver's credited 24Ks; a pair netting 0 or more, a same-cycle void's,
+-- nets inside total_to_candidates as before. total_from_organizations is the organization receipts
+-- it recorded (ADR-0011), net of refunds: organization money is the committee's only, in no
+-- candidate, race, cycle or donor figure. total_non_contribution_account is a hybrid PAC's
+-- non-contribution account (NEU-2192), individuals' and organizations' money alike: in neither
+-- total_individual nor total_from_organizations, which hold its contribution account, the money
+-- FEC's itemized figure (line 11(a)(i)) counts. 0 at every other committee. total_other_lines is
+-- individuals' money FEC files on a line no total_individual counts (silver's is_other_line,
+-- NEU-2193): a national party's convention, headquarters and recount accounts above all, a host
+-- committee's 18U gifts from unregistered committees, transfers and earmarks' conduit sides. The
+-- candidate's own money is self_funding whatever its line (a loan's is line 13). ie_total is 0
+-- until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -52,11 +58,19 @@ from_organizations AS (
     FROM silver.organization_receipt
     GROUP BY recipient_committee_id
 ),
-to_candidates AS (
-    SELECT from_committee_id AS committee_id, sum(amount) AS total_to_candidates
+given AS (
+    SELECT from_committee_id AS committee_id, candidate_id, sum(amount) AS amount
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND candidate_id IS NOT NULL
-    GROUP BY from_committee_id
+    GROUP BY from_committee_id, candidate_id
+),
+to_candidates AS (
+    SELECT
+        committee_id,
+        coalesce(sum(amount) FILTER (WHERE amount >= 0), 0) AS total_to_candidates,
+        coalesce(sum(amount) FILTER (WHERE amount < 0), 0) AS total_returned_by_candidates
+    FROM given
+    GROUP BY committee_id
 )
 SELECT
     committee.committee_id,
@@ -73,6 +87,8 @@ SELECT
     ) AS total_non_contribution_account,
     CAST(coalesce(received.other_lines, 0) AS DECIMAL(16, 2)) AS total_other_lines,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
+    CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
+        AS total_returned_by_candidates,
     CAST(0 AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee
 LEFT JOIN received USING (committee_id)

@@ -1,13 +1,24 @@
 -- race_top_committee (spec §7.1): the 100 committees that gave most to a race's candidates, from
--- the disbursement side of committee_transfer summed by giver. Ranked by amount, then committee
+-- the disbursement side of committee_transfer summed by giver, less a giver's 24Ks to a candidate
+-- netting below 0 for the cycle: returned gifts, voids of an earlier cycle's, in no candidate's
+-- total_committee (NEU-2204), so the list adds up to the race's. Ranked by amount, then committee
 -- id, so the order is stable. kind is 'contribution' only until NEU-2057 adds the 'ie' rows.
 CREATE TABLE race_top_committee AS
-WITH given AS (
-    SELECT race_candidate.race_id, transfer.from_committee_id AS committee_id, sum(transfer.amount) AS amount
-    FROM silver.committee_transfer AS transfer
-    JOIN race_candidate ON race_candidate.candidate_id = transfer.candidate_id
-    WHERE transfer.side = 'disbursement' AND transfer.from_committee_id IS NOT NULL
-    GROUP BY race_candidate.race_id, transfer.from_committee_id
+WITH pair AS (
+    SELECT from_committee_id, candidate_id, sum(amount) AS amount
+    FROM silver.committee_transfer
+    WHERE side = 'disbursement' AND from_committee_id IS NOT NULL
+    GROUP BY from_committee_id, candidate_id
+    HAVING sum(amount) >= 0
+),
+given AS (
+    SELECT
+        race_candidate.race_id,
+        pair.from_committee_id AS committee_id,
+        sum(pair.amount) AS amount
+    FROM pair
+    JOIN race_candidate USING (candidate_id)
+    GROUP BY race_candidate.race_id, pair.from_committee_id
 ),
 ranked AS (
     SELECT
