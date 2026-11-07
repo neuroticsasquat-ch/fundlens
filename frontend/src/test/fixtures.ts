@@ -306,6 +306,7 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   total_from_committees: 0,
   total_from_organizations: 0,
   total_to_candidates: 0,
+  total_returned_by_candidates: 0,
   ie_total: 0,
   top_recipients: [],
   top_donors: [],

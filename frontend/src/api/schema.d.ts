@@ -322,6 +322,8 @@ export interface components {
             total_from_organizations: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Returned By Candidates */
+            total_returned_by_candidates: number;
             /** Total To Candidates */
             total_to_candidates: number;
         };
