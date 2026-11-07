@@ -61,8 +61,7 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
         conn.cursor(row_factory=dict_row)
         .execute(
             "SELECT cycle, total_individual, self_funding, total_from_committees,"
-            " total_from_organizations, total_to_candidates, total_returned_by_candidates,"
-            " ie_total"
+            " total_from_organizations, total_to_candidates, ie_total"
             " FROM gold.committee_cycle WHERE committee_id = %s ORDER BY cycle DESC",
             (committee_id,),
         )

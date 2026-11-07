@@ -282,9 +282,6 @@ def test_a_committee_page_has_its_cycle_and_top_recipients(
     recipients = cycle["top_recipients"]
     assert [r["rank"] for r in recipients] == list(range(1, len(recipients) + 1))
     assert sum(r["amount"] for r in recipients) == cycle["total_to_candidates"]
-    assert cycle["total_returned_by_candidates"] == EXPECTED["returned_by_candidates"][
-        "by_committee"
-    ].get(committee_id, 0)
 
 
 def test_a_committee_page_names_whom_it_gave_to(client: TestClient) -> None:
