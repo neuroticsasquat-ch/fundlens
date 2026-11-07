@@ -154,6 +154,10 @@ class R2:
         """Delete every key starting with `prefix`; the number deleted."""
         return self._delete(self.list_keys(prefix))
 
+    def delete_keys(self, keys: list[str]) -> int:
+        """Delete exactly `keys`; the number deleted."""
+        return self._delete(keys)
+
     def _delete(self, keys: list[str]) -> int:
         for start in range(0, len(keys), DELETE_BATCH):
             batch = keys[start : start + DELETE_BATCH]

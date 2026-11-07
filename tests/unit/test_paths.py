@@ -1,5 +1,6 @@
 """The R2 and local path layout of spec §3.4."""
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -39,6 +40,13 @@ BUILD = "20261102T030000Z"
         (
             paths.resolution_snapshot(BUILD, "adjudication"),
             f"resolution/build={BUILD}/adjudication.parquet",
+        ),
+        (paths.resolution_model(BUILD), f"resolution/model/{BUILD}.json"),
+        (paths.resolution_run(BUILD), f"resolution/run/{BUILD}.json"),
+        (paths.reference_dime_raw("4.0", 2024), "reference/dime/v4.0/contribDB_2024.csv.gz"),
+        (
+            paths.reference_dime("4.0", 2024),
+            "reference/dime/v4.0/cycle=2024/fec_individual.parquet",
         ),
         *[
             (paths.marker(2026, BUILD, step), f"markers/cycle=2026/build={BUILD}/{step}.json")
@@ -103,6 +111,45 @@ def test_rejects_a_cycle_that_is_not_an_even_year(cycle: int) -> None:
 )
 def test_build_of_reads_the_build_segment_of_a_key(key: str, build_id: str | None) -> None:
     assert paths.build_of(key) == build_id
+
+
+@pytest.mark.parametrize(
+    ("key", "cycle"),
+    [
+        (f"markers/cycle=2026/build={BUILD}/transformed.json", 2026),
+        (f"silver/contributor/cycle=1980/build={BUILD}/part-0000.parquet", 1980),
+        ("bronze/cycle=2024/indiv/2026-11-02.zip", 2024),
+        (paths.resolution_model(BUILD), None),
+    ],
+)
+def test_cycle_of_reads_the_cycle_segment_of_a_key(key: str, cycle: int | None) -> None:
+    assert paths.cycle_of(key) == cycle
+
+
+def test_a_model_version_is_a_build_id() -> None:
+    with pytest.raises(ValueError, match="not YYYYMMDDTHHMMSSZ"):
+        paths.resolution_model("latest")
+    with pytest.raises(ValueError, match="not YYYYMMDDTHHMMSSZ"):
+        paths.resolution_run("latest")
+
+
+@pytest.mark.parametrize(
+    ("key", "version"),
+    [
+        (f"resolution/model/{BUILD}.json", BUILD),
+        (f"resolution/model/{BUILD}.json.part", None),
+        ("resolution/model/latest.json", None),
+        (f"resolution/build={BUILD}/crosswalk.parquet", None),
+    ],
+)
+def test_model_version_of_reads_a_saved_models_key(key: str, version: str | None) -> None:
+    assert paths.model_version_of(key) == version
+
+
+@pytest.mark.parametrize("built", [paths.reference_dime_raw, paths.reference_dime])
+def test_a_dime_key_needs_an_even_cycle(built: Callable[[str, int], str]) -> None:
+    with pytest.raises(ValueError, match="not an even year"):
+        built("4.0", 2023)
 
 
 @pytest.mark.parametrize("bucket", [-1, 256])

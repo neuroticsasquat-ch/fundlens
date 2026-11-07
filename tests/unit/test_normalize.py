@@ -7,9 +7,11 @@ from fundlens.resolve import normalize
 from fundlens.resolve.normalize import (
     Name,
     contributor_key,
+    is_organization_name,
     normalize_employer,
     normalize_name,
     normalize_occupation,
+    organization_key,
     zip5,
 )
 
@@ -170,6 +172,72 @@ def test_normalize_occupation(raw: str | None, expected: str | None) -> None:
     assert normalize_occupation(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # The employer rule: cleaned, the legal form stripped, the alias applied (ADR-0011).
+        ("KOCH INDUSTRIES, INC.", "KOCH INDUSTRIES"),
+        ("KOCH INDUSTRIES INC", "KOCH INDUSTRIES"),
+        ("Koch Industries", "KOCH INDUSTRIES"),
+        ("Space Exploration Technologies Corp.", "SPACEX"),
+        ("IRONWORKERS LOCAL 16", "IRONWORKERS LOCAL 16"),
+        ("ACME HOLDINGS, L.L.C.", "ACME HOLDINGS"),
+        # A name the employer rule nulls keeps the cleaned name as its key: a receipt always has
+        # one.
+        ("NONE", "NONE"),
+        ("N/A", "N A"),
+        ("INC", "INC"),
+        # No name at all is no key.
+        (None, None),
+        ("", None),
+        (" . ", None),
+    ],
+)
+def test_organization_key(raw: str | None, expected: str | None) -> None:
+    assert organization_key(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # The measurement's Decisions table (NEU-2129), with the call the rule makes, not what the
+        # name really is. A word alone in its comma-separated part is a person's name.
+        ("BANK, LISSY", False),
+        ("WOOTEN, COUNCIL", False),
+        ("NATION, MARK", False),
+        # CO, COMPANY, PC and LP end people's names: not strict legal suffixes.
+        ("COX, JOHN T. MR. III PC", False),
+        ("PERRETT, LP", False),
+        ("WEITZ & LUXENBERG, P.C.", False),
+        # A hyphen splits a part into two words.
+        ("LEAGUE-PASCUAL, JAMES", True),
+        ("LARSON, BEV MS. LLC", True),
+        ("SMITH, PATRICIA J LLC", True),
+        # No comma.
+        (" UPDIKE", True),
+        ("LOFTUS", True),
+        ("FUTURE FORWARD USA ACTION", True),
+        # COUNCIL and NATION are not organization words.
+        ("TRIBAL COUNCIL, PRAIRIE ISLAND", False),
+        ("NATION, CHEROKEE", False),
+        ("NEA ADVOCACY FUND, ASSOCIATION", True),
+        # Periods are deleted, so the last word is LLC.
+        ("ACME HOLDINGS, L.L.C.", True),
+        ("LEAGUE OF CONSERVATION VOTERS, INC.", True),
+        # The fixture's blank-entity-type rows.
+        ("ACME WIDGETS INC", True),
+        ("BANKS, JOHN", False),
+        ("OLD LINE REPUBLICAN COMMITTEE", True),
+        # No name, or one of no words, is not an organization.
+        (None, False),
+        ("", False),
+        (" . ", False),
+    ],
+)
+def test_is_organization_name(raw: str | None, expected: bool) -> None:
+    assert is_organization_name(raw) is expected
+
+
 def test_contributor_key_joins_the_four_values_with_an_absent_one_empty() -> None:
     assert (
         contributor_key("MARLOWE, AUGUSTINE", "90250", "ASTRAX", "CEO")
@@ -206,7 +274,9 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         row = con.execute(
             "SELECT normalize_name('MARLOWE,AUGUSTINE JR.'), zip5('902501234'),"
             " normalize_employer('Space Exploration Technologies Corp.'),"
-            " normalize_occupation('RETIRED'), normalize_name(NULL)"
+            " normalize_occupation('RETIRED'), normalize_name(NULL),"
+            " organization_key('Koch Industries, Inc.'), organization_key(NULL),"
+            " is_organization_name('ACME WIDGETS INC'), is_organization_name(NULL)"
         ).fetchone()
     assert row == (
         {
@@ -220,4 +290,8 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         "SPACEX",
         None,
         {"first": None, "middle": None, "last": None, "suffix": None, "norm": ""},
+        "KOCH INDUSTRIES",
+        None,
+        True,
+        False,
     )

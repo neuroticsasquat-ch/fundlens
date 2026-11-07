@@ -11,7 +11,13 @@ from psycopg.rows import class_row, dict_row
 
 from fundlens.api.deps import Conn
 from fundlens.api.routers.cycles import RACE_COLUMNS
-from fundlens.api.schemas import Race, RaceCandidate, RaceTopCommittee, problem_responses
+from fundlens.api.schemas import (
+    Race,
+    RaceCandidate,
+    RaceTopCommittee,
+    RaceTopDonor,
+    problem_responses,
+)
 
 router = APIRouter(prefix="/v1")
 
@@ -42,9 +48,11 @@ def get_race(
         conn.cursor(row_factory=class_row(RaceCandidate))
         .execute(
             "SELECT candidate_id, name, party, incumbent_challenger_open, principal_committee_id,"
-            " total_individual, total_committee, self_funding, ie_support, ie_oppose"
+            " total_individual, total_committee, total_jfc_transfers, self_funding, ie_support,"
+            " ie_oppose"
             " FROM gold.race_candidate WHERE race_id = %s"
-            " ORDER BY total_individual + total_committee + self_funding DESC, candidate_id",
+            " ORDER BY total_individual + total_committee + total_jfc_transfers + self_funding"
+            " DESC, candidate_id",
             (race["race_id"],),
         )
         .fetchall()
@@ -58,4 +66,13 @@ def get_race(
         )
         .fetchall()
     )
-    return Race(**race, candidates=candidates, top_committees=top_committees)
+    top_donors = (
+        conn.cursor(row_factory=class_row(RaceTopDonor))
+        .execute(
+            "SELECT rank, donor_id, display_name, amount, candidates"
+            " FROM gold.race_top_donor WHERE race_id = %s ORDER BY rank",
+            (race["race_id"],),
+        )
+        .fetchall()
+    )
+    return Race(**race, candidates=candidates, top_committees=top_committees, top_donors=top_donors)

@@ -75,6 +75,7 @@ class RaceTotals(TypedDict):
     candidate_count: int
     total_individual: int
     total_committee: int
+    total_jfc_transfers: int
     ie_support: int
     ie_oppose: int
 
@@ -83,6 +84,7 @@ class CandidateTotals(TypedDict):
     race_id: str | None
     total_individual: int
     total_committee: int
+    total_jfc_transfers: int
     self_funding: int
     ie_support: int
     ie_oppose: int
@@ -96,6 +98,28 @@ class CommitteeTotals(TypedDict):
     ie_total: int
 
 
+class OrganizationReceipts(TypedDict):
+    keys: dict[int, str]
+    by_key: dict[str, int]
+    by_committee: dict[str, int]
+    total_amount: int
+    # Per committee, by rank: [organization_key, name, amount] (NEU-2133).
+    top_by_committee: dict[str, list[list[str | int]]]
+    classified: list[int]
+
+
+class NonContributionAccount(TypedDict):
+    contributions: list[int]
+    organization_receipts: list[int]
+    by_committee: dict[str, int]
+    organizations_by_committee: dict[str, int]
+
+
+class OtherLines(TypedDict):
+    contributions: list[int]
+    by_committee: dict[str, int]
+
+
 class Donor(TypedDict):
     bonica_cid: int
     resolved_by: str
@@ -103,17 +127,46 @@ class Donor(TypedDict):
     sub_ids: list[int]
 
 
+class Attributions(TypedDict):
+    jfc_committee: dict[int, str | None]
+    attribution_only: list[int]
+
+
+class Scores(TypedDict):
+    precision: float
+    recall: float
+
+
+class TopScores(Scores):
+    limit: int
+
+
+class Validation(TypedDict):
+    dime_version: str
+    matched_rows: int
+    labelled_keys: int
+    overall: Scores
+    top: TopScores
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
     silver: dict[str, int]
     contributions: dict[str, Any]
+    organization_receipts: OrganizationReceipts
+    non_contribution_account: NonContributionAccount
+    other_lines: OtherLines
+    name_matched: dict[int, str | None]
     unmatched_filings: list[str]
+    aliases: dict[str, str]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]
     donors: dict[str, Donor]
     distinct_donors: int
+    attributions: Attributions
+    validation: Validation
 
 
 def expected(cycle: int = CYCLE) -> Expected:

@@ -9,6 +9,7 @@ SELECT
     candidate.principal_committee_id,
     candidate_cycle.total_individual,
     candidate_cycle.total_committee,
+    candidate_cycle.total_jfc_transfers,
     candidate_cycle.self_funding,
     candidate_cycle.ie_support,
     candidate_cycle.ie_oppose

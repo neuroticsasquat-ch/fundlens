@@ -136,6 +136,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/donors/{donor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Donor */
+        get: operations["get_donor_v1_donors__donor_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/donors/{donor_id}/contributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Donor Contributions
+         * @description Every contribution the donor made under each of their name, employer and address
+         *     variants, in `cycle` or in every cycle, newest cycle first and newest first within it.
+         */
+        get: operations["get_donor_contributions_v1_donors__donor_id__contributions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/meta": {
         parameters: {
             query?: never;
@@ -229,10 +267,14 @@ export interface components {
             race_slug: string | null;
             /** Self Funding */
             self_funding: number;
+            /** Top Donors */
+            top_donors: components["schemas"]["TopDonor"][];
             /** Total Committee */
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * Committee
@@ -258,7 +300,8 @@ export interface components {
         };
         /**
          * CommitteeCycle
-         * @description `gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to.
+         * @description `gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
+         *     gave most to it.
          */
         CommitteeCycle: {
             /** Cycle */
@@ -267,10 +310,16 @@ export interface components {
             ie_total: number;
             /** Self Funding */
             self_funding: number;
+            /** Top Donors */
+            top_donors: components["schemas"]["TopDonor"][];
+            /** Top Organizations */
+            top_organizations: components["schemas"]["TopOrganization"][];
             /** Top Recipients */
             top_recipients: components["schemas"]["CommitteeTopRecipient"][];
             /** Total From Committees */
             total_from_committees: number;
+            /** Total From Organizations */
+            total_from_organizations: number;
             /** Total Individual */
             total_individual: number;
             /** Total To Candidates */
@@ -319,8 +368,12 @@ export interface components {
             contributor_state: string | null;
             /** Contributor Zip */
             contributor_zip: string | null;
+            /** Cycle */
+            cycle: number;
             /** Date */
             date: string | null;
+            /** Donor Id */
+            donor_id: number | null;
             /** Entity Type */
             entity_type: string | null;
             /** Image Num */
@@ -362,6 +415,71 @@ export interface components {
             /** Total Amount */
             total_amount: number;
         };
+        /**
+         * Donor
+         * @description A donor page: `gold.donor`, every name, employer and address variant resolved into one
+         *     (spec §6), a row per cycle, newest first, and whom they gave most to.
+         */
+        Donor: {
+            /** City */
+            city: string | null;
+            /** Contributor Key Count */
+            contributor_key_count: number;
+            /** Cycles */
+            cycles: components["schemas"]["DonorCycle"][];
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Employer */
+            employer: string | null;
+            /** First Cycle */
+            first_cycle: number;
+            /** Last Cycle */
+            last_cycle: number;
+            /** Occupation */
+            occupation: string | null;
+            /** State */
+            state: string | null;
+            /** Top Recipients */
+            top_recipients: components["schemas"]["DonorTopRecipient"][];
+            /** Total All Cycles */
+            total_all_cycles: number;
+            /** Zip5 */
+            zip5: string | null;
+        };
+        /**
+         * DonorCycle
+         * @description `gold.donor_cycle`: a donor's counted money in one cycle.
+         */
+        DonorCycle: {
+            /** Amount */
+            amount: number;
+            /** Contribution Count */
+            contribution_count: number;
+            /** Cycle */
+            cycle: number;
+        };
+        /**
+         * DonorTopRecipient
+         * @description `gold.donor_top_recipient`: one of the 100 a donor gave most to, over every cycle: a
+         *     candidate, for a gift to a committee raising for one, else the committee.
+         */
+        DonorTopRecipient: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string | null;
+            /** Rank */
+            rank: number;
+            /** Recipient Id */
+            recipient_id: string;
+            /**
+             * Recipient Kind
+             * @enum {string}
+             */
+            recipient_kind: "candidate" | "committee";
+        };
         /** Health */
         Health: {
             /** Postgres */
@@ -371,19 +489,30 @@ export interface components {
         };
         /**
          * Meta
-         * @description The live gold build (`gold.meta`, spec §7.1).
+         * @description The live gold build (`gold.meta`, spec §7.1): how its donors were resolved and how well
+         *     that scored against DIME, which the methodology page prints (NEU-2056).
          */
         Meta: {
+            /** Adjudications Applied */
+            adjudications_applied: number | null;
             /** Build Id */
             build_id: string;
             /** Cycles */
             cycles: {
                 [key: string]: components["schemas"]["MetaCycle"];
             };
+            /** Dime Version */
+            dime_version: string | null;
+            /** Matched Rows */
+            matched_rows: number | null;
             /** Model Version */
             model_version: string | null;
+            /** Overrides Count */
+            overrides_count: number | null;
             /** Precision */
             precision: number | null;
+            /** Precision Top */
+            precision_top: number | null;
             /**
              * Published At
              * Format: date-time
@@ -391,6 +520,8 @@ export interface components {
             published_at: string;
             /** Recall */
             recall: number | null;
+            /** Recall Top */
+            recall_top: number | null;
             /** Resolver Version */
             resolver_version: string | null;
         };
@@ -424,7 +555,8 @@ export interface components {
         };
         /**
          * Race
-         * @description A race page: the race, its candidates (most money first) and its top committees.
+         * @description A race page: the race, its candidates (most money first), its top committees and its top
+         *     donors.
          */
         Race: {
             /** Candidate Count */
@@ -450,10 +582,14 @@ export interface components {
             state: string;
             /** Top Committees */
             top_committees: components["schemas"]["RaceTopCommittee"][];
+            /** Top Donors */
+            top_donors: components["schemas"]["RaceTopDonor"][];
             /** Total Committee */
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceCandidate
@@ -480,6 +616,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceSummary
@@ -509,6 +647,8 @@ export interface components {
             total_committee: number;
             /** Total Individual */
             total_individual: number;
+            /** Total Jfc Transfers */
+            total_jfc_transfers: number;
         };
         /**
          * RaceTopCommittee
@@ -529,6 +669,33 @@ export interface components {
             /** Rank */
             rank: number;
         };
+        /**
+         * RaceTopDonor
+         * @description `gold.race_top_donor`: a donor among the 100 who gave most to the race's candidates, their
+         *     own money left out (spec §7.1).
+         */
+        RaceTopDonor: {
+            /** Amount */
+            amount: number;
+            /** Candidates */
+            candidates: components["schemas"]["RaceTopDonorCandidate"][];
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Rank */
+            rank: number;
+        };
+        /**
+         * RaceTopDonorCandidate
+         * @description What a race's top donor gave one of its candidates, net of refunds.
+         */
+        RaceTopDonorCandidate: {
+            /** Amount */
+            amount: number;
+            /** Candidate Id */
+            candidate_id: string;
+        };
         /** @enum {string} */
         SearchKind: "donor" | "candidate" | "committee" | "race";
         /**
@@ -545,6 +712,36 @@ export interface components {
             name: string;
             /** Score */
             score: number;
+        };
+        /**
+         * TopDonor
+         * @description `gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
+         *     most in a cycle, the candidate's own money left out (spec §7.1).
+         */
+        TopDonor: {
+            /** Amount */
+            amount: number;
+            /** Display Name */
+            display_name: string | null;
+            /** Donor Id */
+            donor_id: number;
+            /** Rank */
+            rank: number;
+        };
+        /**
+         * TopOrganization
+         * @description `gold.committee_top_organization`: an organization among the 100 that gave a committee
+         *     most in a cycle, its gifts grouped by organization key, never resolved (ADR-0011).
+         */
+        TopOrganization: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string;
+            /** Organization Key */
+            organization_key: string;
+            /** Rank */
+            rank: number;
         };
         /** ValidationErrorDetail */
         ValidationErrorDetail: {
@@ -586,6 +783,9 @@ export type CommitteeTopRecipient = components['schemas']['CommitteeTopRecipient
 export type Contribution = components['schemas']['Contribution'];
 export type ContributionPage = components['schemas']['ContributionPage'];
 export type Cycle = components['schemas']['Cycle'];
+export type Donor = components['schemas']['Donor'];
+export type DonorCycle = components['schemas']['DonorCycle'];
+export type DonorTopRecipient = components['schemas']['DonorTopRecipient'];
 export type Health = components['schemas']['Health'];
 export type Meta = components['schemas']['Meta'];
 export type MetaCycle = components['schemas']['MetaCycle'];
@@ -595,8 +795,12 @@ export type Race = components['schemas']['Race'];
 export type RaceCandidate = components['schemas']['RaceCandidate'];
 export type RaceSummary = components['schemas']['RaceSummary'];
 export type RaceTopCommittee = components['schemas']['RaceTopCommittee'];
+export type RaceTopDonor = components['schemas']['RaceTopDonor'];
+export type RaceTopDonorCandidate = components['schemas']['RaceTopDonorCandidate'];
 export type SearchKind = components['schemas']['SearchKind'];
 export type SearchResult = components['schemas']['SearchResult'];
+export type TopDonor = components['schemas']['TopDonor'];
+export type TopOrganization = components['schemas']['TopOrganization'];
 export type ValidationErrorDetail = components['schemas']['ValidationErrorDetail'];
 export type ValidationProblem = components['schemas']['ValidationProblem'];
 export type $defs = Record<string, never>;
@@ -650,6 +854,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Candidate"];
                 };
+            };
+            /** @description The id is an alias of another candidate's: `Location` names the id holding their money. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {
@@ -706,6 +917,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ContributionPage"];
                 };
+            };
+            /** @description The id is an alias of another candidate's: `Location` names the id holding their money. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Bad Request */
             400: {
@@ -943,6 +1161,149 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_donor_v1_donors__donor_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                donor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Donor"];
+                };
+            };
+            /** @description The donor was merged into another: `Location` names the id it became. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_donor_contributions_v1_donors__donor_id__contributions_get: {
+        parameters: {
+            query?: {
+                /** @description Every cycle, newest first, if left out. */
+                cycle?: number | null;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                donor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContributionPage"];
+                };
+            };
+            /** @description The donor was merged into another: `Location` names the id it became. */
+            301: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gone */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

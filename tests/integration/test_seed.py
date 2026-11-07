@@ -49,6 +49,8 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
     for build_id in (first, second):
         assert markers.exists("extracted", store, cycle=2024, build_id=build_id)
         assert markers.exists("transformed", store, cycle=2024, build_id=build_id)
+        assert markers.exists("resolved", store, cycle=2024, build_id=build_id)
+        assert store.exists(paths.resolution_model(build_id))
         assert markers.exists("loaded", store, cycle=2024, build_id=build_id)
         assert markers.exists("published", store, cycle=2024, build_id=build_id)
         # The second publish prunes nothing: the first build is the previous live one.
@@ -67,5 +69,10 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
     body = response.json()
     assert body["build_id"] == second
     assert body["published_at"] is not None
-    assert (body["resolver_version"], body["model_version"]) == (None, None)
+    # The second resolve's model and run record: no overrides, no adjudications, no release (no
+    # OTel resource in tests), and not validated against DIME.
+    assert body["model_version"] == second
+    assert (body["overrides_count"], body["adjudications_applied"]) == (0, 0)
+    assert body["resolver_version"] is None
+    assert (body["precision"], body["recall"], body["matched_rows"]) == (None, None, None)
     assert body["cycles"]["2024"]["build_id"] == second

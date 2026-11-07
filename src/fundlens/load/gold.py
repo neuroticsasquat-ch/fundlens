@@ -6,8 +6,11 @@ in filename order, reading the views `silver.<table>`), runs `sql/checks/gold_*.
 query that must return no rows), and writes each table as a CSV file under `scratch/`. Then, in
 one Postgres transaction, `gold_build` is dropped and recreated, each table gets its hand-written
 DDL (`sql/gold/ddl/`), its CSV streamed in with `COPY … FROM STDIN`, its indexes
-(`sql/gold/index/`) and an `ANALYZE`, and `meta` its one row. A failed load leaves no
-`gold_build` at all, never a partial one; a successful one writes the `loaded` marker.
+(`sql/gold/index/`) and an `ANALYZE`, `donor_redirect` a copy of `app.donor_redirect`, and `meta`
+its one row, with the live model's version, its run's record (`resolve.runner.RunRecord`) and
+its DIME figures for the cycle from `app.resolution_quality`. A
+failed load leaves no `gold_build` at all, never a partial one; a successful one writes the
+`loaded` marker.
 `fundlens publish` swaps the schema in.
 """
 
@@ -15,8 +18,9 @@ import logging
 import shutil
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -30,12 +34,14 @@ from fundlens import markers, paths
 from fundlens.fec.files import files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
+from fundlens.resolve import model
+from fundlens.resolve.runner import run_record
 from fundlens.transform.runner import CHUNK_BYTES, Limits, check, literal, render
 
 log = logging.getLogger(__name__)
 
-# The M2 gold tables (spec §7.1); the donor tables arrive in M3. `meta` has DDL but no model:
-# its one row is inserted from Python.
+# The gold tables (spec §7.1). `meta` and `donor_redirect` have DDL but no model: Postgres fills
+# them (`FROM_POSTGRES`).
 GoldTable = Literal[
     "meta",
     "cycle",
@@ -44,11 +50,24 @@ GoldTable = Literal[
     "race_top_committee",
     "candidate",
     "candidate_cycle",
+    "candidate_redirect",
     "committee",
     "committee_cycle",
     "committee_top_recipient",
     "search_entity",
+    "donor",
+    "donor_cycle",
+    "donor_top_recipient",
+    "donor_redirect",
+    "race_top_donor",
+    "candidate_top_donor",
+    "committee_top_donor",
+    "committee_top_organization",
 ]
+
+# `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
+# Postgres holds.
+FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 
 # The silver tables the gold SQL reads, and the command that writes each one's partition.
 # (`candidate_committee_link` is not among them: silver `contribution` already carries the
@@ -58,16 +77,47 @@ INPUTS: dict[SilverTable, str] = {
     "candidate": "transform",
     "contribution": "transform",
     "committee_transfer": "transform",
+    "jfc_attribution": "transform",
+    "contributor": "transform",
+    "organization_receipt": "transform",
     "race": "seats",
 }
+
+# The silver tables `resolve` rewrites with each row's donor_id (spec §6.6). A build loaded before
+# `resolve` has none, so its views get a NULL one and the build has no donors.
+RESOLVED: frozenset[SilverTable] = frozenset({"contribution", "jfc_attribution"})
+
+
+@dataclass(frozen=True)
+class Quality:
+    """The live model, what its run applied and its DIME figures for the cycle, as `meta`
+    carries them (NEU-2054 §7, NEU-2056): the run's fields None when it wrote no record, the
+    figures None when the cycle has not been validated under the model."""
+
+    model_version: str | None
+    resolver_version: str | None = None
+    overrides_count: int | None = None
+    adjudications_applied: int | None = None
+    precision: Decimal | None = None
+    recall: Decimal | None = None
+    precision_top: Decimal | None = None
+    recall_top: Decimal | None = None
+    matched_rows: int | None = None
+    dime_version: str | None = None
+
+    @property
+    def validated(self) -> bool:
+        return self.dime_version is not None
 
 
 @dataclass(frozen=True)
 class Loaded:
-    """What `load` did: the build loaded, rows per gold table, and how long each half took."""
+    """What `load` did: the build loaded, rows per gold table, the resolution figures `meta`
+    carries, and how long each half took."""
 
     build_id: str
     row_counts: dict[str, int]
+    quality: Quality
     # DuckDB aggregates and CSV writes, then `COPY` with indexes and `ANALYZE` (spec §8).
     aggregate_s: float
     copy_s: float
@@ -89,7 +139,7 @@ def _models(sql_dir: Path) -> list[tuple[GoldTable, Path]]:
     models: list[tuple[GoldTable, Path]] = []
     for path in sorted((sql_dir / "gold").glob("*.sql")):
         table = tables.get(path.stem.partition("_")[2])
-        if table is None or table == "meta":
+        if table is None or table in FROM_POSTGRES:
             raise ValueError(f"{path.name} names no gold table")
         models.append((table, path))
     if not models:
@@ -119,6 +169,12 @@ def _require_inputs(
                 f"no silver {table} partition for build {build_id} of {cycle}:"
                 f" run `fundlens {command} --cycle {cycle} --build-id {build_id}`"
             )
+        if paths.rewrite_sentinel(cycle, build_id) in keys:
+            # Its parts are a mix of two layouts, which would count every row twice.
+            raise FileNotFoundError(
+                f"the donor_id rewrite of silver {table} for build {build_id} of {cycle} died"
+                " part way: run `fundlens resolve --full` again"
+            )
         for key in keys:
             local = paths.local_path(data_dir, key)
             if not local.exists():
@@ -134,10 +190,19 @@ def _register_silver(
     con.execute("CREATE SCHEMA silver")
     for table, local in local_dirs.items():
         # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path.
-        con.execute(
-            f"CREATE VIEW silver.{table} AS SELECT * FROM"
-            f" read_parquet({literal(local / '*.parquet')}, hive_partitioning = false)"
-        )
+        # `**` reaches into a resolved `contribution`'s `bucket=` directories too (spec §3.4).
+        source = f"read_parquet({literal(local / '**' / '*.parquet')}, hive_partitioning = false)"
+        con.execute(f"CREATE VIEW silver.{table} AS SELECT * FROM {source}")
+        if (
+            table in RESOLVED
+            and not con.execute(
+                f"SELECT 1 FROM (DESCRIBE silver.{table}) WHERE column_name = 'donor_id'"
+            ).fetchall()
+        ):
+            con.execute(
+                f"CREATE OR REPLACE VIEW silver.{table} AS"
+                f" SELECT *, CAST(NULL AS BIGINT) AS donor_id FROM {source}"
+            )
     # DuckDB's CSV writer prints a list as `[…]`; Postgres reads an array as `{…}`.
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
 
@@ -171,6 +236,42 @@ def _copy_in(conn: Connection[TupleRow], table: GoldTable, csv: Path) -> None:
             copy.write(chunk)
 
 
+def _quality(
+    conn: Connection[TupleRow], store: R2, cycle: int, model_version: str | None
+) -> Quality:
+    """`model_version`'s run record, and its figures for `cycle` from `app.resolution_quality`."""
+    if model_version is None:
+        return Quality(None)
+    record = run_record(store, model_version)
+    run = (
+        Quality(model_version)
+        if record is None
+        else Quality(model_version, record.release, record.overrides, record.adjudications)
+    )
+    scopes = {
+        scope: rest
+        for scope, *rest in conn.execute(
+            "SELECT scope, precision, recall, matched_rows, dime_version"
+            " FROM app.resolution_quality WHERE model_version = %s AND cycle = %s",
+            (model_version, cycle),
+        ).fetchall()
+    }
+    overall, top = scopes.get("overall"), scopes.get("top")
+    if overall is None:
+        return run
+    precision, recall, matched_rows, dime_version = overall
+    precision_top, recall_top = (top[0], top[1]) if top is not None else (None, None)
+    return replace(
+        run,
+        precision=precision,
+        recall=recall,
+        precision_top=precision_top,
+        recall_top=recall_top,
+        matched_rows=matched_rows,
+        dime_version=dime_version,
+    )
+
+
 def _load_postgres(
     conn: Connection[TupleRow],
     models: list[tuple[GoldTable, Path]],
@@ -179,8 +280,10 @@ def _load_postgres(
     work: Path,
     build_id: str,
     cycles: Mapping[str, object],
-) -> None:
-    """Rebuild `gold_build` from the CSVs under `work`, in one transaction."""
+    quality: Quality,
+) -> int:
+    """Rebuild `gold_build` from the CSVs under `work`, in one transaction; the rows of
+    `donor_redirect`."""
     with conn.transaction():
         # In the default schema, never inside `gold_build`: an extension living there would be
         # renamed with it and dropped by the next publish's `DROP SCHEMA gold_prev CASCADE`.
@@ -194,11 +297,34 @@ def _load_postgres(
             if index.exists():
                 conn.execute(_sql(index))
             conn.execute(f"ANALYZE gold_build.{table}")
+        conn.execute(_sql(sql_dir / "gold" / "ddl" / "donor_redirect.sql"))
+        redirects = conn.execute(
+            "INSERT INTO gold_build.donor_redirect (old_donor_id, donor_id)"
+            " SELECT old_donor_id, donor_id FROM app.donor_redirect"
+        ).rowcount
+        conn.execute("ANALYZE gold_build.donor_redirect")
         conn.execute(_sql(sql_dir / "gold" / "ddl" / "meta.sql"))
         conn.execute(
-            "INSERT INTO gold_build.meta (build_id, published_at, cycles) VALUES (%s, NULL, %s)",
-            (build_id, Jsonb(dict(cycles))),
+            "INSERT INTO gold_build.meta (build_id, published_at, resolver_version,"
+            " model_version, overrides_count, adjudications_applied, precision, recall,"
+            " precision_top, recall_top, matched_rows, dime_version, cycles)"
+            " VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                build_id,
+                quality.resolver_version,
+                quality.model_version,
+                quality.overrides_count,
+                quality.adjudications_applied,
+                quality.precision,
+                quality.recall,
+                quality.precision_top,
+                quality.recall_top,
+                quality.matched_rows,
+                quality.dime_version,
+                Jsonb(dict(cycles)),
+            ),
         )
+    return redirects
 
 
 def load(
@@ -248,8 +374,17 @@ def load(
                 row_counts[table] = rows
         aggregate_s = time.monotonic() - aggregate_started
         cycles = {str(cycle): {"build_id": build_id, "source_dates": _source_dates(store, cycle)}}
+        quality = _quality(conn, store, cycle, model.latest_version(store))
         copy_started = time.monotonic()
-        _load_postgres(conn, models, sql_dir=sql_dir, work=work, build_id=build_id, cycles=cycles)
+        row_counts["donor_redirect"] = _load_postgres(
+            conn,
+            models,
+            sql_dir=sql_dir,
+            work=work,
+            build_id=build_id,
+            cycles=cycles,
+            quality=quality,
+        )
         copy_s = time.monotonic() - copy_started
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -263,4 +398,4 @@ def load(
         finished_at=datetime.now(UTC),
         row_counts=row_counts,
     )
-    return Loaded(build_id, row_counts, aggregate_s, copy_s)
+    return Loaded(build_id, row_counts, quality, aggregate_s, copy_s)

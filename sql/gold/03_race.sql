@@ -12,6 +12,9 @@ SELECT
     CAST(count(race_candidate.candidate_id) AS INTEGER) AS candidate_count,
     CAST(coalesce(sum(race_candidate.total_individual), 0) AS DECIMAL(16, 2)) AS total_individual,
     CAST(coalesce(sum(race_candidate.total_committee), 0) AS DECIMAL(16, 2)) AS total_committee,
+    CAST(
+        coalesce(sum(race_candidate.total_jfc_transfers), 0) AS DECIMAL(16, 2)
+    ) AS total_jfc_transfers,
     CAST(coalesce(sum(race_candidate.ie_support), 0) AS DECIMAL(16, 2)) AS ie_support,
     CAST(coalesce(sum(race_candidate.ie_oppose), 0) AS DECIMAL(16, 2)) AS ie_oppose
 FROM silver.race AS race

@@ -2,8 +2,9 @@
 
 One transaction renames `gold_build` to `gold` and the old `gold` to `gold_prev`, so a reader
 sees the old build or the new one and never a half-loaded state. Then, once the API's build-id
-cache has surely expired, the Cloudflare zone is purged, the `published` marker written and
-silver builds older than the previous live one pruned. `--rollback` swaps `gold_prev` back.
+cache has surely expired, the Cloudflare zone is purged, `app.crosswalk` snapshotted to R2, the
+`published` marker written and silver builds older than the previous live one pruned.
+`--rollback` swaps `gold_prev` back.
 
 Every Postgres statement here is DDL or a fixed `UPDATE` with nothing to parameterise; the
 connection is autocommit so that `conn.transaction()` is one real transaction, not a savepoint
@@ -28,6 +29,7 @@ from fundlens.api.cache import BUILD_ID_TTL_SECONDS
 from fundlens.paths import SilverTable
 from fundlens.publish.cloudflare import Purge
 from fundlens.r2 import R2
+from fundlens.resolve import crosswalk
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +69,8 @@ class Published:
     # False when an interrupted publish was resumed: the swap had already happened.
     swapped: bool
     purged: bool
+    # The R2 key of the crosswalk as of this publish (spec §5.5).
+    crosswalk_key: str
     marker: markers.Marker
     pruned: Pruned
 
@@ -193,7 +197,8 @@ def publish(
     purge: Purge | None,
     sleep: Sleep = time.sleep,
 ) -> Published:
-    """Swap the loaded build of `cycle` in, purge the edge, write `published`, prune silver.
+    """Swap the loaded build of `cycle` in, purge the edge, snapshot the crosswalk, write
+    `published`, prune silver.
 
     Resumes a publish that swapped but did not finish (a `PurgeFailed`, a crash): with no
     `gold_build`, `gold` naming a build for `cycle` and no `published` marker for it, only the
@@ -217,6 +222,10 @@ def publish(
         build_id, swapped = live, False
         log.info("resuming the publish of build %s of %d after its swap", build_id, cycle)
     purged = _purge(purge, sleep=sleep)
+    # Before the marker: a publish resumed after a failed snapshot must take it again.
+    crosswalk_key = crosswalk.snapshot(
+        conn, store, build_id=build_id, scratch=paths.scratch_dir(data_dir)
+    )
     loaded = markers.read("loaded", store, cycle=cycle, build_id=build_id)
     marker = markers.write(
         "published",
@@ -228,7 +237,7 @@ def publish(
         row_counts=loaded.row_counts if loaded else {},
     )
     pruned = prune(store, data_dir=data_dir, cycle=cycle, live=build_id, prev=previous)
-    return Published(build_id, previous, swapped, purged, marker, pruned)
+    return Published(build_id, previous, swapped, purged, crosswalk_key, marker, pruned)
 
 
 def rollback(

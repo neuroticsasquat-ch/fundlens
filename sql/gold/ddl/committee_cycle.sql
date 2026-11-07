@@ -4,6 +4,9 @@ CREATE TABLE gold_build.committee_cycle (
     total_individual numeric(16, 2) NOT NULL,
     self_funding numeric(16, 2) NOT NULL,
     total_from_committees numeric(16, 2) NOT NULL,
+    total_from_organizations numeric(16, 2) NOT NULL,
+    total_non_contribution_account numeric(16, 2) NOT NULL,
+    total_other_lines numeric(16, 2) NOT NULL,
     total_to_candidates numeric(16, 2) NOT NULL,
     ie_total numeric(16, 2) NOT NULL,
     PRIMARY KEY (committee_id, cycle)

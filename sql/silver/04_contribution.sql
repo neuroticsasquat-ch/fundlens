@@ -1,34 +1,91 @@
 -- contribution (spec §4): one row per counted `indiv` contribution.
 --
--- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one.
--- FEC fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual:
--- `indiv` holds individuals' contributions, and older cycles and paper filings would otherwise
--- count none. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
+-- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one. FEC
+-- fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual
+-- unless the classifier (resolve.normalize.is_organization_name, the 2024 measurement's rule V8)
+-- calls its name an organization's (NEU-2132): `indiv` holds individuals' contributions, and older
+-- cycles and paper filings would otherwise count none, or count every organization's gift as a
+-- person's. A classified row is an organization receipt or a committee's gift
+-- (08_organization_receipt.sql, 05_committee_transfer.sql). A filled entity type is never
+-- second-guessed. An earmark (ADR-0004) counts once, on the recipient side: the recipient's
 -- MEMO_CD = 'X' memo line and the conduit's 24T row are dropped, and the conduit is kept on the
--- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain
--- 15 whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'):
--- dropped as its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE')
--- is an ordinary contribution, with no conduit. A gift to a committee missing from `cm` (a few
--- fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or 4nY
--- type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total. Most
--- filers write a refund positive, some negative, so its sign is not trusted: every refund counts
--- as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which reverses
--- it and adds back (NEU-2073).
+-- counted row as conduit_committee_id. A conduit also files some earmarks' own side as a plain 15
+-- whose MEMO_TEXT names the recipient ('EARMARKED FOR BIDEN FOR PRESIDENT (C00703975)'): dropped as
+-- its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE') is an
+-- ordinary contribution, with no conduit. A 24I is dropped only when it is an intermediary's side
+-- of an earmark whose recipient itemized it too (`intermediary_earmark`, below): most 24Is are a
+-- recipient's own earmark receipts, coded 24I (NEU-2203). A gift to a committee missing from `cm`
+-- (a few fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or
+-- 4nY type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total.
+-- Most filers write a refund positive, some negative, so its sign is not trusted: every refund
+-- counts as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which
+-- reverses it and adds back (NEU-2073).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
 -- Each contribution carries its contributor key (spec §6.1): its reported name, ZIP, employer and
 -- occupation, each normalized by resolve.normalize. The normalizers are Python, so each distinct
 -- value is normalized once, not each row: a cycle reports far fewer of each than it has rows. One
--- scan of `indiv` collects all four. The four `contributor_*` tables, each a reported value and its
--- normalized form, outlive this file: 06_contributor.sql reads them too.
+-- scan of `indiv` and the JFC attribution lines collects all four. The four `contributor_*` tables,
+-- each a reported value and its normalized form, outlive this file: 06_jfc_attribution.sql and
+-- 07_contributor.sql read them too. So does `organization_name_class`, the classifier's call on
+-- each distinct name, which 05_committee_transfer.sql and 08_organization_receipt.sql read.
+--
+-- `handoff_link` is each handed-off committee (`handoff`, fec/handoffs.csv) linked twice, dated: to
+-- the candidate it was handed from until the handoff date, and to the one it was handed to from
+-- that date on (NEU-2126). FEC's files show a committee as it stands today, and `ccl` links Biden's
+-- 2024 campaign, Harris's since he withdrew, to both, so neither candidate alone holds its money:
+-- each contribution, transfer and JFC attribution is the candidate's whose dates hold its own.
+-- One with no date is the committee's current holder's, the candidate it was handed to. The
+-- three `linked` CTEs, here and in 05_committee_transfer.sql and 06_jfc_attribution.sql, take
+-- these rows for a handed-off committee in place of its single undated link.
+CREATE TEMP VIEW handoff_link AS
+SELECT committee_id, from_candidate_id AS candidate_id, NULL::DATE AS valid_from,
+    handoff_date AS valid_until
+FROM handoff
+UNION ALL
+SELECT committee_id, to_candidate_id AS candidate_id, handoff_date AS valid_from,
+    NULL::DATE AS valid_until
+FROM handoff;
+
+-- `jfc_line_reported` is every `oth` line a JFC attribution may be built from (spec §6.11): a 15J
+-- memo line, where a joint fundraising committee's participant itemizes an individual (IND, or
+-- blank as in `indiv`) behind its share of a JFC transfer, filed by a committee in `cm`. Its names
+-- are classified with `indiv`'s; `jfc_line`, below, is these lines less the blank-type ones the
+-- classifier calls an organization's.
+CREATE TEMP VIEW jfc_line_reported AS
+SELECT *
+FROM oth
+WHERE TRANSACTION_TP = '15J'
+    AND MEMO_CD = 'X'
+    AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') = 'IND'
+    AND CMTE_ID IN (SELECT committee_id FROM committee);
+
 CREATE TEMP TABLE contributor_value AS
 SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION
-FROM indiv
+FROM (
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM indiv
+    UNION ALL
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM jfc_line_reported
+)
 GROUP BY GROUPING SETS ((NAME), (ZIP_CODE), (EMPLOYER), (OCCUPATION));
 
 CREATE TEMP TABLE contributor_name AS
 SELECT NAME AS raw, normalize_name(NAME) AS name FROM contributor_value WHERE NAME IS NOT NULL;
+
+-- The classifier's call on each distinct name, made once per name (NEU-2132). Only a row with a
+-- blank entity type ever asks it.
+CREATE TEMP TABLE organization_name_class AS
+SELECT raw, is_organization_name(raw) AS is_organization FROM contributor_name;
+
+-- The lines 06_jfc_attribution.sql builds a JFC attribution from. A classified line is in no
+-- table: it was evidence about a person, and it is not about one.
+CREATE TEMP VIEW jfc_line AS
+SELECT *
+FROM jfc_line_reported
+WHERE nullif(trim(ENTITY_TP), '') IS NOT NULL
+    OR NAME IS NULL
+    OR NAME NOT IN (SELECT raw FROM organization_name_class WHERE is_organization);
 
 CREATE TEMP TABLE contributor_zip AS
 SELECT ZIP_CODE AS raw, zip5(ZIP_CODE) AS zip5 FROM contributor_value WHERE ZIP_CODE IS NOT NULL;
@@ -45,18 +102,79 @@ WHERE OCCUPATION IS NOT NULL;
 
 DROP TABLE contributor_value;
 
+-- A 24I is FEC's earmarked-intermediary-out code, but most 2024 filers write it on their own
+-- receipts of earmarks through a conduit: OTHER_ID ActBlue or WinRed, or blank, 136,731 rows,
+-- $4.17M, every one on Form 3X line 11(a)(i) (docs/measurements/summary-files-2024.md Q10).
+-- Those are the recipient's row and count. A 24I whose OTHER_ID is a committee of the cycle
+-- other than a conduit and its own filer is an intermediary's side: Senate Conservatives Fund,
+-- House Freedom Fund and Club for Growth passing an individual's gift on to a candidate
+-- (1,424 rows, $496,673). It is dropped, as a 24T is (ADR-0004), when the recipient itemized the
+-- same gift: a row at the committee OTHER_ID names, not a memo line, refund, 24T or 24I, with
+-- the same name, compared as names are, and amount, dated within 30 days of it, since a
+-- recipient often dates the receipt later (262 rows, $235,403). One the recipient did not
+-- itemize is the only record of the gift, and counts. 05_committee_transfer.sql and
+-- 08_organization_receipt.sql drop these rows too. `indiv` is on the left of the join, so it
+-- builds on the few 24Is and reads `indiv` once more without holding it.
+CREATE TEMP TABLE intermediary_earmark AS
+WITH earmark AS (
+    SELECT
+        SUB_ID,
+        OTHER_ID,
+        regexp_replace(upper(NAME), '[^A-Z0-9]', '', 'g') AS name_key,
+        TRANSACTION_AMT,
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
+    FROM indiv
+    WHERE TRANSACTION_TP = '24I'
+        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND OTHER_ID <> CMTE_ID
+        AND OTHER_ID IN (SELECT committee_id FROM committee WHERE NOT is_conduit)
+)
+SELECT DISTINCT earmark.SUB_ID
+FROM indiv AS twin
+JOIN earmark
+    ON twin.CMTE_ID = earmark.OTHER_ID
+    AND regexp_replace(upper(twin.NAME), '[^A-Z0-9]', '', 'g') = earmark.name_key
+    AND twin.TRANSACTION_AMT = earmark.TRANSACTION_AMT
+WHERE twin.CMTE_ID IN (SELECT OTHER_ID FROM earmark)
+    AND twin.MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(twin.TRANSACTION_TP, '') NOT IN ('24T', '24I')
+    AND NOT regexp_matches(coalesce(twin.TRANSACTION_TP, ''), '^[24][0-9]Y$')
+    AND abs(CAST(try_strptime(twin.TRANSACTION_DT, '%m%d%Y') AS DATE) - earmark.transaction_date)
+        <= 30;
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
-    -- a leadership PAC (D) among them, raises for none. Should `ccl` link one committee P or A to
-    -- two candidates, the principal link and then the lower candidate_id is kept, so the key holds.
-    SELECT link.committee_id, link.candidate_id, candidate.name
-    FROM candidate_committee_link AS link
+    -- a leadership PAC (D) among them, raises for none. The exception is the committee a
+    -- candidate's `cn` row names principal (CAND_PCC), whatever `ccl` designates it: FEC's files
+    -- show a committee as it stands today, and a campaign turned leadership PAC after the election
+    -- raised the cycle's money as the campaign (Trump's 2024 C00828541, now NEVER SURRENDER, INC.,
+    -- which `ccl` links N/D). Should `ccl` link one committee to two candidates, the principal link
+    -- and then the lower candidate_id is kept, so the key holds; a committee handed from one to the
+    -- other takes its two dated `handoff_link` rows instead, which never overlap.
+    (
+        SELECT
+            link.committee_id,
+            link.candidate_id,
+            candidate.name,
+            NULL::DATE AS valid_from,
+            NULL::DATE AS valid_until
+        FROM candidate_committee_link AS link
+        LEFT JOIN candidate USING (candidate_id)
+        WHERE (link.designation IN ('P', 'A') OR link.committee_id = candidate.principal_committee_id)
+            AND link.committee_id NOT IN (SELECT committee_id FROM handoff)
+        QUALIFY row_number() OVER (
+            PARTITION BY link.committee_id
+            ORDER BY
+                (link.designation = 'P' OR link.committee_id = candidate.principal_committee_id) DESC,
+                link.candidate_id
+        ) = 1
+    )
+    UNION ALL
+    SELECT handoff_link.committee_id, handoff_link.candidate_id, candidate.name,
+        handoff_link.valid_from, handoff_link.valid_until
+    FROM handoff_link
     LEFT JOIN candidate USING (candidate_id)
-    WHERE link.designation IN ('P', 'A')
-    QUALIFY row_number() OVER (
-        PARTITION BY link.committee_id ORDER BY link.designation = 'P' DESC, link.candidate_id
-    ) = 1
 ),
 conduits AS (
     -- One row holding every conduit, so each contribution's MEMO_TEXT is searched for them
@@ -68,11 +186,25 @@ conduits AS (
     FROM conduit
 ),
 individual AS (
-    SELECT *, regexp_replace(upper(coalesce(MEMO_TEXT, '')), '[^A-Z0-9]', '', 'g') AS memo_key
+    SELECT
+        *,
+        regexp_replace(upper(coalesce(MEMO_TEXT, '')), '[^A-Z0-9]', '', 'g') AS memo_key,
+        -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
     FROM indiv
-    WHERE coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN')
+    WHERE (
+            trim(ENTITY_TP) IN ('IND', 'CAN')
+            OR (
+                nullif(trim(ENTITY_TP), '') IS NULL
+                AND (
+                    NAME IS NULL
+                    OR NAME NOT IN (SELECT raw FROM organization_name_class WHERE is_organization)
+                )
+            )
+        )
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -147,8 +279,7 @@ SELECT
         WHEN kept.SUB_ID IN (SELECT SUB_ID FROM reversal) THEN -kept.TRANSACTION_AMT
         ELSE -abs(kept.TRANSACTION_AMT)
     END AS amount,
-    -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
-    CAST(try_strptime(kept.TRANSACTION_DT, '%m%d%Y') AS DATE) AS date,
+    kept.transaction_date AS date,
     kept.TRANSACTION_TP AS transaction_type,
     kept.ENTITY_TP AS entity_type,
     kept.RPT_TP AS report_type,
@@ -170,10 +301,45 @@ SELECT
         ),
         false
     ) AS is_self_funding,
+    -- Money a hybrid PAC (CMTE_TP V or W) took into or refunded from its non-contribution account
+    -- (NEU-2192): the account outside the contribution limits, whose receipts FEC types 10 (10J a
+    -- JFC's share of them, 24I an earmark through a conduit whose memo begins "* NON-CONTRIBUTION
+    -- ACCOUNT", NEU-2203, NEU-2207) and whose refunds 20Y, none of them on Form 3X line 11(a)(i).
+    -- Kept, since donors gave it, and marked, so committee_cycle can keep it out of
+    -- total_individual.
+    -- A refund is judged by its type, not by matching it to a giver: most of a hybrid PAC's 20Ys
+    -- name no one it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M),
+    -- and a 22Y is a refund of an ordinary contribution even to someone who gave the other account
+    -- too. At any other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its
+    -- 10s on line 11(a)(i) and refunds them as 20Ys.
+    coalesce(
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+            = 'non-contribution account',
+        false
+    ) AS is_non_contribution_account,
+    -- The Form 3/3X line FEC files the row's type on (fec.lines, NEU-2193), and whether that is a
+    -- line no total_individual counts: neither 11(a)(i), a candidate's 15C, a refund of either nor
+    -- the non-contribution account, which has its own figure. A national party's convention,
+    -- headquarters and recount accounts (30, 31, 32 and their variants, refunded as 40Y, 41Y,
+    -- 42Y), a gift from an unregistered committee (18U) and a transfer (18G) are among them:
+    -- kept, since donors gave them, and marked, so committee
+    -- and candidate totals compare with FEC's itemized figure (INDV_ITEM_CONTB). A type the rule
+    -- does not place counts, as every type did before it: `indiv` is individuals' contributions.
+    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT) AS fec_line,
+    coalesce(
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+            NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
+        false
+    ) AS is_other_line,
     kept.IMAGE_NUM AS image_num,
     kept.FILE_NUM AS file_num
 FROM kept
-LEFT JOIN linked ON linked.committee_id = kept.CMTE_ID
+JOIN committee AS recipient ON recipient.committee_id = kept.CMTE_ID
+LEFT JOIN linked
+    ON linked.committee_id = kept.CMTE_ID
+    AND (linked.valid_from IS NULL OR kept.transaction_date IS NULL
+        OR kept.transaction_date >= linked.valid_from)
+    AND (linked.valid_until IS NULL OR kept.transaction_date < linked.valid_until)
 LEFT JOIN contributor_name AS cname ON cname.raw = kept.NAME
 LEFT JOIN contributor_zip AS czip ON czip.raw = kept.ZIP_CODE
 LEFT JOIN contributor_employer AS cemployer ON cemployer.raw = kept.EMPLOYER

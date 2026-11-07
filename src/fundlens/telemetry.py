@@ -55,6 +55,13 @@ def resolve_telemetry(resource_attributes: str) -> Telemetry:
     )
 
 
+def known_release(resource_attributes: str) -> str | None:
+    """The release OTel names (`resolve_telemetry`), or None where it names none: for a record
+    of which code did something, not for matching Bugsink to SigNoz."""
+    release = resolve_telemetry(resource_attributes).release
+    return None if release == UNKNOWN_RELEASE else release
+
+
 def pipeline_integrations() -> list[Integration]:
     """The pipeline's integrations: logging kept as breadcrumbs, never as events.
 

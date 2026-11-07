@@ -142,6 +142,9 @@ def test_the_first_publish_swaps_the_build_in_and_purges_after_the_cache_window(
     assert published is not None and loaded is not None
     assert published.row_counts == loaded.row_counts
     assert result.marker == published
+    # Nothing resolved yet: the crosswalk is empty, and its snapshot is taken all the same.
+    assert result.crosswalk_key == paths.resolution_snapshot(B1, "crosswalk")
+    assert store.exists(result.crosswalk_key)
     [(url, headers, body)] = recorder.cloudflare.posts
     assert url == f"https://api.cloudflare.com/client/v4/zones/{ZONE}/purge_cache"
     assert headers["Authorization"] == f"Bearer {TOKEN}"
@@ -226,7 +229,8 @@ def test_publish_prunes_silver_builds_older_than_the_previous_live_one(
     result = publish(conn, store, cli_env, Recorder(OK))
 
     assert result.pruned.builds == 1
-    assert result.pruned.objects == 6
+    # B0's one part of each of the eight silver tables transform writes (no `race`: no seats run).
+    assert result.pruned.objects == 8
     assert silver_builds(store, "contribution") == {B1, B2, B3}
     assert silver_builds(store, "race") == {B1, B2}
     assert not (cli_env / "silver" / "contribution" / f"cycle={CYCLE}" / f"build={B0}").exists()

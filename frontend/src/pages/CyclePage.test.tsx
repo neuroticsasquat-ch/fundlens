@@ -36,7 +36,20 @@ describe("CyclePage", () => {
     const maryland = (await screen.findByRole("link", { name: "Maryland" })).closest("tr")!;
     expect(maryland).toHaveTextContent("$91,975");
     expect(maryland).toHaveTextContent("$10,000");
-    expect(maryland).toHaveTextContent("$101,975");
+    expect(maryland).toHaveTextContent("$19,500");
+    expect(maryland).toHaveTextContent("$121,475");
+    expect(
+      within(maryland.closest("table")!)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Race",
+      "Candidates",
+      "From individuals",
+      "From committees",
+      "Via joint fundraising",
+      "Total",
+    ]);
     expect(maryland.style.color).toBe("");
 
     const nebraska = screen.getByRole("link", { name: "Nebraska special" });

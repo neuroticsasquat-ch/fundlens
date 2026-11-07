@@ -17,10 +17,20 @@ OPTIONAL = (
     "R2_PUBLIC_BUCKET",
     "DATA_DIR",
     "SQL_DIR",
+    "OVERRIDES_PATH",
     "DUCKDB_MEMORY_LIMIT",
     "DUCKDB_MAX_TEMP_DIRECTORY_SIZE",
     "DUCKDB_THREADS",
     "LOG_LEVEL",
+    "RESOLVE_MATCH_THRESHOLD",
+    "RESOLVE_CLUSTER_THRESHOLD",
+    "RESOLVE_MIN_TRAINING_KEYS",
+    "RESOLVE_MAX_CLUSTER_KEYS",
+    "DEEPINFRA_API_KEY",
+    "ADJUDICATE_MODEL",
+    "ADJUDICATE_MIN_AMOUNT",
+    "ADJUDICATE_PROMPT_PATH",
+    "ADJUDICATE_BATCH_SIZE",
     "CLOUDFLARE_ZONE_ID",
     "CLOUDFLARE_API_TOKEN",
     "SENTRY_DSN",
@@ -50,10 +60,21 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.r2_public_bucket == "fundlens-public"
     assert settings.data_dir == Path("/data/fundlens")
     assert settings.sql_dir == Path("/app/sql")
+    assert settings.overrides_path == Path("/app/resolution/overrides.yaml")
     assert settings.duckdb_memory_limit is None
     assert settings.duckdb_max_temp_directory_size == "60GB"
     assert settings.duckdb_threads is None
     assert settings.log_level == "INFO"
+    # Spec §6.4's thresholds, until DIME tunes them.
+    assert settings.resolve_match_threshold == 0.9
+    assert settings.resolve_cluster_threshold == 0.95
+    assert settings.resolve_min_training_keys == 100_000
+    # Spec §6.8's adjudication: no key in dev, so nothing is sent.
+    assert settings.deepinfra_api_key is None
+    assert settings.adjudicate_model == "deepseek-ai/DeepSeek-V4-Flash"
+    assert settings.adjudicate_min_amount == 50_000
+    assert settings.adjudicate_prompt_path == Path("/app/resolution/prompts/adjudicate_v1.md")
+    assert settings.adjudicate_batch_size == 10
     # No zone in dev: publish skips the purge.
     assert settings.cloudflare_zone_id is None
     assert settings.cloudflare_api_token is None
@@ -69,6 +90,7 @@ def test_secrets_are_not_rendered(env: pytest.MonkeyPatch) -> None:
     env.setenv("KUMA_PUSH_WEEKLY", "https://kuma.example/api/push/s3cr3tTok")
     env.setenv("SENTRY_DSN", "https://dsnK3y@bugsink.example/1")
     env.setenv("CLOUDFLARE_API_TOKEN", "cfPurg3Tok")
+    env.setenv("DEEPINFRA_API_KEY", "d1Key")
 
     settings = Settings()  # pyright: ignore[reportCallIssue]
 
@@ -76,6 +98,7 @@ def test_secrets_are_not_rendered(env: pytest.MonkeyPatch) -> None:
     assert "s3cr3tTok" not in repr(settings)
     assert "dsnK3y" not in repr(settings)
     assert "cfPurg3Tok" not in repr(settings)
+    assert "d1Key" not in repr(settings)
 
 
 def test_missing_database_url_fails(env: pytest.MonkeyPatch) -> None:

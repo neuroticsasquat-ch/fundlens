@@ -19,6 +19,8 @@ SilverTable = Literal[
     "contributor",
     "contribution",
     "committee_transfer",
+    "organization_receipt",
+    "jfc_attribution",
     "independent_expenditure",
 ]
 
@@ -31,6 +33,17 @@ ResolutionTable = Literal["crosswalk", "adjudication"]
 BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 _BUILD_ID = re.compile(r"\d{8}T\d{6}Z")
 _BUILD_IN_KEY = re.compile(r"/build=(\d{8}T\d{6}Z)(?:/|$)")
+_CYCLE_IN_KEY = re.compile(r"/cycle=(\d+)/")
+_MODEL_KEY = re.compile(r"resolution/model/(\d{8}T\d{6}Z)\.json")
+
+# Every completion marker of every cycle lives under here (`markers_dir`).
+MARKERS_PREFIX = "markers/"
+
+# Every saved Splink model (`resolution_model`).
+MODEL_PREFIX = "resolution/model/"
+
+# The DIME reference files resolution is scored against (ADR-0009).
+DIME_PREFIX = "reference/dime/"
 
 # `silver/contribution` is split into donor_id % 256 buckets (spec §3.4).
 BUCKETS = 256
@@ -92,6 +105,12 @@ def silver_bucket(cycle: int, build_id: str, bucket: int) -> str:
     return f"{silver_partition('contribution', cycle, build_id)}/bucket={bucket:02x}"
 
 
+def rewrite_sentinel(cycle: int, build_id: str) -> str:
+    """The object a donor_id rewrite of a `silver/contribution` build holds while it replaces the
+    build's parts in R2 (`resolve.crosswalk`): while it exists, the parts are not to be read."""
+    return f"{silver_partition('contribution', cycle, build_id)}/_rewriting"
+
+
 def part(index: int) -> str:
     """The file name of the `index`th Parquet part in a partition or bucket."""
     return f"part-{index:04d}.parquet"
@@ -106,7 +125,7 @@ def resolution_snapshot(build_id: str, table: ResolutionTable) -> str:
 def markers_dir(cycle: int) -> str:
     """Every marker of every build of one cycle: `markers/cycle=<c>/`."""
     _check_cycle(cycle)
-    return f"markers/cycle={cycle}/"
+    return f"{MARKERS_PREFIX}cycle={cycle}/"
 
 
 def marker(cycle: int, build_id: str, step: Step) -> str:
@@ -125,6 +144,49 @@ def build_of(key: str) -> str | None:
     return match.group(1) if match else None
 
 
+def cycle_of(key: str) -> int | None:
+    """The cycle in a silver or marker key's `cycle=` segment, or None if it has none."""
+    match = _CYCLE_IN_KEY.search(key)
+    return int(match.group(1)) if match else None
+
+
+def resolution_model(version: str) -> str:
+    """The trained Splink model `version`, as JSON: `resolution/model/<version>.json`.
+
+    A model's version is the `build_id` of the `resolve --full` run that trained it, so key
+    order is training order.
+    """
+    _check_build_id(version)
+    return f"{MODEL_PREFIX}{version}.json"
+
+
+def resolution_run(version: str) -> str:
+    """What the `resolve --full` run that trained model `version` applied, as JSON:
+    `resolution/run/<version>.json` (`resolve.runner.RunRecord`, NEU-2056)."""
+    _check_build_id(version)
+    return f"resolution/run/{version}.json"
+
+
+def model_version_of(key: str) -> str | None:
+    """The version of the saved model at `key`, or None if `key` is not one."""
+    match = _MODEL_KEY.fullmatch(key)
+    return match.group(1) if match else None
+
+
+def reference_dime_raw(version: str, cycle: int) -> str:
+    """The DIME contribution file for `cycle` as downloaded:
+    `reference/dime/v<version>/contribDB_<cycle>.csv.gz`."""
+    _check_cycle(cycle)
+    return f"{DIME_PREFIX}v{version}/contribDB_{cycle}.csv.gz"
+
+
+def reference_dime(version: str, cycle: int) -> str:
+    """The FEC individual rows of that file, slimmed:
+    `reference/dime/v<version>/cycle=<cycle>/fec_individual.parquet`."""
+    _check_cycle(cycle)
+    return f"{DIME_PREFIX}v{version}/cycle={cycle}/fec_individual.parquet"
+
+
 def local_path(data_dir: Path, key: str) -> Path:
     """Where the local cache keeps the object at `key`."""
     return data_dir / key
@@ -138,3 +200,9 @@ def scratch_dir(data_dir: Path) -> Path:
 def resolution_dir(data_dir: Path) -> Path:
     """The Splink model and DuckDB working file. Local only: R2 keeps the snapshots."""
     return data_dir / "resolution"
+
+
+def resolution_database(data_dir: Path) -> Path:
+    """Resolution's DuckDB working file: the `contributor` keys it linked and their `cluster`s,
+    which the crosswalk reads. Local only, rebuilt by every `resolve --full`."""
+    return resolution_dir(data_dir) / "resolve.duckdb"

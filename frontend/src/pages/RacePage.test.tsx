@@ -1,7 +1,8 @@
 import { DEFAULT_THEME } from "@mantine/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { lastOption } from "../test/echarts";
+import { http } from "../test/api";
+import { allOptions, lastOption } from "../test/echarts";
 import { renderApp } from "../test/app";
 import { RACE_SENATE_MD } from "../test/fixtures";
 import { matchMedia } from "../test/media";
@@ -21,17 +22,25 @@ describe("RacePage", () => {
       await screen.findByRole("heading", { level: 1, name: "2024 Senate · Maryland" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("4 candidates · $91,975 from individuals · $10,000 from committees"),
+      screen.getByText(
+        "4 candidates · $91,975 from individuals · $10,000 from committees · $19,500 via joint fundraising",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Special")).not.toBeInTheDocument();
     expect(document.title).toBe("2024 Senate · Maryland · fundlens");
 
     expect(rows("Candidates").map(cells)).toEqual([
-      ["WHITLOCK, GORDON", "REP", "Open", "$31,850", "$5,000", "$1,750,000", "$1,786,850"],
-      ["OKAFOR, DIANA", "DEM", "Open", "$49,700", "$5,000", "$5,000", "$59,700"],
-      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$7,175"],
-      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$3,250"],
+      ["WHITLOCK, GORDON", "REP", "Open", "$31,850", "$5,000", "$0", "$1,750,000", "$1,786,850"],
+      ["OKAFOR, DIANA", "DEM", "Open", "$49,700", "$5,000", "$19,500", "$5,000", "$79,200"],
+      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$0", "$7,175"],
+      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250"],
     ]);
+    expect(
+      within(section("Candidates"))
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        .slice(3, 7),
+    ).toEqual(["From individuals", "From committees", "Via joint fundraising", "Self-funding"]);
     const candidates = section("Candidates");
     expect(within(candidates).getByRole("columnheader", { name: /Total/ })).toHaveAttribute(
       "aria-sort",
@@ -44,10 +53,30 @@ describe("RacePage", () => {
   });
 
   it("has a fixture whose candidates add up to the race's totals", () => {
-    const sum = (key: "total_individual" | "total_committee") =>
+    const sum = (key: "total_individual" | "total_committee" | "total_jfc_transfers") =>
       RACE_SENATE_MD.candidates.reduce((total, candidate) => total + candidate[key], 0);
     expect(sum("total_individual")).toBe(RACE_SENATE_MD.total_individual);
     expect(sum("total_committee")).toBe(RACE_SENATE_MD.total_committee);
+    expect(sum("total_jfc_transfers")).toBe(RACE_SENATE_MD.total_jfc_transfers);
+  });
+
+  it("says nothing of joint fundraising in a race that had none", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      total_jfc_transfers: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, total_jfc_transfers: 0, candidates }),
+        ),
+      ],
+    });
+
+    expect(
+      await screen.findByText("4 candidates · $91,975 from individuals · $10,000 from committees"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/via joint fundraising/)).not.toBeInTheDocument();
   });
 
   it("sorts the candidates from a column header", async () => {
@@ -75,7 +104,35 @@ describe("RacePage", () => {
     expect(
       within(section("Top committees")).getByRole("link", { name: "BRICKLAYERS UNITED PAC" }),
     ).toHaveAttribute("href", "/committee/C00800202");
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+  });
+
+  it("lists the top donors with what each gave each candidate, and no self-funder", async () => {
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "OKAFOR, DIANA $3,300BRANNIGAN, TESS $3,300", "$6,600"],
+      ["2", "MARLOWE, AUGUSTINE MR.", "WHITLOCK, GORDON $3,300", "$3,300"],
+      ["3", "DUBOIS, RAYMOND", "OKAFOR, DIANA $2,500", "$2,500"],
+      [
+        "4",
+        "GALLAGHER, TOMAS",
+        "BRANNIGAN, TESS $1,000OKAFOR, DIANA $500WHITLOCK, GORDON $250",
+        "$1,750",
+      ],
+    ]);
+    const donors = section("Top donors");
+    expect(within(donors).getByRole("link", { name: "MARLOWE, AUGUSTINE MR." })).toHaveAttribute(
+      "href",
+      "/donor/412",
+    );
+    const [zimmermann] = rows("Top donors");
+    expect(within(zimmermann).getByRole("link", { name: "BRANNIGAN, TESS" })).toHaveAttribute(
+      "href",
+      "/candidate/S4MD00111",
+    );
+    // WHITLOCK's $1.75M of his own money makes him no donor to his race.
+    expect(rows("Top donors").map((row) => cells(row)[1])).not.toContain("WHITLOCK, GORDON");
   });
 
   it("draws each candidate's total as a bar in their party's colour", async () => {
@@ -89,9 +146,83 @@ describe("RacePage", () => {
     expect(option.series).toMatchObject([
       {
         type: "bar",
-        data: [{ value: 1786850 }, { value: 59700 }, { value: 7175 }, { value: 3250 }],
+        data: [{ value: 1786850 }, { value: 79200 }, { value: 7175 }, { value: 3250 }],
       },
     ]);
+  });
+
+  it("charts the candidates by their Total, whatever order the API gives them in", async () => {
+    // BRANNIGAN, out-raised by OKAFOR in individual gifts, out-totals her via joint fundraising.
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) =>
+      candidate.candidate_id === "S4MD00111"
+        ? { ...candidate, total_jfc_transfers: 100000 }
+        : candidate,
+    );
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    expect(lastOption().yAxis).toMatchObject({
+      data: ["WHITLOCK, GORDON", "BRANNIGAN, TESS", "OKAFOR, DIANA", "PELL, MARCUS"],
+    });
+  });
+
+  it("charts only the 15 candidates with the most money, and says the table has the rest", async () => {
+    // A presidential race lists every filer: 1,602 in 2024, most with nothing. A bar each would
+    // make a canvas taller than the browser will draw.
+    const [model] = RACE_SENATE_MD.candidates;
+    const candidates = Array.from({ length: 25 }, (_, i) => ({
+      ...model,
+      candidate_id: `P4000${String(i).padStart(4, "0")}`,
+      name: `CANDIDATE ${i}`,
+      total_individual: i < 20 ? (20 - i) * 1000 : 0,
+      total_committee: 0,
+      total_jfc_transfers: 0,
+      self_funding: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidate_count: 25, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    const option = lastOption();
+    expect(option.yAxis).toMatchObject({
+      data: candidates.slice(0, 15).map((candidate) => candidate.name),
+    });
+    expect(
+      screen.getByText("The 15 candidates with the most money, of 25. The table lists them all."),
+    ).toBeInTheDocument();
+    expect(rows("Candidates")).toHaveLength(25);
+  });
+
+  it("draws no chart when no candidate has any money", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      total_individual: 0,
+      total_committee: 0,
+      total_jfc_transfers: 0,
+      self_funding: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    expect(allOptions()).toEqual([]);
+    expect(rows("Candidates")).toHaveLength(4);
   });
 
   it.each([

@@ -195,11 +195,12 @@ Fixture-sized, so these are floors on overhead, not a forecast: 11 gold tables, 
 | Where | Rows (contribution) | DuckDB aggregates + CSV | `COPY` + indexes + `ANALYZE` | Whole `load` |
 |---|---|---|---|---|
 | Fixture 2024, dev container (Apple Silicon, Docker Desktop, 2026-10-30) | 275 | 0.14 s | 0.04 s | 0.21 s (`loaded` marker `duration_s`; `publish` 0.005 s before its wait) |
+| Fixture 2024 resolved, with the donor tables (NEU-2051), dev container (2026-11-01) | 281 | 0.20 s | 0.04 s | not measured (`task db:seed` prints the halves only); 18 gold tables, 2,204 rows: `donor` 104, `search_entity` 611 (104 of them donors) |
 | Real 2024 on the Robot box (2026-10-31, build `20261031T012553Z`) | 51,014,276 | 0.84 s | 2.21 s | 4.07 s (`loaded` marker; `docs/capacity.md`, NEU-2046) |
 
 ## 9. Open items left to later tickets
 
 - `race_top_committee` `kind = 'ie'` rows, all `ie_*` values, committee-to-committee recipients: NEU-2057.
-- `contributor_count`, donor tables, `search_entity` donor rows, `precision`/`recall`/`resolver_version`/`model_version`: M3.
+- ~~`contributor_count`, donor tables, `search_entity` donor rows~~: NEU-2051 (project spec §7.1). `precision`/`recall`/`resolver_version`/`model_version`: M3.
 - Multi-cycle `gold.meta.cycles` and `cycles int[]` merging: NEU-2059.
 - Whether index creation should move after `COPY` for the large donor tables, and whether `COPY … (FORMAT binary)` beats CSV there: measure in M3 against §8.

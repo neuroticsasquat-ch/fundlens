@@ -23,7 +23,7 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
           "itemStyle": {
             "color": "#228be6",
           },
-          "value": 59700,
+          "value": 79200,
         },
         {
           "itemStyle": {
@@ -108,7 +108,7 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
           "itemStyle": {
             "color": "#228be6",
           },
-          "value": 59700,
+          "value": 79200,
         },
         {
           "itemStyle": {

@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # The SQL the pipeline runs (spec §3.1): the repo's `sql/`, which the image copies to /app.
     sql_dir: Path = Field(default=Path("/app/sql"), alias="SQL_DIR")
 
+    # The manual merges and splits `fundlens resolve` applies (spec §6.5, ADR-0005): the repo's
+    # `resolution/overrides.yaml`, which the image copies to /app.
+    overrides_path: Path = Field(
+        default=Path("/app/resolution/overrides.yaml"), alias="OVERRIDES_PATH"
+    )
+
     # DuckDB's limits in transform (spec §3.2, §3.4). The memory limit and thread count are set
     # on the pipeline service alone (docker-compose.prod.yml), so the API's in-process DuckDB
     # never inherits them; unset, DuckDB picks its own. Spill under `scratch/` stops at 60 GB.
@@ -39,6 +45,31 @@ class Settings(BaseSettings):
         default="60GB", alias="DUCKDB_MAX_TEMP_DIRECTORY_SIZE"
     )
     duckdb_threads: int | None = Field(default=None, alias="DUCKDB_THREADS")
+
+    # Resolution (spec §6.3–§6.4). A predicted pair below the match threshold is never written;
+    # pairs at or above the cluster threshold join their contributor keys into one cluster.
+    # Both are tuned against DIME (spec §6.9, §13).
+    resolve_match_threshold: float = Field(default=0.9, alias="RESOLVE_MATCH_THRESHOLD")
+    resolve_cluster_threshold: float = Field(default=0.95, alias="RESOLVE_CLUSTER_THRESHOLD")
+    # The cluster cap (NEU-2122, ADR-0010): re-clustering leaves no cluster of more keys than
+    # this. Tuned against DIME by `fundlens recluster` (docs/runbooks/refreshing-dime.md §8).
+    resolve_max_cluster_keys: int = Field(default=200, ge=2, alias="RESOLVE_MAX_CLUSTER_KEYS")
+    # The fewest contributor keys `resolve --full` estimates u and m from (`resolve.model.train`);
+    # below it the model keeps its prior parameters. Real cycles hold millions of keys.
+    resolve_min_training_keys: int = Field(default=100_000, alias="RESOLVE_MIN_TRAINING_KEYS")
+
+    # Adjudication (spec §6.8): which ambiguous clusters a model is asked about, which model, and
+    # with which prompt. The prompt's file stem is its version (`adjudicate_v1`), recorded with
+    # every verdict. Time a model before changing it. The key is unset in dev and CI, where only
+    # `adjudicate --dry-run` runs; secret because it is billed.
+    deepinfra_api_key: SecretStr | None = Field(default=None, alias="DEEPINFRA_API_KEY")
+    adjudicate_model: str = Field(default="deepseek-ai/DeepSeek-V4-Flash", alias="ADJUDICATE_MODEL")
+    adjudicate_min_amount: int = Field(default=50_000, ge=0, alias="ADJUDICATE_MIN_AMOUNT")
+    adjudicate_prompt_path: Path = Field(
+        default=Path("/app/resolution/prompts/adjudicate_v1.md"), alias="ADJUDICATE_PROMPT_PATH"
+    )
+    # Requests in flight at once; each batch's verdicts are written as it returns.
+    adjudicate_batch_size: int = Field(default=10, ge=1, alias="ADJUDICATE_BATCH_SIZE")
 
     # Where FEC publishes its bulk files (spec §4); a fake server's address in the tests.
     fec_bulk_url: str = Field(

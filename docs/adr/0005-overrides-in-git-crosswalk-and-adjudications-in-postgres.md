@@ -8,5 +8,5 @@ The three kinds of resolution state have different authors and different reprodu
 
 ## Consequences
 
-- A donor merge keeps the lower `donor_id` and records a redirect so old URLs resolve.
+- A donor merge keeps the `donor_id` covering the most contribution dollars (the lower one on a tie; amended by NEU-2049, which built it as spec §6.6 has it) and records a redirect so old URLs resolve.
 - The crosswalk and the adjudications table are the only data the pipeline cannot regenerate from R2 bronze alone.

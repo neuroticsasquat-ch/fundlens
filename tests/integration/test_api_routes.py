@@ -12,6 +12,7 @@ import pytest
 from alembic import command
 from fastapi.testclient import TestClient
 from httpx2 import Response
+from typer.testing import CliRunner
 
 from fundlens import cli
 from fundlens.api.app import create_app
@@ -22,12 +23,14 @@ from fundlens.publish import gold as gold_publish
 from fundlens.settings import get_settings
 from tests import fec_fixture
 from tests.integration.conftest import (
+    NO_OVERRIDES,
     TEST_BUCKET,
     alembic_config,
     empty_store,
     scratch_database,
 )
 from tests.integration.test_publish import load, transform
+from tests.integration.test_resolve import MODEL
 from tests.integration.test_transform import put_bronze
 
 BUILD = "20261030T030000Z"
@@ -42,9 +45,10 @@ def leave_logging_alone(level: str) -> None:
 
 
 @contextmanager
-def published_fixture_cycle(data_dir: Path) -> Generator[str]:
+def published_fixture_cycle(data_dir: Path, *, resolved: bool = False) -> Generator[str]:
     """A database whose live `gold` is the fixture cycle's, as `publish` leaves it, with that
-    build's silver under `data_dir`; the database's conninfo."""
+    build's silver under `data_dir`; the database's conninfo. `resolved`, its donors resolved
+    (with no overrides) before the load, so gold has its donor tables and silver its buckets."""
     with scratch_database() as conninfo:
         command.upgrade(alembic_config(conninfo), "head")
         store = empty_store()
@@ -53,10 +57,14 @@ def published_fixture_cycle(data_dir: Path) -> Generator[str]:
             env.setenv("R2_BUCKET", TEST_BUCKET)
             env.setenv("DATABASE_URL", conninfo)
             env.setenv("DATA_DIR", str(data_dir))
+            env.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
             get_settings.cache_clear()
             try:
                 put_bronze(store)
                 transform(BUILD)
+                if resolved:
+                    result = CliRunner().invoke(cli.app, ["resolve", "--full", "--build-id", MODEL])
+                    assert result.exit_code == 0, result.output
                 load(BUILD)
             finally:
                 store.delete_prefix("")
@@ -184,12 +192,29 @@ def test_a_race_page_has_its_candidates_and_top_committees(
         del want["race_id"]
         assert totals(candidate, want) == want, candidate["candidate_id"]
     raised = [
-        c["total_individual"] + c["total_committee"] + c["self_funding"] for c in race["candidates"]
+        c["total_individual"] + c["total_committee"] + c["total_jfc_transfers"] + c["self_funding"]
+        for c in race["candidates"]
     ]
     assert raised == sorted(raised, reverse=True)
     top = race["top_committees"]
     assert [c["rank"] for c in top] == list(range(1, len(top) + 1))
     assert sum(c["amount"] for c in top) == race["total_committee"]
+
+
+def test_a_race_page_counts_jfc_transfers_apart_from_its_other_money(client: TestClient) -> None:
+    race = ok(client.get("/v1/races/2024/senate/MD"))
+
+    # OKAFOR VICTORY FUND's transfers to OKAFOR's campaign (an 18J, an 18G and a 15J), in neither
+    # her individual nor her committee total (NEU-2124).
+    assert race["total_jfc_transfers"] == 19500
+    assert {c["candidate_id"]: c["total_jfc_transfers"] for c in race["candidates"]} == {
+        "S4MD00103": 19500,
+        "S4MD00104": 0,
+        "S4MD00105": 0,
+        "S4MD00111": 0,
+    }
+    okafor = next(c for c in race["candidates"] if c["candidate_id"] == "S4MD00103")
+    assert (okafor["total_individual"], okafor["total_committee"]) == (50700, 5000)
 
 
 def test_a_race_page_names_its_committees(client: TestClient) -> None:
@@ -273,9 +298,84 @@ def test_a_committee_page_names_whom_it_gave_to(client: TestClient) -> None:
     ]
 
 
+@pytest.mark.parametrize("committee_id", list(EXPECTED["committees"]))
+def test_a_committee_page_has_its_organization_money(client: TestClient, committee_id: str) -> None:
+    # The super PAC's is CHESAPEAKE STEEL's gifts less its refund, once under its most-money
+    # spelling; a committee no organization gave to has 0 and an empty list (ADR-0011). A hybrid
+    # PAC's non-contribution account is in its top organizations but not its total (NEU-2192).
+    organizations = EXPECTED["organization_receipts"]
+    non_contribution = EXPECTED["non_contribution_account"]["organizations_by_committee"]
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+
+    assert cycle["total_from_organizations"] == organizations["by_committee"].get(
+        committee_id, 0
+    ) - non_contribution.get(committee_id, 0)
+    assert [
+        [o["organization_key"], o["name"], o["amount"]] for o in cycle["top_organizations"]
+    ] == organizations["top_by_committee"].get(committee_id, [])
+    assert [o["rank"] for o in cycle["top_organizations"]] == list(
+        range(1, len(cycle["top_organizations"]) + 1)
+    )
+
+
+def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestClient) -> None:
+    committee = ok(client.get("/v1/committees/C00800201"))
+
+    assert committee["cycles"][0]["total_from_organizations"] == 72500.0
+    assert committee["cycles"][0]["top_organizations"] == [
+        {
+            "rank": 1,
+            "name": "CHESAPEAKE STEEL, INC.",
+            "organization_key": "CHESAPEAKE STEEL",
+            "amount": 72500.0,
+        }
+    ]
+
+
+def test_a_build_loaded_before_resolution_lists_no_top_donors(client: TestClient) -> None:
+    race = ok(client.get("/v1/races/2024/senate/MD"))
+    candidate = ok(client.get("/v1/candidates/S4MD00104"))
+    committee = ok(client.get("/v1/committees/C00800104"))
+
+    assert race["top_donors"] == []
+    assert [cycle["top_donors"] for cycle in candidate["cycles"]] == [[]]
+    assert [cycle["top_donors"] for cycle in committee["cycles"]] == [[]]
+
+
 def test_unknown_candidates_and_committees_are_404s(client: TestClient) -> None:
     assert_not_found(client.get("/v1/candidates/H0XX00000"))
     assert_not_found(client.get("/v1/committees/C99999999"))
+
+
+def test_a_candidate_alias_is_a_cacheable_redirect_to_the_id_holding_the_money(
+    client: TestClient,
+) -> None:
+    [(alias, canonical)] = EXPECTED["aliases"].items()
+
+    page = client.get(f"/v1/candidates/{alias}", follow_redirects=False)
+    rows = client.get(
+        f"/v1/candidates/{alias}/contributions",
+        params={"cycle": CYCLE, "cursor": "x"},
+        follow_redirects=False,
+    )
+
+    assert page.status_code == 301, page.text
+    assert page.headers["location"] == f"/v1/candidates/{canonical}"
+    assert page.headers["cache-control"] == CACHE_CONTROL
+    assert rows.status_code == 301, rows.text
+    assert rows.headers["location"] == (
+        f"/v1/candidates/{canonical}/contributions?cycle={CYCLE}&cursor=x"
+    )
+    assert ok(client.get(f"/v1/candidates/{alias}"))["candidate_id"] == canonical
+
+
+def test_search_finds_a_person_under_one_candidate_id(client: TestClient) -> None:
+    [canonical] = EXPECTED["aliases"].values()
+
+    results = ok(client.get("/v1/search", params={"q": "driscoll", "kind": "candidate"}))
+
+    # One DRISCOLL, under the id holding his money: never his alias.
+    assert [r["id"] for r in results] == [canonical]
 
 
 def test_search_ranks_trigram_matches_fast(client: TestClient) -> None:

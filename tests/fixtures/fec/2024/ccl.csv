@@ -1,9 +1,13 @@
 # ccl: candidate-committee linkage. OKAFOR has an authorized committee (designation A) beside her
 # principal one, so her money is the sum of both. CALLOWAY's leadership PAC (designation D) is linked
 # too, but a leadership PAC's receipts are not the candidate's (spec §4: only P and A count).
+# STRATTON's principal committee became a leadership PAC after the election, as Trump's 2024
+# campaign did (C00828541, now NEVER SURRENDER, INC.): FEC's files show a committee as it stands
+# today, so `ccl` links it N/D, but `cn` still names it STRATTON's CAND_PCC, and its cycle's
+# receipts are the campaign's.
 CAND_ID,CAND_ELECTION_YR,FEC_ELECTION_YR,CMTE_ID,CMTE_TP,CMTE_DSGN,LINKAGE_ID
 P40000101,2024,2024,C00800101,P,P,124000000001
-P40000102,2024,2024,C00800102,P,P,124000000002
+P40000102,2024,2024,C00800102,N,D,124000000002
 S4MD00103,2024,2024,C00800103,S,P,124000000003
 S4MD00103,2024,2024,C00800113,S,A,124000000004
 S4MD00104,2024,2024,C00800104,S,P,124000000005
@@ -14,3 +18,10 @@ H4MD05106,2024,2024,C00800114,Q,D,124000000009
 H4MD05107,2024,2024,C00800107,H,P,124000000010
 H4MD05108,2024,2024,C00800108,H,P,124000000011
 H4MD09109,2024,2024,C00800109,H,P,124000000012
+# `ccl` links C00703975 principal to both BIDEN and HARRIS, as FEC's 2024 file does: one link each,
+# split by the handoff date (NEU-2126), where the lower candidate_id alone would take it all.
+P80000722,2024,2024,C00703975,P,P,124000000013
+P00009423,2024,2024,C00703975,P,P,124000000014
+# DRISCOLL's committee linked principal to his second id too, as FEC links Hovde's to both of his:
+# the lower candidate_id, H4MD05107, takes its money, and H6MD05113 is his alias (NEU-2127).
+H6MD05113,2024,2024,C00800107,H,P,124000000015

@@ -7,6 +7,8 @@
 -- Only a filing for this cycle's election (or the odd year before it, for a special held then)
 -- stands in one of its races: `cn` also lists candidates registered for later cycles. A filing
 -- whose (office, state, district) is no seat in the calendar gets no race (spec §5.2).
+--
+-- alias_of is empty here: 03_candidate_committee_link.sql sets it, from the links it builds.
 CREATE TABLE candidate AS
 WITH race_for_seat AS (
     -- One race per seat. `cn` cannot tell a special's filing from the regular race for the same
@@ -40,7 +42,8 @@ SELECT
     filed.CAND_ICI AS incumbent_challenger_open,
     filed.CAND_STATUS AS status,
     filed.CAND_PCC AS principal_committee_id,
-    race_for_seat.race_id
+    race_for_seat.race_id,
+    NULL::VARCHAR AS alias_of
 FROM filed
 LEFT JOIN race_for_seat
     ON filed.CAND_ELECTION_YR IN ({cycle} - 1, {cycle})

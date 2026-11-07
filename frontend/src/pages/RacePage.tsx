@@ -1,10 +1,12 @@
 import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
+import { useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { $api } from "../api/client";
-import type { Office, Race, RaceCandidate, RaceTopCommittee } from "../api/client";
+import type { Office, Race, RaceCandidate, RaceTopCommittee, RaceTopDonor } from "../api/client";
 import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
+import TopDonorsTable from "../components/TopDonorsTable";
 import { count, DASH, money } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { candidateName, candidateTotal } from "../domain/candidates";
@@ -77,6 +79,13 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     sortValue: (candidate) => candidate.total_committee,
   },
   {
+    key: "jfc",
+    header: "Via joint fundraising",
+    align: "right",
+    render: (candidate) => money(candidate.total_jfc_transfers),
+    sortValue: (candidate) => candidate.total_jfc_transfers,
+  },
+  {
     key: "self",
     header: "Self-funding",
     align: "right",
@@ -131,6 +140,35 @@ const COMMITTEE_COLUMNS: Column<RaceTopCommittee>[] = [
     sortValue: (committee) => committee.amount,
   },
 ];
+
+/**
+ * The "Given to" column of a race's top donors: what each donor gave each candidate, most first,
+ * the candidate linked to their page.
+ */
+function givenToColumn(candidates: RaceCandidate[]): Column<RaceTopDonor> {
+  const names = new Map(candidates.map((candidate) => [candidate.candidate_id, candidate]));
+  return {
+    key: "given-to",
+    header: "Given to",
+    render: (donor) => (
+      <Stack gap={0}>
+        {[...donor.candidates]
+          .sort((a, b) => b.amount - a.amount)
+          .map(({ candidate_id, amount }) => {
+            const candidate = names.get(candidate_id);
+            return (
+              <Text key={candidate_id} size="sm">
+                <Anchor component={Link} to={`/candidate/${candidate_id}`} inherit>
+                  {candidate ? candidateName(candidate) : candidate_id}
+                </Anchor>{" "}
+                {money(amount)}
+              </Text>
+            );
+          })}
+      </Stack>
+    ),
+  };
+}
 
 /** "2024 Senate · Maryland", "2024 House · Maryland 5th", "2024 President". */
 function raceHeading(race: Pick<Race, "cycle" | "office" | "state" | "district">): string {
@@ -200,6 +238,7 @@ function RaceView({
 }
 
 function RaceDetail({ race }: { race: Race }) {
+  const donorColumns = useMemo(() => [givenToColumn(race.candidates)], [race.candidates]);
   return (
     <Stack gap="xl">
       <Stack gap={4}>
@@ -212,6 +251,8 @@ function RaceDetail({ race }: { race: Race }) {
           {race.candidate_count === 1 ? "candidate" : "candidates"} ·{" "}
           {money(race.total_individual)} from individuals · {money(race.total_committee)} from
           committees
+          {race.total_jfc_transfers > 0 &&
+            ` · ${money(race.total_jfc_transfers)} via joint fundraising`}
         </Text>
       </Stack>
       {race.candidates.length === 0 ? (
@@ -252,7 +293,11 @@ function RaceDetail({ race }: { race: Race }) {
             <Title order={2} id="top-donors" mb="sm">
               Top donors
             </Title>
-            <Text c="dimmed">Top donors are coming.</Text>
+            <TopDonorsTable
+              rows={race.top_donors}
+              extraColumns={donorColumns}
+              emptyMessage="No resolved individual donor has given to a candidate in this race."
+            />
           </section>
         </>
       )}

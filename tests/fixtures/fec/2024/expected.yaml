@@ -2,22 +2,67 @@
 # against the fixture CSVs by tests/unit/test_fec_fixture.py: change a row, then this file.
 #
 # Rules the totals follow (spec §4, ADR-0004):
-# - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, MEMO_CD not X,
-#   TRANSACTION_TP not 24T, not a conduit's own line for an earmark it passed on (a 15 whose
-#   MEMO_TEXT is 'EARMARKED FOR … (C########)'), and to a committee in `cm`. A refund (22Y, or
-#   any 2nY or 4nY type) is written positive and counted with its sign turned, so it nets out. A
-#   gift to a conduit itself is counted, with no conduit.
+# - A counted contribution is an `indiv` row with ENTITY_TP IND or CAN, or blank and a name the
+#   classifier (resolve.normalize.is_organization_name, NEU-2132) does not call an organization's,
+#   MEMO_CD not X, TRANSACTION_TP not 24T, not a conduit's own line for an earmark it passed on (a
+#   15 whose MEMO_TEXT is 'EARMARKED FOR … (C########)'), not an intermediary's 24I its recipient
+#   itemized too (OTHER_ID a committee in `cm`, no conduit and not the filer, holding a row of the
+#   same name and amount, no memo line, refund, 24T or 24I, within 30 days; NEU-2203), and to a
+#   committee in `cm`. Any other 24I is the filer's own receipt of an earmark, line 11(a)(i) money.
+#   A refund (22Y, or any 2nY or 4nY type) is written positive and counted with its sign turned, so
+#   it nets out. A gift to a conduit itself is counted, with no conduit.
 # - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
 #   committee is linked to. It is never in total_individual: it is its own total.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
-#   authorized (A). A leadership PAC (D) is not the candidate's.
-# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows, credited
+#   authorized (A), and of the one their `cn` row names principal (CAND_PCC) whatever `ccl`'s
+#   designation: STRATTON's, a leadership PAC since the election. Any other leadership PAC (D) is
+#   not the candidate's. A committee handed from one candidate to another (fec/handoffs.csv) is the
+#   first's before the handoff date and the second's on and after it, an undated row the second's:
+#   C00703975, BIDEN's to 2024-07-21 and HARRIS's from then (NEU-2126). The same dated rule credits
+#   its 24Ks, receipts and JFC attributions.
+# - total_committee on a candidate, and total_to_candidates on the giver: `pas2` 24K rows not
+#   filed by a conduit (a conduit's 24K is its side of an earmark, ADR-0004), credited
 #   to the candidate the recipient committee (OTHER_ID) is linked to, else to the giver's CAND_ID
 #   if a candidate of the cycle, else to none and in neither figure (givers' CAND_ID is often stale).
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
-#   TRANSACTION_TP 1x or 3x, MEMO_CD not X, OTHER_ID a committee's id. A committee's gift to a
-#   candidate is in both files (the giver's 24K, the recipient's 18K): no figure adds the two.
+#   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
+#   blank, the designation-J committee whose name NAME is, compared after uppercasing and dropping
+#   all but letters and digits, else, for a row typed PAC, COM, CCM or PTY, the one committee in
+#   `cm` whose name NAME is (NEU-2131); naming none, the row is no receipt. The same name rule
+#   makes a counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified (NEU-2132),
+#   with a blank OTHER_ID a receipt from the one committee its NAME names, dropped when it names
+#   none or its own recipient (a classified row is an organization receipt then), or when `oth`
+#   already holds the gift under that committee's id (same recipient, amount and date). A
+#   committee's gift to a candidate is in both files (the giver's 24K, the recipient's 18K): no
+#   figure adds the two.
+# - An organization receipt (NEU-2131, ADR-0011) is an `indiv` row typed ORG, or blank and
+#   classified and naming no one committee (NEU-2132, `classified`), that would otherwise
+#   count (MEMO_CD not X, not 24T, not a conduit's side, to a committee in `cm`), its refunds
+#   subtracted as a contribution's are, or an `oth` receipt (1x or 3x, MEMO_CD not X) typed ORG
+#   with no committee id in OTHER_ID (blank or not C-prefixed), naming no JFC, not a 15J nor a loan
+#   (16C, 16F, 16G), and mirroring no counted `indiv` row (same recipient, name, amount and date).
+#   Grouped by organization key, normalize_employer over the name. Organization money, in no total
+#   here: NEU-2133's gold reads it.
+# - A hybrid PAC (CMTE_TP V or W) keeps a non-contribution account, outside the contribution limits,
+#   whose receipts `indiv` types 10 (10J a JFC's share, 24I an earmark through a conduit): kept, as
+#   contributions or organization receipts, but in neither total_individual nor
+#   total_from_organizations (NEU-2192). So is a refund there to a giver of such a 10, by NAME. A 10
+#   to any other committee, a super PAC's, is an ordinary contribution.
+# - A counted row whose type FEC files on a line other than 11(a)(i) (NEU-2193): a national
+#   party's convention, headquarters or recount account (30, 31, 32 and variants, refunded as 40Y,
+#   41Y, 42Y), a loan (16x), a transfer or other receipt (18G, 18J, 18K, 18L, 18U, 18H) or a Form
+#   9 donation (19, 19J). Kept, the donor's, but in no
+#   total_individual, the committee's, the candidate's or the race's: the committee's
+#   total_other_lines (`other_lines` below). A candidate's own money is self-funding whatever its
+#   type, and a 15C stays in total_individual.
+# - total_jfc_transfers on a candidate: the `oth` receipts above from a designation-J committee,
+#   whatever their type, a joint fundraising committee's transfer of the candidate's share,
+#   credited to the candidate the receiving committee is linked to. In neither total_individual
+#   nor total_committee: OKAFOR VICTORY FUND's 18J, 18G and blank-OTHER_ID 15J to OKAFOR.
+# - A candidate alias (`aliases` below, NEU-2127) is in no race and holds no money: a 24K whose
+#   giver wrote one's id, its recipient linked to no candidate, is credited to the id it is an
+#   alias of.
 # - A race's totals are the sums over the candidates attached to it.
 # All amounts are whole dollars.
 
@@ -25,66 +70,169 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded.
 rows:
-  cm: 17
-  cn: 12
-  ccl: 12
-  indiv: 308
-  pas2: 18
-  oth: 15
+  cm: 20
+  cn: 15
+  ccl: 15
+  indiv: 345
+  pas2: 21
+  oth: 29
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
-# every `oth` receipt from a committee (recorded by the receiving committee) plus every `pas2` 24K
-# row (a disbursement, recorded by the giver): the one gift on both sides, each side its own row.
+# every `oth` receipt from a committee (recorded by the receiving committee), every `indiv` row a
+# committee's by the name rule (`name_matched` below), plus every `pas2` 24K row not filed by a
+# conduit (a disbursement, recorded by the giver): the one gift on both sides, each side its own
+# row. organization_receipt is one row per `organization_receipts` receipt below.
 silver:
-  committee: 17
-  candidate: 12
-  candidate_committee_link: 12
-  contribution: 281
+  committee: 20
+  candidate: 15
+  candidate_committee_link: 15
+  contribution: 308
   independent_expenditure: 9
-  committee_transfer: 20
-  # One row per contributor key among the counted contributions (spec §6.1): more than the donors
-  # below, since a key is a spelling and a donor may have several; fewer than the contributions.
-  contributor: 107
+  committee_transfer: 28
+  organization_receipt: 7
+  # One row per `attributions` line below.
+  jfc_attribution: 6
+  # One row per contributor key among the counted contributions and the JFC attributions (spec
+  # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
+  # several; fewer than the contributions.
+  contributor: 123
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
   dropped_memo: 12
   dropped_conduit_24t: 12
+  # BRICKLAYERS UNITED PAC's 24I passing LACROIX's gift on to OKAFOR, who itemized it too.
+  dropped_intermediary_24i: 1
   # ActBlue's own line for an earmark, filed as a 15 rather than a 24T.
   dropped_conduit_side: 1
   # A gift to a committee missing from `cm`.
   dropped_unknown_recipient: 1
-  dropped_not_individual: 1
+  # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
+  # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
+  # `name_matched`).
+  dropped_not_individual: 10
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
-  # conduit only in MEMO_TEXT.
+  # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
   earmarked:
-    C00401224: 5
+    C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2245280
+  total_amount: 2435680
+
+# Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
+# blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
+# candidate's or donor's.
+organization_receipts:
+  # Every receipt's SUB_ID, with its organization key: two spellings of CHESAPEAKE STEEL and its
+  # refund share one key.
+  keys:
+    4240100000000000025: ACME CONCRETE
+    4240100000000000327: ACME WIDGETS # filed with no entity type, classified
+    4240100000000000321: CHESAPEAKE STEEL
+    4240100000000000322: CHESAPEAKE STEEL
+    4240100000000000323: CHESAPEAKE STEEL
+    4240300000000000026: IRONWORKERS LOCAL 16 # the union's 31K to the party's building account, in oth
+    4240100000000000332: PATAPSCO HOLDINGS # the hybrid PAC's non-contribution account (NEU-2192)
+  # Net amount by organization key, refunds subtracted.
+  by_key:
+    ACME CONCRETE: 5000
+    ACME WIDGETS: 3000
+    CHESAPEAKE STEEL: 72500
+    IRONWORKERS LOCAL 16: 4000
+    PATAPSCO HOLDINGS: 250000
+  # Net amount by receiving committee.
+  by_committee:
+    C00800105: 8000
+    C00800201: 72500
+    C00800203: 4000
+    C00800204: 250000
+  total_amount: 334500
+  # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
+  # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
+  # Ranked by amount, then key; an organization netting to $0 or less is on no list.
+  top_by_committee:
+    C00800105:
+      - [ACME CONCRETE, ACME CONCRETE LLC, 5000]
+      - [ACME WIDGETS, ACME WIDGETS INC, 3000]
+    C00800201:
+      - [CHESAPEAKE STEEL, "CHESAPEAKE STEEL, INC.", 72500]
+    C00800203:
+      - [IRONWORKERS LOCAL 16, IRONWORKERS LOCAL 16, 4000]
+    C00800204:
+      - [PATAPSCO HOLDINGS, PATAPSCO HOLDINGS LLC, 250000]
+  # The receipts filed with no entity type, which the classifier put here (NEU-2132).
+  classified: [4240100000000000327]
+
+# A hybrid PAC's non-contribution account (NEU-2192): the counted `indiv` rows and organization
+# receipts typed 10 or 10J to a committee typed V or W, or 24I there with a memo naming the
+# account (NEU-2203, NEU-2207), and the 20Y refunds there, by SUB_ID, each kept in its table and
+# marked (the 20Y to HAYWARD, not the 22Y to TREVELYAN, nor his 24I with no such memo).
+# by_committee is their net amount, individuals' and organizations' alike: gold's
+# total_non_contribution_account, in neither total_individual (`committees` below holds the
+# contribution account alone) nor total_from_organizations, which is `organization_receipts`'
+# by_committee less organizations_by_committee here.
+non_contribution_account:
+  contributions: [4240100000000000331, 4240100000000000334, 4240100000000000344]
+  organization_receipts: [4240100000000000332]
+  by_committee:
+    C00800204: 271000
+  organizations_by_committee:
+    C00800204: 250000
+
+# Money on a line no total_individual counts (NEU-2193), by SUB_ID: GALLAGHER's gift to the party's
+# headquarters account and its refund, and her loan to WHITLOCK FOR SENATE. by_committee is their
+# net amount, gold's total_other_lines; 0 at every other committee.
+other_lines:
+  contributions: [4240100000000000337, 4240100000000000338, 4240100000000000339]
+  by_committee:
+    C00800203: 7500
+    C00800104: 1000
+
+# The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
+# blank-type ones naming one committee (NEU-2132), by SUB_ID: the committee each is a
+# committee_transfer receipt from, by the name rule above, or null when it is dropped (CHESAPEAKE
+# LABOR COUNCIL PAC names no committee; MARYLAND FORWARD PAC names its own recipient). BRICKLAYERS
+# UNITED PAC's is in the super PAC's total_from_committees, and the blank-type OLD LINE REPUBLICAN
+# COMMITTEE's in DRISCOLL FOR CONGRESS's. The same rule
+# makes `oth`'s blank-OTHER_ID 18K from BRICKLAYERS UNITED PAC to OKAFOR (4240300000000000022) a
+# receipt, in OKAFOR FOR MARYLAND's total_from_committees.
+name_matched:
+  4240100000000000324: C00800202
+  4240100000000000325: null
+  4240100000000000326: null
+  4240100000000000329: C00800203
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
 
+# Candidate aliases (NEU-2127): a second id of a person, in the same race, linked principal or
+# authorized to a committee credited to the other, under the same last and first given name. In no
+# race and in `candidates` below under the id holding the money only.
+aliases:
+  H6MD05113: H4MD05107 # DRISCOLL, PETER J.: DRISCOLL, PETER
+
 races:
   2024-P-US-00:
-    candidate_count: 3
-    total_individual: 54775
-    total_committee: 5000
+    candidate_count: 5
+    total_individual: 58625
+    total_committee: 7500
+    total_jfc_transfers: 0
     ie_support: 400000
     ie_oppose: 0
   2024-S-MD-00:
     candidate_count: 4
-    total_individual: 91975
+    total_individual: 92975
     total_committee: 11000
+    total_jfc_transfers: 19500
     ie_support: 150000
     ie_oppose: 125000
   2024-H-MD-05:
     candidate_count: 4
-    total_individual: 67100
+    total_individual: 68050
     total_committee: 12500
+    total_jfc_transfers: 0
     ie_support: 28000
     ie_oppose: 15000
   # A special in the seat calendar with no one attached: cn cannot tell its filings from the
@@ -93,6 +241,7 @@ races:
     candidate_count: 0
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     ie_support: 0
     ie_oppose: 0
   # A seat no one filed for: a race all the same, with nothing in it.
@@ -100,6 +249,7 @@ races:
     candidate_count: 0
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     ie_support: 0
     ie_oppose: 0
 
@@ -108,6 +258,7 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 19625
     total_committee: 5000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 400000
     ie_oppose: 0
@@ -115,6 +266,23 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 35150
     total_committee: 0
+    total_jfc_transfers: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  P80000722: # BIDEN: C00703975's money before the handoff
+    race_id: 2024-P-US-00
+    total_individual: 1500
+    total_committee: 2500
+    total_jfc_transfers: 0
+    self_funding: 0
+    ie_support: 0
+    ie_oppose: 0
+  P00009423: # HARRIS: C00703975's money from the handoff on, and its undated gift
+    race_id: 2024-P-US-00
+    total_individual: 2350
+    total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -122,13 +290,15 @@ candidates:
     race_id: 2024-P-US-00
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
   S4MD00103: # OKAFOR: principal + authorized committee
     race_id: 2024-S-MD-00
-    total_individual: 49700
+    total_individual: 50700
     total_committee: 5000
+    total_jfc_transfers: 19500
     self_funding: 5000
     ie_support: 150000
     ie_oppose: 45000
@@ -136,6 +306,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 31850
     total_committee: 6000
+    total_jfc_transfers: 0
     self_funding: 1750000
     ie_support: 0
     ie_oppose: 80000
@@ -143,6 +314,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 3250
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -150,6 +322,7 @@ candidates:
     race_id: 2024-S-MD-00
     total_individual: 7175
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -157,6 +330,7 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 35825
     total_committee: 10000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 28000
     ie_oppose: 0
@@ -164,13 +338,15 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 25825
     total_committee: 2500
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 15000
   H4MD05108: # YANG
     race_id: 2024-H-MD-05
-    total_individual: 5450
+    total_individual: 6400
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -178,13 +354,15 @@ candidates:
     race_id: 2024-H-MD-05
     total_individual: 0
     total_committee: 0
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
   H4MD09109: # FENWICK: the unmatched-district filing, money but no race
     race_id: null
-    total_individual: 3200
+    total_individual: 3800
     total_committee: 1000
+    total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
@@ -214,14 +392,26 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C00800103: # OKAFOR FOR MARYLAND
-    total_individual: 37550
+  C00703975: # HARRIS FOR PRESIDENT: handed from BIDEN to HARRIS, split between them by date
+    total_individual: 3850
+    self_funding: 0
+    total_from_committees: 2500
+    total_to_candidates: 0
+    ie_total: 0
+  C00800103: # OKAFOR FOR MARYLAND: its JFC's transfers and BRICKLAYERS' name-matched 18K in total_from_committees, 15J lines nowhere
+    total_individual: 38550
     self_funding: 5000
-    total_from_committees: 25000
+    total_from_committees: 45500
     total_to_candidates: 0
     ie_total: 0
   C00800113: # FRIENDS OF DIANA OKAFOR (authorized)
     total_individual: 12150
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800115: # OKAFOR VICTORY FUND: a JFC, its transfer recorded by its participant
+    total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -256,35 +446,35 @@ committees:
     total_from_committees: 0
     total_to_candidates: 5000
     ie_total: 0
-  C00800107: # DRISCOLL FOR CONGRESS
+  C00800107: # DRISCOLL FOR CONGRESS: the blank-type OLD LINE REPUBLICAN COMMITTEE's gift a receipt
     total_individual: 25825
     self_funding: 0
-    total_from_committees: 2500
+    total_from_committees: 4500
     total_to_candidates: 0
     ie_total: 0
   C00800108: # YANG FOR MARYLAND
-    total_individual: 5450
+    total_individual: 6400
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
   C00800109: # FENWICK FOR CONGRESS
-    total_individual: 3200
+    total_individual: 3800
     self_funding: 0
     total_from_committees: 1000
     total_to_candidates: 0
     ie_total: 0
-  C00800201: # MARYLAND FORWARD PAC: the super PAC
-    total_individual: 250875
+  C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' name-matched `indiv` gift is a receipt
+    total_individual: 401125
     self_funding: 0
-    total_from_committees: 50000
+    total_from_committees: 65000
     total_to_candidates: 0
     ie_total: 670000
-  C00800202: # BRICKLAYERS UNITED PAC
-    total_individual: 4050
+  C00800202: # BRICKLAYERS UNITED PAC: LACROIX's gift it passed on to WHITLOCK, who itemized none
+    total_individual: 4550
     self_funding: 0
     total_from_committees: 0
-    total_to_candidates: 18500
+    total_to_candidates: 21000
     ie_total: 3000
   C00800203: # OLD LINE REPUBLICAN COMMITTEE
     total_individual: 14300
@@ -292,11 +482,18 @@ committees:
     total_from_committees: 17000
     total_to_candidates: 6000
     ie_total: 45000
+  C00800204: # TIDEWATER ACTION FUND: a hybrid PAC, its contribution account only (NEU-2192)
+    total_individual: 3750
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
 
 # The donors behind the planted hard cases (spec §6), each with every one of their counted
 # contributions by SUB_ID and their label in tests/fixtures/dime/ (`bonica.cid`).
 # resolved_by: `linkage` when Splink should group their contributor keys, `merge_override` /
-# `split_override` when it takes an entry in resolution/overrides.yaml, `none` when all their
+# `split_override` when it takes an entry in resolution/overrides.yaml, `adjudication` when it takes
+# a model's merge (tests/fixtures/resolution/adjudication_replies.yaml), `none` when all their
 # contributions share one contributor key and there is nothing to group.
 donors:
   # MARLOWE, AUGUSTINE: four name / employer / ZIP variants, one written twice (the second time
@@ -353,7 +550,7 @@ donors:
     resolved_by: none
     amount: 7000
     sub_ids: [4240100000000000023, 4240100000000000024]
-  merge_override: # KOWALCZYK, MARGARET and KOWALCZYK, PEGGY
+  merge_override: # KOWALCZYK, MARGARET and KOWALCZYK, MEGGIE
     bonica_cid: 100000011
     resolved_by: merge_override
     amount: 1250
@@ -373,6 +570,74 @@ donors:
     resolved_by: none
     amount: 250000
     sub_ids: [4240100000000000030]
+  # QUINLAN, BEATRICE and QUINLAN, MRS (a title, so no first name): one person. QUINLAN, DESMOND,
+  # linked to BEATRICE only through MRS, is another; re-clustering parts the chain (NEU-2122).
+  chain_end_beatrice:
+    bonica_cid: 100000104
+    resolved_by: linkage
+    amount: 700
+    sub_ids: [4240100000000000309, 4240100000000000310]
+  chain_end_desmond:
+    bonica_cid: 100000105
+    resolved_by: none
+    amount: 250
+    sub_ids: [4240100000000000311]
+  # HALVORSEN, KATHERINE and HALVORSEN, KATHRYN: one person, scored in the adjudication band and
+  # kept apart by linkage; the fixture's adjudication merges them (NEU-2055).
+  adjudication_merge:
+    bonica_cid: 100000110
+    resolved_by: adjudication
+    amount: 65000
+    sub_ids: [4240100000000000317, 4240100000000000318]
+  # THORSBY, OSCAR under two employers: one cluster of linkage's, which the adjudication is unsure of
+  # and leaves as it is.
+  adjudication_unsure:
+    bonica_cid: 100000111
+    resolved_by: linkage
+    amount: 80000
+    sub_ids: [4240100000000000319, 4240100000000000320]
+  # BANKS, JOHN, filed with no entity type: the classifier leaves him an individual (NEU-2132).
+  blank_entity_type_person:
+    bonica_cid: 100000112
+    resolved_by: none
+    amount: 600
+    sub_ids: [4240100000000000328]
+  # LACROIX, PIERRE (NEU-2203): his gift through BRICKLAYERS UNITED PAC to OKAFOR counts once, on
+  # OKAFOR's row; the one to WHITLOCK, the PAC's; the one through ActBlue, the super PAC's.
+  intermediary_earmark:
+    bonica_cid: 100000115
+    resolved_by: none
+    amount: 1750
+    sub_ids: [4240100000000000341, 4240100000000000342, 4240100000000000343]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 103
+distinct_donors: 115
+
+# JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank and not
+# classified: CHESAPEAKE STEEL INC's line is in no table, NEU-2132) filed by a committee in `cm`.
+# Evidence about people, never money: no total above reads them. Each line by SUB_ID, with its JFC:
+# the committee its MEMO_TEXT names, else the one designation-J committee its filing has receipts
+# from, of whatever type, else none.
+attributions:
+  jfc_committee:
+    4240300000000000011: null # REYES: no MEMO_TEXT, and its filing's 18G is from no JFC
+    4240300000000000015: C00800115 # ACHTERBERG: '* OKAFOR VICTORY FUND'
+    4240300000000000016: C00800115 # VANTERPOOL: the one JFC its filing has a transfer (18J) from
+    4240300000000000017: C00800115 # HOLLOWAY: '2024 AGGREGATE; JFC ATTRIB: OKAFOR VICTORY FUND'
+    4240300000000000024: C00800115 # HOLLOWAY: the one JFC its filing has a transfer (18G) from
+    4240300000000000025: C00800115 # HOLLOWAY: the JFC its filing's blank-OTHER_ID 15J transfer names
+  # The lines of a person in no counted contribution: a donor all the same, with no money.
+  attribution_only: [4240300000000000015]
+
+# What `fundlens validate --cycle 2024 --top 3` must report on the fixture after `resolve --full`
+# with the fixture overrides and adjudications (spec §6.8, §6.9, NEU-2054 §8.1). Pairs follow from `donors` above: a donor
+# with k contributor keys among its counted contributions contributes k(k-1)/2 true pairs.
+validation:
+  dime_version: "4.0"
+  # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
+  # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
+  matched_rows: 307
+  # Contributor keys with a dated counted contribution: 123 less the 15J-only key and VOSS's.
+  labelled_keys: 121
+  overall: {precision: 1.0, recall: 1.0}
+  top: {limit: 3, precision: 1.0, recall: 1.0}

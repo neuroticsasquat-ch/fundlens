@@ -7,6 +7,7 @@ import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
+import TopDonorsTable from "../components/TopDonorsTable";
 import { DASH, money } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { candidateTotal } from "../domain/candidates";
@@ -52,6 +53,13 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
     sortValue: (row) => row.total_committee,
   },
   {
+    key: "jfc",
+    header: "Via joint fundraising",
+    align: "right",
+    render: (row) => money(row.total_jfc_transfers),
+    sortValue: (row) => row.total_jfc_transfers,
+  },
+  {
     key: "self",
     header: "Self-funding",
     align: "right",
@@ -70,6 +78,7 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
 const CYCLE_SERIES: CycleSeries<CandidateCycle>[] = [
   { name: "From individuals", value: (row) => row.total_individual },
   { name: "From committees", value: (row) => row.total_committee },
+  { name: "Via joint fundraising", value: (row) => row.total_jfc_transfers },
   { name: "Self-funding", value: (row) => row.self_funding },
 ];
 
@@ -118,6 +127,7 @@ function CandidateDetail({ candidate }: { candidate: Candidate }) {
   useScrollToHash();
   const cycles = candidate.cycles.map((row) => row.cycle);
   const [cycle, showCycle] = useShownCycle(cycles);
+  const shown = candidate.cycles.find((row) => row.cycle === cycle);
   const seat = seatLabel(candidate);
 
   return (
@@ -153,21 +163,26 @@ function CandidateDetail({ candidate }: { candidate: Candidate }) {
           </Stack>
         )}
       </section>
-      {cycle !== undefined && (
+      {shown && (
         <section aria-labelledby="in-cycle">
           <Stack gap="lg">
-            <CycleHeading cycles={cycles} cycle={cycle} onChange={showCycle} />
+            <CycleHeading cycles={cycles} cycle={shown.cycle} onChange={showCycle} />
             <section aria-labelledby="top-donors">
               <Title order={3} id="top-donors" mb="sm">
                 Top donors
               </Title>
-              <Text c="dimmed">Top donors are coming.</Text>
+              <TopDonorsTable
+                // Keyed, so the sort starts over in another cycle.
+                key={shown.cycle}
+                rows={shown.top_donors}
+                emptyMessage={`No resolved individual donors in ${shown.cycle}.`}
+              />
             </section>
             <section aria-labelledby="contributions">
               <Title order={3} id="contributions" mb="sm">
                 Contributions
               </Title>
-              <CandidateContributions id={candidate.candidate_id} cycle={cycle} />
+              <CandidateContributions id={candidate.candidate_id} cycle={shown.cycle} />
             </section>
           </Stack>
         </section>

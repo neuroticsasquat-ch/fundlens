@@ -51,15 +51,28 @@ class MetaCycle(BaseModel):
 
 
 class Meta(BaseModel):
-    """The live gold build (`gold.meta`, spec §7.1)."""
+    """The live gold build (`gold.meta`, spec §7.1): how its donors were resolved and how well
+    that scored against DIME, which the methodology page prints (NEU-2056)."""
 
     build_id: str
     published_at: datetime
-    # None until M3 publishes a resolved build (NEU-2039 §3).
+    # The release (commit) that resolved, and the Splink model's version: None before a
+    # resolved build, the release also where none was known.
     resolver_version: str | None
     model_version: str | None
+    # Override entries and adjudication verdicts the resolution applied: None when the model's
+    # run kept no record of them.
+    overrides_count: int | None
+    adjudications_applied: int | None
+    # Pairwise precision and recall against DIME, over every matched contributor and over the
+    # top 10,000 by matched dollars; the contributions they rest on; the DIME release. None until
+    # the cycle is validated under the live model (NEU-2054).
     precision: float | None
     recall: float | None
+    precision_top: float | None
+    recall_top: float | None
+    matched_rows: int | None
+    dime_version: str | None
     # Keyed by cycle, as a string ("2024"): JSON object keys are strings.
     cycles: dict[str, MetaCycle]
 
@@ -87,6 +100,9 @@ class RaceSummary(BaseModel):
     candidate_count: int
     total_individual: float
     total_committee: float
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
+    # in neither total_individual nor total_committee (NEU-2124).
+    total_jfc_transfers: float
     ie_support: float
     ie_oppose: float
 
@@ -101,6 +117,9 @@ class RaceCandidate(BaseModel):
     principal_committee_id: str | None
     total_individual: float
     total_committee: float
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
+    # in neither total_individual nor total_committee (NEU-2124).
+    total_jfc_transfers: float
     self_funding: float
     ie_support: float
     ie_oppose: float
@@ -116,11 +135,43 @@ class RaceTopCommittee(BaseModel):
     kind: Literal["contribution", "ie"]
 
 
+class RaceTopDonorCandidate(BaseModel):
+    """What a race's top donor gave one of its candidates, net of refunds."""
+
+    candidate_id: str
+    amount: float
+
+
+class RaceTopDonor(BaseModel):
+    """`gold.race_top_donor`: a donor among the 100 who gave most to the race's candidates, their
+    own money left out (spec §7.1)."""
+
+    rank: int
+    donor_id: int
+    display_name: str | None
+    amount: float
+    # Most first; always adds up to `amount`.
+    candidates: list[RaceTopDonorCandidate]
+
+
 class Race(RaceSummary):
-    """A race page: the race, its candidates (most money first) and its top committees."""
+    """A race page: the race, its candidates (most money first), its top committees and its top
+    donors."""
 
     candidates: list[RaceCandidate]
     top_committees: list[RaceTopCommittee]
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[RaceTopDonor]
+
+
+class TopDonor(BaseModel):
+    """`gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
+    most in a cycle, the candidate's own money left out (spec §7.1)."""
+
+    rank: int
+    donor_id: int
+    display_name: str | None
+    amount: float
 
 
 class CandidateCycle(BaseModel):
@@ -132,11 +183,16 @@ class CandidateCycle(BaseModel):
     race_slug: str | None
     total_individual: float
     total_committee: float
+    # A joint fundraising committee's transfers to the candidate's committees: committee money,
+    # in neither total_individual nor total_committee (NEU-2124).
+    total_jfc_transfers: float
     self_funding: float
     ie_support: float
     ie_oppose: float
     # None until M3 resolves donors.
     contributor_count: int | None
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[TopDonor]
 
 
 class Candidate(BaseModel):
@@ -161,16 +217,35 @@ class CommitteeTopRecipient(BaseModel):
     amount: float
 
 
+class TopOrganization(BaseModel):
+    """`gold.committee_top_organization`: an organization among the 100 that gave a committee
+    most in a cycle, its gifts grouped by organization key, never resolved (ADR-0011)."""
+
+    rank: int
+    # The key's reported spelling with the most money; a receipt filed with no name has no key
+    # and is on no list.
+    name: str
+    organization_key: str
+    amount: float
+
+
 class CommitteeCycle(BaseModel):
-    """`gold.committee_cycle`: a committee's money in one cycle, and whom it gave most to."""
+    """`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
+    gave most to it."""
 
     cycle: int
     total_individual: float
     self_funding: float
     total_from_committees: float
+    # Gifts from givers neither people nor committees, net of refunds: counted on the receiving
+    # committee only, in no race, candidate or cycle-wide figure (ADR-0011).
+    total_from_organizations: float
     total_to_candidates: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
+    # Empty on a build loaded before donors were resolved.
+    top_donors: list[TopDonor]
+    top_organizations: list[TopOrganization]
 
 
 class Committee(BaseModel):
@@ -190,6 +265,7 @@ class Contribution(BaseModel):
     """One counted contribution from silver `contribution` (spec §4), the contributor as
     reported."""
 
+    cycle: int
     # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
     source_record_id: str
     # None for a filing whose date FEC could not parse.
@@ -198,6 +274,9 @@ class Contribution(BaseModel):
     recipient_committee_id: str
     # The candidate the recipient raises for as principal or authorized committee, if any.
     candidate_id: str | None
+    # The resolved donor (spec §6), `/v1/donors/{donor_id}`; None on a build loaded before donors
+    # were resolved.
+    donor_id: int | None
     contributor_name: str | None
     contributor_city: str | None
     contributor_state: str | None
@@ -213,6 +292,47 @@ class Contribution(BaseModel):
     is_self_funding: bool
     # The filing image FEC shows this contribution on.
     image_num: str | None
+
+
+class DonorCycle(BaseModel):
+    """`gold.donor_cycle`: a donor's counted money in one cycle."""
+
+    cycle: int
+    amount: float
+    contribution_count: int
+
+
+class DonorTopRecipient(BaseModel):
+    """`gold.donor_top_recipient`: one of the 100 a donor gave most to, over every cycle: a
+    candidate, for a gift to a committee raising for one, else the committee."""
+
+    rank: int
+    recipient_kind: Literal["candidate", "committee"]
+    recipient_id: str
+    name: str | None
+    amount: float
+
+
+class Donor(BaseModel):
+    """A donor page: `gold.donor`, every name, employer and address variant resolved into one
+    (spec §6), a row per cycle, newest first, and whom they gave most to."""
+
+    donor_id: int
+    # Each the variant with the most counted money (spec §6.7).
+    display_name: str | None
+    employer: str | None
+    occupation: str | None
+    city: str | None
+    state: str | None
+    zip5: str | None
+    # Their own money as a candidate included; a donor known only from JFC attributions has $0.
+    total_all_cycles: float
+    first_cycle: int
+    last_cycle: int
+    # How many name/address/employer variants were resolved into this donor.
+    contributor_key_count: int
+    cycles: list[DonorCycle]
+    top_recipients: list[DonorTopRecipient]
 
 
 class ContributionPage(BaseModel):

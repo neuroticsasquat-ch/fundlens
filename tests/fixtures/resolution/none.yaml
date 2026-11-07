@@ -1,0 +1,3 @@
+# No overrides: what the dev seed and the integration tests resolve with, so the repo's own
+# resolution/overrides.yaml, whose keys are production's, never reaches the fixture cycle.
+[]

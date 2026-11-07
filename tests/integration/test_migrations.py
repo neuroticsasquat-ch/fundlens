@@ -33,6 +33,22 @@ EXPECTED_COLUMNS = {
         ("old_donor_id", "bigint", False),
         ("donor_id", "bigint", False),
     ],
+    "resolution_quality": [
+        ("model_version", "text", False),
+        ("cycle", "integer", False),
+        ("scope", "text", False),
+        ("dime_version", "text", False),
+        ("top_limit", "integer", True),
+        ("contribution_rows", "bigint", False),
+        ("matched_rows", "bigint", False),
+        ("labelled_keys", "bigint", False),
+        ("correct_pairs", "bigint", False),
+        ("predicted_pairs", "bigint", False),
+        ("true_pairs", "bigint", False),
+        ("precision", "numeric", True),
+        ("recall", "numeric", True),
+        ("validated_at", "timestamp with time zone", False),
+    ],
     "unmatched_filing": [
         ("cycle", "integer", False),
         ("candidate_id", "text", False),
@@ -92,6 +108,15 @@ def test_adjudication_rejects_an_unknown_decision(migrated_db: str) -> None:
         conn.execute(
             "INSERT INTO app.adjudication (cluster_fingerprint, model, prompt_version, decision)"
             " VALUES ('f', 'm', 'v1', 'maybe')"
+        )
+
+
+def test_resolution_quality_rejects_an_unknown_scope(migrated_db: str) -> None:
+    with psycopg.connect(migrated_db) as conn, pytest.raises(psycopg.errors.CheckViolation):
+        conn.execute(
+            "INSERT INTO app.resolution_quality (model_version, cycle, scope, dime_version,"
+            " contribution_rows, matched_rows, labelled_keys, correct_pairs, predicted_pairs,"
+            " true_pairs, validated_at) VALUES ('m', 2024, 'all', '4.0', 0, 0, 0, 0, 0, 0, now())"
         )
 
 

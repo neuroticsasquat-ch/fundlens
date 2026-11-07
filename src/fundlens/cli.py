@@ -10,6 +10,7 @@ import functools
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import boto3
@@ -31,8 +32,13 @@ from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
+from fundlens.resolve import adjudicate as adjudication
+from fundlens.resolve import diagnose as diagnosis
+from fundlens.resolve import overrides
+from fundlens.resolve import runner as resolution
+from fundlens.resolve import validate as validation
 from fundlens.settings import Settings, get_settings
-from fundlens.telemetry import init_sentry, pipeline_integrations
+from fundlens.telemetry import init_sentry, known_release, pipeline_integrations
 from fundlens.transform import runner
 from fundlens.transform import seats as seat_calendar
 
@@ -342,6 +348,390 @@ def transform(
 
 
 @app.command()
+# No family, like `extract`: `--full` is run by hand, and must not push the weekly monitor up.
+@step("resolve")
+def resolve(
+    full: Annotated[
+        bool,
+        typer.Option("--full", help="Retrain the model and re-cluster every cycle's contributors."),
+    ] = False,
+    build_id: Annotated[
+        str | None,
+        typer.Option(
+            help="The model version the trained model is saved under. Each cycle's `resolved`"
+            " marker goes under its newest transformed build. Default: a build starting now."
+        ),
+    ] = None,
+) -> None:
+    """Link every cycle's contributor keys into clusters of one person with Splink, save the
+    trained model, apply `resolution/overrides.yaml` and the confident adjudications of the
+    configured model and prompt, give each cluster its persistent donor_id,
+    write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
+    if not full:
+        # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
+        raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
+    settings = get_settings()
+    try:
+        # Autocommit, so the crosswalk's `conn.transaction()` is a transaction of its own.
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = resolution.resolve_full(
+                R2.from_settings(settings),
+                build_id=build_id or _new_build_id(),
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                thresholds=resolution.Thresholds(
+                    match=settings.resolve_match_threshold,
+                    cluster=settings.resolve_cluster_threshold,
+                ),
+                max_keys=settings.resolve_max_cluster_keys,
+                min_training_keys=settings.resolve_min_training_keys,
+                overrides_path=settings.overrides_path,
+                adjudication=_adjudication(settings),
+                adjudicate_min_amount=settings.adjudicate_min_amount,
+                conn=conn,
+                release=known_release(settings.otel_resource_attributes),
+            )
+    except (FileNotFoundError, overrides.OverridesError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    for cycle, build in result.builds.items():
+        typer.echo(f"{cycle}: build {build}")
+    typer.echo(f"{result.contributor_keys} contributor keys in {result.clusters} clusters")
+    typer.echo(f"recluster: {result.reclustered.summary()}")
+    overridden = result.overridden
+    typer.echo(
+        f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
+        f" into others, {overridden.splits} splits"
+    )
+    typer.echo(f"adjudications: {result.adjudicated.summary()}")
+    assigned = result.assigned
+    typer.echo(
+        f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"
+        f" {assigned.redirects} redirects"
+    )
+    parameters = "trained" if result.trained else "priors (too few keys to train on)"
+    typer.echo(f"model {result.model_version}: {parameters}, wrote {result.model_key}")
+    typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
+    typer.echo(f"DuckDB memory limit: {result.memory_limit}")
+
+
+@app.command()
+# No family, like `validate`: run by hand, to tune the cluster cap.
+@step("recluster")
+def recluster(
+    max_keys: Annotated[
+        int | None,
+        typer.Option(help="The cluster cap. Default: RESOLVE_MAX_CLUSTER_KEYS.", min=2),
+    ] = None,
+    cluster_threshold: Annotated[
+        float | None,
+        typer.Option(
+            help="Rebuild the components from the working file's edges at or above this"
+            " probability first, leaving `component` alone. Default: linkage's components.",
+            max=1.0,
+        ),
+    ] = None,
+) -> None:
+    """Rewrite the working file's clusters from its components under another cluster cap, then
+    apply `resolution/overrides.yaml` and the confident adjudications, as `resolve --full` would;
+    nothing else changes: no crosswalk, silver, marker or R2 (NEU-2122 §5.1).
+    `--cluster-threshold` re-clusters components rebuilt at another threshold (NEU-2182)."""
+    settings = get_settings()
+    if cluster_threshold is not None and cluster_threshold < settings.resolve_match_threshold:
+        # `edge` holds no pair under the match threshold: a lower one would need a re-predict.
+        raise typer.BadParameter(
+            f"must be at least the match threshold, {settings.resolve_match_threshold}",
+            param_hint="--cluster-threshold",
+        )
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = resolution.recluster_working_file(
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                max_keys=max_keys or settings.resolve_max_cluster_keys,
+                cluster_threshold=cluster_threshold or settings.resolve_cluster_threshold,
+                overrides_path=settings.overrides_path,
+                adjudication=_adjudication(settings),
+                adjudicate_min_amount=settings.adjudicate_min_amount,
+                conn=conn,
+                rebuild=cluster_threshold is not None,
+            )
+    except (FileNotFoundError, overrides.OverridesError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    if cluster_threshold is not None:
+        typer.echo(f"components rebuilt from the edges at or above {cluster_threshold}")
+    typer.echo(f"recluster: {result.reclustered.summary()}")
+    overridden = result.overridden
+    typer.echo(
+        f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
+        f" into others, {overridden.splits} splits"
+    )
+    typer.echo(f"adjudications: {result.adjudicated.summary()}")
+    typer.echo(f"{result.clusters} clusters")
+
+
+def _adjudication(settings: Settings) -> adjudication.Version:
+    """The verdicts `resolve` applies and `adjudicate` records: the model's and the prompt's."""
+    return adjudication.Version(settings.adjudicate_model, settings.adjudicate_prompt_path.stem)
+
+
+@app.command()
+# No family, like `resolve`: run by hand between two resolves, and billed.
+@step("adjudicate")
+def adjudicate(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List the candidates; send nothing and write nothing."),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option(help="Ask about at most this many candidates, the most dollars first.", min=1),
+    ] = None,
+) -> None:
+    """Ask the configured model about the ambiguous high-dollar clusters of the working file that
+    it has no verdict on yet, and write its verdicts to app.adjudication (spec §6.8); the next
+    `resolve --full` applies the confident ones."""
+    settings = get_settings()
+    prompt = adjudication.Prompt.load(settings.adjudicate_prompt_path)
+    version = adjudication.Version(settings.adjudicate_model, prompt.version)
+    client = None if dry_run else adjudication.client_for(settings)
+    if not dry_run and client is None:
+        typer.echo("DEEPINFRA_API_KEY is not set: nothing can be sent (try --dry-run)", err=True)
+        raise typer.Exit(1)
+    try:
+        asserted = overrides.load(settings.overrides_path)
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            selected = adjudication.select(
+                R2.from_settings(settings),
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+                version=version,
+                min_amount=settings.adjudicate_min_amount,
+                overrides=asserted,
+                limit=limit,
+            )
+            typer.echo(
+                f"candidates: {selected.clusters} clusters, {selected.pairs} pairs of at least"
+                f" ${settings.adjudicate_min_amount}; {selected.already_decided} already decided"
+                f" by {version.model} {version.prompt_version}"
+            )
+            typer.echo(f"chosen: {len(selected.chosen)}")
+            if dry_run:
+                for candidate in selected.chosen:
+                    probability = (
+                        "" if candidate.probability is None else f" p={candidate.probability:.3f}"
+                    )
+                    typer.echo(
+                        f"{candidate.kind} {candidate.fingerprint[:12]} ${candidate.amount:.0f}"
+                        f"{probability}: {len(candidate.a)} keys | {len(candidate.b)} keys,"
+                        f" {candidate.a[0].contributor_key} | {candidate.b[0].contributor_key}"
+                    )
+                typer.echo("dry run: nothing sent, nothing written")
+                return
+            assert client is not None
+            result = adjudication.adjudicate(
+                selected.chosen,
+                client=client,
+                conn=conn,
+                version=version,
+                prompt=prompt,
+                batch_size=settings.adjudicate_batch_size,
+            )
+    except (FileNotFoundError, overrides.OverridesError, adjudication.AdjudicationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    for batch in result.batches:
+        typer.echo(batch.summary())
+    decisions = ", ".join(f"{n} {decision}" for decision, n in sorted(result.decisions.items()))
+    typer.echo(f"recorded: {decisions or 'nothing'}")
+
+
+def _figure(value: object | None) -> str:
+    """A precision or recall as printed: four decimals, or `n/a` when it is undefined."""
+    return "n/a" if value is None else f"{float(str(value)):.4f}"
+
+
+@app.command()
+# No family, like `resolve`: run by hand, once per DIME release and cycle.
+@step("dime")
+def dime(
+    cycle: Annotated[int, typer.Option(help="The cycle the DIME file is for, by its even year.")],
+    import_path: Annotated[
+        Path,
+        typer.Option(
+            "--import", help="The downloaded DIME contribution file (contribDB_<cycle>.csv.gz)."
+        ),
+    ],
+) -> None:
+    """Archive a downloaded DIME contribution file in R2 and write the slim Parquet of its FEC
+    individual rows that `fundlens validate` reads (ADR-0009)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    try:
+        result = validation.import_dime(
+            R2.from_settings(settings),
+            cycle=cycle,
+            path=import_path,
+            data_dir=settings.data_dir,
+            limits=runner.Limits.from_settings(settings),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"rows read: {result.rows_read}")
+    typer.echo(f"rows kept: {result.rows_kept}")
+    typer.echo(f"distinct cids: {result.cids}")
+    typer.echo(f"rows dropped (bad amount, date or cid): {result.rows_dropped}")
+    typer.echo(f"wrote {result.parquet_key}")
+    typer.echo(f"wrote {result.raw_key}")
+
+
+@app.command()
+# No family, like `resolve`: run by hand, and not a step `run` resumes.
+@step("validate")
+def validate(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    model_version: Annotated[
+        str | None,
+        typer.Option(help="The model the figures are recorded under. Default: the newest saved."),
+    ] = None,
+    top: Annotated[
+        int, typer.Option(help="How many DIME donors, by matched dollars, the top scope scores.")
+    ] = validation.DEFAULT_TOP,
+    clusters: Annotated[
+        bool,
+        typer.Option(
+            "--clusters",
+            help="Score the working file's clusters instead of silver's donor_ids; write nothing.",
+        ),
+    ] = False,
+) -> None:
+    """Score the cycle's resolved donors against DIME: pairwise precision and recall, overall and
+    over the top donors, written to app.resolution_quality and printed (ADR-0009)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    if top < 1:
+        raise typer.BadParameter("must be at least 1", param_hint="--top")
+    settings = get_settings()
+    working_file = paths.resolution_database(settings.data_dir) if clusters else None
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = validation.validate(
+                R2.from_settings(settings),
+                cycle=cycle,
+                model_version=model_version,
+                top=top,
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                conn=conn,
+                clusters=working_file,
+            )
+    except (FileNotFoundError, validation.NotResolved) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        f"{'scope':<8} {'precision':>9} {'recall':>9} {'keys':>10}"
+        f" {'correct':>12} {'predicted':>12} {'true':>12}"
+    )
+    for scope, scored in (("overall", result.overall), (f"top {result.top_limit}", result.top)):
+        typer.echo(
+            f"{scope:<8} {_figure(scored.precision):>9} {_figure(scored.recall):>9}"
+            f" {scored.labelled_keys:>10} {scored.correct_pairs:>12}"
+            f" {scored.predicted_pairs:>12} {scored.true_pairs:>12}"
+        )
+    share = 100 * result.matched_rows / result.contribution_rows if result.contribution_rows else 0
+    typer.echo(
+        f"matched {result.matched_rows} of {result.contribution_rows} counted contributions"
+        f" ({share:.1f}%)"
+    )
+    typer.echo(
+        f"model {result.model_version}, DIME v{validation.DIME_VERSION}, build {result.build_id}"
+    )
+    if working_file is not None:
+        typer.echo(f"clusters from {working_file}; nothing written")
+
+
+def _bands(title: str, bands: list[diagnosis.Band]) -> None:
+    typer.echo(f"{title:<20} {'wrong':>12} {'correct':>12} {'precision':>9}")
+    for band in bands:
+        typer.echo(
+            f"{band.label:<20} {band.wrong:>12} {band.correct:>12} {_figure(band.precision):>9}"
+        )
+
+
+@app.command()
+# No family, like `validate`: run by hand, to find what the wrong pairs are.
+@step("diagnose")
+def diagnose(
+    cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
+    sample: Annotated[
+        int,
+        typer.Option(
+            help=f"Also print this many wrong pairs from clusters of"
+            f" {diagnosis.SAMPLE_MAX_KEYS} keys or fewer, to classify by hand.",
+            min=0,
+        ),
+    ] = 0,
+) -> None:
+    """Take the working file's wrong pairs against DIME apart: by cluster size and dollars, direct
+    or chained, field agreement and name commonness; write nothing (NEU-2182)."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    working_file = paths.resolution_database(settings.data_dir)
+    try:
+        result = diagnosis.diagnose(
+            R2.from_settings(settings),
+            cycle=cycle,
+            data_dir=settings.data_dir,
+            limits=runner.Limits.from_settings(settings),
+            working_file=working_file,
+            sample=sample,
+        )
+    except (FileNotFoundError, validation.NotResolved) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    found = result.breakdown
+    precision = found.correct / found.predicted if found.predicted else None
+    typer.echo(
+        f"pairs: {found.predicted} predicted, {found.correct} correct, {found.wrong} wrong"
+        f" (precision {_figure(precision)})"
+    )
+    _bands("cluster keys", found.by_size)
+    _bands("cluster dollars", found.by_dollars)
+    _bands("link", found.by_link)
+    _bands("keys sharing name", found.by_name)
+    typer.echo(
+        " ".join(f"{field:<12}" for field in diagnosis.FIELDS) + f" {'wrong':>12} {'correct':>12}"
+    )
+    for pattern in found.patterns:
+        typer.echo(
+            " ".join(f"{level:<12}" for level in pattern.levels)
+            + f" {pattern.wrong:>12} {pattern.correct:>12}"
+        )
+    for n, pair in enumerate(found.sample, start=1):
+        typer.echo(f"sample {n}: cluster {pair.cluster_id} ({pair.keys} keys), {pair.link}")
+        for side in (pair.a, pair.b):
+            fields = " | ".join("" if value is None else value for value in side.fields)
+            typer.echo(f"  {side.contributor_key} cid {side.bonica_cid}: {fields}")
+    share = 100 * result.matched_rows / result.contribution_rows if result.contribution_rows else 0
+    typer.echo(
+        f"matched {result.matched_rows} of {result.contribution_rows} counted contributions"
+        f" ({share:.1f}%), build {result.build_id}"
+    )
+    typer.echo(f"clusters from {working_file}; nothing written")
+
+
+@app.command()
 # No family, like `extract`: a hand backfill must not push the weekly monitor up.
 @step("load")
 def load(
@@ -374,6 +764,21 @@ def load(
             raise typer.Exit(1) from exc
     for table, rows in result.row_counts.items():
         typer.echo(f"{table}: {rows} rows")
+    quality = result.quality
+    if quality.validated:
+        typer.echo(
+            f"quality: precision {_figure(quality.precision)} recall {_figure(quality.recall)}"
+            f" (top {_figure(quality.precision_top)}/{_figure(quality.recall_top)}),"
+            f" {quality.matched_rows} matched rows, DIME v{quality.dime_version}"
+        )
+    else:
+        typer.echo(f"quality: not validated for model {quality.model_version or '(none saved)'}")
+    if quality.overrides_count is not None:
+        typer.echo(
+            f"resolution: release {quality.resolver_version or '(unknown)'},"
+            f" {quality.overrides_count} overrides,"
+            f" {quality.adjudications_applied} adjudications applied"
+        )
     typer.echo(
         f"loaded build {result.build_id} into gold_build"
         f" (aggregates {result.aggregate_s:.2f} s, copy {result.copy_s:.2f} s)"
@@ -430,6 +835,7 @@ def publish(
     typer.echo(f"{swapped} build {result.build_id} of {cycle}")
     typer.echo(f"previous build: {result.previous_build_id or 'none'}")
     typer.echo(f"cloudflare purge: {'done' if result.purged else 'skipped (not configured)'}")
+    typer.echo(f"wrote {result.crosswalk_key}")
     typer.echo(f"pruned {result.pruned.builds} silver builds ({result.pruned.objects} objects)")
 
 

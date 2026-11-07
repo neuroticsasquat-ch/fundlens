@@ -133,7 +133,87 @@ describe("CommitteePage", () => {
     expect(
       within(section("Top recipients")).getByRole("link", { name: "OKAFOR, DIANA" }),
     ).toHaveAttribute("href", "/candidate/S4MD00103");
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+    expect(
+      within(section("Top donors")).getByText("No resolved individual donors in 2024."),
+    ).toBeInTheDocument();
+  });
+
+  it("lists the cycle's top donors, linked to their donor pages", async () => {
+    renderApp("/committee/C00800103");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "$3,300"],
+      ["2", "DUBOIS, RAYMOND", "$2,500"],
+      ["3", "GALLAGHER, TOMAS", "$500"],
+    ]);
+    expect(
+      within(section("Top donors")).getByRole("link", { name: "DUBOIS, RAYMOND" }),
+    ).toHaveAttribute("href", "/donor/236");
+  });
+
+  it("shows a super PAC's money from organizations beside its other receipts", async () => {
+    renderApp("/committee/C00800201");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "MARYLAND FORWARD PAC" }),
+    ).toBeInTheDocument();
+    const totals = section("Totals by cycle");
+    expect(
+      within(totals)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Cycle",
+      "From individuals",
+      "From committees",
+      "From organizations",
+      "Self-funding",
+      "To candidates",
+    ]);
+    expect(rows("Totals by cycle").map(cells)).toEqual([
+      ["2024", "$395,875", "$65,000", "$72,500", "$0", "$0"],
+    ]);
+    expect(rows("Top organizations").map(cells)).toEqual([
+      ["1", "CHESAPEAKE STEEL, INC.", "$72,500"],
+    ]);
+  });
+
+  it("lists the top organizations in rank order, unlinked, after the top donors", async () => {
+    renderApp("/committee/C00800105");
+    const organizations = await screen.findByRole("region", { name: "Top organizations" });
+
+    expect(rows("Top organizations").map(cells)).toEqual([
+      ["1", "ACME CONCRETE LLC", "$5,000"],
+      ["2", "ACME WIDGETS INC", "$3,000"],
+    ]);
+    // Organizations are grouped by name, not resolved: no page to link to (ADR-0011).
+    expect(within(organizations).queryByRole("link", { name: /ACME/ })).not.toBeInTheDocument();
+    expect(
+      within(organizations).getByText(
+        /Grouped by reported name; not resolved like individual donors\./,
+      ),
+    ).toBeInTheDocument();
+    expect(within(organizations).getByRole("link", { name: "Methodology" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
+    expect(
+      section("Top donors").compareDocumentPosition(organizations) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows no organization money for a committee no organization gave to", async () => {
+    renderApp("/committee/C00800103");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(screen.queryByRole("region", { name: "Top organizations" })).not.toBeInTheDocument();
+    expect(
+      within(section("Totals by cycle")).queryByRole("columnheader", {
+        name: "From organizations",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("says when the committee gave to no one in the cycle", async () => {

@@ -1,56 +1,49 @@
-import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Stack, Text } from "@mantine/core";
 import { Link } from "react-router";
 import type { Contribution } from "../api/client";
 import type { ContributionsQuery } from "../api/contributions";
 import { isProblem } from "../api/query";
-import { conduitName } from "../domain/committees";
 import DataTable from "./DataTable";
 import type { Column } from "./DataTable";
 import QueryStatus from "./QueryStatus";
-import { count, DASH, isoDate, money } from "./format";
+import { amountColumn, dateColumn, employerColumn, notesColumn } from "./contributionColumns";
+import { count, DASH } from "./format";
 
 // No column sorts: the rows are the pages loaded so far, newest first, and sorting them would
 // pass off a partial list as the whole one.
-const COLUMNS: Column<Contribution>[] = [
-  { key: "date", header: "Date", render: (row) => isoDate(row.date) },
-  { key: "contributor", header: "Contributor", render: (row) => row.contributor_name ?? DASH },
-  { key: "employer", header: "Employer", render: (row) => row.contributor_employer ?? DASH },
-  { key: "amount", header: "Amount", align: "right", render: (row) => money(row.amount) },
+const RECEIVED_COLUMNS: Column<Contribution>[] = [
+  dateColumn,
   {
-    key: "notes",
-    header: "Notes",
-    render: (row) => (
-      <Group gap={4} wrap="nowrap">
-        {row.conduit_committee_id && (
-          <Badge
-            variant="light"
-            component={Link}
-            to={`/committee/${row.conduit_committee_id}`}
-            style={{ cursor: "pointer" }}
-          >
-            via {conduitName(row.conduit_committee_id)}
-          </Badge>
-        )}
-        {row.is_self_funding && (
-          <Badge variant="outline" color="gray">
-            Self-funding
-          </Badge>
-        )}
-      </Group>
-    ),
+    key: "contributor",
+    header: "Contributor",
+    // As reported, linked to the donor it was resolved to; a build not yet resolved has none.
+    render: (row) =>
+      row.donor_id === null ? (
+        (row.contributor_name ?? DASH)
+      ) : (
+        <Anchor component={Link} to={`/donor/${row.donor_id}`}>
+          {row.contributor_name ?? DASH}
+        </Anchor>
+      ),
   },
+  employerColumn,
+  amountColumn,
+  notesColumn,
 ];
 
 /**
- * One cycle's itemized contributions, as reported, a page at a time: "Load more" fetches the next
- * cursor's page and appends it. The rows already shown stay when a later page fails.
+ * Itemized contributions, as reported, a page at a time: "Load more" fetches the next cursor's
+ * page and appends it. The rows already shown stay when a later page fails. `columns` defaults to
+ * a recipient's view: who gave, linked to their donor page.
  */
 function ContributionsTable({
   query,
   emptyMessage,
+  columns = RECEIVED_COLUMNS,
 }: {
   query: ContributionsQuery;
   emptyMessage: string;
+  columns?: Column<Contribution>[];
 }) {
   // Until the first page arrives (or fails), the page-level states; after it, the rows stay put.
   if (query.data === undefined) return <QueryStatus query={query}>{() => null}</QueryStatus>;
@@ -64,7 +57,7 @@ function ContributionsTable({
   return (
     <Stack gap="sm">
       <DataTable
-        columns={COLUMNS}
+        columns={columns}
         rows={rows}
         rowKey={(row) => row.source_record_id}
         emptyMessage={emptyMessage}

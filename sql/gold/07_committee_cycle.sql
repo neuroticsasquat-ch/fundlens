@@ -6,13 +6,33 @@
 -- total_to_candidates the disbursement side credited to a candidate (what it recorded giving; a 24K
 -- whose recipient raises for no candidate of the cycle is to none, NEU-2075): one side each, never
 -- both, so a gift on both sides is counted once in each figure, and a committee's top recipients
--- add up to its total_to_candidates. ie_total is 0 until NEU-2057.
+-- add up to its total_to_candidates. total_from_organizations is the organization receipts it
+-- recorded (ADR-0011), net of refunds: organization money is the committee's only, in no candidate,
+-- race, cycle or donor figure. total_non_contribution_account is a hybrid PAC's non-contribution
+-- account (NEU-2192), individuals' and organizations' money alike: in neither total_individual nor
+-- total_from_organizations, which hold its contribution account, the money FEC's itemized figure
+-- (line 11(a)(i)) counts. 0 at every other committee. total_other_lines is individuals' money FEC
+-- files on a line no total_individual counts (silver's is_other_line, NEU-2193): a national
+-- party's convention, headquarters and recount accounts above all, a host committee's 18U gifts
+-- from unregistered committees, transfers and earmarks' conduit sides. The candidate's own money
+-- is self_funding whatever its line (a loan's is line 13). ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
         recipient_committee_id AS committee_id,
-        coalesce(sum(amount) FILTER (WHERE NOT is_self_funding), 0) AS total_individual,
-        coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding
+        coalesce(
+            sum(amount) FILTER (
+                WHERE NOT is_self_funding
+                    AND NOT is_non_contribution_account
+                    AND NOT is_other_line
+            ),
+            0
+        ) AS total_individual,
+        coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding,
+        coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
+            AS non_contribution_account,
+        coalesce(sum(amount) FILTER (WHERE is_other_line AND NOT is_self_funding), 0)
+            AS other_lines
     FROM silver.contribution
     GROUP BY recipient_committee_id
 ),
@@ -21,6 +41,16 @@ from_committees AS (
     FROM silver.committee_transfer
     WHERE side = 'receipt'
     GROUP BY to_committee_id
+),
+from_organizations AS (
+    SELECT
+        recipient_committee_id AS committee_id,
+        coalesce(sum(amount) FILTER (WHERE NOT is_non_contribution_account), 0)
+            AS total_from_organizations,
+        coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
+            AS non_contribution_account
+    FROM silver.organization_receipt
+    GROUP BY recipient_committee_id
 ),
 to_candidates AS (
     SELECT from_committee_id AS committee_id, sum(amount) AS total_to_candidates
@@ -34,9 +64,18 @@ SELECT
     CAST(coalesce(received.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
     CAST(coalesce(received.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
+    CAST(coalesce(from_organizations.total_from_organizations, 0) AS DECIMAL(16, 2))
+        AS total_from_organizations,
+    CAST(
+        coalesce(received.non_contribution_account, 0)
+            + coalesce(from_organizations.non_contribution_account, 0)
+        AS DECIMAL(16, 2)
+    ) AS total_non_contribution_account,
+    CAST(coalesce(received.other_lines, 0) AS DECIMAL(16, 2)) AS total_other_lines,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(0 AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee
 LEFT JOIN received USING (committee_id)
 LEFT JOIN from_committees USING (committee_id)
+LEFT JOIN from_organizations USING (committee_id)
 LEFT JOIN to_candidates USING (committee_id);

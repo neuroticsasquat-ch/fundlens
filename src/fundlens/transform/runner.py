@@ -8,18 +8,27 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
+- `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
+  handed from one candidate to another, whose money is the first's before the date and the
+  second's on and after it (NEU-2126);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
-  `normalize_employer`, `normalize_occupation`), from which the contributor key is built.
+  `normalize_employer`, `normalize_occupation`), from which the contributor key is built, and
+  `organization_key`, which groups organization receipts (ADR-0011);
+- `fec_line`, the Form 3/3X line FEC files a transaction type on (`fec.lines`, NEU-2193).
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
-`<table>`, and may leave temporary tables a later file reads; `{cycle}`, `{build_id}`,
-`{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal brace is written twice).
+`<table>`, may leave temporary tables a later file reads, and may fill in a column of an earlier
+table that needs its own (03_candidate_committee_link.sql sets `candidate.alias_of`);
+`{cycle}`, `{build_id}`, `{bronze_dir}` and `{silver_dir}` in it are parameters (so a literal
+brace is written twice).
+A model or check puts the larger input on the left of each join: DuckDB builds the join on its
+right side as written (`connect`).
 Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops
 with `ChecksFailed` before anything is written if one returns any. Only then is each table
-written as one zstd Parquet part to the local silver path, uploaded to R2, and the `transformed`
-marker written.
+written as one zstd Parquet part to the local silver path, uploaded to R2 (replacing whatever
+else the partition held), and the `transformed` marker written.
 """
 
 import csv
@@ -29,7 +38,7 @@ import shutil
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from importlib.resources import files as package_files
 from pathlib import Path
 from typing import IO, Literal, get_args
@@ -39,6 +48,7 @@ from psycopg import Connection
 from psycopg.rows import TupleRow
 
 from fundlens import markers, paths
+from fundlens.fec import lines
 from fundlens.fec.files import VARCHAR, BulkFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
@@ -105,6 +115,20 @@ def literal(value: str | Path) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def connect(limits: Limits, temp_directory: Path) -> duckdb.DuckDBPyConnection:
+    """The transform's DuckDB connection, with `limits` and spilling under `temp_directory`.
+
+    DuckDB has no row count for a `read_csv` view and guesses a few dozen rows, so its build-side
+    optimizer turns `indiv LEFT JOIN committee` around and builds the join's hash table on the
+    whole bulk file instead of the small table: every row held in memory at once. That ran the
+    2024 transform out of memory (NEU-2076). So the optimizer is off and each join builds on its
+    right side as written, which the silver SQL keeps the smaller.
+    """
+    config = limits.duckdb_config(temp_directory)
+    config["disabled_optimizers"] = "build_side_probe_side"
+    return duckdb.connect(config=config)
+
+
 def _newest_bronze(store: R2, cycle: int, file: BulkFile) -> str:
     # Keys end in an ISO download date, so key order is download order.
     keys = sorted(store.list_keys(paths.bronze_dir(cycle, file.name)))
@@ -152,7 +176,7 @@ def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYT
     _write_utf8(tail, out)
 
 
-def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
+def unzip_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
     """The newest bronze zip of `file` unpacked under `work` as UTF-8; the text file's path.
 
     The current cycle's zip is on local disk already (`fec.extract` keeps it there); any other is
@@ -170,7 +194,7 @@ def _unzip(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path)
     return text
 
 
-def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
+def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
     """The view `<file>`: the bulk file's rows under the vendored names, cast to their types."""
     names = file.header()
     if names != list(file.columns):
@@ -181,7 +205,7 @@ def _register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -
         for name, kind in file.columns.items()
     )
     # Pipe-delimited and unquoted (a quote in a name is just a character), with no header row.
-    # UTF-8 throughout, since `_unzip` rewrote it so.
+    # UTF-8 throughout, since `unzip_bulk` rewrote it so.
     con.execute(
         f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
         f" delim = '|', quote = '', escape = '', header = false, auto_detect = false,"
@@ -194,6 +218,22 @@ def _register_conduits(con: duckdb.DuckDBPyConnection) -> None:
     rows = [(row["committee_id"], row["name"]) for row in csv.DictReader(io.StringIO(text))]
     con.execute("CREATE TABLE conduit (committee_id VARCHAR, name VARCHAR)")
     con.executemany("INSERT INTO conduit VALUES (?, ?)", rows)
+
+
+def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    text = package_files("fundlens.fec").joinpath("handoffs.csv").read_text()
+    rows = [
+        (row["committee_id"], row["from_candidate_id"], row["to_candidate_id"], handoff_date)
+        for row in csv.DictReader(io.StringIO(text))
+        if (handoff_date := date.fromisoformat(row["handoff_date"])).year in (cycle - 1, cycle)
+    ]
+    con.execute(
+        "CREATE TABLE handoff (committee_id VARCHAR, from_candidate_id VARCHAR,"
+        " to_candidate_id VARCHAR, handoff_date DATE)"
+    )
+    # DuckDB's executemany refuses an empty list, and most cycles have no handoff.
+    if rows:
+        con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?)", rows)
 
 
 def _register_unmatched(
@@ -254,9 +294,14 @@ def check(
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
-    """Write `table` as one zstd Parquet part to the local silver path; its key, path and rows."""
+    """Write `table` as one zstd Parquet part to the local silver path; its key, path and rows.
+
+    The local partition is replaced whole, so a build transformed again holds none of the parts
+    a donor_id rewrite (`resolve.crosswalk`) put there.
+    """
     key = f"{paths.silver_partition(table, cycle, build_id)}/{paths.part(0)}"
     local = paths.local_path(data_dir, key)
+    shutil.rmtree(local.parent, ignore_errors=True)
     local.parent.mkdir(parents=True, exist_ok=True)
     con.execute(
         f"COPY {table} TO {literal(local)}"
@@ -293,13 +338,17 @@ def transform(
         "silver_dir": paths.local_path(data_dir, "silver"),
     }
     try:
-        with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
+        with connect(limits, scratch) as con:
             for file in files_for(cycle):
-                _register_bulk(con, file, _unzip(store, cycle, file, data_dir=data_dir, work=work))
+                register_bulk(
+                    con, file, unzip_bulk(store, cycle, file, data_dir=data_dir, work=work)
+                )
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
+            _register_handoffs(con, cycle)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
+            lines.register(con)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))
@@ -311,7 +360,12 @@ def transform(
     finally:
         shutil.rmtree(work, ignore_errors=True)
     for key, local, _ in written:
+        prefix = key.rsplit("/", 1)[0] + "/"
+        stale = set(store.list_keys(prefix)) - {key}
         store.put(key, local)
+        # A build transformed again: whatever else its partition held is gone, the rewrite
+        # sentinel of a donor_id rewrite that died among it.
+        store.delete_keys(sorted(stale))
     row_counts = {table: rows for (table, _), (_, _, rows) in zip(models, written, strict=True)}
     markers.write(
         "transformed",

@@ -76,5 +76,28 @@ unmatched_filing = Table(
     PrimaryKeyConstraint("cycle", "candidate_id"),
 )
 
+# One model's resolution scored against DIME for one cycle, overall or over the top donors by
+# matched dollars (NEU-2054, ADR-0009). The pair counts are kept so cycles can be pooled later.
+resolution_quality = Table(
+    "resolution_quality",
+    metadata,
+    Column("model_version", Text),
+    Column("cycle", Integer),
+    Column("scope", Text),
+    Column("dime_version", Text, nullable=False),
+    Column("top_limit", Integer),
+    Column("contribution_rows", BigInteger, nullable=False),
+    Column("matched_rows", BigInteger, nullable=False),
+    Column("labelled_keys", BigInteger, nullable=False),
+    Column("correct_pairs", BigInteger, nullable=False),
+    Column("predicted_pairs", BigInteger, nullable=False),
+    Column("true_pairs", BigInteger, nullable=False),
+    Column("precision", Numeric()),
+    Column("recall", Numeric()),
+    Column("validated_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint("model_version", "cycle", "scope"),
+    CheckConstraint("scope IN ('overall', 'top')", name="ck_resolution_quality_scope"),
+)
+
 # A never-seen contributor key's new donor_id (spec §6.6). Never reset: ids are never reused.
 donor_id_seq = Sequence("donor_id_seq", metadata=metadata)

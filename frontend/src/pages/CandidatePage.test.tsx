@@ -31,11 +31,13 @@ function twoCycles() {
       return response(200).json({
         contributions: [
           {
+            cycle: Number(cycle),
             source_record_id: cycle,
             date: `${cycle}-06-01`,
             amount: 100,
             recipient_committee_id: "C00800103",
             candidate_id: "S4MD00103",
+            donor_id: null,
             contributor_name: `DONOR OF ${cycle}`,
             contributor_city: null,
             contributor_state: null,
@@ -70,7 +72,7 @@ describe("CandidatePage", () => {
     expect(document.title).toBe("OKAFOR, DIANA · fundlens");
 
     expect(rows("Totals by cycle").map(cells)).toEqual([
-      ["2024", "Senate · Maryland", "$49,700", "$5,000", "$5,000", "$59,700"],
+      ["2024", "Senate · Maryland", "$49,700", "$5,000", "$19,500", "$5,000", "$79,200"],
     ]);
     expect(rows("Totals by cycle")[0]).toHaveAttribute("id", "cycle-2024");
     expect(
@@ -87,6 +89,7 @@ describe("CandidatePage", () => {
     expect(option.series).toMatchObject([
       { type: "bar", name: "From individuals", stack: "total", data: [49700] },
       { type: "bar", name: "From committees", stack: "total", data: [5000] },
+      { type: "bar", name: "Via joint fundraising", stack: "total", data: [19500] },
       { type: "bar", name: "Self-funding", stack: "total", data: [5000] },
     ]);
   });
@@ -108,8 +111,27 @@ describe("CandidatePage", () => {
     const contributions = section("Contributions");
     expect(within(contributions).getByText("6 contributions, newest first")).toBeVisible();
     expect(within(contributions).queryByRole("button", { name: "Load more" })).toBeNull();
-    expect(within(section("Top donors")).getByText("Top donors are coming.")).toBeInTheDocument();
+    expect(
+      within(contributions).getByRole("link", { name: "DUBOIS, RAYMOND" }),
+    ).toHaveAttribute("href", "/donor/236");
+    // A contribution no resolution has named a donor for is not a link.
+    expect(within(contributions).queryByRole("link", { name: "KOWALCZYK, PEGGY" })).toBeNull();
     expect(screen.getByRole("heading", { level: 2, name: "In 2024" })).toBeInTheDocument();
+  });
+
+  it("lists the cycle's top donors without the candidate's own money", async () => {
+    renderApp("/candidate/S4MD00103");
+    await screen.findByRole("region", { name: "Top donors" });
+
+    expect(rows("Top donors").map(cells)).toEqual([
+      ["1", "ZIMMERMANN, ZACH", "$3,300"],
+      ["2", "DUBOIS, RAYMOND", "$2,500"],
+      ["3", "GALLAGHER, TOMAS", "$500"],
+    ]);
+    expect(
+      within(section("Top donors")).getByRole("link", { name: "ZIMMERMANN, ZACH" }),
+    ).toHaveAttribute("href", "/donor/518");
+    expect(within(section("Top donors")).queryByText("OKAFOR, DIANA")).toBeNull();
   });
 
   it("shows the newest cycle's contributions by default", async () => {
