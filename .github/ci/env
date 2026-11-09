@@ -6,3 +6,7 @@ DATABASE_URL=postgresql://root:root@localhost:5432/postgres
 R2_ENDPOINT=http://localhost:9000
 R2_ACCESS_KEY_ID=fundlens
 R2_SECRET_ACCESS_KEY=fundlens-dev-secret
+# Typer forces Rich's terminal output whenever GITHUB_ACTIONS is set, and the ANSI codes it adds
+# break the tests that look for text in CLI help and usage errors. This is Typer's own switch to
+# turn that off.
+_TYPER_FORCE_DISABLE_TERMINAL=1
