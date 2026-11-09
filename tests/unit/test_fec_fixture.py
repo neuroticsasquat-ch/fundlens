@@ -432,11 +432,7 @@ def tally_committees() -> dict[str, CommitteeTotals]:
         (r["CMTE_ID"], amount(r)) for r in [*committee_receipts(), *name_matched_gifts()]
     )
     pas2 = rows("pas2")
-    to_candidates = sum_by(
-        (r["CMTE_ID"], amount(r))
-        for r in committee_contributions()
-        if gift_candidate(r) is not None
-    )
+    to_candidates = sum_by((giver, net) for (giver, _), net in gift_pairs().items() if net >= 0)
     ie = sum_by(
         (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
     )
@@ -474,6 +470,16 @@ def gift_candidate(row: dict[str, str]) -> str | None:
     return aliases().get(stated, stated) if stated in candidates else None
 
 
+def gift_pairs() -> dict[tuple[str, str], int]:
+    """Each giver's 24Ks to each candidate, net for the cycle. A pair below 0 is returns of an
+    earlier cycle's gifts, not gifts (NEU-2204)."""
+    return sum_by(
+        ((r["CMTE_ID"], c), amount(r))
+        for r in committee_contributions()
+        if (c := gift_candidate(r)) is not None
+    )
+
+
 def ie_candidate(row: dict[str, str]) -> str | None:
     """The candidate an independent expenditure is for or against: the one it names."""
     return row["CAND_ID"]
@@ -503,7 +509,7 @@ def tally_candidates() -> dict[str, CandidateTotals]:
         )
 
     from_committees = sum_by(
-        (c, amount(r)) for r in committee_contributions() if (c := gift_candidate(r)) is not None
+        (candidate, net) for (_, candidate), net in gift_pairs().items() if net >= 0
     )
     # A JFC's transfer, whatever its type, credited to the candidate its recipient raises for.
     jfcs = {r["CMTE_ID"] for r in rows("cm") if r["CMTE_DSGN"] == JFC}
@@ -736,6 +742,21 @@ def test_the_expected_other_lines_are_the_counted_rows_off_line_11ai() -> None:
     # both are the donor's money all the same, in no total_individual.
     assert {r["TRANSACTION_TP"] for r in other} >= {"31", "41Y", "16G"}
     assert any(linked_candidates().get(r["CMTE_ID"]) for r in other)
+
+
+def test_the_expected_returns_are_the_24ks_of_pairs_netting_below_0() -> None:
+    pairs = gift_pairs()
+    returned = [
+        r
+        for r in committee_contributions()
+        if (c := gift_candidate(r)) is not None and pairs[r["CMTE_ID"], c] < 0
+    ]
+    expected = EXPECTED["returned_by_candidates"]
+    assert expected["disbursements"] == [int(r["SUB_ID"]) for r in returned]
+    assert expected["by_committee"] == sum_by((r["CMTE_ID"], amount(r)) for r in returned)
+    # A same-cycle refund nets inside its pair: BRICKLAYERS' to YANG is no return.
+    assert pairs["C00800202", "H4MD05108"] == 2000
+    assert any(amount(r) < 0 for r in committee_contributions() if r not in returned)
 
 
 def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:

@@ -7,8 +7,8 @@ files. This document measures which file holds what, how a candidate's figures r
 committees', what `TTL_INDIV_CONTRIB` means, and how far fundlens's itemized totals sit from FEC's
 reported itemized figure for every 2024 committee. It repeats what it can for 2004. It fixes the
 decisions NEU-2141 writes into spec §4. Nothing under `sql/`, `src/` or `frontend/` changed, and no
-silver, gold or marker was written. Q9 and Q10 were added later, for NEU-2202 and NEU-2203, and
-have their own provenance tables.
+silver, gold or marker was written. Q9, Q10 and Q11 were added later, for NEU-2202, NEU-2203 and
+NEU-2204, and have their own provenance tables.
 
 | What | Value |
 | --- | --- |
@@ -74,6 +74,11 @@ only.
   committee type does not do it). 262 ($235,403) are an
   intermediary's side whose recipient itemized the gift too, counted twice until NEU-2203 dropped
   them.
+- **A committee's 24Ks to a candidate net below zero for 1,283 pairs in 2024, −$3,095,886**
+  (NEU-2204, Q11). 1,119 of them hold no gift that cycle: they are voids and refunds of earlier
+  cycles' gifts. They made 41 givers' `total_to_candidates`, 1,283 top recipients and 126
+  candidates' `total_committee` negative. FEC's line 23 reconciles with neither a giver's gross
+  24Ks nor its net, so it cannot say which FEC means.
 
 ## How to re-run
 
@@ -4938,6 +4943,358 @@ their `total_individual`. Keying on the committee type alone (W only) was reject
 $37,794; leaving every hybrid PAC's 24I in the account for the $5,740 and the $48,472; sending
 every 24I to 11(a)(i) for 2024's $22,920 on line 17. ADR-0004 carries the rule.
 
+## Q11: 24Ks that net below zero, and FEC's line 23 (NEU-2204)
+
+Measured for [NEU-2204](https://linear.app/neuroticsasquatch/issue/NEU-2204) on 2026-11-07. A
+committee files a void or refund of a gift to a candidate as a negative 24K, dated when it
+happens, so one of a gift made in an earlier cycle has nothing to net against in its own cycle.
+This counts the giver→candidate pairs whose 24Ks net below zero, and compares each giver's 24Ks
+with FEC's `FED_CAND_CMTE_CONTB` (Form 3X line 23, contributions to federal candidates and
+committees) and `FED_CAND_CONTB_REF` (line 16, refunds of them received), to learn whether FEC
+reports the gifts gross with returns apart, or net.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-07 17:23:30–17:23:40 UTC, `app` container of the local dev stack, DuckDB 2.0.0 |
+| Code | branch `fix/NEU-2204-prior-cycle-24k-returns` off `main` at `4a8ba72`, before its SQL changed: `sql/silver/` as on `main` |
+| `cm24.zip`, `cn24.zip`, `ccl24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/…`, `Last-Modified: Sat, 07 Nov 2026 06:38:56`, `06:38:51` and `06:39:00 GMT`, downloaded 2026-11-07T17:23Z |
+| `pas224.zip` | `…/2024/pas224.zip`, `Last-Modified: Sun, 01 Nov 2026 21:35:12 GMT`, downloaded 2026-11-07T17:23:09Z |
+| `committee_summary_2024.csv` | `…/2024/committee_summary_2024.csv`, `Last-Modified: Sat, 07 Nov 2026 10:13:17 GMT`, downloaded 2026-11-07T17:23:11Z |
+
+**Method.** Not the live build: the ticket asked for it, but this session could not reach
+production. Instead the repository's own silver models run over FEC's 2024 `cm`, `cn`, `ccl` and
+`pas2`, with `indiv` and `oth` registered empty. The disbursement side of `committee_transfer`
+reads neither, so its rows are the ones a full transform of these files writes. Gold's sums are
+then taken from them: `pair` is a giver's 24Ks to a candidate, credited by NEU-2075's rule, and
+`giver` is each giver's total as gold builds it today (`now`), with negative pairs apart (`new`),
+and every 24K it filed, credited to a candidate or not (`all_net`, `all_gifts`). `committee_summary`
+is deduplicated on `CMTE_ID` as in the setup above.
+
+```bash
+# Host, from the repository root, dev stack up. About 60 MB of downloads; under a minute.
+# Save the Python block below as q11.py, then:
+docker compose exec -T app python - < q11.py 2>&1 | grep -v '^{' > q11.out
+```
+
+```python
+import datetime as dt
+import shutil
+import tempfile
+import time
+from decimal import Decimal
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+from fundlens.fec import lines
+from fundlens.fec.extract import USER_AGENT
+from fundlens.fec.files import CATALOGUE
+from fundlens.resolve import normalize
+from fundlens.settings import get_settings
+from fundlens.transform import seats
+from fundlens.transform.runner import (
+    Limits, _register_conduits, _register_handoffs, connect, copy_as_utf8, literal,
+    register_bulk, render,
+)
+import zipfile
+
+settings = get_settings()
+work = Path(tempfile.mkdtemp())
+con = connect(Limits.from_settings(settings), work)
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else f"{v:.2%}" if isinstance(v, float) else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+def fetch(path: str) -> Path:
+    """One FEC file into `work`, its Last-Modified printed."""
+    target = work / Path(path).name
+    url = f"{settings.fec_bulk_url.rstrip('/')}/{path}"
+    with urlopen(Request(url, headers={"User-Agent": USER_AGENT})) as response:
+        target.write_bytes(response.read())
+        print(url, "| Last-Modified:", response.headers.get("Last-Modified"),
+              "| downloaded", dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
+    return target
+
+
+try:
+    # 2024's cm, cn, ccl and pas2 from fec.gov, registered as the transform registers bronze.
+    # `indiv` and `oth` are registered empty: the 24K side of committee_transfer reads neither.
+    for name, zipname in [("cm", "cm24.zip"), ("cn", "cn24.zip"), ("ccl", "ccl24.zip"),
+                          ("pas2", "pas224.zip")]:
+        file = CATALOGUE[name]
+        text = work / f"{name}.txt"
+        with zipfile.ZipFile(fetch(f"2024/{zipname}")) as archive:
+            with archive.open(file.member) as src, text.open("wb") as out:
+                copy_as_utf8(src, out)
+        register_bulk(con, file, text)
+    for name in ("indiv", "oth"):
+        (work / f"{name}.txt").touch()
+        register_bulk(con, CATALOGUE[name], work / f"{name}.txt")
+    seats.load_races(con, seats.races_for(2024))
+    _register_conduits(con)
+    _register_handoffs(con, 2024)
+    con.execute("CREATE TABLE unmatched_filing (candidate_id VARCHAR)")
+    normalize.register(con)
+    lines.register(con)
+    params = {"cycle": 2024, "build_id": "measure", "bronze_dir": work, "silver_dir": work}
+    for path in sorted(Path("/app/sql/silver").glob("*.sql")):
+        con.execute(render(path, params))
+    cs = fetch("2024/committee_summary_2024.csv")
+    con.execute(f"""
+    CREATE MACRO amt(x) AS CAST(nullif(trim(x), '') AS DECIMAL(16, 2));
+    -- committee_summary repeats a committee once per linked candidate: one row per committee.
+    CREATE TABLE cs AS
+    SELECT CMTE_ID, CMTE_NM, CMTE_TP, amt(FED_CAND_CMTE_CONTB) AS fec_contb,
+        amt(FED_CAND_CONTB_REF) AS fec_ref
+    FROM read_csv({literal(cs)}, header = true, all_varchar = true)
+    QUALIFY row_number() OVER (PARTITION BY CMTE_ID ORDER BY CAND_ID) = 1;
+    -- Each giver->candidate pair's 24Ks for the cycle, as gold sums them.
+    CREATE TABLE pair AS
+    SELECT from_committee_id, candidate_id, count(*) AS rows,
+        CAST(sum(amount) AS DECIMAL(16, 2)) AS net,
+        CAST(coalesce(sum(amount) FILTER (WHERE amount > 0), 0) AS DECIMAL(16, 2)) AS gifts,
+        CAST(coalesce(sum(amount) FILTER (WHERE amount < 0), 0) AS DECIMAL(16, 2)) AS reversals
+    FROM committee_transfer
+    WHERE side = 'disbursement' AND candidate_id IS NOT NULL
+    GROUP BY ALL;
+    -- Each giver's 24Ks: total_to_candidates as it is (now) and with negative pairs apart (new),
+    -- and every 24K it filed, credited to a candidate or not, gross and net.
+    CREATE TABLE giver AS
+    SELECT g.from_committee_id AS committee_id,
+        CAST(coalesce(sum(p.net), 0) AS DECIMAL(16, 2)) AS now,
+        CAST(coalesce(sum(p.net) FILTER (WHERE p.net >= 0), 0) AS DECIMAL(16, 2)) AS new,
+        CAST(coalesce(sum(p.net) FILTER (WHERE p.net < 0), 0) AS DECIMAL(16, 2)) AS returned,
+        any_value(g.all_net) AS all_net, any_value(g.all_gifts) AS all_gifts,
+        any_value(g.all_reversals) AS all_reversals
+    FROM (
+        SELECT from_committee_id, CAST(sum(amount) AS DECIMAL(16, 2)) AS all_net,
+            CAST(coalesce(sum(amount) FILTER (WHERE amount > 0), 0) AS DECIMAL(16, 2)) AS all_gifts,
+            CAST(coalesce(sum(amount) FILTER (WHERE amount < 0), 0) AS DECIMAL(16, 2))
+                AS all_reversals
+        FROM committee_transfer WHERE side = 'disbursement' GROUP BY ALL
+    ) AS g
+    LEFT JOIN pair AS p USING (from_committee_id)
+    GROUP BY ALL;
+    """)
+
+    show("Q11a: giver->candidate pairs by the sign of their cycle net", """
+    SELECT CASE WHEN net < 0 THEN 'negative' WHEN net = 0 THEN 'zero' ELSE 'positive' END AS net,
+        count(*) AS pairs, sum(rows) AS rows, sum(net) AS dollars,
+        count(*) FILTER (WHERE gifts > 0) AS with_a_gift_this_cycle,
+        sum(gifts) AS gifts, sum(reversals) AS reversals,
+        count(DISTINCT from_committee_id) AS givers, count(DISTINCT candidate_id) AS candidates
+    FROM pair GROUP BY 1 ORDER BY 1""")
+
+    show("Q11b: the negative pairs' size", """
+    SELECT CASE WHEN net >= -1000 THEN '$1,000 or less' WHEN net >= -5000 THEN '$1,001-5,000'
+            WHEN net >= -10000 THEN '$5,001-10,000' ELSE 'over $10,000' END AS size,
+        count(*) AS pairs, sum(net) AS dollars, count(*) FILTER (WHERE gifts > 0) AS with_a_gift
+    FROM pair WHERE net < 0 GROUP BY 1 ORDER BY min(net) DESC""")
+
+    show("Q11c: negative figures, as gold builds them now and with negative pairs apart", """
+    SELECT 'committee_cycle.total_to_candidates' AS figure,
+        count(*) FILTER (WHERE now < 0) AS negative_now, sum(now) FILTER (WHERE now < 0) AS dollars_now,
+        count(*) FILTER (WHERE new < 0) AS negative_new
+    FROM giver
+    UNION ALL
+    SELECT 'committee_top_recipient.amount', count(*) FILTER (WHERE net < 0), sum(net) FILTER (WHERE net < 0), 0
+    FROM pair
+    UNION ALL
+    SELECT 'candidate_cycle.total_committee', count(*) FILTER (WHERE now < 0),
+        sum(now) FILTER (WHERE now < 0), count(*) FILTER (WHERE new < 0)
+    FROM (
+        SELECT candidate_id, sum(net) AS now, sum(net) FILTER (WHERE net >= 0) AS new
+        FROM pair GROUP BY 1
+    )""")
+
+    show("Q11d: the RNC's (C00003418) 24Ks, and the two pairs", """
+    SELECT CAST(source_record_id AS VARCHAR) AS source_record_id, to_committee_id, candidate_id, amount, date
+    FROM committee_transfer WHERE side = 'disbursement' AND from_committee_id = 'C00003418'
+    ORDER BY date""")
+    show("Q11d (cont.): the RNC against FEC", """
+    SELECT giver.*, cs.fec_contb, cs.fec_ref
+    FROM giver JOIN cs ON cs.CMTE_ID = giver.committee_id WHERE committee_id = 'C00003418'""")
+
+    show("Q11e: the largest negative pairs", """
+    SELECT pair.from_committee_id, cm.CMTE_NM AS giver, pair.candidate_id, pair.rows, pair.gifts,
+        pair.reversals, pair.net
+    FROM pair LEFT JOIN cm ON cm.CMTE_ID = pair.from_committee_id
+    WHERE net < 0 ORDER BY net, from_committee_id LIMIT 10""")
+
+    # FEC's FED_CAND_CMTE_CONTB is Form 3X line 23, contributions to federal candidates and
+    # committees; FED_CAND_CONTB_REF line 16, refunds of them received. Which of fundlens's
+    # figures it equals, over every giver with a committee_summary row and a 24K.
+    parts = []
+    for m in ["now", "new", "all_net", "all_gifts"]:
+        d = f"({m} - fec_contb)"
+        parts.append(f"""
+        SELECT '{m}' AS fundlens, count(*) FILTER (WHERE fec_contb IS NOT NULL) AS both_sides,
+            count(*) FILTER (WHERE abs({d}) <= 1) AS within_1_dollar,
+            count(*) FILTER (WHERE abs({d}) > 1
+                AND abs({d}) <= 0.01 * greatest(abs({m}), abs(fec_contb))) AS within_1_pct,
+            count(*) FILTER (WHERE abs({d}) > 1
+                AND abs({d}) > 0.01 * greatest(abs({m}), abs(fec_contb))) AS beyond_1_pct,
+            count(*) FILTER (WHERE {d} > 1) AS above_fec,
+            sum({m}) AS sum_fundlens, sum(fec_contb) AS sum_fec
+        FROM giver JOIN cs ON cs.CMTE_ID = giver.committee_id""")
+    show("Q11f: each giver's 24Ks against FEC's FED_CAND_CMTE_CONTB", " UNION ALL ".join(parts))
+
+    show("Q11g: the givers with a negative pair, against FEC", """
+    SELECT count(*) AS givers, count(cs.CMTE_ID) AS in_committee_summary,
+        count(*) FILTER (WHERE abs(now - fec_contb) <= 1) AS now_within_1_dollar,
+        count(*) FILTER (WHERE abs(new - fec_contb) <= 1) AS new_within_1_dollar,
+        count(*) FILTER (WHERE abs(all_net - fec_contb) <= 1) AS all_net_within_1_dollar,
+        count(*) FILTER (WHERE abs(all_gifts - fec_contb) <= 1) AS all_gifts_within_1_dollar,
+        count(*) FILTER (WHERE fec_ref > 0) AS fec_ref_positive,
+        count(*) FILTER (WHERE abs(fec_ref + returned) <= 1) AS ref_equals_returned,
+        sum(returned) AS returned, sum(fec_ref) AS fec_ref
+    FROM giver LEFT JOIN cs ON cs.CMTE_ID = giver.committee_id WHERE returned < 0""")
+    show("Q11h: givers with a reversal: FEC's two lines against fundlens's gross and net", """
+    SELECT count(*) AS givers,
+        count(*) FILTER (WHERE abs(all_net - fec_contb) <= 1) AS contb_equals_net,
+        count(*) FILTER (WHERE abs(all_gifts - fec_contb) <= 1) AS contb_equals_gross,
+        count(*) FILTER (WHERE abs(fec_ref + all_reversals) <= 1) AS ref_equals_reversals,
+        count(*) FILTER (WHERE abs(fec_ref) <= 1) AS ref_zero,
+        sum(all_gifts) AS gross, sum(all_reversals) AS reversals, sum(fec_contb) AS fec_contb,
+        sum(fec_ref) AS fec_ref
+    FROM giver JOIN cs ON cs.CMTE_ID = giver.committee_id WHERE all_reversals < 0""")
+
+    show("Q11i: the RNC's 2024 pas2 rows by transaction type", """
+    SELECT TRANSACTION_TP, count(*) AS rows, CAST(sum(TRANSACTION_AMT) AS DECIMAL(16, 2)) AS dollars
+    FROM pas2 WHERE CMTE_ID = 'C00003418' GROUP BY 1 ORDER BY 1""")
+finally:
+    shutil.rmtree(work, ignore_errors=True)
+```
+
+### Results
+
+**Q11a: giver->candidate pairs by the sign of their cycle net  (0 s)**
+
+| net | pairs | rows | dollars | with_a_gift_this_cycle | gifts | reversals | givers | candidates |
+|---|---|---|---|---|---|---|---|---|
+| negative | 1,283 | 2,497 | -3,095,886 | 164 | 536,848 | -3,632,734 | 685 | 506 |
+| positive | 136,071 | 262,671 | 521,908,677 | 136,071 | 533,747,545 | -11,838,868 | 4,524 | 1,390 |
+| zero | 1,411 | 3,225 | 0 | 1,406 | 3,550,942 | -3,550,942 | 721 | 531 |
+
+**Q11b: the negative pairs' size  (0 s)**
+
+| size | pairs | dollars | with_a_gift |
+|---|---|---|---|
+| $1,000 or less | 490 | -418,473 | 59 |
+| $1,001-5,000 | 762 | -2,394,567 | 94 |
+| $5,001-10,000 | 27 | -224,846 | 10 |
+| over $10,000 | 4 | -58,000 | 1 |
+
+**Q11c: negative figures, as gold builds them now and with negative pairs apart  (0 s)**
+
+| figure | negative_now | dollars_now | negative_new |
+|---|---|---|---|
+| committee_cycle.total_to_candidates | 41 | -83,012 | 0 |
+| committee_top_recipient.amount | 1,283 | -3,095,886 | 0 |
+| candidate_cycle.total_committee | 126 | -546,051 | 0 |
+
+**Q11d: the RNC's (C00003418) 24Ks, and the two pairs  (0 s)**
+
+| source_record_id | to_committee_id | candidate_id | amount | date |
+|---|---|---|---|---|
+| 4032120231736816266 | C00771709 | H2MA09239 | -1,000 | 2023-02-02 |
+| 4032120231736816267 | C00796573 | H2MA03141 | -1,000 | 2023-02-02 |
+
+**Q11d (cont.): the RNC against FEC  (0 s)**
+
+| committee_id | now | new | returned | all_net | all_gifts | all_reversals | fec_contb | fec_ref |
+|---|---|---|---|---|---|---|---|---|
+| C00003418 | -2,000 | 0 | -2,000 | -2,000 | 0 | -2,000 | 8,000 | 0 |
+
+**Q11e: the largest negative pairs  (0 s)**
+
+| from_committee_id | giver | candidate_id | rows | gifts | reversals | net |
+|---|---|---|---|---|---|---|
+| C00797670 | AMERICAN ISRAEL PUBLIC AFFAIRS COMMITTEE POLITICAL ACTION COMMITTEE | H2TX26093 | 34 | 0 | -17,000 | -17,000 |
+| C00797670 | AMERICAN ISRAEL PUBLIC AFFAIRS COMMITTEE POLITICAL ACTION COMMITTEE | S8WA00194 | 31 | 0 | -15,500 | -15,500 |
+| C00797670 | AMERICAN ISRAEL PUBLIC AFFAIRS COMMITTEE POLITICAL ACTION COMMITTEE | H8ND00096 | 26 | 0 | -13,000 | -13,000 |
+| C00797670 | AMERICAN ISRAEL PUBLIC AFFAIRS COMMITTEE POLITICAL ACTION COMMITTEE | H8TN02119 | 36 | 5,000 | -17,500 | -12,500 |
+| C00034298 | PPG INDUSTRIES INC. PAC | H6CA22125 | 2 | 0 | -10,000 | -10,000 |
+| C00100321 | L3HARRIS TECHNOLOGIES, INC. PAC | S8UT00176 | 2 | 0 | -10,000 | -10,000 |
+| C00202085 | JAFFE, RAITT, HEUER & WEISS POLITICAL COMMITTEE | S8MI00281 | 2 | 0 | -10,000 | -10,000 |
+| C00287714 | CARNIVAL/PRINCESS HOLLAND AMERICA LINE INC. PAC (HALPAC) | H2CA47188 | 2 | 0 | -10,000 | -10,000 |
+| C00348607 | IMPACT | S2CT00132 | 2 | 0 | -10,000 | -10,000 |
+| C00348607 | IMPACT | S2MA00170 | 2 | 0 | -10,000 | -10,000 |
+
+**Q11f: each giver's 24Ks against FEC's FED_CAND_CMTE_CONTB  (0 s)**
+
+| fundlens | both_sides | within_1_dollar | within_1_pct | beyond_1_pct | above_fec | sum_fundlens | sum_fec |
+|---|---|---|---|---|---|---|---|
+| now | 3,921 | 756 | 20 | 3,145 | 151 | 518,812,791 | 965,766,872 |
+| new | 3,921 | 754 | 26 | 3,141 | 193 | 521,908,677 | 965,766,872 |
+| all_net | 3,921 | 756 | 20 | 3,145 | 151 | 518,816,091 | 965,766,872 |
+| all_gifts | 3,921 | 749 | 33 | 3,139 | 302 | 537,838,635 | 965,766,872 |
+
+**Q11g: the givers with a negative pair, against FEC  (0 s)**
+
+| givers | in_committee_summary | now_within_1_dollar | new_within_1_dollar | all_net_within_1_dollar | all_gifts_within_1_dollar | fec_ref_positive | ref_equals_returned | returned | fec_ref |
+|---|---|---|---|---|---|---|---|---|---|
+| 685 | 685 | 31 | 29 | 31 | 23 | 428 | 115 | -3,095,886 | 5,793,880 |
+
+**Q11h: givers with a reversal: FEC's two lines against fundlens's gross and net  (0 s)**
+
+| givers | contb_equals_net | contb_equals_gross | ref_equals_reversals | ref_zero | gross | reversals | fec_contb | fec_ref |
+|---|---|---|---|---|---|---|---|---|
+| 1,642 | 66 | 59 | 283 | 669 | 432,918,344 | -19,022,544 | 809,898,717 | 8,623,141 |
+
+**Q11i: the RNC's 2024 pas2 rows by transaction type  (0 s)**
+
+| TRANSACTION_TP | rows | dollars |
+|---|---|---|
+| 24C | 7 | 29,255,723 |
+| 24K | 2 | -2,000 |
+
+### Findings
+
+- **The negative pairs are returns of earlier gifts.** 1,119 of the 1,283 hold no gift that
+  cycle (Q11a). The other 164 hold a gift smaller than their reversals, as AIPAC's PAC's $5,000
+  to `H8TN02119` against $17,500 of reversals does (Q11e). 1,252 of them are $5,000 or less
+  (Q11b).
+- **The RNC is as the ticket found it.** Its 2024 `pas2` holds two 24Ks, both −$1,000 voids dated
+  2023-02-02 (Q11d), and seven 24C coordinated expenditures (Q11i). Neither explains FEC's
+  `FED_CAND_CMTE_CONTB` of $8,000; its source is still not measured. The Cannata void filed
+  against Tran's committee (`OTHER_ID` C00796573) is credited to Tran by NEU-2075's rule, which
+  trusts the recipient committee over the giver's `CAND_ID`; one filer's error does not justify
+  reversing that.
+- **FEC's line 23 does not reconcile with a giver's 24Ks.** Its sum is $965.8M against $518.8M of
+  24Ks, and only 756 of 3,921 givers match within $1 (Q11f). Among the 1,642 givers with any
+  reversal, net matches 66 and gross 59 (Q11h). So it cannot decide whether FEC counts these
+  gifts gross or net.
+- **For some givers, FEC files the reversals as refunds received.** For 115 of the 685 givers
+  with a negative pair, `FED_CAND_CONTB_REF` equals their returned gifts within $1 (Q11g), and for
+  283 of the 1,642 with any reversal it equals all their negative 24Ks (Q11h). FEC itself, for those
+  filers, keeps the returned money out of line 23. That fits a figure of its own.
+
+**What changed (NEU-2204).** Gold sums a giver's 24Ks to each candidate. A pair netting below zero
+is a returned gift: it is in the giver's new `committee_cycle.total_returned_by_candidates`, and
+not in `total_to_candidates`, `committee_top_recipient`, `candidate_cycle.total_committee` or
+`race_top_committee`. On 2024 that leaves none of them negative (Q11c). It moves $3,095,886 to the
+new figure and raises `total_to_candidates`' sum from $518.8M to $521.9M (Q11f). Silver keeps every
+row. A pair netting zero or more, a same-cycle void's, nets as before. Three alternatives were
+rejected. Splitting every 24K into gifts and returns, FEC's two lines, would show a same-cycle void
+as a gift and a return of a check that was never cashed. Clamping at zero would hide the money and
+break the rule that top recipients add up. Moving a void back to its gift's cycle needs a link the
+bulk files give only in free-text memo.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to
@@ -4985,6 +5342,10 @@ every 24I to 11(a)(i) for 2024's $22,920 on line 17. ADR-0004 carries the rule.
    amounts written in whole dollars. Money B counts that FEC files on line 17, mostly organizations'
    3x receipts, offsets part of it. Recovering the omitted money needs the raw filings as a
    source, which is P-NEU-107 M5's question (NEU-2181).
+8. **A giver's 24Ks to a candidate that net below zero for the cycle are returned gifts (NEU-2204,
+   Q11)**, kept in silver and summed in `committee_cycle.total_returned_by_candidates`, in no gift
+   figure. FEC's line 23 cannot check `total_to_candidates`: it reconciles with neither the gross nor
+   the net 24Ks.
 
 ## For NEU-2141, NEU-2142 and NEU-2143
 

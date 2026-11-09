@@ -17,7 +17,6 @@ htmlcov/
 # Virtual environments (Docker-only dev, but guard against strays)
 .venv/
 venv/
-.python-version
 
 # Secrets / local env -- commit .env.example, never .env
 .env

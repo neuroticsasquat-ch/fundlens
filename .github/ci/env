@@ -1,0 +1,12 @@
+# Loaded into the python job's environment by the shared python.yml. Test-only values, never secrets.
+# The Postgres 18 service's own credentials and database; the integration tests create their
+# scratch databases beside it.
+DATABASE_URL=postgresql://root:root@localhost:5432/postgres
+# MinIO, which .github/ci/setup.sh starts, with docker-compose.yml's throwaway root credentials.
+R2_ENDPOINT=http://localhost:9000
+R2_ACCESS_KEY_ID=fundlens
+R2_SECRET_ACCESS_KEY=fundlens-dev-secret
+# Typer forces Rich's terminal output whenever GITHUB_ACTIONS is set, and the ANSI codes it adds
+# break the tests that look for text in CLI help and usage errors. This is Typer's own switch to
+# turn that off.
+_TYPER_FORCE_DISABLE_TERMINAL=1

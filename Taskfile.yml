@@ -60,21 +60,19 @@ tasks:
     cmds:
       - "{{.COMPOSE}} ps"
 
-  # `--no-sync` on all three: the image is where dependencies get installed, and
-  # `uv remove`'s sync is exact without the `dev` extra, so it would strip pytest, ruff and
-  # pyright out of the running container. The change lands with `task build`.
+  # `--no-sync` on all three: the image is where dependencies get installed, and a sync here
+  # would rewrite the running container's environment behind the image's back. The change
+  # lands with `task build`.
   deps:add:
     desc: 'Add a dependency (task deps:add -- <pkg>), then `task build`'
     cmds:
       - "{{.EXEC}} uv add --no-sync {{.CLI_ARGS}}"
   deps:add-dev:
     desc: 'Add a dev dependency (task deps:add-dev -- <pkg>), then `task build`'
-    # Dev tools live in the `dev` optional extra, not a dependency group, so `--optional dev`
-    # rather than `--dev`.
     cmds:
-      - "{{.EXEC}} uv add --no-sync --optional dev {{.CLI_ARGS}}"
+      - "{{.EXEC}} uv add --no-sync --dev {{.CLI_ARGS}}"
   deps:remove:
-    desc: 'Remove a dependency (task deps:remove -- <pkg>; add `--optional dev` for a dev one), then `task build`'
+    desc: 'Remove a dependency (task deps:remove -- <pkg>; add `--dev` for a dev one), then `task build`'
     cmds:
       - "{{.EXEC}} uv remove --no-sync {{.CLI_ARGS}}"
   deps:lock:
@@ -138,19 +136,19 @@ tasks:
   lint:
     desc: Run ruff check
     cmds:
-      - "{{.EXEC}} ruff check src tests migrations"
+      - "{{.EXEC}} ruff check"
   format:
     desc: Run ruff format
     cmds:
-      - "{{.EXEC}} ruff format src tests migrations"
+      - "{{.EXEC}} ruff format"
   format:check:
     desc: Check ruff formatting without writing
     cmds:
-      - '{{.EXEC}} ruff format --check {{.CLI_ARGS | default "src tests migrations"}}'
+      - "{{.EXEC}} ruff format --check {{.CLI_ARGS}}"
   typecheck:
-    desc: Run pyright (strict) over src, tests and migrations
+    desc: Run pyright (strict) over src, tests and migrations (the scope is in pyproject.toml)
     cmds:
-      - "{{.EXEC}} pyright src tests migrations"
+      - "{{.EXEC}} pyright"
 
   # The frontend service sits behind a compose profile (see docker-compose.yml), so `fe:dev`
   # starts it and every other fe: target runs in it.

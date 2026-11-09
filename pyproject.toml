@@ -30,7 +30,12 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
-[project.optional-dependencies]
+[project.scripts]
+fundlens = "fundlens.cli:app"
+
+# A dependency group, not an extra: `uv sync` installs it by default, which the shared CI's
+# python.yml relies on, and `--no-dev` leaves it out of the prod image.
+[dependency-groups]
 dev = [
     "boto3-stubs-lite[s3]>=1.43.122",
     "httpx2>=2.16.0",
@@ -40,9 +45,6 @@ dev = [
     "ruff>=0.17.3",
     "types-pyyaml>=6.0.12.20261030",
 ]
-
-[project.scripts]
-fundlens = "fundlens.cli:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -54,6 +56,8 @@ packages = ["src/fundlens"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+# The scope a bare `ruff check` / `ruff format` covers, so CI, the Taskfile and the hooks agree.
+include = ["src/**/*.py", "tests/**/*.py", "migrations/**/*.py", "pyproject.toml"]
 
 [tool.ruff.format]
 # ruff 0.16.0 began formatting Python code blocks inside Markdown by default.
