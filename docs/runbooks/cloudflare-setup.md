@@ -159,32 +159,19 @@ curl -s -H "Authorization: Bearer $PURGE_TOKEN" https://api.cloudflare.com/clien
    | Project name | `fundlens`. It must match `name` in `frontend/wrangler.jsonc`, or the build fails. |
    | Build command | `pnpm install --frozen-lockfile && pnpm build` |
    | Deploy command | `npx wrangler deploy` |
-   | Non-production branch builds | **on** |
-   | Non-production branch deploy command (*Preview command* on the *Previews Base* tab) | `npx wrangler preview`, the default. It needs the `previews` block `frontend/wrangler.jsonc` carries. Not `npx wrangler versions upload`: Workers Builds binds a preview build to the Worker's Previews identity, and that command's name check then fails every time (2026-10-30, below). |
+   | Non-production branch builds | **off**. A preview's `workers.dev` origin isn't in the API's CORS list, so it could show only the shell, and CI's `js` job already builds every frontend PR (spec §8, amended 2026-11-09). |
    | Root directory (*Advanced settings*) | `frontend` |
 
    *Deploy*. This first build runs before the variables below exist; step 9's PR rebuilds with them.
-   A preview build that fails with "The name in your wrangler.jsonc file (fundlens) must match the
-   name of your Worker" although the names match is running `wrangler versions upload` (or `wrangler
-   deploy`): their check compares the Worker's script tag with the tag Workers Builds passes in
-   `WRANGLER_CI_MATCH_TAG`, which for a preview build is the Worker's Previews identity, so it never
-   matches. Set the preview command to `npx wrangler preview`. A `WRANGLER_LOG` = `debug` build
-   variable prints both tags (`Failed to match Worker tag. The API returned …, but the CI system
-   expected …`). Changing the command afterwards on the *Previews Base* tab did not reach PR
-   builds, nor did *Retry build*, which replays a build's original settings: what worked was
-   *Disconnect* the repository, connect it again without ever entering `versions upload`, and push
-   a change under `frontend/` (2026-10-30, PR #27).
 3. Worker `fundlens` → *Settings* → *Build*:
-   - *Branch control*: production branch **`main`**.
+   - *Branch control*: production branch **`main`**, *Non-production branch builds* off.
    - *Build watch paths*: include `frontend/**`, exclude nothing. *Save*.
    - *Variables and secrets*: *Add* → type **Text**, name `VITE_API_BASE_URL`, value
      `https://api.fundlens.org`. Add a second, `NODE_VERSION` = `24` (spec §2; pins the build image's
      Node). *Save*. These are build variables: the bundle is static, so they are inlined at build time
      (an assets-only Worker refuses runtime variables anyway).
-   - *Previews Base* tab: the same two variables. A preview build reads only this tab's, so without
-     them a preview bundle calls same-origin `/v1` and finds no API.
-4. Worker `fundlens` → *Settings* → *Domains & Routes*: leave `workers.dev` and **Preview URLs**
-   enabled. Preview builds are served from them.
+4. Worker `fundlens` → *Settings* → *Domains & Routes*: turn **Preview URLs** off. With no preview
+   builds nothing is served from them.
 
 **Check:** Worker `fundlens` → *Settings* → *Build* → *Build configuration* reads **Root directory**
 `frontend`. The import dialog keeps that field under *Advanced settings*, and when it is missed the
@@ -244,8 +231,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://fundlens.org/race/2024/senate/
 
 ### 9. Record the as-built values
 
-The DoD's preview check needs a PR that touches `frontend/`, and merging it rebuilds production with
-the step 6 variables. Make that PR record where the frontend is deployed:
+A PR that touches `frontend/` and is merged rebuilds production with the step 6 variables. Make that PR record where the frontend is deployed:
 
 ```bash
 # laptop, in the repo
@@ -258,15 +244,13 @@ git switch -c docs/NEU-2033-as-built
    `As built: Worker \`fundlens\`, custom domain \`fundlens.org\` (docs/runbooks/cloudflare-setup.md).`
 3. Commit both files, push, and open the PR into `main`.
 
-**Expected:** the PR's *Workers Builds* check passes and links a preview URL
-(`https://<version>-fundlens.<subdomain>.workers.dev`) that serves the SPA. Merge it, wait for the
-Worker's *Deployments* tab to show the merge commit's build as active, then open `https://fundlens.org`
-in a browser.
+**Expected:** the PR's `ci` check passes, and no *Workers Builds* check appears (previews are off).
+Merge it, wait for the Worker's *Deployments* tab to show the merge commit's build as active, then
+open `https://fundlens.org` in a browser.
 
 **Expected:** the page reads **Build** followed by the merge commit's first 7 characters (the SPA
 renders it from `WORKERS_CI_COMMIT_SHA`, so `curl` of the HTML will not show it). Production was
-rebuilt with the step 6 variables. The preview's API calls fail CORS (only `https://fundlens.org` is
-allowed, spec §7.2); that is expected.
+rebuilt with the step 6 variables.
 
 Now run [coolify-setup.md](coolify-setup.md), then come back for Part B.
 
@@ -367,3 +351,11 @@ deviations, each now folded into the steps above:
 - **Step 10 and 11:** `fundlens health` printed `r2: ok`; the purge token purged and could not list
   buckets.
 
+### 2026-11-09 — PR preview builds turned off
+
+Spec §8 amended. Every preview's API calls failed CORS, because only `https://fundlens.org` is
+allowed, so a preview showed only the shell. CI's `js` job already builds every frontend PR. Steps 6
+and 9 now say *Non-production branch builds* off and *Preview URLs* off. `frontend/wrangler.jsonc`
+dropped its `previews` block, which only `wrangler preview` needed. The 2026-10-30 workaround for the
+preview name-mismatch error went with the step it described. It is still recorded in the entry above
+and in PR #27.
