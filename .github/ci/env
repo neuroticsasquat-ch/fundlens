@@ -1,0 +1,8 @@
+# Loaded into the python job's environment by the shared python.yml. Test-only values, never secrets.
+# The Postgres 18 service's own credentials and database; the integration tests create their
+# scratch databases beside it.
+DATABASE_URL=postgresql://root:root@localhost:5432/postgres
+# MinIO, which .github/ci/setup.sh starts, with docker-compose.yml's throwaway root credentials.
+R2_ENDPOINT=http://localhost:9000
+R2_ACCESS_KEY_ID=fundlens
+R2_SECRET_ACCESS_KEY=fundlens-dev-secret
