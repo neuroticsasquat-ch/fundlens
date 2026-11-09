@@ -1,0 +1,27 @@
+name: dependencies
+
+on:
+  push:
+    branches: [updates/dependencies]
+  schedule:
+    - cron: "0 11 * * *" # daily, before Dependabot's Saturday 09:00 ET run
+    - cron: "*/30 13-23 * * 6" # every 30 min on Saturdays, covering the window in EST and EDT
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependencies
+  cancel-in-progress: false
+
+jobs:
+  # Syncs updates/dependencies with main and auto-merges Dependabot PRs into it. It never
+  # promotes to main: every merge to main redeploys `pipeline` and kills any runbook step running
+  # in it (a publish, 2026-11-02), so a person merges the promotion PR when nothing is in flight.
+  dependency-branch:
+    uses: neuroticsasquat-ch/workflows/.github/workflows/dependency-branch.yml@v1
+    with:
+      auto-promote: false
+    secrets:
+      app-private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}

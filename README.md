@@ -79,16 +79,20 @@ Worker). `task prod:check` validates the file, as CI does. The first data run, 2
 
 ## CI and dependency updates
 
-`.github/workflows/ci.yml` builds the dev image and runs lint, format check, typecheck and the
-whole pytest suite against the compose stack on every PR and push to `main`, then regenerates
-`openapi.json` and the frontend's client types and fails if either changed (the drift check); its
-`test` job is a required check on `main`. So is its `frontend` job (typecheck, oxlint, vitest, build in the
-frontend container), which runs only when `frontend/`, the compose file, the Taskfile or the
-workflow changes and otherwise reports as skipped.
-Dependabot opens its PRs against the long-lived `updates/dependencies` branch, and
-`merge-main-into-dependencies.yml` merges `main` into it every Saturday before Dependabot runs.
-The branch and the repository rulesets are created, and kept as declared, by
-`scripts/github-rulesets.sh` (run on the host with `gh` and `jq`; safe to re-run).
+`.github/workflows/ci.yml` calls the shared workflows in `neuroticsasquat-ch/workflows` (`@v1`) on
+every PR and push to `main`. They run on the runner, not in the dev containers: `python` (ruff,
+pyright, the Alembic head and drift checks and the whole pytest suite against Postgres 18 and the
+MinIO that `.github/ci/setup.sh` starts), `js` (oxlint, `tsc -b`, vitest and the build, only when
+`frontend/` or the workflow changes) and `image` (builds the prod image, checks it doesn't run as
+root, then `.github/ci/smoke.sh`). Two jobs of this repo's own sit beside them: `prod-check`
+validates `docker-compose.prod.yml`, and `openapi-drift` regenerates `openapi.json` and the
+frontend's client types and fails if either changed. The `ci` job gathers them all, and it is the
+only required check, set by the `neuroticsasquat-ch` org rulesets.
+Dependabot opens its PRs against the long-lived `updates/dependencies` branch.
+`.github/workflows/dependencies.yml` keeps that branch synced with `main` and auto-merges the PRs
+into it once `ci` passes. It never promotes the branch to `main`, because every merge to `main`
+redeploys `pipeline` and kills whatever runbook step is running in it. A person merges the
+promotion PR when nothing is in flight.
 
 ## License
 

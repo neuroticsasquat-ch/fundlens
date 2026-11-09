@@ -1,57 +1,52 @@
-# Everything lands on the long-lived updates/dependencies branch, not main, and reaches main
-# through one reviewed PR. merge-main-into-dependencies.yml keeps that branch caught up with main
-# each Saturday morning before these run.
+# Everything lands on the long-lived updates/dependencies branch, not main. dependencies.yml keeps
+# that branch synced with main and auto-merges these PRs into it when `ci` is green; a person
+# promotes it to main (auto-promote is off in this repo).
 version: 2
 updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-      day: saturday
-      time: "09:00"
-      timezone: America/New_York
-    target-branch: updates/dependencies
-    commit-message:
-      prefix: ci
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types:
-          - minor
-          - patch
-
   - package-ecosystem: uv
     directory: /
+    target-branch: updates/dependencies
     schedule:
       interval: weekly
       day: saturday
       time: "09:00"
       timezone: America/New_York
-    target-branch: updates/dependencies
     commit-message:
       prefix: build
       prefix-development: build
-      include: scope
     groups:
       minor-and-patch:
-        update-types:
-          - minor
-          - patch
+        update-types: [minor, patch]
 
+  # The npm ecosystem reads pnpm-lock.yaml.
   - package-ecosystem: npm
     directory: /frontend
+    target-branch: updates/dependencies
     schedule:
       interval: weekly
       day: saturday
       time: "09:00"
       timezone: America/New_York
-    target-branch: updates/dependencies
     commit-message:
       prefix: build
       prefix-development: build
-      include: scope
     groups:
       minor-and-patch:
-        update-types:
-          - minor
-          - patch
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: updates/dependencies
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "09:00"
+      timezone: America/New_York
+    commit-message:
+      prefix: ci
+    # The shared workflows float on @v1; bumping them is the workflows repo's job.
+    ignore:
+      - dependency-name: neuroticsasquat-ch/workflows
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

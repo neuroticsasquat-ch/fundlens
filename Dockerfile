@@ -31,12 +31,13 @@ FROM base AS dev
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libatomic1 \
     && rm -rf /var/lib/apt/lists/*
-RUN uv sync --locked --inexact --no-cache --extra dev --no-install-project
+# The `dev` dependency group installs by default (`--no-dev` keeps it out of prod).
+RUN uv sync --locked --inexact --no-cache --no-install-project
 # Bake the node download into the image so the first pre-commit run does not pay for it
 # (and does not need the network).
 RUN pyright --version
 COPY src/ src/
-RUN uv sync --locked --inexact --no-cache --extra dev
+RUN uv sync --locked --inexact --no-cache
 # Idle: every task runs through `docker compose exec app …`.
 CMD ["sleep", "infinity"]
 
@@ -55,6 +56,21 @@ COPY alembic.ini ./
 COPY migrations/ migrations/
 
 RUN uv sync --locked --inexact --no-cache --no-dev --no-editable
+
+# Prod runs as a non-root user (the shared CI's image check, NEU-2239). Only this stage:
+# the dev stage keeps root, because `task deps:*` runs `uv` against /usr/local and the
+# bind-mounted repo. The UID/GID are fixed so the host can chown the volumes prod mounts under
+# DATA_DIR to them (docs/runbooks/coolify-setup.md). DATA_DIR is created owned by it too: its
+# `reference/` and `markers/` live outside the volumes, and a fresh volume mounted below it starts
+# out with the ownership of the directory the image has there. The home directory is DuckDB's
+# default extension directory.
+RUN groupadd --system --gid 10001 fundlens \
+    && useradd --system --uid 10001 --gid fundlens --create-home fundlens \
+    && mkdir -p /data/fundlens/bronze /data/fundlens/silver /data/fundlens/scratch \
+        /data/fundlens/resolution \
+    && chown -R fundlens:fundlens /data/fundlens
+
+USER fundlens
 
 # No CMD: docker-compose.prod.yml gives each service its own (`api` runs uvicorn, `pipeline`
 # idles for Coolify's scheduled tasks; spec §3.2).

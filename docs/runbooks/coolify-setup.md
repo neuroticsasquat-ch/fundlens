@@ -30,12 +30,27 @@ top to bottom. Append to the [Log](#log) at the bottom; never rewrite it.
 | Domain | `https://api.fundlens.org` → `api:8000` |
 | Bugsink project | `fundlens` in team `neuroticsasquat.ch` |
 | Kuma push monitors | `fundlens/weekly`, `fundlens/publish` |
+| Container user | `api` and `pipeline` run as `fundlens`, uid/gid `10001` (the prod image's `USER`, NEU-2239); `docker exec` runs as it too |
 | Container names | `<service>-<resource uuid>`, followed by `-<deploy timestamp>` on compose apps (new on every deploy), so match them by prefix |
 
 **Why the database service is `fundlens-postgres`, not `postgres`.** "Connect to Predefined Network" puts
 every service on Coolify's shared `coolify` network as well as the app's own, under its service name. A
 bare `postgres` there can resolve to another stack's database. `DATABASE_URL` is built in the compose
 file from `POSTGRES_PASSWORD` and that unique name.
+
+**Why the data volumes must belong to uid 10001.** The prod image runs as `fundlens` (`10001:10001`) and
+writes under `DATA_DIR` (`/data/fundlens`). A new volume takes the ownership of the image's directory it
+is mounted on, so a fresh deploy needs nothing. Volumes created before NEU-2239 belong to root and are
+not writable by the new user. Chown them once, before that image is first deployed (root ignores
+ownership, so the old image keeps working either way). The loop prints each volume it changes, so four
+lines are expected:
+
+```bash
+# VM
+for v in $(docker volume ls -q | grep -E '_(bronze|silver|scratch|resolution)$' | grep lvch8zyndujjzkz16ksys8im); do
+  echo "$v"; docker run --rm -v "$v":/v alpine chown -R 10001:10001 /v
+done
+```
 
 **Why the check is `OTEL_RESOURCE_ATTRIBUTES`, not `SOURCE_COMMIT`.** On the other compose apps the
 container's own `SOURCE_COMMIT` reads `unknown` even with *Source commit availability* on, while the
