@@ -60,7 +60,8 @@ only.
   shortfall comes from $69.4M of LLC gifts (a16z, USV, Paradigm, others) that it itemized only as
   memo attributions to the partners, which silver drops (NEU-2198) (Q7).
 - Two more fundlens bugs surfaced on the way: WinRed's `total_individual` is −$48.2M because
-  conduit refunds of earmarks are counted (NEU-2199, Q5l), and the 15C self-funding miss (NEU-2194).
+  conduit refunds of earmarks are counted (NEU-2199, Q5l; fixed, Q12), and the 15C self-funding
+  miss (NEU-2194).
 - **The national parties file their 3x receipts on line 17, not 11(a)(i)** (NEU-2202, Q9). Only
   4 of 10,524 receipts are on 11(a)(i), netting −$20,000. After NEU-2193, five of the six sit
   2–8% below `INDV_ITEM_CONTB`. That is refunds, which B nets and FEC's figure does not, plus what
@@ -5294,6 +5295,435 @@ rejected. Splitting every 24K into gifts and returns, FEC's two lines, would sho
 as a gift and a return of a check that was never cashed. Clamping at zero would hide the money and
 break the rule that top recipients add up. Moving a void back to its gift's cycle needs a link the
 bulk files give only in free-text memo.
+
+## Q12: a conduit's refunds of earmarks (NEU-2199)
+
+Measured for [NEU-2199](https://linear.app/neuroticsasquatch/issue/NEU-2199) on 2026-11-10. Q5l
+found WinRed's `total_individual` at −$48,199,349. A conduit's earmarks count at their recipients
+alone (ADR-0004), but its refunds of them were counted at the conduit, subtracting money fundlens
+never added. The ticket asked which of two rules for dropping them lands WinRed and ActBlue
+closest to their own tips: (A) a refund mirroring one of the conduit's dropped earmark rows, by
+name key and amount; (B) a refund to a giver with no counted gift of their own at the conduit.
+Neither gets WinRed to zero, so a third was measured: (C) keep a conduit's refund only when it
+mirrors a counted gift of the conduit's own, by name key and amount.
+
+Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
+container, as Q9 to Q11 did.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-10 22:02–22:08 UTC (Q12i–l and the floor screen last, at 22:05 and 22:08), `app` container of the local dev stack, DuckDB 2.0.0; the floor screen on the host |
+| Code | branch `fix/NEU-2199-conduit-earmark-refunds` off `main` at `5b1e290`; the drops as `sql/silver/04_contribution.sql` reads them before NEU-2199 |
+| `indiv24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip`, `Last-Modified: Sun, 08 Nov 2026 21:37:23 GMT`, downloaded 2026-11-10T21:59:57Z |
+| `cm24.zip` | `…/2024/cm24.zip`, `Last-Modified: Tue, 10 Nov 2026 06:36:30 GMT`, downloaded 2026-11-10, for committee names only |
+
+**Method.** Every `indiv` row filed by ActBlue (`C00401224`) or WinRed (`C00694323`), from
+`itcont.txt` alone (the zip repeats it split by date), each `SUB_ID` once. A row is *dropped* as
+`04_contribution.sql` dropped it before NEU-2199: a memo line, a 24T or a 15 whose `MEMO_TEXT`
+names its recipient. *Counted* is a dropped-free row from an individual (IND, CAN or blank; the
+blank-type classifier is left out), a refund (2nY or 4nY) as −abs(amount). Names compare by name
+key (uppercased, letters and digits), amounts by absolute value. A separate screen of every
+committee's net counted individual money, refunds subtracted, flags any other committee a
+−$1M floor would catch.
+
+```bash
+# Host, from the repository root, dev stack up. About 4.3 GB of download; ~15 minutes.
+R=$PWD; W=$(mktemp -d); cd "$W"
+curl -sSLO https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' '$1=="C00401224" || $1=="C00694323"' > conduit_rows.txt
+# The floor screen: each committee's counted individual money on the lines total_individual
+# counts, roughly (no hybrid-PAC or party-account split), printed when below -$500,000.
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' '
+$19=="X" || $6=="24T" {next}
+($1=="C00401224"||$1=="C00694323") && $20 ~ /EARMARKED FOR .*\(C[0-9]+\)/ {next}
+{e=$7; gsub(/ /,"",e); if (e!="IND" && e!="CAN" && e!="") next}
+$6 ~ /^(20Y|4[012]Y|16[CFGHJKLR]|18[GHJKLU]|19J?|3[012][A-Z]?|10J?|15C)$/ {next}
+{a=$15+0; if ($6 ~ /^[24][0-9]Y$/) a = (a<0?a:-a); net[$1]+=a; n[$1]++}
+END {for (c in net) if (net[c] < -500000) printf "%s|%d|%.0f\n", c, n[c], net[c]}' | sort -t'|' -k3 -n
+# Save the Python block below as q12.py, then:
+cd "$R" && docker compose exec -T app mkdir -p /tmp/m
+docker compose cp "$W/conduit_rows.txt" app:/tmp/m/ && docker compose cp "$W/q12.py" app:/tmp/m/
+docker compose exec -T app python /tmp/m/q12.py > "$W/q12.out"
+docker compose exec -T app rm -rf /tmp/m
+```
+
+```python
+"""NEU-2199: a conduit's refunds of earmarks, rule A against rule B, on FEC's 2024 indiv."""
+
+import time
+from decimal import Decimal
+
+import duckdb
+
+W = "/tmp/m"
+con = duckdb.connect()
+
+BULK = [
+    "CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+    "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+    "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+    "MEMO_TEXT", "SUB_ID",
+]
+
+
+def show(title: str, sql: str) -> None:
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else f"{v:.2%}" if isinstance(v, float) else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+cols = ", ".join(f"'{c}': 'VARCHAR'" for c in BULK)
+con.execute(f"""
+CREATE TABLE raw AS SELECT * REPLACE (CAST(TRANSACTION_AMT AS DECIMAL(14, 2)) AS TRANSACTION_AMT)
+FROM read_csv('{W}/conduit_rows.txt', delim='|', header=false, quote='', escape='',
+    columns={{{cols}}})
+""")
+con.execute("""
+CREATE TABLE r AS
+SELECT *,
+    regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g') AS name_key,
+    regexp_matches(coalesce(TRANSACTION_TP, ''), '^[24][0-9]Y$') AS is_refund,
+    -- 04_contribution.sql's conduit-side drops: memo lines, 24Ts, a 15 naming its recipient.
+    (MEMO_CD IS NOT DISTINCT FROM 'X'
+        OR TRANSACTION_TP IS NOT DISTINCT FROM '24T'
+        OR regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\\(C[0-9]{8}\\)')) AS dropped,
+    coalesce(trim(ENTITY_TP), '') IN ('IND', 'CAN', '') AS individual
+FROM (SELECT DISTINCT ON (SUB_ID) * FROM raw)
+""")
+
+show("Q12a: the conduits' indiv rows by type, as 04_contribution.sql reads them", """
+SELECT CMTE_ID, TRANSACTION_TP, MEMO_CD = 'X' AS memo_line, dropped, individual,
+    count(*) AS rows, sum(TRANSACTION_AMT) AS amount
+FROM r GROUP BY ALL ORDER BY CMTE_ID, rows DESC
+""")
+
+show("Q12b: memo text of counted refunds, top 15 per conduit", """
+SELECT * FROM (
+    SELECT CMTE_ID, MEMO_TEXT, count(*) AS rows, sum(TRANSACTION_AMT) AS amount,
+        row_number() OVER (PARTITION BY CMTE_ID ORDER BY count(*) DESC) AS n
+    FROM r WHERE is_refund AND NOT dropped AND individual GROUP BY CMTE_ID, MEMO_TEXT
+) WHERE n <= 15 ORDER BY CMTE_ID, n
+""")
+
+show("Q12c: memo text of counted non-refunds, top 10 per conduit", """
+SELECT * FROM (
+    SELECT CMTE_ID, TRANSACTION_TP, MEMO_TEXT, count(*) AS rows, sum(TRANSACTION_AMT) AS amount,
+        row_number() OVER (PARTITION BY CMTE_ID ORDER BY count(*) DESC) AS n
+    FROM r WHERE NOT is_refund AND NOT dropped AND individual GROUP BY CMTE_ID, TRANSACTION_TP, MEMO_TEXT
+) WHERE n <= 10 ORDER BY CMTE_ID, n
+""")
+
+# Rule A: a counted refund at a conduit mirroring a dropped earmark row there (same name key and
+# amount, whatever sign the refund was written in).
+con.execute("""
+CREATE TABLE rule_a AS
+SELECT DISTINCT refund.SUB_ID
+FROM r AS refund
+JOIN r AS earmark
+    ON earmark.CMTE_ID = refund.CMTE_ID
+    AND earmark.name_key = refund.name_key
+    AND abs(earmark.TRANSACTION_AMT) = abs(refund.TRANSACTION_AMT)
+WHERE refund.is_refund AND NOT refund.dropped AND earmark.dropped AND NOT earmark.is_refund
+""")
+# Rule B: a counted refund at a conduit to a giver with no counted gift of their own there.
+con.execute("""
+CREATE TABLE rule_b AS
+SELECT refund.SUB_ID
+FROM r AS refund
+WHERE refund.is_refund AND NOT refund.dropped
+    AND NOT EXISTS (
+        SELECT 1 FROM r AS own
+        WHERE own.CMTE_ID = refund.CMTE_ID AND own.name_key = refund.name_key
+            AND NOT own.dropped AND NOT own.is_refund
+    )
+""")
+
+show("Q12d: each rule against the conduits' counted individual money", """
+WITH counted AS (
+    SELECT *, CASE WHEN is_refund THEN -abs(TRANSACTION_AMT) ELSE TRANSACTION_AMT END AS signed
+    FROM r WHERE NOT dropped AND individual
+)
+SELECT CMTE_ID,
+    sum(signed) FILTER (WHERE NOT is_refund) AS own_gifts,
+    sum(signed) FILTER (WHERE is_refund) AS refunds,
+    sum(signed) AS total_now,
+    count(*) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_a)) AS a_dropped_rows,
+    sum(signed) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_a)) AS a_dropped,
+    sum(signed) FILTER (WHERE SUB_ID NOT IN (SELECT SUB_ID FROM rule_a)) AS total_a,
+    count(*) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_b)) AS b_dropped_rows,
+    sum(signed) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_b)) AS b_dropped,
+    sum(signed) FILTER (WHERE SUB_ID NOT IN (SELECT SUB_ID FROM rule_b)) AS total_b
+FROM counted GROUP BY ALL ORDER BY 1
+""")
+
+show("Q12e: refunds the two rules disagree on", """
+WITH counted AS (
+    SELECT *, -abs(TRANSACTION_AMT) AS signed FROM r WHERE NOT dropped AND individual AND is_refund
+)
+SELECT CMTE_ID, SUB_ID IN (SELECT SUB_ID FROM rule_a) AS a, SUB_ID IN (SELECT SUB_ID FROM rule_b) AS b,
+    count(*) AS rows, sum(signed) AS amount
+FROM counted GROUP BY ALL ORDER BY ALL
+""")
+
+show("Q12f: refunds rule A keeps and rule B drops: memo text, top 10 per conduit", """
+SELECT * FROM (
+    SELECT CMTE_ID, MEMO_TEXT, count(*) AS rows, sum(-abs(TRANSACTION_AMT)) AS amount,
+        row_number() OVER (PARTITION BY CMTE_ID ORDER BY count(*) DESC) AS n
+    FROM r WHERE is_refund AND NOT dropped AND individual
+        AND SUB_ID NOT IN (SELECT SUB_ID FROM rule_a) AND SUB_ID IN (SELECT SUB_ID FROM rule_b)
+    GROUP BY CMTE_ID, MEMO_TEXT
+) WHERE n <= 10 ORDER BY CMTE_ID, n
+""")
+
+show("Q12g: refunds rule A keeps: memo text, top 10 per conduit", """
+SELECT * FROM (
+    SELECT CMTE_ID, MEMO_TEXT, count(*) AS rows, sum(-abs(TRANSACTION_AMT)) AS amount,
+        row_number() OVER (PARTITION BY CMTE_ID ORDER BY count(*) DESC) AS n
+    FROM r WHERE is_refund AND NOT dropped AND individual AND SUB_ID NOT IN (SELECT SUB_ID FROM rule_a)
+    GROUP BY CMTE_ID, MEMO_TEXT
+) WHERE n <= 10 ORDER BY CMTE_ID, n
+""")
+
+show("Q12h: refunds at conduits that are no individual's (organization_receipt's side)", """
+SELECT CMTE_ID, ENTITY_TP, count(*) AS rows, sum(-abs(TRANSACTION_AMT)) AS amount
+FROM r WHERE is_refund AND NOT dropped AND NOT individual GROUP BY ALL ORDER BY ALL
+""")
+
+# Rule C: a counted refund at a conduit is kept only when it mirrors a counted gift of the
+# conduit's own (same name key and amount): a tip refunded. Any other is an earmark's.
+con.execute("""
+CREATE TABLE rule_c AS
+SELECT refund.SUB_ID
+FROM r AS refund
+WHERE refund.is_refund AND NOT refund.dropped
+    AND NOT EXISTS (
+        SELECT 1 FROM r AS own
+        WHERE own.CMTE_ID = refund.CMTE_ID AND own.name_key = refund.name_key
+            AND abs(own.TRANSACTION_AMT) = abs(refund.TRANSACTION_AMT)
+            AND NOT own.dropped AND NOT own.is_refund
+    )
+""")
+
+show("Q12i: rule C (keep a conduit's refund only when it mirrors a gift of its own)", """
+WITH counted AS (
+    SELECT *, CASE WHEN is_refund THEN -abs(TRANSACTION_AMT) ELSE TRANSACTION_AMT END AS signed
+    FROM r WHERE NOT dropped AND individual
+)
+SELECT CMTE_ID,
+    sum(signed) FILTER (WHERE NOT is_refund) AS own_gifts,
+    count(*) FILTER (WHERE is_refund AND SUB_ID NOT IN (SELECT SUB_ID FROM rule_c)) AS c_kept_rows,
+    sum(signed) FILTER (WHERE is_refund AND SUB_ID NOT IN (SELECT SUB_ID FROM rule_c)) AS c_kept,
+    count(*) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_c)) AS c_dropped_rows,
+    sum(signed) FILTER (WHERE SUB_ID IN (SELECT SUB_ID FROM rule_c)) AS c_dropped,
+    sum(signed) FILTER (WHERE SUB_ID NOT IN (SELECT SUB_ID FROM rule_c)) AS total_c
+FROM counted GROUP BY ALL ORDER BY 1
+""")
+
+show("Q12j: refunds rule C keeps, by amount", """
+SELECT CMTE_ID, abs(TRANSACTION_AMT) AS amount, count(*) AS rows
+FROM r WHERE is_refund AND NOT dropped AND individual AND SUB_ID NOT IN (SELECT SUB_ID FROM rule_c)
+GROUP BY ALL ORDER BY CMTE_ID, rows DESC LIMIT 20
+""")
+
+show("Q12k: WinRed's refunds and own gifts, by amount band", """
+SELECT CASE WHEN abs(TRANSACTION_AMT) < 10 THEN 'a <10' WHEN abs(TRANSACTION_AMT) < 50 THEN 'b 10-49'
+        WHEN abs(TRANSACTION_AMT) < 200 THEN 'c 50-199' ELSE 'd 200+' END AS band,
+    count(*) FILTER (WHERE is_refund) AS refund_rows, sum(abs(TRANSACTION_AMT)) FILTER (WHERE is_refund) AS refunds,
+    count(*) FILTER (WHERE NOT is_refund) AS gift_rows, sum(TRANSACTION_AMT) FILTER (WHERE NOT is_refund) AS gifts
+FROM r WHERE CMTE_ID = 'C00694323' AND NOT dropped AND individual GROUP BY ALL ORDER BY 1
+""")
+
+show("Q12l: refunds written negative at the conduits (the reversal rule's input)", """
+SELECT CMTE_ID, count(*) AS rows, sum(TRANSACTION_AMT) AS amount
+FROM r WHERE is_refund AND NOT dropped AND TRANSACTION_AMT < 0 GROUP BY ALL ORDER BY 1
+""")
+```
+
+### Results
+
+**Q12a: the conduits' indiv rows by type, as 04_contribution.sql reads them  (0 s)**
+
+| CMTE_ID | TRANSACTION_TP | memo_line | dropped | individual | rows | amount |
+|---|---|---|---|---|---|---|
+| C00401224 | 24T |  | True | True | 6,103,601 | 1,560,228,954 |
+| C00401224 | 15 |  | False | True | 4,072,594 | 26,609,553 |
+| C00401224 | 15 |  | True | True | 106,093 | 7,294,002 |
+| C00401224 | 22Y |  | False | True | 72 | 5,152 |
+| C00401224 | 15E |  | True | True | 9 | 5,750 |
+| C00401224 | 15E |  | False | True | 3 | 7,001 |
+| C00401224 | 15 |  | False | False | 3 | 1,259 |
+| C00694323 | 15 |  | False | True | 1,083,471 | 7,380,980 |
+| C00694323 | 22Y |  | False | True | 1,067,143 | 55,580,307 |
+| C00694323 | 24T |  | True | True | 660,255 | 565,620,430 |
+| C00694323 | 24T |  | True | False | 753 | 1,320,893 |
+
+**Q12b: memo text of counted refunds, top 15 per conduit  (0 s)**
+
+| CMTE_ID | MEMO_TEXT | rows | amount | n |
+|---|---|---|---|---|
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR TENNESSEE DEMOCRATIC PARTY - FEDERAL ACCOUNT (C00167 | 63 | 4,387 | 1 |
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR MAINE DEMOCRATIC STATE COMMITTEE - FEDERAL ACCOUNT ( | 9 | 765 | 2 |
+| C00694323 |  | 1,067,143 | 55,580,307 | 1 |
+
+**Q12c: memo text of counted non-refunds, top 10 per conduit  (0 s)**
+
+| CMTE_ID | TRANSACTION_TP | MEMO_TEXT | rows | amount | n |
+|---|---|---|---|---|---|
+| C00401224 | 15 | CONTRIBUTION TO ACTBLUE | 4,071,823 | 26,510,352 | 1 |
+| C00401224 | 15 | EARMARKED FOR CHC BOLD PAC/COMMITTEE FOR HISPANIC CAUSES BUILDING OUR LEADERSHIP DIVERSITY (C0036553 | 270 | 12,520 | 2 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR NY-03. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 46 | 17,748 | 3 |
+| C00401224 | 15 | EARMARKED FOR NAVAJO COUNTY NATIVE ORGANIZING FUND A PROJECT OF THE ARIZONA DEMOCRATIC PARTY (C00166 | 41 | 2,875 | 4 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR OR-05. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 31 | 7,130 | 5 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR CA-27. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 28 | 4,535 | 6 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR NY-17. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 25 | 7,088 | 7 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR NY-04. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 25 | 7,088 | 8 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR CA-13. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 21 | 6,080 | 9 |
+| C00401224 | 15 | EARMARKED FOR DEMOCRATIC NOMINEE FOR MO-. HELD PURSUANT TO AOS 1977-16 AND 1982-23 | 19 | 850 | 10 |
+| C00694323 | 15 |  | 1,083,471 | 7,380,980 | 1 |
+
+**Q12d: each rule against the conduits' counted individual money  (0 s)**
+
+| CMTE_ID | own_gifts | refunds | total_now | a_dropped_rows | a_dropped | total_a | b_dropped_rows | b_dropped | total_b |
+|---|---|---|---|---|---|---|---|---|---|
+| C00401224 | 26,616,554 | -5,152 | 26,611,402 | 41 | -3,917 | 26,615,319 | 53 | -4,253 | 26,615,655 |
+| C00694323 | 7,380,980 | -55,580,329 | -48,199,349 | 20,853 | -27,598,858 | -20,600,491 | 437,356 | -33,273,792 | -14,925,557 |
+
+**Q12e: refunds the two rules disagree on  (0 s)**
+
+| CMTE_ID | a | b | rows | amount |
+|---|---|---|---|---|
+| C00401224 | False | False | 3 | -27 |
+| C00401224 | False | True | 28 | -1,208 |
+| C00401224 | True | False | 16 | -872 |
+| C00401224 | True | True | 25 | -3,045 |
+| C00694323 | False | False | 621,516 | -12,169,007 |
+| C00694323 | False | True | 424,774 | -15,812,464 |
+| C00694323 | True | False | 8,271 | -10,137,530 |
+| C00694323 | True | True | 12,582 | -17,461,328 |
+
+**Q12f: refunds rule A keeps and rule B drops: memo text, top 10 per conduit  (0 s)**
+
+| CMTE_ID | MEMO_TEXT | rows | amount | n |
+|---|---|---|---|---|
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR TENNESSEE DEMOCRATIC PARTY - FEDERAL ACCOUNT (C00167 | 23 | -753 | 1 |
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR MAINE DEMOCRATIC STATE COMMITTEE - FEDERAL ACCOUNT ( | 5 | -455 | 2 |
+| C00694323 |  | 424,774 | -15,812,464 | 1 |
+
+**Q12g: refunds rule A keeps: memo text, top 10 per conduit  (0 s)**
+
+| CMTE_ID | MEMO_TEXT | rows | amount | n |
+|---|---|---|---|---|
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR TENNESSEE DEMOCRATIC PARTY - FEDERAL ACCOUNT (C00167 | 26 | -780 | 1 |
+| C00401224 | REFUND OF CONTRIBUTION, INITIALLY EARMARKED FOR MAINE DEMOCRATIC STATE COMMITTEE - FEDERAL ACCOUNT ( | 5 | -455 | 2 |
+| C00694323 |  | 1,046,290 | -27,981,471 | 1 |
+
+**Q12h: refunds at conduits that are no individual's (organization_receipt's side)  (0 s)**
+
+| CMTE_ID | ENTITY_TP | rows | amount |
+|---|---|---|---|
+
+**Q12i: rule C (keep a conduit's refund only when it mirrors a gift of its own)  (0 s)**
+
+| CMTE_ID | own_gifts | c_kept_rows | c_kept | c_dropped_rows | c_dropped | total_c |
+|---|---|---|---|---|---|---|
+| C00401224 | 26,616,554 | 7 | -126 | 65 | -5,026 | 26,616,428 |
+| C00694323 | 7,380,980 | 178,987 | -1,461,457 | 888,156 | -54,118,872 | 5,919,523 |
+
+**Q12j: refunds rule C keeps, by amount  (0 s)**
+
+| CMTE_ID | amount | rows |
+|---|---|---|
+| C00401224 | 5 | 4 |
+| C00401224 | 3 | 2 |
+| C00401224 | 100 | 1 |
+| C00694323 | 1 | 45,149 |
+| C00694323 | 10 | 28,314 |
+| C00694323 | 5 | 27,793 |
+| C00694323 | 2 | 25,949 |
+| C00694323 | 3 | 13,349 |
+| C00694323 | 4 | 11,266 |
+| C00694323 | 20 | 6,876 |
+| C00694323 | 50 | 4,193 |
+| C00694323 | 6 | 4,067 |
+| C00694323 | 30 | 2,381 |
+| C00694323 | 7 | 2,040 |
+| C00694323 | 100 | 1,408 |
+| C00694323 | 25 | 1,323 |
+| C00694323 | 9 | 1,237 |
+| C00694323 | 8 | 1,232 |
+| C00694323 | 15 | 503 |
+| C00694323 | 40 | 398 |
+
+**Q12k: WinRed's refunds and own gifts, by amount band  (0 s)**
+
+| band | refund_rows | refunds | gift_rows | gifts |
+|---|---|---|---|---|
+| a <10 | 511,052 | 1,163,243 | 866,185 | 2,859,713 |
+| b 10-49 | 383,048 | 9,527,994 | 196,474 | 2,655,050 |
+| c 50-199 | 149,917 | 12,954,929 | 19,266 | 1,288,581 |
+| d 200+ | 23,126 | 31,934,163 | 1,546 | 577,636 |
+
+**Q12l: refunds written negative at the conduits (the reversal rule's input)  (0 s)**
+
+| CMTE_ID | rows | amount |
+|---|---|---|
+| C00694323 | 1 | -11 |
+
+**Q12m: the floor screen, committees whose counted individual money nets below −$500,000 (awk, ~3 min)**
+
+| committee_id | name | rows | net |
+|---|---|---|---|
+| C00694323 | WINRED | 2,150,614 | −48,199,349 |
+| C00486563 | MANCHIN FOR WEST VIRGINIA | 1,742 | −2,307,966 |
+| C00508804 | SINEMA FOR ARIZONA | 4,726 | −1,370,338 |
+| C00865352 | NEW LEADERS 2024 | 1 | −1,000,000 |
+| C00875815 | CALIFORNIANS FOR CHOICE | 1 | −1,000,000 |
+| C00858779 | | 2 | −750,000 |
+| C00344473 | | 395 | −639,551 |
+| C00666040 | | 330 | −634,217 |
+| C00828061 | | 2 | −510,000 |
+
+### Findings
+
+- **Every WinRed refund is an earmark's but a few dollars' worth.** WinRed filed 1,067,143 refunds
+  (−$55,580,329), every `MEMO_TEXT` blank, against 1,083,471 gifts of its own ($7,380,980, mostly
+  under $10) (Q12a, Q12b). Its refunds run larger than its tips: $31.9M of them are $200 or more,
+  against $0.6M of its tips (Q12k). ActBlue's 72 refunds ($5,152) say what they are: `REFUND OF
+  CONTRIBUTION, INITIALLY EARMARKED FOR …`.
+- **Rule A leaves WinRed at −$20,600,491; rule B at −$14,925,557** (Q12d). WinRed itemizes its
+  side of only 660,255 earmarks as 24Ts ($565.6M of the $1.61B FEC credits it), so most refunds
+  mirror no dropped row. And most of its givers tip it: 621,516 refunds (−$12.2M) go to givers with
+  a gift of their own there, which rule B keeps (Q12e).
+- **Rule C lands each conduit at its own money.** WinRed nets $5,919,523: its $7,380,980 of tips
+  less 178,987 refunds ($1,461,457) that mirror one, almost all $1 to $10 (Q12i, Q12j). ActBlue
+  nets $26,616,428 against $26,616,554 of tips. A refund of an earmark whose giver also tipped the
+  same amount is kept, and the rule cannot tell them apart; at WinRed that is at most the $1.46M
+  kept.
+- **No conduit refund is an organization's** (Q12h), so `organization_receipt` and
+  `committee_transfer` lose nothing on 2024; they drop the same rows for other cycles.
+- **A −$1M floor on every committee would fail the 2024 build** (Q12m). Manchin's and Sinema's
+  campaigns, both retiring, refunded general-election gifts of earlier cycles (1,194 and 1,367
+  22Ys, mostly $1,000 to $3,300). Those refunds are real. Two super PACs each refunded exactly
+  $1,000,000, at the floor. So the gold check holds conduits alone to it.
+
+**What changed (NEU-2199).** Rule C. A refund at a conduit counts only when it mirrors a counted
+gift of the conduit's own, by name key and amount; any other is dropped from `contribution`,
+`committee_transfer` and `organization_receipt` as a conduit's side of an earmark
+(`conduit_earmark_refund`, `sql/silver/04_contribution.sql`). The silver check
+`silver_contribution_no_conduit_side` fails the build if a counted refund at a conduit mirrors no
+gift of its own, and the gold check `gold_conduit_individual_floor` if a conduit's
+`total_individual` is below −$1M. Dropping every refund at a conduit was rejected: a refunded tip
+is real.
 
 ## Decisions
 

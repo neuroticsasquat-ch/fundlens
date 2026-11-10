@@ -77,7 +77,7 @@ rows:
   cm: 20
   cn: 15
   ccl: 15
-  indiv: 347
+  indiv: 350
   pas2: 24
   oth: 30
 
@@ -91,7 +91,7 @@ silver:
   committee: 20
   candidate: 15
   candidate_committee_link: 15
-  contribution: 308
+  contribution: 309
   independent_expenditure: 9
   committee_transfer: 31
   organization_receipt: 10
@@ -110,6 +110,9 @@ contributions:
   dropped_intermediary_24i: 1
   # ActBlue's own line for an earmark, filed as a 15 rather than a 24T.
   dropped_conduit_side: 1
+  # A conduit's refunds of earmarks (NEU-2199): WinRed's to FAIRBANKS, UMA and ActBlue's $50 to
+  # PARK. ActBlue's refund of her $5 tip counts.
+  dropped_conduit_refund: 2
   # A gift to a committee missing from `cm`.
   dropped_unknown_recipient: 1
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
@@ -123,7 +126,7 @@ contributions:
     C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2435680
+  total_amount: 2435675
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -396,8 +399,8 @@ candidates:
     ie_oppose: 0
 
 committees:
-  C00401224: # ACTBLUE: a conduit, a counted recipient only of gifts to itself (PARK's tip)
-    total_individual: 5
+  C00401224: # ACTBLUE: a conduit, a counted recipient only of gifts to itself (PARK's tip, refunded)
+    total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -664,7 +667,7 @@ validation:
   dime_version: "4.0"
   # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
   # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
-  matched_rows: 307
+  matched_rows: 308
   # Contributor keys with a dated counted contribution: 123 less the 15J-only key and VOSS's.
   labelled_keys: 121
   overall: {precision: 1.0, recall: 1.0}

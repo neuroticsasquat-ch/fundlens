@@ -103,6 +103,13 @@ tasks:
     desc: Validate docker-compose.prod.yml (warnings about unset secrets are expected)
     cmds:
       - "{{.COMPOSE}} -f docker-compose.prod.yml config --quiet"
+  image:check:
+    desc: Build the prod image, check it does not run as root, and run CI's smoke test on it
+    # What CI's image job does (.github/workflows/ci.yml `image`), on the host's Docker.
+    cmds:
+      - docker build -q -t fundlens:check .
+      - test "$(docker run --rm --entrypoint id fundlens:check -u)" != 0
+      - bash .github/ci/smoke.sh fundlens:check
 
   db:migrate:
     desc: Apply Alembic migrations to the `app` schema
@@ -174,6 +181,19 @@ tasks:
     cmds:
       - task: api:openapi
       - "{{.FE_EXEC}} sh scripts/generate-api.sh < openapi.json"
+  fe:generate:check:
+    desc: Fail if openapi.json or frontend/src/api/ is stale against the API (CI's openapi-drift)
+    # Against the index, not HEAD as CI does: in a pre-commit hook the index is what is about to
+    # be committed, so regenerated files already staged pass. Untracked ones fail, as in CI.
+    cmds:
+      - task: fe:generate
+      - |
+        stale="$(git diff --name-only -- openapi.json frontend/src/api/; git ls-files --others --exclude-standard -- frontend/src/api/)"
+        if [ -n "$stale" ]; then
+          echo "$stale"
+          echo "openapi.json or frontend/src/api/ is stale: stage the regenerated files" >&2
+          exit 1
+        fi
   fe:build:
     desc: Build the SPA into frontend/dist/
     cmds:

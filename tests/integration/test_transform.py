@@ -19,7 +19,7 @@ from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
-from fundlens.transform.runner import ChecksFailed
+from fundlens.transform.runner import ChecksFailed, render
 from tests import fec_fixture
 from tests.fake_fec import zipped
 
@@ -42,6 +42,13 @@ PARK_TIP, PARK_EARMARK_CONDUIT_SIDE, NORRIS_UNKNOWN_RECIPIENT = (
     4240100000000000301,
     4240100000000000302,
     4240100000000000303,
+)
+# A conduit's refunds (NEU-2199): WinRed's of an earmark, ActBlue's of PARK's tip and of her
+# earmark.
+FAIRBANKS_EARMARK_REFUND, PARK_TIP_REFUND, PARK_EARMARK_REFUND = (
+    4240100000000000348,
+    4240100000000000349,
+    4240100000000000350,
 )
 OTH_NOT_RECEIPTS = {
     4240200000000000010,  # pas2's 24K, repeated in oth
@@ -465,13 +472,16 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
     assert (reyes["recipient_committee_id"], reyes["candidate_id"]) == ("C00800103", "S4MD00103")
     earmarked = sum_by([row | {"amount": 1} for row in rows], "conduit_committee_id")
     assert earmarked == expected["contributions"]["earmarked"]
-    # A conduit is a recipient only of gifts to itself (PARK's tip to ActBlue), with no conduit;
-    # ActBlue's own line for an earmark, filed as a 15, is dropped like its 24T (NEU-2070).
+    # A conduit is a recipient only of gifts to itself (PARK's tip to ActBlue, and its refund),
+    # with no conduit; ActBlue's own line for an earmark, filed as a 15, is dropped like its 24T
+    # (NEU-2070), and so is a conduit's refund of an earmark (NEU-2199).
     to_conduits = [row for row in rows if row["recipient_committee_id"] in (ACTBLUE, WINRED)]
-    assert [(row["source_record_id"], row["conduit_committee_id"]) for row in to_conduits] == [
-        (PARK_TIP, None)
-    ]
+    assert sorted(
+        (row["source_record_id"], row["amount"], row["conduit_committee_id"]) for row in to_conduits
+    ) == [(PARK_TIP, 5, None), (PARK_TIP_REFUND, -5, None)]
     assert PARK_EARMARK_CONDUIT_SIDE not in by_id
+    assert FAIRBANKS_EARMARK_REFUND not in by_id
+    assert PARK_EARMARK_REFUND not in by_id
 
     individual = [
         row
@@ -483,7 +493,11 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
     self_funding = [row for row in rows if row["is_self_funding"]]
     assert len(self_funding) == expected["contributions"]["self_funding"]
     committees = expected["committees"]
-    assert sum_by(individual, "recipient_committee_id") == {
+    # ActBlue's tip and its refund net to 0, a total the expected committees leave out.
+    received = {
+        c: total for c, total in sum_by(individual, "recipient_committee_id").items() if total
+    }
+    assert received == {
         committee_id: totals["total_individual"]
         for committee_id, totals in committees.items()
         if totals["total_individual"]
@@ -999,7 +1013,8 @@ def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
 
 
 def failing_rows(con: duckdb.DuckDBPyConnection, check: str) -> list[tuple[object, ...]]:
-    return con.execute((CHECKS / check).read_text()).fetchall()
+    # Rendered as the build renders it, so a regex quantifier is written `{{8}}` in both.
+    return con.execute(render(CHECKS / check, {})).fetchall()
 
 
 def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alias() -> None:
@@ -1496,15 +1511,28 @@ def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24
     ]
 
 
-def test_the_conduit_side_check_fails_on_a_24t_and_on_a_24i_whose_recipient_itemized_it() -> None:
+def test_the_conduit_side_check_fails_on_a_24t_a_24i_and_a_refund_of_an_earmark() -> None:
     with duckdb.connect() as con:
         con.execute(
             "CREATE TABLE committee AS SELECT * FROM (VALUES ('C1', false), ('C2', false),"
             " ('C3', false), ('A1', true)) AS t(committee_id, is_conduit)"
         )
         con.execute(
-            "CREATE TABLE indiv AS SELECT * FROM (VALUES (1, 'C2'), (2, 'C2'), (3, 'C2'),"
-            " (4, 'A1'), (5, 'C1'), (6, 'C3'), (7, 'C2')) AS t(SUB_ID, OTHER_ID)"
+            "CREATE TABLE indiv AS SELECT * FROM (VALUES"
+            " (1, 'C2', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (2, 'C2', 'C1', 'BAKER, BO', 100, '24I', NULL, NULL),"
+            " (3, 'C2', 'C1', 'COLE, CY', 100, '24I', NULL, NULL),"
+            " (4, 'A1', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (5, 'C1', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (6, 'C3', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (7, 'C2', 'C1', 'DOYLE, DI', 100, '24T', NULL, NULL),"
+            # The conduit A1's own gifts: ADAMS's tip, and an organization's, no contribution; and
+            # its own line for EVANS's earmark to C2, which is none.
+            " (15, NULL, 'A1', 'ADAMS, ANN', 100, '15', NULL, 'CONTRIBUTION TO A1'),"
+            " (16, NULL, 'A1', 'FIRM LLC', 75, '15', NULL, NULL),"
+            " (17, NULL, 'A1', 'EVANS, EVE', 100, '15', NULL, 'EARMARKED FOR C2 (C00000002)')"
+            ") AS t(SUB_ID, OTHER_ID, CMTE_ID, NAME, TRANSACTION_AMT, TRANSACTION_TP, MEMO_CD,"
+            " MEMO_TEXT)"
         )
         con.execute(
             "CREATE TABLE contribution AS SELECT * FROM (VALUES"
@@ -1524,14 +1552,24 @@ def test_the_conduit_side_check_fails_on_a_24t_and_on_a_24i_whose_recipient_item
             " (12, 'C2', 'BAKER, BO', 100, DATE '2024-04-10', '15E'),"
             " (13, 'C2', 'COLE, CY', 100, DATE '2024-03-02', '22Y'),"
             " (14, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15'),"
-            " (15, 'A1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15')"
+            " (15, 'A1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15'),"
+            # Refunds at the conduit A1 (NEU-2199): of ADAMS's own gift there, of 50 she gave
+            # nothing of there, to EVANS, whose only row there is her earmark's, and of the
+            # organization's gift, which a refund mirrors whoever gave it; and EVANS's at C2.
+            " (21, 'A1', 'ADAMS ANN', -100, DATE '2024-03-09', '22Y'),"
+            " (22, 'A1', 'ADAMS, ANN', -50, DATE '2024-03-09', '22Y'),"
+            " (23, 'A1', 'EVANS, EVE', -100, DATE '2024-03-09', '22Y'),"
+            " (24, 'C2', 'EVANS, EVE', -100, DATE '2024-03-09', '22Y'),"
+            " (25, 'A1', 'FIRM LLC', 75, DATE '2024-03-09', '22Y')"
             ") AS t(source_record_id, recipient_committee_id, contributor_name, amount, date,"
             " transaction_type)"
         )
 
-        # The 24T, and ADAMS's 24I to C2, whose row there is a twin though its name lacks the
-        # comma.
+        # The 24T, ADAMS's 24I to C2, whose row there is a twin though its name lacks the comma,
+        # and the conduit's two refunds that mirror no gift of its own.
         assert sorted(failing_rows(con, "silver_contribution_no_conduit_side.sql")) == [
+            ("22Y", 22, "A1", -50, None),
+            ("22Y", 23, "A1", -100, None),
             ("24I", 1, "C1", 100, 11),
             ("24T", 7, "C1", 100, None),
         ]

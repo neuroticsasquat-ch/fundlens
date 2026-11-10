@@ -146,16 +146,34 @@ def is_intermediary_earmark(row: dict[str, str]) -> bool:
     )
 
 
+def is_conduit_earmark_refund(row: dict[str, str]) -> bool:
+    """A conduit's refund of an earmark (NEU-2199): a refund at a conduit mirroring no gift of the
+    conduit's own there (no memo line, 24T or line for an earmark) by name key and amount."""
+    if row["CMTE_ID"] not in CONDUITS.values() or not is_refund(row) or row["MEMO_CD"] == "X":
+        return False
+    return not any(
+        own["CMTE_ID"] == row["CMTE_ID"]
+        and own["MEMO_CD"] != "X"
+        and own["TRANSACTION_TP"] != "24T"
+        and not is_refund(own)
+        and not is_conduit_side(own)
+        and name_key(own["NAME"]) == name_key(row["NAME"])
+        and abs(amount(own)) == abs(amount(row))
+        for own in rows("indiv")
+    )
+
+
 def counts(row: dict[str, str]) -> bool:
     """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no
-    intermediary's 24I its recipient itemized too, no conduit's own line for an earmark, to a
-    committee of the cycle."""
+    intermediary's 24I its recipient itemized too, no conduit's own line for an earmark or refund
+    of one, to a committee of the cycle."""
     committees = {row["CMTE_ID"] for row in rows("cm")}
     return (
         row["MEMO_CD"] != "X"
         and row["TRANSACTION_TP"] != "24T"
         and not is_intermediary_earmark(row)
         and not is_conduit_side(row)
+        and not is_conduit_earmark_refund(row)
         and row["CMTE_ID"] in committees
     )
 
@@ -671,6 +689,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "dropped_conduit_side": sum(
             is_conduit_side(r) and r["TRANSACTION_TP"] != "24T" for r in indiv
         ),
+        "dropped_conduit_refund": sum(is_conduit_earmark_refund(r) for r in indiv),
         "dropped_unknown_recipient": sum(r["CMTE_ID"] not in committees for r in indiv),
         "dropped_not_individual": sum(not is_individual(r) for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),

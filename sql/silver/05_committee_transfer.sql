@@ -25,13 +25,14 @@
 -- (NEU-2131, ADR-0011); naming several, or none, it names no giver and the row is no receipt.
 --
 -- The same name-match rule reads `indiv` (NEU-2131): a counted row (contribution's rules: no memo
--- line, no 24T, no intermediary's 24I, no conduit's side, to a committee in `cm`) typed PAC, COM,
--- CCM or PTY with a blank OTHER_ID, whose NAME names exactly one `cm` committee, is a receipt from
--- that committee, under its own SUB_ID. In 2024 that is $635.3M that FEC itself counts as committee
--- money (Senate Leadership Fund's PAC-typed rows match FEC's figure to within $3); the $152.8M
--- naming several committees or none is dropped, from both files, and is no organization receipt
--- either (08_organization_receipt.sql). A row naming its own recipient names no giver. A row the
--- rule matches, in either file, is dropped when `oth` already holds the gift under the named
+-- line, no 24T, no intermediary's 24I, no conduit's side or refund of an earmark, to a committee
+-- in `cm`) typed PAC, COM, CCM or PTY with a blank OTHER_ID, whose NAME names exactly one `cm`
+-- committee, is a receipt from that committee, under its own SUB_ID. In 2024 that is $635.3M that
+-- FEC itself counts as committee money (Senate Leadership Fund's PAC-typed rows match FEC's figure
+-- to within $3); the $152.8M naming several committees or none is dropped, from both files, and is
+-- no organization receipt either (08_organization_receipt.sql). A row naming its own recipient
+-- names no giver. A row the rule matches, in either file, is dropped when `oth` already holds the
+-- gift under the named
 -- committee's id (`twin`: same recipient, giver, amount and date; 5 `indiv` rows, $70,000, in
 -- 2024), so nothing is counted twice. A JFC named by NAME is NEU-2124's rule, not this one, and has
 -- no twin rule. A matched row's amount is kept as filed, as every transfer's is.
@@ -153,6 +154,7 @@ named_gift AS (
         AND indiv.MEMO_CD IS DISTINCT FROM 'X'
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
+        AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
         AND NOT (
             indiv.CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(indiv.MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')

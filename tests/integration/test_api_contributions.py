@@ -167,11 +167,12 @@ def test_an_earmark_is_listed_once_with_its_conduit(
 
     [row] = [row for row in body["contributions"] if row["source_record_id"] == str(record)]
     assert row["conduit_committee_id"] is not None
-    # The conduit receives only gifts to itself: its pass-through rows, 24T or 15, are dropped
-    # (ADR-0004), and a tip to ActBlue names no conduit.
-    assert [(r["memo_text"], r["conduit_committee_id"]) for r in actblue["contributions"]] == [
-        ("CONTRIBUTION TO ACTBLUE", None)
-    ]
+    # The conduit receives only gifts to itself: its own rows of an earmark, 24T or 15, and its
+    # refunds of earmarks are dropped (ADR-0004, NEU-2199), and a tip to ActBlue, and its refund,
+    # name no conduit.
+    assert sorted(
+        (r["memo_text"], r["conduit_committee_id"]) for r in actblue["contributions"]
+    ) == [("CONTRIBUTION TO ACTBLUE", None), ("REFUND OF CONTRIBUTION TO ACTBLUE", None)]
 
 
 @pytest.mark.parametrize(
