@@ -425,12 +425,35 @@ export const COMMITTEE_PELL: Committee = {
   ],
 };
 
+/**
+ * A hybrid PAC: a few thousand in its contribution account, millions in its non-contribution
+ * account, one of whose givers is its top organization.
+ */
+export const COMMITTEE_TIDEWATER_FUND: Committee = {
+  committee_id: "C00800204",
+  name: "TIDEWATER FUND",
+  type: "V",
+  designation: "U",
+  party: null,
+  connected_org: null,
+  is_conduit: false,
+  cycles: [
+    committeeCycle({
+      total_individual: 6250,
+      total_from_organizations: 0,
+      total_non_contribution_account: 4815000,
+      top_organizations: organizations([["HARBOR HOLDINGS", "HARBOR HOLDINGS LLC", 1500000]]),
+    }),
+  ],
+};
+
 export const COMMITTEES: Committee[] = [
   COMMITTEE_ACTBLUE,
   COMMITTEE_OKAFOR,
   COMMITTEE_BRICKLAYERS,
   COMMITTEE_MARYLAND_FORWARD,
   COMMITTEE_PELL,
+  COMMITTEE_TIDEWATER_FUND,
 ];
 
 /** A counted contribution as the API serves it; the rest of the row is blank. */
