@@ -305,6 +305,10 @@
             "title": "Total Individual",
             "type": "number"
           },
+          "total_non_contribution_account": {
+            "title": "Total Non Contribution Account",
+            "type": "number"
+          },
           "total_returned_by_candidates": {
             "title": "Total Returned By Candidates",
             "type": "number"
@@ -322,6 +326,7 @@
           "total_from_organizations",
           "total_to_candidates",
           "total_returned_by_candidates",
+          "total_non_contribution_account",
           "ie_total",
           "top_recipients",
           "top_donors",

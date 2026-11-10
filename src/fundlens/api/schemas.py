@@ -246,6 +246,10 @@ class CommitteeCycle(BaseModel):
     # Its 24Ks to each candidate they net below 0 for, summed, so 0 or less: voids and refunds of
     # earlier cycles' gifts, in no total_to_candidates or top recipient (NEU-2204).
     total_returned_by_candidates: float
+    # A hybrid PAC's non-contribution account: its individuals' and organizations' gifts there, net
+    # of refunds, in neither total_individual nor total_from_organizations (NEU-2192). 0 at every
+    # committee with no such account.
+    total_non_contribution_account: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.
