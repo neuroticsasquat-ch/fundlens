@@ -2,6 +2,7 @@
 (spec §5.3)."""
 
 import io
+import logging
 import zipfile
 from collections.abc import Mapping
 from datetime import date
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
+import pytest
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
@@ -398,6 +400,33 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "candidate_id",
         "amount",
         "date",
+    ]
+
+
+def test_transform_logs_each_check_write_and_upload_after_the_last_model(
+    store: R2, cli_env: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A memory peak sampled after the last model starts is placed at one step by these lines'
+    # timestamps (NEU-2077).
+    put_bronze(store)
+    seats_report()
+    caplog.set_level(logging.INFO, logger="fundlens.transform")
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    models = sorted((CHECKS.parent / "silver").glob("*.sql"))
+    tables: list[SilverTable] = [cast(SilverTable, path.stem.partition("_")[2]) for path in models]
+    logged = [record.getMessage() for record in caplog.records]
+    last = logged.index(f"silver {tables[-1]} 2024: {models[-1].name}")
+    steps = [m for m in logged[last + 1 :] if m.startswith(("silver check ", "write ", "upload "))]
+    assert steps == [
+        *(f"silver check {path.name}" for path in sorted(CHECKS.glob("silver_*.sql"))),
+        *(f"write {table} 2024" for table in tables),
+        *(
+            f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
+            for table in tables
+        ),
     ]
 
 
