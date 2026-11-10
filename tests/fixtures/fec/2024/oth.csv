@@ -60,3 +60,6 @@ C00800203,N,Q3,G2024,202400002992107201,31K,ORG,IRONWORKERS LOCAL 16,BALTIMORE,M
 # A 15J memo line with a blank entity type whose name the classifier calls an organization's
 # (NEU-2132): no JFC attribution, and in no other table.
 C00800103,N,12G,G2024,202400004300000011,15J,,CHESAPEAKE STEEL INC,SPARROWS POINT,MD,21219,,,10202024,700,,SA12.00412,1900123,X,,4240300000000000027
+# An organization's gift to the party's recount account filed in `oth` as a 32J (NEU-2205): an
+# organization receipt, marked is_other_line like the union's 31K above, in total_other_lines.
+C00800203,N,Q3,G2024,202400002992107202,32J,ORG,CHESAPEAKE ELECTION LAW GROUP,ANNAPOLIS,MD,21401,,,09182024,20000,,SA17.00003,1900203,,RECOUNT ACCOUNT,4240300000000000028

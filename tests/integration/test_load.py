@@ -140,16 +140,20 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
             "by_committee"
         ].get(committee_id, 0), committee_id
         # Organization money (ADR-0011): the super PAC's is CHESAPEAKE STEEL's gifts less its
-        # refund, the party committee's the union's 31K; 0, never NULL, for the rest. The hybrid
-        # PAC's non-contribution account is in neither this nor total_individual, but in its own
-        # figure (NEU-2192).
+        # refund, the party committee's BALTIMORE HARBOR PILOTS' 15; 0, never NULL, for the rest.
+        # The hybrid PAC's non-contribution account is in neither this nor total_individual, but in
+        # its own figure (NEU-2192), and the party accounts' gifts are in total_other_lines
+        # (NEU-2205).
         assert dollars(row["total_from_organizations"]) == organizations["by_committee"].get(
             committee_id, 0
-        ) - non_contribution["organizations_by_committee"].get(committee_id, 0), committee_id
+        ) - non_contribution["organizations_by_committee"].get(committee_id, 0) - expected[
+            "other_lines"
+        ]["organizations_by_committee"].get(committee_id, 0), committee_id
         assert dollars(row["total_non_contribution_account"]) == non_contribution[
             "by_committee"
         ].get(committee_id, 0), committee_id
-        # Money on a line no total_individual counts is in its own figure (NEU-2193).
+        # Money on a line no total_individual counts is in its own figure, individuals' and
+        # organizations' alike (NEU-2193, NEU-2205).
         assert dollars(row["total_other_lines"]) == expected["other_lines"]["by_committee"].get(
             committee_id, 0
         ), committee_id

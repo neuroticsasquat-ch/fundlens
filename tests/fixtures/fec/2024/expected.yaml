@@ -46,7 +46,8 @@
 #   with no committee id in OTHER_ID (blank or not C-prefixed), naming no JFC, not a 15J nor a loan
 #   (16C, 16F, 16G), and mirroring no counted `indiv` row (same recipient, name, amount and date).
 #   Grouped by organization key, normalize_employer over the name. Organization money, in no total
-#   here: NEU-2133's gold reads it.
+#   here: NEU-2133's gold reads it. One whose type FEC files off line 11(a)(i), as below, is in
+#   the committee's total_other_lines, not its total_from_organizations (NEU-2205).
 # - A hybrid PAC (CMTE_TP V or W) keeps a non-contribution account, outside the contribution limits,
 #   whose receipts `indiv` types 10 (10J a JFC's share, 24I an earmark through a conduit): kept, as
 #   contributions or organization receipts, but in neither total_individual nor
@@ -76,9 +77,9 @@ rows:
   cm: 20
   cn: 15
   ccl: 15
-  indiv: 345
+  indiv: 347
   pas2: 24
-  oth: 29
+  oth: 30
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
@@ -93,7 +94,7 @@ silver:
   contribution: 308
   independent_expenditure: 9
   committee_transfer: 31
-  organization_receipt: 7
+  organization_receipt: 10
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -114,7 +115,7 @@ contributions:
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
-  dropped_not_individual: 10
+  dropped_not_individual: 12
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
@@ -138,20 +139,26 @@ organization_receipts:
     4240100000000000323: CHESAPEAKE STEEL
     4240300000000000026: IRONWORKERS LOCAL 16 # the union's 31K to the party's building account, in oth
     4240100000000000332: PATAPSCO HOLDINGS # the hybrid PAC's non-contribution account (NEU-2192)
+    4240100000000000346: PISCATAWAY CONOY TRIBE # a 31T to the party's headquarters account (NEU-2205)
+    4240100000000000347: BALTIMORE HARBOR PILOTS # a 15 to the party, line 11(a)(i)
+    4240300000000000028: CHESAPEAKE ELECTION LAW GROUP # a 32J to the party's recount account, in oth
   # Net amount by organization key, refunds subtracted.
   by_key:
     ACME CONCRETE: 5000
     ACME WIDGETS: 3000
+    BALTIMORE HARBOR PILOTS: 5000
+    CHESAPEAKE ELECTION LAW GROUP: 20000
     CHESAPEAKE STEEL: 72500
     IRONWORKERS LOCAL 16: 4000
     PATAPSCO HOLDINGS: 250000
+    PISCATAWAY CONOY TRIBE: 15000
   # Net amount by receiving committee.
   by_committee:
     C00800105: 8000
     C00800201: 72500
-    C00800203: 4000
+    C00800203: 44000
     C00800204: 250000
-  total_amount: 334500
+  total_amount: 374500
   # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
   # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
   # Ranked by amount, then key; an organization netting to $0 or less is on no list.
@@ -162,6 +169,9 @@ organization_receipts:
     C00800201:
       - [CHESAPEAKE STEEL, "CHESAPEAKE STEEL, INC.", 72500]
     C00800203:
+      - [CHESAPEAKE ELECTION LAW GROUP, CHESAPEAKE ELECTION LAW GROUP, 20000]
+      - [PISCATAWAY CONOY TRIBE, PISCATAWAY CONOY TRIBE, 15000]
+      - [BALTIMORE HARBOR PILOTS, BALTIMORE HARBOR PILOTS LLC, 5000]
       - [IRONWORKERS LOCAL 16, IRONWORKERS LOCAL 16, 4000]
     C00800204:
       - [PATAPSCO HOLDINGS, PATAPSCO HOLDINGS LLC, 250000]
@@ -175,7 +185,7 @@ organization_receipts:
 # by_committee is their net amount, individuals' and organizations' alike: gold's
 # total_non_contribution_account, in neither total_individual (`committees` below holds the
 # contribution account alone) nor total_from_organizations, which is `organization_receipts`'
-# by_committee less organizations_by_committee here.
+# by_committee less organizations_by_committee here and in `other_lines`.
 non_contribution_account:
   contributions: [4240100000000000331, 4240100000000000334, 4240100000000000344]
   organization_receipts: [4240100000000000332]
@@ -185,13 +195,19 @@ non_contribution_account:
     C00800204: 250000
 
 # Money on a line no total_individual counts (NEU-2193), by SUB_ID: GALLAGHER's gift to the party's
-# headquarters account and its refund, and her loan to WHITLOCK FOR SENATE. by_committee is their
-# net amount, gold's total_other_lines; 0 at every other committee.
+# headquarters account and its refund, and her loan to WHITLOCK FOR SENATE; and organizations' gifts
+# to the party's accounts (NEU-2205): IRONWORKERS LOCAL 16's 31K and CHESAPEAKE ELECTION LAW GROUP's
+# 32J in `oth`, PISCATAWAY CONOY TRIBE's 31T in `indiv`. by_committee is their net amount,
+# individuals' and organizations' alike, gold's total_other_lines; 0 at every other committee.
+# organizations_by_committee is the organization receipts' part, in no total_from_organizations.
 other_lines:
   contributions: [4240100000000000337, 4240100000000000338, 4240100000000000339]
+  organization_receipts: [4240100000000000346, 4240300000000000026, 4240300000000000028]
   by_committee:
-    C00800203: 7500
+    C00800203: 46500
     C00800104: 1000
+  organizations_by_committee:
+    C00800203: 39000
 
 # The 24Ks of a giver->candidate pair netting below 0 for the cycle (NEU-2204), by SUB_ID: OLD LINE
 # REPUBLICAN COMMITTEE's 2023 void of a 2022 gift to CALLOWAY. Kept in committee_transfer, in no

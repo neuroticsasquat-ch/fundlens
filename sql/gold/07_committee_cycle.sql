@@ -12,16 +12,19 @@
 -- total_returned_by_candidates (a negative figure), not total_to_candidates, so neither goes below
 -- 0 and the two add up to the giver's credited 24Ks; a pair netting 0 or more, a same-cycle void's,
 -- nets inside total_to_candidates as before. total_from_organizations is the organization receipts
--- it recorded (ADR-0011), net of refunds: organization money is the committee's only, in no
--- candidate, race, cycle or donor figure. total_non_contribution_account is a hybrid PAC's
--- non-contribution account (NEU-2192), individuals' and organizations' money alike: in neither
+-- it recorded (ADR-0011), net of refunds, on the lines a total_individual counts: organization
+-- money is the committee's only, in no candidate, race, cycle or donor figure.
+-- total_non_contribution_account is a hybrid PAC's non-contribution account (NEU-2192),
+-- individuals' and organizations' money alike: in neither
 -- total_individual nor total_from_organizations, which hold its contribution account, the money
 -- FEC's itemized figure (line 11(a)(i)) counts. 0 at every other committee. total_other_lines is
--- individuals' money FEC files on a line no total_individual counts (silver's is_other_line,
--- NEU-2193): a national party's convention, headquarters and recount accounts above all, a host
--- committee's 18U gifts from unregistered committees, transfers and earmarks' conduit sides. The
--- candidate's own money is self_funding whatever its line (a loan's is line 13). ie_total is 0
--- until NEU-2057.
+-- individuals' and organizations' money FEC files on a line no total_individual counts (silver's
+-- is_other_line in contribution, NEU-2193, and in organization_receipt, NEU-2205): a national
+-- party's convention, headquarters and recount accounts above all, a host committee's 18U gifts
+-- from unregistered committees, transfers and loans. An organization's is in neither
+-- total_from_organizations nor any other figure, so total_individual + total_from_organizations
+-- compares with FEC's itemized figure like for like. The candidate's own money is self_funding
+-- whatever its line (a loan's is line 13). ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -51,10 +54,12 @@ from_committees AS (
 from_organizations AS (
     SELECT
         recipient_committee_id AS committee_id,
-        coalesce(sum(amount) FILTER (WHERE NOT is_non_contribution_account), 0)
-            AS total_from_organizations,
+        coalesce(
+            sum(amount) FILTER (WHERE NOT is_non_contribution_account AND NOT is_other_line), 0
+        ) AS total_from_organizations,
         coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
-            AS non_contribution_account
+            AS non_contribution_account,
+        coalesce(sum(amount) FILTER (WHERE is_other_line), 0) AS other_lines
     FROM silver.organization_receipt
     GROUP BY recipient_committee_id
 ),
@@ -85,7 +90,10 @@ SELECT
             + coalesce(from_organizations.non_contribution_account, 0)
         AS DECIMAL(16, 2)
     ) AS total_non_contribution_account,
-    CAST(coalesce(received.other_lines, 0) AS DECIMAL(16, 2)) AS total_other_lines,
+    CAST(
+        coalesce(received.other_lines, 0) + coalesce(from_organizations.other_lines, 0)
+        AS DECIMAL(16, 2)
+    ) AS total_other_lines,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
         AS total_returned_by_candidates,

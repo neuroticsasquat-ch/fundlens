@@ -238,7 +238,9 @@ class CommitteeCycle(BaseModel):
     self_funding: float
     total_from_committees: float
     # Gifts from givers neither people nor committees, net of refunds: counted on the receiving
-    # committee only, in no race, candidate or cycle-wide figure (ADR-0011).
+    # committee only, in no race, candidate or cycle-wide figure (ADR-0011). A hybrid PAC's
+    # non-contribution account and gifts FEC files off line 11(a)(i), a party account's above all,
+    # are left out (NEU-2192, NEU-2205).
     total_from_organizations: float
     total_to_candidates: float
     # Its 24Ks to each candidate they net below 0 for, summed, so 0 or less: voids and refunds of

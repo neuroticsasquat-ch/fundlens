@@ -175,7 +175,19 @@ SELECT
         fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
             = 'non-contribution account',
         false
-    ) AS is_non_contribution_account
+    ) AS is_non_contribution_account,
+    -- The Form 3/3X line FEC files the row's type on, and whether no total counts that line, as in
+    -- contribution (NEU-2193, NEU-2205): a national party's convention, headquarters and recount
+    -- accounts' 30, 31 and 32 and their variants (a tribe's 31T, a 32J) and their refunds, an
+    -- 18U, a transfer. Kept, the organization's gift, and marked, so committee_cycle puts it in
+    -- total_other_lines, not total_from_organizations: FEC files a party's accounts on line 17, and
+    -- its itemized figure leaves them out.
+    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT) AS fec_line,
+    coalesce(
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+            NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
+        false
+    ) AS is_other_line
 FROM kept
 JOIN committee AS recipient ON recipient.committee_id = kept.CMTE_ID
 LEFT JOIN organization_name ON organization_name.raw = kept.NAME;

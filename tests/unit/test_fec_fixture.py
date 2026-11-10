@@ -181,8 +181,9 @@ def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]
 
 
 def is_other_line(row: dict[str, str]) -> bool:
-    """A counted row whose type FEC files on a line no total_individual counts (NEU-2193); a
-    candidate's own money is self-funding whatever its line."""
+    """A counted row or organization receipt whose type FEC files on a line no total_individual
+    or total_from_organizations counts (NEU-2193, NEU-2205); a candidate's own money is
+    self-funding whatever its line."""
     return re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None
 
 
@@ -735,9 +736,27 @@ def test_the_expected_non_contribution_account_is_the_hybrid_pacs_type_10_rows()
 
 def test_the_expected_other_lines_are_the_counted_rows_off_line_11ai() -> None:
     other = [r for r in counted() if is_other_line(r) and not is_self_funding(r)]
+    receipts = [r for r in organization_receipts() if is_other_line(r)]
     expected = EXPECTED["other_lines"]
     assert expected["contributions"] == [int(r["SUB_ID"]) for r in other]
-    assert expected["by_committee"] == sum_by((r["CMTE_ID"], signed(r)) for r in other)
+    assert expected["organization_receipts"] == [int(r["SUB_ID"]) for r in receipts]
+    assert expected["by_committee"] == sum_by(
+        (r["CMTE_ID"], signed(r)) for r in [*other, *receipts]
+    )
+    assert expected["organizations_by_committee"] == sum_by(
+        (r["CMTE_ID"], signed(r)) for r in receipts
+    )
+    # An organization's gift to a party account is off line 11(a)(i) from either file, whatever
+    # its variant; its 15 to the same party is on it, in total_from_organizations (NEU-2205).
+    assert {(r["TRANSACTION_TP"], r["SUB_ID"][:5]) for r in receipts} >= {
+        ("31T", "42401"),
+        ("32J", "42403"),
+    }
+    assert any(
+        r["TRANSACTION_TP"] == "15" and r["CMTE_ID"] in expected["organizations_by_committee"]
+        for r in organization_receipts()
+        if not is_other_line(r)
+    )
     # A party account's refund goes with its receipts, and a loan with the candidate's committee:
     # both are the donor's money all the same, in no total_individual.
     assert {r["TRANSACTION_TP"] for r in other} >= {"31", "41Y", "16G"}

@@ -35,11 +35,11 @@ A hybrid PAC's (FEC committee type V or W) second account, outside the contribut
 _Avoid_: Carey account, soft money, super PAC account
 
 **Party account**:
-One of a national party committee's three accounts outside its main one, a convention, a headquarters and a recount account, whose receipts the regulator types 30, 31 and 32 (with variants such as 31T and 32E) and whose refunds 40Y, 41Y and 42Y. Individuals' gifts to one are kept as contributions, the donors', and counted in the committee's other-lines figure, never in its individual total, which holds what the regulator files on line 11(a)(i).
+One of a national party committee's three accounts outside its main one, a convention, a headquarters and a recount account, whose receipts the regulator types 30, 31 and 32 (with variants such as 31T and 32E) and whose refunds 40Y, 41Y and 42Y. Individuals' gifts to one are kept as contributions, the donors', and organizations' as organization receipts; both are counted in the committee's other-lines figure, never in its individual total or its organizations' total, which hold what the regulator files on line 11(a)(i).
 _Avoid_: building fund, soft money, special account
 
 **Other-lines money**:
-An individual's counted money the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H) or a Form 9 donation. Kept, as contributions, in the donor's figures, the committee's own figure and no individual total; a candidate's own money is self-funding whatever its line.
+An individual's counted money, or an organization's, that the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H) or a Form 9 donation. Kept, as contributions or organization receipts, in the donor's figures (an individual's), the committee's own figure and no individual or organizations' total; a candidate's own money is self-funding whatever its line.
 _Avoid_: off-book money, non-itemized money
 
 **Self-funding**:

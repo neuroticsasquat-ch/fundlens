@@ -117,7 +117,9 @@ class NonContributionAccount(TypedDict):
 
 class OtherLines(TypedDict):
     contributions: list[int]
+    organization_receipts: list[int]
     by_committee: dict[str, int]
+    organizations_by_committee: dict[str, int]
 
 
 class ReturnedByCandidates(TypedDict):
