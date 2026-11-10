@@ -282,6 +282,7 @@ def check(
     """
     failures: list[str] = []
     for path in sorted((sql_dir / "checks").glob(f"{tier}_*.sql")):
+        log.info("%s check %s", tier, path.name)
         rows = con.execute(render(path, params)).fetchmany(SHOWN_ROWS + 1)
         if rows:
             shown = "; ".join(str(row) for row in rows[:SHOWN_ROWS])
@@ -299,6 +300,7 @@ def _write(
     The local partition is replaced whole, so a build transformed again holds none of the parts
     a donor_id rewrite (`resolve.crosswalk`) put there.
     """
+    log.info("write %s %d", table, cycle)
     key = f"{paths.silver_partition(table, cycle, build_id)}/{paths.part(0)}"
     local = paths.local_path(data_dir, key)
     shutil.rmtree(local.parent, ignore_errors=True)
@@ -360,6 +362,7 @@ def transform(
     finally:
         shutil.rmtree(work, ignore_errors=True)
     for key, local, _ in written:
+        log.info("upload %s", key)
         prefix = key.rsplit("/", 1)[0] + "/"
         stale = set(store.list_keys(prefix)) - {key}
         store.put(key, local)
