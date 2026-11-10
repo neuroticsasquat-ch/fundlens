@@ -75,3 +75,6 @@ typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The 25 slowest tests on every run, the pre-commit hook's included (it runs verbose): a test that
+# rebuilds expensive state shows up on the commit that adds it (NEU-2267).
+addopts = ["--durations=25"]
