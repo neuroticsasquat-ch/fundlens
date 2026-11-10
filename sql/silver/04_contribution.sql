@@ -149,10 +149,13 @@ WHERE twin.CMTE_ID IN (SELECT OTHER_ID FROM earmark)
 -- the recipient's own refund nets the gift where it counted, so the conduit's must not subtract
 -- it again: WinRed's 1,067,143 refunds in 2024 (-$55.6M, every MEMO_TEXT blank) against its own
 -- $7.4M of tips left its total_individual at -$48.2M. A refund at a conduit is kept only when it
--- mirrors a counted gift of the conduit's own, a tip, by name key and amount, whatever sign either
--- was written in; any other is dropped, with the reversal of one. On 2024 that drops 888,156 of
--- WinRed's (-$54.1M) and 65 of ActBlue's 72, and keeps 178,987 ($1.5M) of WinRed's, almost all
--- $1 to $10: WinRed nets $5.9M, ActBlue $26.6M (docs/measurements/summary-files-2024.md Q12).
+-- mirrors a gift of the conduit's own (no memo line, 24T or line naming an earmark's recipient),
+-- a tip, whoever gave it, by name key and amount, whatever sign either was written in; any other
+-- is dropped, with the reversal of one. The match is within the cycle: a tip refunded the cycle
+-- after it was given mirrors nothing, and is dropped. On 2024 that drops 888,156 of WinRed's
+-- (-$54.1M) and 65 of ActBlue's 72, and keeps 178,987 ($1.5M) of WinRed's, almost all $1 to $10:
+-- measured on FEC's file, WinRed nets $5.9M, ActBlue $26.6M
+-- (docs/measurements/summary-files-2024.md Q12).
 -- Matching a refund to the conduit's dropped 24T or 15 instead leaves WinRed at -$20.6M, since it
 -- itemizes the side of only 660,255 of its earmarks; dropping the refunds of givers with no gift
 -- of their own there leaves it at -$14.9M, since most of its givers tip it too. Dropping every

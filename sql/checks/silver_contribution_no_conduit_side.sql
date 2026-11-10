@@ -3,8 +3,9 @@
 -- committee of the cycle other than a conduit and its filer, when the recipient itemized the gift
 -- too: a contribution to that committee, no refund or 24I, with the same name and amount, dated
 -- within 30 days of it (NEU-2203). Nor is a conduit's refund of an earmark: a refund at a conduit
--- that mirrors no counted gift of the conduit's own, by name and amount (NEU-2199). The bulk file
--- and the contributions on the left, so each join builds on the few 24Is.
+-- that mirrors no gift of the conduit's own in `indiv`, whoever gave it, by name and amount, as
+-- `conduit_earmark_refund` reads them (NEU-2199). The bulk file and the contributions on the left,
+-- so each join builds on the few 24Is.
 WITH earmark AS (
     SELECT
         counted.source_record_id,
@@ -19,16 +20,18 @@ WITH earmark AS (
     WHERE indiv.OTHER_ID <> counted.recipient_committee_id
         AND indiv.OTHER_ID IN (SELECT committee_id FROM committee WHERE NOT is_conduit)
 ),
-at_conduit AS (
-    SELECT
-        source_record_id,
-        recipient_committee_id,
-        transaction_type,
-        amount,
-        regexp_replace(upper(contributor_name), '[^A-Z0-9]', '', 'g') AS name_key,
-        regexp_matches(transaction_type, '^[24][0-9]Y$') AS is_refund
-    FROM contribution
-    WHERE recipient_committee_id IN (SELECT committee_id FROM committee WHERE is_conduit)
+own_gift AS (
+    -- The conduit's own gifts as 04_contribution.sql's `conduit_earmark_refund` reads them: any
+    -- `indiv` row at the conduit, whoever gave it, that is no memo line, 24T, line naming an
+    -- earmark's recipient or refund.
+    SELECT CMTE_ID, regexp_replace(upper(NAME), '[^A-Z0-9]', '', 'g') AS name_key,
+        abs(TRANSACTION_AMT) AS amount
+    FROM indiv
+    WHERE CMTE_ID IN (SELECT committee_id FROM committee WHERE is_conduit)
+        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND NOT regexp_matches(coalesce(TRANSACTION_TP, ''), '^[24][0-9]Y$')
+        AND NOT regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
 )
 SELECT transaction_type, source_record_id, recipient_committee_id, amount,
     NULL AS twin_record_id
@@ -48,13 +51,14 @@ WHERE twin.transaction_type <> '24I'
 UNION ALL
 SELECT refund.transaction_type, refund.source_record_id, refund.recipient_committee_id,
     refund.amount, NULL
-FROM at_conduit AS refund
-WHERE refund.is_refund
+FROM contribution AS refund
+WHERE regexp_matches(refund.transaction_type, '^[24][0-9]Y$')
+    AND refund.recipient_committee_id IN (SELECT committee_id FROM committee WHERE is_conduit)
     AND NOT EXISTS (
         SELECT 1
-        FROM at_conduit AS own
-        WHERE NOT own.is_refund
-            AND own.recipient_committee_id = refund.recipient_committee_id
-            AND own.name_key = refund.name_key
-            AND abs(own.amount) = abs(refund.amount)
+        FROM own_gift
+        WHERE own_gift.CMTE_ID = refund.recipient_committee_id
+            AND own_gift.name_key
+                = regexp_replace(upper(refund.contributor_name), '[^A-Z0-9]', '', 'g')
+            AND own_gift.amount = abs(refund.amount)
     );

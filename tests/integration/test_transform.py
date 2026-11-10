@@ -19,7 +19,7 @@ from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
-from fundlens.transform.runner import ChecksFailed
+from fundlens.transform.runner import ChecksFailed, render
 from tests import fec_fixture
 from tests.fake_fec import zipped
 
@@ -1013,7 +1013,8 @@ def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
 
 
 def failing_rows(con: duckdb.DuckDBPyConnection, check: str) -> list[tuple[object, ...]]:
-    return con.execute((CHECKS / check).read_text()).fetchall()
+    # Rendered as the build renders it, so a regex quantifier is written `{{8}}` in both.
+    return con.execute(render(CHECKS / check, {})).fetchall()
 
 
 def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alias() -> None:
@@ -1510,15 +1511,28 @@ def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24
     ]
 
 
-def test_the_conduit_side_check_fails_on_a_24t_and_on_a_24i_whose_recipient_itemized_it() -> None:
+def test_the_conduit_side_check_fails_on_a_24t_a_24i_and_a_refund_of_an_earmark() -> None:
     with duckdb.connect() as con:
         con.execute(
             "CREATE TABLE committee AS SELECT * FROM (VALUES ('C1', false), ('C2', false),"
             " ('C3', false), ('A1', true)) AS t(committee_id, is_conduit)"
         )
         con.execute(
-            "CREATE TABLE indiv AS SELECT * FROM (VALUES (1, 'C2'), (2, 'C2'), (3, 'C2'),"
-            " (4, 'A1'), (5, 'C1'), (6, 'C3'), (7, 'C2')) AS t(SUB_ID, OTHER_ID)"
+            "CREATE TABLE indiv AS SELECT * FROM (VALUES"
+            " (1, 'C2', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (2, 'C2', 'C1', 'BAKER, BO', 100, '24I', NULL, NULL),"
+            " (3, 'C2', 'C1', 'COLE, CY', 100, '24I', NULL, NULL),"
+            " (4, 'A1', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (5, 'C1', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (6, 'C3', 'C1', 'ADAMS, ANN', 100, '24I', NULL, NULL),"
+            " (7, 'C2', 'C1', 'DOYLE, DI', 100, '24T', NULL, NULL),"
+            # The conduit A1's own gifts: ADAMS's tip, and an organization's, no contribution; and
+            # its own line for EVANS's earmark to C2, which is none.
+            " (15, NULL, 'A1', 'ADAMS, ANN', 100, '15', NULL, 'CONTRIBUTION TO A1'),"
+            " (16, NULL, 'A1', 'FIRM LLC', 75, '15', NULL, NULL),"
+            " (17, NULL, 'A1', 'EVANS, EVE', 100, '15', NULL, 'EARMARKED FOR C2 (C00000002)')"
+            ") AS t(SUB_ID, OTHER_ID, CMTE_ID, NAME, TRANSACTION_AMT, TRANSACTION_TP, MEMO_CD,"
+            " MEMO_TEXT)"
         )
         con.execute(
             "CREATE TABLE contribution AS SELECT * FROM (VALUES"
@@ -1540,11 +1554,13 @@ def test_the_conduit_side_check_fails_on_a_24t_and_on_a_24i_whose_recipient_item
             " (14, 'C1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15'),"
             " (15, 'A1', 'ADAMS, ANN', 100, DATE '2024-03-02', '15'),"
             # Refunds at the conduit A1 (NEU-2199): of ADAMS's own gift there, of 50 she gave
-            # nothing of there, and to EVANS, who gave A1 nothing; and EVANS's refund at C2.
+            # nothing of there, to EVANS, whose only row there is her earmark's, and of the
+            # organization's gift, which a refund mirrors whoever gave it; and EVANS's at C2.
             " (21, 'A1', 'ADAMS ANN', -100, DATE '2024-03-09', '22Y'),"
             " (22, 'A1', 'ADAMS, ANN', -50, DATE '2024-03-09', '22Y'),"
             " (23, 'A1', 'EVANS, EVE', -100, DATE '2024-03-09', '22Y'),"
-            " (24, 'C2', 'EVANS, EVE', -100, DATE '2024-03-09', '22Y')"
+            " (24, 'C2', 'EVANS, EVE', -100, DATE '2024-03-09', '22Y'),"
+            " (25, 'A1', 'FIRM LLC', 75, DATE '2024-03-09', '22Y')"
             ") AS t(source_record_id, recipient_committee_id, contributor_name, amount, date,"
             " transaction_type)"
         )

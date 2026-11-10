@@ -90,7 +90,7 @@ The generated list of every seat up in a cycle (all House districts under that c
 _Avoid_: race list, ballot
 
 **Conduit**:
-A committee (ActBlue, WinRed) that forwards earmarked contributions to their final recipient. Flagged on the contribution; never a recipient in fundlens.
+A committee (ActBlue, WinRed) that forwards earmarked contributions to their final recipient. Flagged on the contribution. A recipient in fundlens only of gifts to itself (tips), net of the tips it refunds: its own side of an earmark, and its refund of one, are dropped (ADR-0004).
 
 **Handoff**:
 A candidate committee passed from one candidate to another mid-cycle (Biden's 2024 campaign, Harris's from 2024-07-21). Listed by hand in `fec/handoffs.csv`, never inferred; the committee's money is the first candidate's before the handoff date and the second's from it on.
