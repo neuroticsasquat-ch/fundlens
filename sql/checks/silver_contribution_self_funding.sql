@@ -1,4 +1,5 @@
--- A candidate's own money never came through a conduit: self-funding is never an earmark.
+-- A candidate's own money never came through a conduit: self-funding is never an earmark, except
+-- a 15C, which is the candidate's own whatever its route (NEU-2194).
 SELECT source_record_id, recipient_committee_id, conduit_committee_id
 FROM contribution
-WHERE is_self_funding AND conduit_committee_id IS NOT NULL;
+WHERE is_self_funding AND conduit_committee_id IS NOT NULL AND transaction_type <> '15C';

@@ -43,7 +43,7 @@ An individual's counted money, or an organization's, that the regulator files on
 _Avoid_: off-book money, non-itemized money
 
 **Self-funding**:
-A candidate's own money, including loans, given to their own committee. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
+A candidate's own money, including loans: a gift or loan to their own committee under their own name, or any contribution the filer types as from the candidate (15C), whatever its name, route or recipient. Reported separately from top-donor lists so a candidate does not appear as their own largest donor.
 
 **Returned gift**:
 A committee's gifts to one candidate that net below zero in a cycle: voids and refunds of gifts made in an earlier cycle, filed as negative gifts when they happen, with nothing in the cycle to net against. Kept as filed, and counted in the giver's own returned figure, never in its gifts to candidates, its top recipients, the candidate's committee total or a race's top committees. A void of a gift made in the same cycle nets against that gift instead.
