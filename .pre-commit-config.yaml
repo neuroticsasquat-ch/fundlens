@@ -36,14 +36,19 @@ repos:
         pass_filenames: false
         files: \.py$|^pyproject\.toml$|^uv\.lock$
 
-      # The whole suite, as CI's python job runs it. Any input of the pipeline or the API, not
-      # only Python: src/ holds vendored CSVs and headers, sql/ the models and checks.
+      # The whole suite, as CI's python job runs it, on every commit but one touching only files
+      # no test reads: an exclude list, not an include list, so a new kind of input runs the
+      # suite by default. The tests read sql/, src/'s vendored CSVs, resolution/, openapi.json,
+      # docker-compose.yml and docs/runbooks/ (test_resolve reads adding-an-override.md), not
+      # frontend/, .github/ (CI's own environment, which no local hook can run) or other docs.
+      # `verbose` prints pytest's slowest tests (--durations, pyproject.toml) on every commit.
       - id: test
         name: test (container)
         entry: task test
         language: system
         pass_filenames: false
-        files: \.py$|^pyproject\.toml$|^uv\.lock$|^alembic\.ini$|^(src|sql|tests|migrations|resolution)/
+        verbose: true
+        exclude: ^(frontend/|\.github/|\.claude/|docs/(?!runbooks/)|[^/]+\.md$|LICENSE$|\.gitignore$)
 
       # CI's Alembic head and drift checks (spec §7.3).
       - id: db-check
@@ -60,7 +65,7 @@ repos:
         entry: task fe:generate:check
         language: system
         pass_filenames: false
-        files: ^src/fundlens/|^openapi\.json$|^frontend/src/api/|^frontend/scripts/generate-api\.sh$|^pyproject\.toml$|^uv\.lock$
+        files: ^src/fundlens/|^openapi\.json$|^frontend/src/api/|^frontend/scripts/generate-api\.sh$|^frontend/package\.json$|^frontend/pnpm-lock\.yaml$|^pyproject\.toml$|^uv\.lock$
 
       - id: prod-check
         name: prod:check
