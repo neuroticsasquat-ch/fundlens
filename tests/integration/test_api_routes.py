@@ -308,14 +308,16 @@ def test_a_committee_page_names_whom_it_gave_to(client: TestClient) -> None:
 def test_a_committee_page_has_its_organization_money(client: TestClient, committee_id: str) -> None:
     # The super PAC's is CHESAPEAKE STEEL's gifts less its refund, once under its most-money
     # spelling; a committee no organization gave to has 0 and an empty list (ADR-0011). A hybrid
-    # PAC's non-contribution account is in its top organizations but not its total (NEU-2192).
+    # PAC's non-contribution account is in its top organizations but not its total (NEU-2192), and
+    # so are a party account's givers (NEU-2205).
     organizations = EXPECTED["organization_receipts"]
     non_contribution = EXPECTED["non_contribution_account"]["organizations_by_committee"]
+    other_lines = EXPECTED["other_lines"]["organizations_by_committee"]
     [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
 
     assert cycle["total_from_organizations"] == organizations["by_committee"].get(
         committee_id, 0
-    ) - non_contribution.get(committee_id, 0)
+    ) - non_contribution.get(committee_id, 0) - other_lines.get(committee_id, 0)
     assert [
         [o["organization_key"], o["name"], o["amount"]] for o in cycle["top_organizations"]
     ] == organizations["top_by_committee"].get(committee_id, [])

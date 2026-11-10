@@ -52,6 +52,7 @@ OTH_NOT_RECEIPTS = {
     4240300000000000024,
     4240300000000000025,
     4240300000000000026,  # a union's gift to the party's building account: an organization's
+    4240300000000000028,  # an organization's 32J to the party's recount account (NEU-2205)
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
 # Organization money (NEU-2131, ADR-0011): ACME's gift to PELL; CHESAPEAKE STEEL's two gifts to the
@@ -82,6 +83,14 @@ HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN = (
     4240100000000000337,
     4240100000000000338,
     4240100000000000339,
+)
+# Organizations' money to the party (NEU-2205): a tribe's 31T to its headquarters account in
+# `indiv`, BALTIMORE HARBOR PILOTS' 15 on line 11(a)(i), and a law firm's 32J to its recount
+# account in `oth`, with the union's 31K.
+TRIBE_ACCOUNT, PARTY_PILOTS, RECOUNT_RECEIPT = (
+    4240100000000000346,
+    4240100000000000347,
+    4240300000000000028,
 )
 # 24Is (NEU-2203): BRICKLAYERS passing LACROIX's gift on to OKAFOR, and OKAFOR's own row of it; its
 # 24I to WHITLOCK, who itemized none; the super PAC's receipt of an earmark through ActBlue, filed
@@ -367,6 +376,8 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "file_num",
         "classified",
         "is_non_contribution_account",
+        "fec_line",
+        "is_other_line",
     ]
 
     attributions = read_silver(store, "jfc_attribution", tmp_path)
@@ -1326,6 +1337,33 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
     assert not any(
         contributions[s]["is_other_line"]
         for s in (CONTRIBUTION_ACCOUNT, UNMARKED_REFUND, NON_CONTRIBUTION_ACCOUNT)
+    )
+
+    # An organization's gift to a party account is marked by the same rule, from either file
+    # (NEU-2205); its 15 to the same party is line 11(a)(i) money, unmarked.
+    receipts = {
+        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+    }
+    assert {s for s, row in receipts.items() if row["is_other_line"]} == set(
+        fec_fixture.expected()["other_lines"]["organization_receipts"]
+    )
+    assert [
+        (
+            receipts[s]["recipient_committee_id"],
+            receipts[s]["transaction_type"],
+            receipts[s]["fec_line"],
+            receipts[s]["is_other_line"],
+        )
+        for s in (TRIBE_ACCOUNT, RECOUNT_RECEIPT, UNION_RECEIPT, PARTY_PILOTS)
+    ] == [
+        (PARTY, "31T", "party account 31", True),
+        (PARTY, "32J", "party account 32", True),
+        (PARTY, "31K", "party account 31", True),
+        (PARTY, "15", "11(a)(i)", False),
+    ]
+    assert (receipts[PATAPSCO]["fec_line"], receipts[PATAPSCO]["is_other_line"]) == (
+        "non-contribution account",
+        False,
     )
 
 

@@ -22,8 +22,9 @@ goes where its 10 does, and every other 24I on line 11(a)(i).
 An intermediary's 24I that its recipient itemized too is no contribution at all
 (`sql/silver/04_contribution.sql`).
 
-Only the 11(a)(i) lines, a candidate's 15C and the refunds of either are in a `total_individual`;
-`sql/silver/04_contribution.sql` marks the rest `is_other_line`.
+Only the 11(a)(i) lines, a candidate's 15C and the refunds of either are in a `total_individual`
+or a `total_from_organizations`; `sql/silver/04_contribution.sql` and
+`sql/silver/08_organization_receipt.sql` mark the rest `is_other_line` (NEU-2205).
 """
 
 import duckdb
