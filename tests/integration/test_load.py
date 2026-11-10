@@ -625,6 +625,26 @@ def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
         ]
 
 
+def test_the_conduit_floor_check_fails_on_a_conduit_below_minus_1m() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee AS SELECT * FROM (VALUES"
+            " ('A1', true), ('A2', true), ('A3', true), ('C1', false)"
+            ") AS t(committee_id, is_conduit)"
+        )
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('A1', 500.00), ('A2', -1000000.00), ('A3', -1000000.01), ('C1', -2300000.00)"
+            ") AS t(committee_id, total_individual)"
+        )
+
+        # A2 is at the floor and A3 past it; C1, a retiring candidate's campaign refunding
+        # earlier cycles' gifts, is no conduit.
+        assert failing_rows(con, "gold_conduit_individual_floor.sql") == [
+            ("A3", Decimal("-1000000.01"))
+        ]
+
+
 def test_load_twice_for_the_same_build_rebuilds_gold_build(
     store: R2, cli_env: Path, migrated_db: str
 ) -> None:

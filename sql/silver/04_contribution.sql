@@ -14,7 +14,10 @@
 -- its 24T is. A gift to the conduit itself (ActBlue's tips, 'CONTRIBUTION TO ACTBLUE') is an
 -- ordinary contribution, with no conduit. A 24I is dropped only when it is an intermediary's side
 -- of an earmark whose recipient itemized it too (`intermediary_earmark`, below): most 24Is are a
--- recipient's own earmark receipts, coded 24I (NEU-2203). A gift to a committee missing from `cm`
+-- recipient's own earmark receipts, coded 24I (NEU-2203). A conduit's refund counts only when it
+-- mirrors a gift of the conduit's own, a tip refunded (`conduit_earmark_refund`, below): any
+-- other refunds an earmark, which counts at its recipient alone, so subtracting it at the conduit
+-- takes away money never added (NEU-2199). A gift to a committee missing from `cm`
 -- (a few fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or
 -- 4nY type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total.
 -- Most filers write a refund positive, some negative, so its sign is not trusted: every refund
@@ -142,6 +145,45 @@ WHERE twin.CMTE_ID IN (SELECT OTHER_ID FROM earmark)
     AND abs(CAST(try_strptime(twin.TRANSACTION_DT, '%m%d%Y') AS DATE) - earmark.transaction_date)
         <= 30;
 
+-- A conduit's refund of an earmark (NEU-2199). A conduit refunds the earmarks it passed on, and
+-- the recipient's own refund nets the gift where it counted, so the conduit's must not subtract
+-- it again: WinRed's 1,067,143 refunds in 2024 (-$55.6M, every MEMO_TEXT blank) against its own
+-- $7.4M of tips left its total_individual at -$48.2M. A refund at a conduit is kept only when it
+-- mirrors a counted gift of the conduit's own, a tip, by name key and amount, whatever sign either
+-- was written in; any other is dropped, with the reversal of one. On 2024 that drops 888,156 of
+-- WinRed's (-$54.1M) and 65 of ActBlue's 72, and keeps 178,987 ($1.5M) of WinRed's, almost all
+-- $1 to $10: WinRed nets $5.9M, ActBlue $26.6M (docs/measurements/summary-files-2024.md Q12).
+-- Matching a refund to the conduit's dropped 24T or 15 instead leaves WinRed at -$20.6M, since it
+-- itemizes the side of only 660,255 of its earmarks; dropping the refunds of givers with no gift
+-- of their own there leaves it at -$14.9M, since most of its givers tip it too. Dropping every
+-- conduit refund would drop the refunded tips, which are real. 05_committee_transfer.sql and
+-- 08_organization_receipt.sql drop these rows too.
+CREATE TEMP TABLE conduit_earmark_refund AS
+WITH at_conduit AS (
+    SELECT
+        SUB_ID,
+        CMTE_ID,
+        regexp_replace(upper(NAME), '[^A-Z0-9]', '', 'g') AS name_key,
+        abs(TRANSACTION_AMT) AS amount,
+        regexp_matches(coalesce(TRANSACTION_TP, ''), '^[24][0-9]Y$') AS is_refund
+    FROM indiv
+    WHERE CMTE_ID IN (SELECT committee_id FROM conduit)
+        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND TRANSACTION_TP IS DISTINCT FROM '24T'
+        AND NOT regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
+)
+SELECT refund.SUB_ID
+FROM at_conduit AS refund
+WHERE refund.is_refund
+    AND NOT EXISTS (
+        SELECT 1
+        FROM at_conduit AS own
+        WHERE NOT own.is_refund
+            AND own.CMTE_ID = refund.CMTE_ID
+            AND own.name_key = refund.name_key
+            AND own.amount = refund.amount
+    );
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
@@ -205,6 +247,7 @@ individual AS (
         AND MEMO_CD IS DISTINCT FROM 'X'
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
+        AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
