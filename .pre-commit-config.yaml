@@ -3,13 +3,15 @@ minimum_pre_commit_version: "3.5.0"
 # Every hook calls a Taskfile target, and the target runs inside a dev container via
 # `docker compose exec app` or, for frontend/, `docker compose exec frontend`
 # (tbc-localdev-infra/CONVENTIONS.md). The Taskfile is the only place
-# the toolchain is invoked, so the hooks and `task <x>` can't drift apart. The container must
-# be up (`task up`, and `task fe:dev` for a frontend commit) and rebuilt after a dependency
-# change (`task build`).
+# the toolchain is invoked, so the hooks and `task <x>` can't drift apart. The containers must
+# be up (`task up` and `task fe:dev`) and rebuilt after a dependency change (`task build`).
 #
-# Exception: the test hook runs `task test:unit` rather than `task test` (spec §11 names
-# pytest-unit as the hook): the integration and end-to-end suites grow to need a loaded
-# Postgres and MinIO, and CI runs them on every PR.
+# The hooks run what CI runs (.github/workflows/ci.yml), so a commit that passes them passes CI:
+# a CI failure costs far more than a slower commit. That means the whole pytest suite, its
+# integration tests included, against the dev stack's Postgres and MinIO (about five minutes),
+# whenever anything it reads changes: Python, SQL, fixtures, migrations, resolution data. A
+# commit touching only sql/ runs it too. Each hook fires only on the paths its CI job depends
+# on, so a docs-only commit runs none.
 repos:
   - repo: local
     hooks:
@@ -34,12 +36,46 @@ repos:
         pass_filenames: false
         files: \.py$|^pyproject\.toml$|^uv\.lock$
 
+      # The whole suite, as CI's python job runs it. Any input of the pipeline or the API, not
+      # only Python: src/ holds vendored CSVs and headers, sql/ the models and checks.
       - id: test
-        name: test:unit (container)
-        entry: task test:unit
+        name: test (container)
+        entry: task test
         language: system
         pass_filenames: false
-        files: \.py$|^pyproject\.toml$|^uv\.lock$
+        files: \.py$|^pyproject\.toml$|^uv\.lock$|^alembic\.ini$|^(src|sql|tests|migrations|resolution)/
+
+      # CI's Alembic head and drift checks (spec §7.3).
+      - id: db-check
+        name: db:migrate + db:check (container)
+        entry: task db:migrate db:check
+        language: system
+        pass_filenames: false
+        files: ^migrations/|^src/fundlens/app_schema\.py$|^alembic\.ini$|^pyproject\.toml$|^uv\.lock$
+
+      # CI's openapi-drift: the committed contract and client match what the API generates.
+      # Not limited to frontend/: a backend change is the one that can leave them stale.
+      - id: openapi-drift
+        name: fe:generate:check (containers)
+        entry: task fe:generate:check
+        language: system
+        pass_filenames: false
+        files: ^src/fundlens/|^openapi\.json$|^frontend/src/api/|^frontend/scripts/generate-api\.sh$|^pyproject\.toml$|^uv\.lock$
+
+      - id: prod-check
+        name: prod:check
+        entry: task prod:check
+        language: system
+        pass_filenames: false
+        files: ^docker-compose\.prod\.yml$
+
+      # CI's image job: the prod image builds, runs as non-root and passes .github/ci/smoke.sh.
+      - id: image-check
+        name: image:check (host Docker)
+        entry: task image:check
+        language: system
+        pass_filenames: false
+        files: ^Dockerfile$|^\.dockerignore$|^pyproject\.toml$|^uv\.lock$|^\.github/ci/smoke\.sh$
 
       - id: fe-lint
         name: fe:lint (container)
@@ -51,6 +87,20 @@ repos:
       - id: fe-typecheck
         name: fe:typecheck (container)
         entry: task fe:typecheck
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: fe-test
+        name: fe:test (container)
+        entry: task fe:test
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: fe-build
+        name: fe:build (container)
+        entry: task fe:build
         language: system
         pass_filenames: false
         files: ^frontend/
