@@ -550,6 +550,41 @@ def test_a_blank_entity_type_is_an_individual_and_self_funding_is_never_an_earma
     assert (earmarked["conduit_committee_id"], earmarked["is_self_funding"]) == (WINRED, False)
 
 
+def test_a_15c_is_the_candidates_own_money_whatever_its_entity_type_name_or_route(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # 15C is FEC's "contribution from the candidate": the filer's line choice is the evidence, so
+    # none of these is an individual's gift (NEU-2194).
+    indiv = fec_fixture.bulk_text("indiv") + (
+        # Typed IND under a variant name, as VIVEK 2024 and MARYOTT FOR CONGRESS file theirs.
+        "C00800104|N|Q2|P2024|1|15C|IND|WHITLOCK - PERSONAL FUNDS, GORDON|POTOMAC|MD|20854|"
+        "WHITLOCK HOLDINGS|EXECUTIVE|05012024|1000||SA.1|1|||4249999999999999971\n"
+        # Typed CAN under a misspelled name ('TORRESS, JERRY').
+        "C00800104|N|Q2|P2024|1|15C|CAN|WHITLOK, GORDON|POTOMAC|MD|20854|"
+        "WHITLOCK HOLDINGS|EXECUTIVE|05022024|2000||SA.2|1|||4249999999999999972\n"
+        # Through his WinRed page, still on line 11(d).
+        "C00800104|N|Q2|P2024|1|15C|CAN|WHITLOCK, GORDON|POTOMAC|MD|20854|WHITLOCK HOLDINGS|"
+        "EXECUTIVE|05032024|500|C00694323|SA.3|1||EARMARKED THROUGH WINRED|4249999999999999973\n"
+        # At a committee raising for no candidate (COURAGEOUS LEADERS): the committee's
+        # self_funding, no candidate's.
+        "C00800201|N|Q2|P2024|1|15C|IND|ASHWORTH, NINA|BALTIMORE|MD|21202|"
+        "SELF|EXECUTIVE|05042024|3000||SA.4|1|||4249999999999999974\n"
+    )
+    put_bronze(store, texts={"indiv": indiv})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    typed_ind, misspelled, earmarked, unlinked = (
+        by_id[4249999999999999970 + n] for n in (1, 2, 3, 4)
+    )
+    assert typed_ind["is_self_funding"] and misspelled["is_self_funding"]
+    assert (earmarked["conduit_committee_id"], earmarked["is_self_funding"]) == (WINRED, True)
+    assert (unlinked["candidate_id"], unlinked["is_self_funding"]) == (None, True)
+
+
 def test_a_file_mixing_encodings_is_read_whole(store: R2, cli_env: Path, tmp_path: Path) -> None:
     # The names as filers sent them: UTF-8, a Windows-1252 apostrophe, and a byte Windows-1252
     # leaves undefined. DuckDB's own latin-1 reader refused all three (NEU-2069).
@@ -965,6 +1000,24 @@ def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alia
         assert failing_rows(con, "silver_candidate_alias_canonical.sql") == [
             ("H8MD05116", DRISCOLL_ALIAS)
         ]
+
+
+def test_the_self_funding_checks_fail_on_an_unflagged_15c_and_an_earmark_of_another_type() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES"
+            " (1, 'C1', '15C', 'IND', 'DOE, JANE', CAST(NULL AS VARCHAR), false),"
+            f" (2, 'C1', '15C', 'CAN', 'DOE, JANE', '{WINRED}', true),"
+            f" (3, 'C1', '15E', 'CAN', 'DOE, JANE', '{WINRED}', true),"
+            " (4, 'C1', '15', 'CAN', 'DOE, JANE', NULL, true)"
+            ") AS t(source_record_id, recipient_committee_id, transaction_type, entity_type,"
+            " contributor_name, conduit_committee_id, is_self_funding)"
+        )
+
+        assert failing_rows(con, "silver_contribution_15c_self_funding.sql") == [
+            (1, "C1", "IND", "DOE, JANE")
+        ]
+        assert failing_rows(con, "silver_contribution_self_funding.sql") == [(3, "C1", WINRED)]
 
 
 def test_the_organization_receipt_key_check_fails_on_a_repeated_or_missing_key() -> None:

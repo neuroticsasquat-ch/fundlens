@@ -286,10 +286,15 @@ SELECT
     kept.AMNDT_IND AS amendment_indicator,
     kept.MEMO_TEXT AS memo_text,
     kept.conduit_committee_id,
-    -- A candidate's own money, loans included, to a committee raising for them: a CAN gift under
-    -- the candidate's last name and first given name ('WHITLOCK, GORDON R. MR' is 'WHITLOCK,
-    -- GORDON'). Money routed through a conduit is an earmark, never self-funding.
-    coalesce(
+    -- A candidate's own money, loans included. A 15C is, whatever its entity type, name or route
+    -- (NEU-2194): FEC's "contribution from the candidate", on line 11(d), so the filer's choice of
+    -- type is the evidence. 2024 files most of its own money typed IND or under a variant name
+    -- ('MARYOTT - PERSONAL FUNDS, BRIAN', 'TORRESS, JERRY'), and some at a committee linked to no
+    -- candidate, whose self_funding it is. Any other type is when it is a CAN gift to a committee
+    -- raising for the candidate, under their last name and first given name ('WHITLOCK, GORDON R.
+    -- MR' is 'WHITLOCK, GORDON'), and not routed through a conduit: that is an earmark.
+    kept.TRANSACTION_TP IS NOT DISTINCT FROM '15C'
+    OR coalesce(
         kept.ENTITY_TP = 'CAN'
         AND kept.conduit_committee_id IS NULL
         AND regexp_replace(upper(split_part(kept.NAME, ',', 1)), '[^A-Z0-9]', '', 'g')
