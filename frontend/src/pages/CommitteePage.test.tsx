@@ -216,6 +216,46 @@ describe("CommitteePage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows a hybrid PAC's non-contribution account beside its other receipts", async () => {
+    renderApp("/committee/C00800204");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "TIDEWATER FUND" }),
+    ).toBeInTheDocument();
+    const totals = section("Totals by cycle");
+    expect(
+      within(totals)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Cycle",
+      "From individuals",
+      "From committees",
+      "Non-contribution account",
+      "Self-funding",
+      "To candidates",
+    ]);
+    expect(rows("Totals by cycle").map(cells)).toEqual([
+      ["2024", "$6,250", "$0", "$4,815,000", "$0", "$0"],
+    ]);
+    expect(
+      within(totals).getByText(
+        /Non-contribution account: what individuals and organizations give a hybrid PAC outside its contribution account/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no non-contribution account for a committee without one", async () => {
+    renderApp("/committee/C00800201");
+    await screen.findByRole("heading", { level: 1, name: "MARYLAND FORWARD PAC" });
+
+    const totals = section("Totals by cycle");
+    expect(
+      within(totals).queryByRole("columnheader", { name: "Non-contribution account" }),
+    ).not.toBeInTheDocument();
+    expect(within(totals).queryByText(/Non-contribution account/)).not.toBeInTheDocument();
+  });
+
   it("says when the committee gave to no one in the cycle", async () => {
     renderApp("/committee/C00800103");
 

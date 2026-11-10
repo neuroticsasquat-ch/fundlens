@@ -1,4 +1,5 @@
 import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
+import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
 import type { Committee, CommitteeCycle, TopOrganization } from "../api/client";
@@ -74,17 +75,37 @@ const ORGANIZATIONS_SERIES: CycleSeries<CommitteeCycle> = {
   value: (row) => row.total_from_organizations,
 };
 
-// After "From committees", in the table and the chart.
-const CYCLE_COLUMNS_WITH_ORGANIZATIONS = [
-  ...CYCLE_COLUMNS.slice(0, 3),
-  ORGANIZATIONS_COLUMN,
-  ...CYCLE_COLUMNS.slice(3),
-];
-const CYCLE_SERIES_WITH_ORGANIZATIONS = [
-  ...CYCLE_SERIES.slice(0, 2),
-  ORGANIZATIONS_SERIES,
-  ...CYCLE_SERIES.slice(2),
-];
+const NON_CONTRIBUTION_ACCOUNT_COLUMN: Column<CommitteeCycle> = {
+  key: "non-contribution-account",
+  header: "Non-contribution account",
+  align: "right",
+  render: (row) => money(row.total_non_contribution_account),
+  sortValue: (row) => row.total_non_contribution_account,
+};
+
+const NON_CONTRIBUTION_ACCOUNT_SERIES: CycleSeries<CommitteeCycle> = {
+  name: "Non-contribution account",
+  value: (row) => row.total_non_contribution_account,
+};
+
+/**
+ * The table's columns and the chart's series, with organizations' money and a hybrid PAC's
+ * non-contribution account after "From committees" when the committee has any.
+ */
+function cycleTotals(fromOrganizations: boolean, nonContributionAccount: boolean) {
+  const columns = [
+    ...(fromOrganizations ? [ORGANIZATIONS_COLUMN] : []),
+    ...(nonContributionAccount ? [NON_CONTRIBUTION_ACCOUNT_COLUMN] : []),
+  ];
+  const series = [
+    ...(fromOrganizations ? [ORGANIZATIONS_SERIES] : []),
+    ...(nonContributionAccount ? [NON_CONTRIBUTION_ACCOUNT_SERIES] : []),
+  ];
+  return {
+    columns: [...CYCLE_COLUMNS.slice(0, 3), ...columns, ...CYCLE_COLUMNS.slice(3)],
+    series: [...CYCLE_SERIES.slice(0, 2), ...series, ...CYCLE_SERIES.slice(2)],
+  };
+}
 
 const ORGANIZATION_COLUMNS: Column<TopOrganization>[] = [
   {
@@ -145,6 +166,15 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
   const kind = [committeeType(committee.type), committeeDesignation(committee.designation)];
   // Most committees take nothing from organizations; theirs is a column of zeros left out.
   const fromOrganizations = committee.cycles.some((row) => row.total_from_organizations !== 0);
+  // Only a hybrid PAC has a non-contribution account; every other committee's is 0.
+  const nonContributionAccount = committee.cycles.some(
+    (row) => row.total_non_contribution_account !== 0,
+  );
+  // Memoized, so the chart's option is not rebuilt on every render.
+  const totals = useMemo(
+    () => cycleTotals(fromOrganizations, nonContributionAccount),
+    [fromOrganizations, nonContributionAccount],
+  );
 
   return (
     <Stack gap="xl">
@@ -180,16 +210,19 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
           <Text c="dimmed">No money is recorded for this committee in any cycle.</Text>
         ) : (
           <Stack gap="md">
-            <CycleTotalsChart
-              rows={committee.cycles}
-              series={fromOrganizations ? CYCLE_SERIES_WITH_ORGANIZATIONS : CYCLE_SERIES}
-            />
+            <CycleTotalsChart rows={committee.cycles} series={totals.series} />
             <DataTable
-              columns={fromOrganizations ? CYCLE_COLUMNS_WITH_ORGANIZATIONS : CYCLE_COLUMNS}
+              columns={totals.columns}
               rows={committee.cycles}
               rowKey={(row) => String(row.cycle)}
               rowProps={(row) => ({ id: `cycle-${row.cycle}` })}
             />
+            {nonContributionAccount && (
+              <Text c="dimmed" size="sm">
+                Non-contribution account: what individuals and organizations give a hybrid PAC
+                outside its contribution account, without limit, and counted in no other column.
+              </Text>
+            )}
           </Stack>
         )}
       </section>
