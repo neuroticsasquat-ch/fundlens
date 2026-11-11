@@ -62,6 +62,11 @@ def dollars(value: Decimal) -> int:
     return int(value)
 
 
+def ranked(lists: dict[str, list[list[str | int]]]) -> dict[str, list[tuple[str | int, ...]]]:
+    """expected.yaml's ranked lists, each row a tuple as the test builds gold's."""
+    return {key: [tuple(row) for row in rows] for key, rows in lists.items()}
+
+
 def test_load_builds_every_gold_table_to_the_expected_totals(
     store: R2, transformed: Path, migrated_db: str
 ) -> None:
@@ -79,8 +84,9 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(race["total_individual"]) == totals["total_individual"], race_id
         assert dollars(race["total_committee"]) == totals["total_committee"], race_id
         assert dollars(race["total_jfc_transfers"]) == totals["total_jfc_transfers"], race_id
-        # Independent expenditures arrive with NEU-2057.
-        assert (race["ie_support"], race["ie_oppose"]) == (0, 0), race_id
+        # Independent expenditures for and against its candidates, by anyone (NEU-2057).
+        assert dollars(race["ie_support"]) == totals["ie_support"], race_id
+        assert dollars(race["ie_oppose"]) == totals["ie_oppose"], race_id
     assert races["2024-S-MD-00"]["slug"] == "2024/senate/MD"
     assert races["2024-S-NE-00-special"]["is_special"] is True
 
@@ -101,7 +107,8 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
             candidate_id
         )
         assert dollars(cycle_row["self_funding"]) == totals["self_funding"], candidate_id
-        assert (cycle_row["ie_support"], cycle_row["ie_oppose"]) == (0, 0)
+        assert dollars(cycle_row["ie_support"]) == totals["ie_support"], candidate_id
+        assert dollars(cycle_row["ie_oppose"]) == totals["ie_oppose"], candidate_id
         assert cycle_row["contributor_count"] is None
         if totals["race_id"] is not None:
             race_row = race_candidates[candidate_id]
@@ -110,10 +117,14 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
                 race_row["total_individual"],
                 race_row["total_jfc_transfers"],
                 race_row["self_funding"],
+                race_row["ie_support"],
+                race_row["ie_oppose"],
             ) == (
                 cycle_row["total_individual"],
                 cycle_row["total_jfc_transfers"],
                 cycle_row["self_funding"],
+                cycle_row["ie_support"],
+                cycle_row["ie_oppose"],
             )
     okafor = race_candidates["S4MD00103"]
     assert (okafor["name"], okafor["party"], okafor["principal_committee_id"]) == (
@@ -158,7 +169,8 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(row["total_refunds"]) == expected["refunds"]["by_committee"].get(
             committee_id, 0
         ), committee_id
-        assert row["ie_total"] == 0
+        # Its independent expenditures for and against candidates; not the party's 24C.
+        assert dollars(row["ie_total"]) == totals["ie_total"], committee_id
 
     # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.
     top_organizations: dict[str, list[list[str | int]]] = defaultdict(list)
@@ -190,29 +202,29 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert committees["C00401224"]["is_conduit"] is True
     assert committees["C00401224"]["cycles"] == [2024]
 
-    # BRICKLAYERS' gifts, ranked by amount and then by candidate id, add up to its
-    # total_to_candidates (its gift to the super PAC is credited to no candidate, so is in neither,
-    # NEU-2075).
-    recipients = sorted(
-        (
-            row
-            for row in rows(migrated_db, "committee_top_recipient")
-            if row["committee_id"] == "C00800202"
-        ),
-        key=lambda row: row["rank"],
-    )
-    assert [row["rank"] for row in recipients] == list(range(1, len(recipients) + 1))
-    assert (
-        sum(dollars(row["amount"]) for row in recipients)
-        == expected["committees"]["C00800202"]["total_to_candidates"]
-    )
-    assert [(row["amount"], row["recipient_id"]) for row in recipients] == sorted(
-        ((row["amount"], row["recipient_id"]) for row in recipients),
-        key=lambda pair: (-pair[0], pair[1]),
-    )
-    assert {row["recipient_kind"] for row in recipients} == {"candidate"}
-    # A same-cycle refund nets inside its gift: BRICKLAYERS' to YANG, $2,500 less $500 (NEU-2204).
-    assert {row["recipient_id"]: dollars(row["amount"]) for row in recipients}["H4MD05108"] == 2000
+    # Every committee's recipients, candidates and committees ranked together by amount, then kind,
+    # then id (NEU-2057). BRICKLAYERS' candidate rows add up to its total_to_candidates; its gift to
+    # the super PAC is credited to no candidate (NEU-2075), a committee row. A gift to a candidate's
+    # committee is its 24K and its recipient's 18K: in the candidate's row alone, never also the
+    # committee's. A same-cycle refund nets inside its gift: BRICKLAYERS' to YANG, $2,500 less $500
+    # (NEU-2204).
+    recipients: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "committee_top_recipient"),
+        key=lambda row: (row["committee_id"], row["rank"]),
+    ):
+        assert row["cycle"] == 2024
+        assert row["name"], row
+        assert row["rank"] == len(recipients[row["committee_id"]]) + 1
+        recipients[row["committee_id"]].append(
+            (row["recipient_kind"], row["recipient_id"], dollars(row["amount"]))
+        )
+    assert recipients == ranked(expected["top_recipients"])
+    for committee_id, listed in recipients.items():
+        assert (
+            sum(amount for kind, _, amount in listed if kind == "candidate")
+            == expected["committees"][committee_id]["total_to_candidates"]
+        ), committee_id
 
     # A void of an earlier cycle's gift, the giver's only 24K to the candidate this cycle, is a
     # return, not a gift: OLD LINE REPUBLICAN COMMITTEE's of a 2022 gift to CALLOWAY is in neither
@@ -220,27 +232,32 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     old_line = committee_cycles["C00800203"]
     assert dollars(old_line["total_returned_by_candidates"]) == -1000
     assert dollars(old_line["total_to_candidates"]) == 6000
-    assert "H4MD05106" not in {
-        row["recipient_id"]
-        for row in rows(migrated_db, "committee_top_recipient")
-        if row["committee_id"] == "C00800203"
-    }
+    assert "H4MD05106" not in {recipient_id for _, recipient_id, _ in recipients["C00800203"]}
     assert dollars(candidate_cycles["H4MD05106"]["total_committee"]) == 10000
-    assert all(row["name"] for row in recipients)
-    senate = sorted(
-        (
-            row
-            for row in rows(migrated_db, "race_top_committee")
-            if row["race_id"] == "2024-S-MD-00"
-        ),
-        key=lambda row: row["rank"],
-    )
-    assert (
-        sum(dollars(row["amount"]) for row in senate)
-        == expected["races"]["2024-S-MD-00"]["total_committee"]
-    )
-    assert [row["rank"] for row in senate] == list(range(1, len(senate) + 1))
-    assert {row["kind"] for row in senate} == {"contribution"}
+
+    # Each race's committees, givers and spenders ranked together (NEU-2057): the contribution rows
+    # add up to its total_committee, the ie rows to its ie_support and ie_oppose. The super PAC is
+    # there for its independent expenditures; a conduit (ActBlue, WinRed), whose 24Ks are no gifts,
+    # is in no list.
+    top_committees: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "race_top_committee"), key=lambda row: (row["race_id"], row["rank"])
+    ):
+        assert row["name"], row
+        assert row["rank"] == len(top_committees[row["race_id"]]) + 1
+        top_committees[row["race_id"]].append(
+            (row["kind"], row["committee_id"], dollars(row["amount"]))
+        )
+    assert top_committees == ranked(expected["race_top_committees"])
+    for race_id, listed in top_committees.items():
+        totals = expected["races"][race_id]
+        assert (
+            sum(a for kind, _, a in listed if kind == "contribution") == totals["total_committee"]
+        ), race_id
+        assert sum(a for kind, _, a in listed if kind == "ie") == (
+            totals["ie_support"] + totals["ie_oppose"]
+        ), race_id
+        assert not {committee_id for _, committee_id, _ in listed} & {"C00401224", "C00694323"}
 
     search = {(row["kind"], row["id"]): row for row in rows(migrated_db, "search_entity")}
     assert search[("race", "2024-S-MD-00")]["name"] == "2024 Senate MD"
@@ -605,6 +622,19 @@ def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
             ("committee_top_recipient.amount", "C2 H2", -1000),
             ("race_top_committee.amount", "2024-H-MD-05 C2", -1000),
         ]
+
+
+def test_the_recipient_check_fails_on_a_committee_recipient_of_no_committee() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE committee AS SELECT 'C1' AS committee_id")
+        con.execute(
+            "CREATE TABLE committee_top_recipient AS SELECT * FROM (VALUES"
+            " ('C1', 1, 'committee', 'C1'), ('C1', 2, 'committee', 'C9'),"
+            " ('C1', 3, 'candidate', 'C9')"
+            ") AS t(committee_id, rank, recipient_kind, recipient_id)"
+        )
+
+        assert failing_rows(con, "gold_committee_top_recipient_committee.sql") == [("C1", 2, "C9")]
 
 
 def test_the_refunds_check_fails_on_a_positive_refunds_figure() -> None:

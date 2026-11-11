@@ -20,7 +20,11 @@
 -- Refunds are negative amounts and net out. Nothing to sum is 0, never NULL.
 -- contributor_count is the donors whose counted gifts reached the candidate, their own money aside;
 -- NULL for every candidate of a build loaded before `resolve`, whose contributions have no donor
--- (the loader gives them a NULL donor_id). ie_support and ie_oppose are 0 until NEU-2057.
+-- (the loader gives them a NULL donor_id).
+-- ie_support and ie_oppose are the independent expenditures for and against the candidate
+-- (silver's kind 'ie': 24E and 24A, NEU-2057), net of corrections, by anyone: spending, never money
+-- the candidate received, in no figure above. A coordinated expenditure or communication cost is
+-- in neither.
 CREATE TABLE candidate_cycle AS
 WITH money AS (
     SELECT
@@ -55,6 +59,15 @@ jfc_transfers AS (
         ON jfc.committee_id = transfer.from_committee_id AND jfc.designation = 'J'
     WHERE transfer.side = 'receipt' AND transfer.candidate_id IS NOT NULL
     GROUP BY transfer.candidate_id
+),
+independent AS (
+    SELECT
+        candidate_id,
+        coalesce(sum(amount) FILTER (WHERE support_oppose = 'S'), 0) AS ie_support,
+        coalesce(sum(amount) FILTER (WHERE support_oppose = 'O'), 0) AS ie_oppose
+    FROM silver.independent_expenditure
+    WHERE kind = 'ie' AND candidate_id IS NOT NULL
+    GROUP BY candidate_id
 )
 SELECT
     candidate.candidate_id,
@@ -64,8 +77,8 @@ SELECT
     CAST(coalesce(from_committees.total_committee, 0) AS DECIMAL(16, 2)) AS total_committee,
     CAST(coalesce(jfc_transfers.total_jfc_transfers, 0) AS DECIMAL(16, 2)) AS total_jfc_transfers,
     CAST(coalesce(money.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
-    CAST(0 AS DECIMAL(16, 2)) AS ie_support,
-    CAST(0 AS DECIMAL(16, 2)) AS ie_oppose,
+    CAST(coalesce(independent.ie_support, 0) AS DECIMAL(16, 2)) AS ie_support,
+    CAST(coalesce(independent.ie_oppose, 0) AS DECIMAL(16, 2)) AS ie_oppose,
     CASE
         WHEN resolved.resolved THEN CAST(coalesce(money.contributor_count, 0) AS INTEGER)
     END AS contributor_count
@@ -74,4 +87,5 @@ CROSS JOIN resolved
 LEFT JOIN money USING (candidate_id)
 LEFT JOIN from_committees USING (candidate_id)
 LEFT JOIN jfc_transfers USING (candidate_id)
+LEFT JOIN independent USING (candidate_id)
 WHERE candidate.alias_of IS NULL;

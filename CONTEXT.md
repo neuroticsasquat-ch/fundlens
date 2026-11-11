@@ -11,7 +11,7 @@ One itemized transfer of money from a contributor to a committee, as reported to
 _Avoid_: donation, transaction, record
 
 **Independent expenditure**:
-Money a committee spends for or against a candidate without coordinating with them. It attaches to a race and a candidate but is never a contribution.
+Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, and is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
 _Avoid_: IE spend, outside money, super PAC money
 
 **Earmark**:

@@ -294,6 +294,63 @@ name_matched:
   4240100000000000329: C00800203
   4240100000000000355: C00800205
 
+# Each giving committee's recipients in gold's committee_top_recipient (NEU-2057), by rank:
+# [recipient_kind, recipient_id, amount]. A candidate row is the giver's 24Ks credited to the
+# candidate (pairs netting below 0 left out, NEU-2204), so the candidate rows add up to its
+# total_to_candidates. A committee row is the recipients' receipts from it, `oth`'s and the
+# name-matched `indiv` rows (`name_matched` above), and its 24Ks credited to no candidate. A
+# receipt mirroring one of the giver's 24Ks (same recipient and amount: every 18K of a 24K above)
+# is the 24K's twin, and so is any receipt credited to a candidate the giver credited a 24K to,
+# whatever its amount: both are in the candidate's row alone. BRICKLAYERS UNITED PAC's committee
+# rows: the super PAC its 18K ($50,000), its name-matched gift ($15,000) and its 24K credited to no
+# candidate ($750); the party's building account its 31K ($2,000). Not OKAFOR FOR MARYLAND's
+# name-matched 18K ($1,000), which no 24K mirrors: BRICKLAYERS credited 24Ks to OKAFOR, so her row
+# holds its gifts to her. Ranked by amount, then kind, then id.
+top_recipients:
+  C00800202:
+    - [committee, C00800201, 65750]
+    - [candidate, H4MD05106, 5000]
+    - [candidate, P40000101, 5000]
+    - [candidate, S4MD00103, 5000]
+    - [candidate, H4MD05107, 2500]
+    - [candidate, P80000722, 2500]
+    - [candidate, H4MD05108, 2000]
+    - [committee, C00800203, 2000]
+    - [candidate, S4MD00104, 1000]
+  C00800203:
+    - [candidate, S4MD00104, 5000]
+    - [committee, C00800107, 2000]
+    - [candidate, H4MD09109, 1000]
+  C00800114:
+    - [candidate, H4MD05106, 5000]
+  C00800113:
+    - [committee, C00800103, 20000]
+  C00800102:
+    - [committee, C00800203, 15000]
+  C00800115:
+    - [committee, C00800103, 19500]
+  C00800205:
+    - [committee, C00800201, 90000]
+
+# Each race's committees in gold's race_top_committee (NEU-2057), by rank: [kind, committee_id,
+# amount]. A contribution row is a giver's 24Ks to the race's candidates, adding up to the race's
+# total_committee; an ie row is a spender's 24E and 24A on them, adding up to its ie_support plus
+# ie_oppose. Ranked by amount, then committee id, then kind. The conduits are in none.
+race_top_committees:
+  2024-P-US-00:
+    - [ie, C00800201, 400000]
+    - [contribution, C00800202, 7500]
+  2024-S-MD-00:
+    - [ie, C00800201, 230000]
+    - [ie, C00800203, 45000]
+    - [contribution, C00800202, 6000]
+    - [contribution, C00800203, 5000]
+  2024-H-MD-05:
+    - [ie, C00800201, 40000]
+    - [contribution, C00800202, 9500]
+    - [contribution, C00800114, 5000]
+    - [ie, C00800202, 3000]
+
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
 
