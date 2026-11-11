@@ -712,6 +712,22 @@ def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
     assert "C00899999" not in {row["recipient_committee_id"] for row in rows}
 
 
+def test_a_filing_a_later_amendment_supersedes_counts_nowhere(fixture_silver: Path) -> None:
+    # The fixture's super PAC filings (NEU-2196): a Q2 report whose 30S amendment restates both of
+    # its gifts, CARVALHO's and TIDEWATER MARINE SUPPLY's, so the Q2 rows count nowhere; and a Q3
+    # report a later YE amendment repeats a third of, ESPINOZA's gift, so both of hers count.
+    contributions = {
+        row["source_record_id"] for row in local_silver(fixture_silver, "contribution")
+    }
+    receipts = {
+        row["source_record_id"] for row in local_silver(fixture_silver, "organization_receipt")
+    }
+    superseded, restated = {4240100000000000357, 4240100000000000358}, {4240100000000000359}
+    assert superseded.isdisjoint(contributions | receipts)
+    assert restated <= contributions and 4240100000000000360 in receipts
+    assert {4240100000000000362, 4240100000000000365} <= contributions
+
+
 def key_of(row: Mapping[str, object]) -> str:
     """A silver contribution's contributor key as resolve.normalize builds it."""
 
@@ -1065,6 +1081,28 @@ def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alia
         ]
         assert failing_rows(con, "silver_candidate_alias_canonical.sql") == [
             ("H8MD05116", DRISCOLL_ALIAS)
+        ]
+
+
+def test_the_superseded_filing_check_fails_on_a_counted_row_of_one() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE superseded_filing AS SELECT 1001 AS FILE_NUM")
+        # Filing 1001's rows: a contribution, an organization receipt and a committee's gift; and a
+        # row of filing 1002, which nothing supersedes.
+        con.execute(
+            "CREATE TABLE indiv AS SELECT * FROM"
+            " (VALUES (1, 1001), (2, 1001), (3, 1001), (4, 1002)) AS t(SUB_ID, FILE_NUM)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES (1), (4)) AS t(source_record_id)"
+        )
+        con.execute("CREATE TABLE organization_receipt AS SELECT 2 AS source_record_id")
+        con.execute("CREATE TABLE committee_transfer AS SELECT 3 AS source_record_id")
+
+        assert sorted(failing_rows(con, "silver_superseded_filing.sql")) == [
+            ("committee_transfer", 3, 1001),
+            ("contribution", 1, 1001),
+            ("organization_receipt", 2, 1001),
         ]
 
 

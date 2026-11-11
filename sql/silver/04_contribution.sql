@@ -188,6 +188,84 @@ WHERE refund.is_refund
             AND own.amount = refund.amount
     );
 
+-- A filing superseded by a later amendment that FEC's bulk file kept beside it (NEU-2196). FEC
+-- keeps only a report's newest version, but an amendment that changes the form (F3X to F3, F3 to
+-- F3P), the report type (12S to 12G, Q1 to TER, Q2 to 30S) or the coverage end reads to it as a new
+-- report, so both stay in `indiv` and every gift on them counts twice: 2024's Newsom for California
+-- Governor 2022 (C00836353) by $8.9M, $3.4M of it on line 11(a)(i). FEC publishes no bulk filing
+-- index to say which filing amends which, so the bulk file decides: an electronic filing (FILE_NUM
+-- above 0) is superseded when a later-numbered one at the same committee, itself an amendment
+-- (AMNDT_IND 'A'), repeats at least half of its rows. A row repeats one when a row there has the
+-- same gift: name (compared as names are), ZIP5, employer, occupation, amount and date. An undated
+-- row repeats none. Against FEC's own index (OpenFEC's amendment_chain) on 2024 this takes 28 of
+-- the 31 filings FEC says a later twin amends, and none of the 208 it says no filing amends
+-- (docs/measurements/summary-files-2024.md Q13). The three it misses had most of their rows changed
+-- by the amendment. Half, not any: a big filing and a later amendment of another report can share a
+-- few same-day gifts of the same size, and both are real. Repeats within one filing are separate
+-- gifts, each with its own TRAN_ID, and count (Q13).
+-- FEC's committee_summary counts most such pairs twice too: Newsom's INDV_ITEM_CONTB is the two
+-- filings' line 11(a)(i) added together. So a committee with a superseded filing sits below that
+-- figure by design: a gift counts once.
+-- A superseded filing's `indiv` rows are counted nowhere: not here, in 05_committee_transfer.sql or
+-- in 08_organization_receipt.sql (a row with no FILE_NUM is on no superseded filing). Its `oth`
+-- rows were not measured and are read as before. Built in three steps so `indiv` is never held: the
+-- gifts on more than one filing (a hash of the committee and gift, grouped), then each filing's
+-- rows and its rows holding such a gift, then the pairs.
+CREATE TEMP VIEW filed_gift AS
+SELECT
+    CMTE_ID,
+    FILE_NUM,
+    AMNDT_IND,
+    CASE
+        WHEN try_strptime(TRANSACTION_DT, '%m%d%Y') IS NOT NULL THEN hash(
+            CMTE_ID,
+            regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g'),
+            left(ZIP_CODE, 5),
+            upper(EMPLOYER),
+            upper(OCCUPATION),
+            TRANSACTION_AMT,
+            TRANSACTION_DT
+        )
+    END AS gift
+FROM indiv
+WHERE MEMO_CD IS DISTINCT FROM 'X' AND TRANSACTION_TP IS DISTINCT FROM '24T' AND FILE_NUM > 0;
+
+CREATE TEMP TABLE repeated_gift AS
+SELECT gift
+FROM filed_gift
+WHERE gift IS NOT NULL
+GROUP BY gift
+HAVING min(FILE_NUM) <> max(FILE_NUM);
+
+-- One row per filing and repeated gift on it, and one per filing for its other rows (gift NULL).
+CREATE TEMP TABLE filing_gift AS
+SELECT
+    filed_gift.CMTE_ID,
+    filed_gift.FILE_NUM,
+    bool_or(filed_gift.AMNDT_IND = 'A') AS is_amendment,
+    repeated_gift.gift,
+    count(*) AS rows
+FROM filed_gift
+LEFT JOIN repeated_gift ON repeated_gift.gift = filed_gift.gift
+GROUP BY filed_gift.CMTE_ID, filed_gift.FILE_NUM, repeated_gift.gift;
+
+CREATE TEMP TABLE superseded_filing AS
+WITH filing AS (
+    SELECT CMTE_ID, FILE_NUM, bool_or(is_amendment) AS is_amendment, sum(rows) AS rows
+    FROM filing_gift
+    GROUP BY CMTE_ID, FILE_NUM
+)
+SELECT DISTINCT earlier.FILE_NUM
+FROM filing_gift AS earlier
+JOIN filing_gift AS later
+    ON later.CMTE_ID = earlier.CMTE_ID
+    AND later.gift = earlier.gift
+    AND later.FILE_NUM > earlier.FILE_NUM
+JOIN filing AS amendment ON amendment.FILE_NUM = later.FILE_NUM AND amendment.is_amendment
+JOIN filing AS original ON original.FILE_NUM = earlier.FILE_NUM
+GROUP BY earlier.FILE_NUM, later.FILE_NUM, original.rows
+HAVING sum(earlier.rows) * 2 >= original.rows;
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
@@ -252,6 +330,7 @@ individual AS (
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
+        AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -302,6 +381,7 @@ reversal AS (
         FROM indiv
         WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND MEMO_CD IS DISTINCT FROM 'X'
             AND NAME IS NOT NULL
+            AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
     )
     SELECT SUB_ID
     FROM refund
