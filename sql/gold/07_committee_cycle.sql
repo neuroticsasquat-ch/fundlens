@@ -24,7 +24,10 @@
 -- from unregistered committees, transfers and loans. An organization's is in neither
 -- total_from_organizations nor any other figure, so total_individual + total_from_organizations
 -- compares with FEC's itemized figure like for like. The candidate's own money is self_funding
--- whatever its line (a loan's is line 13). ie_total is 0 until NEU-2057.
+-- whatever its line (a loan's is line 13). total_refunds is the part of total_individual and
+-- total_from_organizations FEC files on line 20 (NEU-2265): the counted refunds, by the same
+-- filters, so 0 or less and never NULL. Both totals stay net of it (spec §7.1); FEC's gross basis
+-- is total_individual + total_from_organizations - total_refunds. ie_total is 0 until NEU-2057.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -37,6 +40,15 @@ WITH received AS (
             ),
             0
         ) AS total_individual,
+        coalesce(
+            sum(amount) FILTER (
+                WHERE NOT is_self_funding
+                    AND NOT is_non_contribution_account
+                    AND NOT is_other_line
+                    AND fec_line = '20 refunds'
+            ),
+            0
+        ) AS refunds,
         coalesce(sum(amount) FILTER (WHERE is_self_funding), 0) AS self_funding,
         coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
             AS non_contribution_account,
@@ -57,6 +69,14 @@ from_organizations AS (
         coalesce(
             sum(amount) FILTER (WHERE NOT is_non_contribution_account AND NOT is_other_line), 0
         ) AS total_from_organizations,
+        coalesce(
+            sum(amount) FILTER (
+                WHERE NOT is_non_contribution_account
+                    AND NOT is_other_line
+                    AND fec_line = '20 refunds'
+            ),
+            0
+        ) AS refunds,
         coalesce(sum(amount) FILTER (WHERE is_non_contribution_account), 0)
             AS non_contribution_account,
         coalesce(sum(amount) FILTER (WHERE is_other_line), 0) AS other_lines
@@ -94,6 +114,9 @@ SELECT
         coalesce(received.other_lines, 0) + coalesce(from_organizations.other_lines, 0)
         AS DECIMAL(16, 2)
     ) AS total_other_lines,
+    CAST(
+        coalesce(received.refunds, 0) + coalesce(from_organizations.refunds, 0) AS DECIMAL(16, 2)
+    ) AS total_refunds,
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
         AS total_returned_by_candidates,

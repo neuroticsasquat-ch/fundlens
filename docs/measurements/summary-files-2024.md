@@ -2074,7 +2074,10 @@ Each counted row of an over-1% committee gets the first diagnostic that holds, s
 counted twice. D8 is per committee and comes last. The spec's list changed in these ways:
 
 - **D1 (refunds) explains none of an excess.** Silver subtracts refunds, which lowers fundlens's
-  figure against FEC's gross one. It is reported but not counted toward an explanation.
+  figure against FEC's gross one. It is reported but not counted toward an explanation. Since
+  NEU-2265, gold carries it: `committee_cycle.total_refunds` is the refunds netted in
+  `total_individual` and `total_from_organizations`, so B gross of them, FEC's basis, is
+  `total_individual + total_from_organizations − total_refunds`, with no re-run of this query.
 - **D4 skips cm types I, C and E.** Those are organizations and people that file Forms 5, 7 and 9,
   not political committees. ONE NATION, AFL-CIO and Koch Industries are among them. FEC does not put
   their gifts on the committee lines 11(b)/(c): they go on 11(a)(i) or, as at SLF, on line 15. A
@@ -4292,7 +4295,8 @@ done
 - **Gold B − FEC, cause by cause** (Q9d). The columns sum to the first one:
   1. **Refunds** (`refunds`). B nets them, but `INDV_ITEM_CONTB` is gross. They range from
      −$366,340 (RNC) to −$3,658,154 (NRSC), the largest cause at the NRSC. This is the measure's
-     basis, not an error.
+     basis, not an error. Since NEU-2265 it is gold's `committee_cycle.total_refunds`, so a later
+     build reads this column off gold rather than rebuilding it here.
   2. **Filed 11(a)(i) rows FEC's bulk files leave out** (`rows_not_in_bulk`). 107,565 rows
      ($7,566,606) are in neither `indiv` nor `oth` (Q9f).
      - At the DNC, DSCC and NRCC, most are under $200: 20,394 of the DNC's 20,962 rows, and

@@ -153,6 +153,11 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(row["total_other_lines"]) == expected["other_lines"]["by_committee"].get(
             committee_id, 0
         ), committee_id
+        # The refunds counted in those two totals, which stay net of them (NEU-2265): not the
+        # non-contribution account's 20Y nor a party account's 41Y.
+        assert dollars(row["total_refunds"]) == expected["refunds"]["by_committee"].get(
+            committee_id, 0
+        ), committee_id
         assert row["ie_total"] == 0
 
     # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.
@@ -600,6 +605,18 @@ def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
             ("committee_top_recipient.amount", "C2 H2", -1000),
             ("race_top_committee.amount", "2024-H-MD-05 C2", -1000),
         ]
+
+
+def test_the_refunds_check_fails_on_a_positive_refunds_figure() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', -500.00), ('C2', 0.00), ('C3', 0.01)"
+            ") AS t(committee_id, total_refunds)"
+        )
+
+        # C3's refunds add to its totals rather than subtracting.
+        assert failing_rows(con, "gold_committee_cycle_refunds.sql") == [("C3", Decimal("0.01"))]
 
 
 def test_the_conduit_floor_check_fails_on_a_conduit_below_minus_1m() -> None:

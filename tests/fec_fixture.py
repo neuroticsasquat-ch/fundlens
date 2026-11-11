@@ -137,6 +137,12 @@ class ReturnedByCandidates(TypedDict):
     by_committee: dict[str, int]
 
 
+class Refunds(TypedDict):
+    contributions: list[int]
+    organization_receipts: list[int]
+    by_committee: dict[str, int]
+
+
 class Donor(TypedDict):
     bonica_cid: int
     resolved_by: str
@@ -175,6 +181,7 @@ class Expected(TypedDict):
     non_contribution_account: NonContributionAccount
     other_lines: OtherLines
     returned_by_candidates: ReturnedByCandidates
+    refunds: Refunds
     name_matched: dict[int, str | None]
     unmatched_filings: list[str]
     aliases: dict[str, str]
