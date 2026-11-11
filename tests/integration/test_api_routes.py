@@ -329,8 +329,10 @@ def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestCl
 
     # ONE NATION, a Form 5 filer, is an organization; RESTORATION PAC, a super PAC its filer typed
     # ORG, is a committee and no organization (NEU-2195). TIDEWATER MARINE SUPPLY's gift is on a Q2
-    # filing and on the amendment that supersedes it, and counts once (NEU-2196).
-    assert committee["cycles"][0]["total_from_organizations"] == 117500.0
+    # filing and on the amendment that supersedes it, and counts once (NEU-2196). MAGOTHY HOLDINGS's
+    # gift is only a memo line, which counts; SEVERN CAPITAL's is a row its partners' memo lines
+    # attribute, which count nowhere (NEU-2198).
+    assert committee["cycles"][0]["total_from_organizations"] == 122500.0
     assert committee["cycles"][0]["top_organizations"] == [
         {
             "rank": 1,
@@ -344,6 +346,18 @@ def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestCl
             "name": "TIDEWATER MARINE SUPPLY LLC",
             "organization_key": "TIDEWATER MARINE SUPPLY",
             "amount": 5000.0,
+        },
+        {
+            "rank": 4,
+            "name": "MAGOTHY HOLDINGS LLC",
+            "organization_key": "MAGOTHY HOLDINGS",
+            "amount": 3000.0,
+        },
+        {
+            "rank": 5,
+            "name": "SEVERN CAPITAL LLC",
+            "organization_key": "SEVERN CAPITAL",
+            "amount": 2000.0,
         },
     ]
 

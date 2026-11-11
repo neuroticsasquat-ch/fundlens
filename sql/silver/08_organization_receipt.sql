@@ -15,9 +15,10 @@
 -- counts it on line 11(a)(i).
 --
 -- From `indiv`: a counted row by contribution's rules (04_contribution.sql): no memo line
--- (MEMO_CD = 'X'), no conduit's 24T, no intermediary's 24I its recipient itemized too
--- (`intermediary_earmark`, NEU-2203), no conduit's own line for an earmark it passed on
--- (ADR-0004), no conduit's refund of an earmark (`conduit_earmark_refund`, NEU-2199), on no
+-- (MEMO_CD = 'X') but an orphaned attribution, the only record of an LLC's or trust's gift
+-- (`orphaned_attribution`, NEU-2198), no conduit's 24T, no intermediary's 24I its recipient
+-- itemized too (`intermediary_earmark`, NEU-2203), no conduit's own line for an earmark it passed
+-- on (ADR-0004), no conduit's refund of an earmark (`conduit_earmark_refund`, NEU-2199), on no
 -- filing a later amendment supersedes (`superseded_filing`, NEU-2196), to a committee in `cm`
 -- (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
 -- on a conduit's side; the rule stands for other cycles. A refund (a 2nY or 4nY type) subtracts
@@ -51,7 +52,7 @@ WITH individual AS (
                 AND NAME IN (SELECT raw FROM organization_name_class WHERE is_organization)
             )
         )
-        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND (MEMO_CD IS DISTINCT FROM 'X' OR SUB_ID IN (SELECT SUB_ID FROM orphaned_attribution))
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
@@ -130,7 +131,10 @@ mirrored AS (
         AND other.TRANSACTION_AMT = indiv.TRANSACTION_AMT
         AND other.TRANSACTION_DT = indiv.TRANSACTION_DT
         AND other.name_key = regexp_replace(upper(indiv.NAME), '[^A-Z0-9]', '', 'g')
-    WHERE indiv.MEMO_CD IS DISTINCT FROM 'X'
+    WHERE (
+            indiv.MEMO_CD IS DISTINCT FROM 'X'
+            OR indiv.SUB_ID IN (SELECT SUB_ID FROM orphaned_attribution)
+        )
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)

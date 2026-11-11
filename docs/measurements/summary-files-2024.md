@@ -6162,6 +6162,461 @@ before. Rejected: dropping every gift-equal repeat, since the same-file repeats 
 counts; and OpenFEC's index as a source, which would add a keyed, rate-limited API to a bulk-only
 pipeline for the 3 filings (162 rows) the bulk rule misses.
 
+## Q14: memo lines that are the only record of a gift (NEU-2198)
+
+Measured for [NEU-2198](https://linear.app/neuroticsasquatch/issue/NEU-2198) on 2026-11-11. Q7
+found Fairshake (C00835959) $43.4M under FEC: it itemized a16z's gifts and five other firms' only
+as memo lines attributing them to the partners, and silver drops every memo line. The ticket asked
+for a rule that counts a memo line when nothing it could be the attribution of is on its filing,
+measured over 2024 before it is chosen.
+
+Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
+container, as Q9 to Q13 did.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-11 18:37–20:25 UTC, `app` container of the local dev stack, DuckDB 2.0.0; Q14a–j by `q14.py` below, 20:24 UTC, after review tightened the rule (a named employer) |
+| Code | branch `fix/NEU-2198-memo-only-attributions` off `main` at `c2274f5`; the rule is read from `sql/silver/04_contribution.sql` |
+| `indiv24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip`, its `itcont.txt` dated 2026-11-08 16:28, downloaded 2026-11-11T18:42Z |
+| `oth24.zip` | `…/2024/oth24.zip`, its `itoth.txt` dated 2026-11-08 16:38, downloaded 2026-11-11T18:39Z |
+| `cm24.zip`, `committee_summary_2024.csv` | `…/2024/<file>`, downloaded 2026-11-11T18:42Z; `cm.txt` dated 2026-11-11 01:45 |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec`, 2026-11-11T19:05Z: the 485 filings of the sample below, and Fairshake's 14 filings of the cycle |
+
+**Method.** `indiv` holds 199,118 memo lines (`MEMO_CD = 'X'`) on 6,221 filings. A raw filing's
+Schedule A gives each memo line's parent by `BACK_REF_TRAN_ID`, which the bulk files drop, so a
+sample of raw filings says, for each of its memo lines, whether the parent is a row bulk holds (by
+filing and `TRAN_ID`), a row bulk leaves out, another memo line, or nothing. The sample is every
+filing holding a memo line of $25,000 or more (335 filings) and 150 more drawn from the rest
+(filings under 20,000 rows, first 150 by `hash(FILE_NUM, 2198)`). Some vendors list members under
+their parent without a back-reference (Fairshake's filing 1791620 does), so "no back-ref" is not
+"no parent". FEC's itemized figure, `committee_summary`'s `INDV_ITEM_CONTB`, is the per-committee
+check, as in Q13: each committee's counted-shape `indiv` rows on line 11(a)(i) (the Q13 types plus
+10 and 10J outside a hybrid PAC, no committee giver), less those whose `TRAN_ID` names line 15 to 19
+(`SA15…`, `SA17…`), are its baseline, and a rule's lines are added to it. A rule *pushes a
+committee over* when the baseline is within 1% of FEC's figure or under it and the sum is more than
+1% over. The shipped rule is read from `04_contribution.sql` and run over `indiv` and `oth` stood in
+for by the memo lines, the rows of their filings and their committees' twins, which is all it
+reads.
+
+```bash
+# Host, from the repository root, dev stack up. About 4.8 GB of downloads; ~45 minutes.
+# data/ is gitignored, and the container sees it as /app/data.
+mkdir -p data/neu2198/sa data/neu2198/tmp && cd data/neu2198
+B=https://www.fec.gov/files/bulk-downloads/2024
+for f in indiv24.zip oth24.zip cm24.zip committee_summary_2024.csv; do curl -sSLO $B/$f; done
+unzip -o -q cm24.zip
+# Save extract.sh and grab.sh below here, chmod +x both, then:
+./extract.sh
+# The counted-shape rows (no memo line, no 24T) at a memo line's committee with its name key and amount,
+# typed 10 or 15: CMTE_ID|name key|amount, FILE_NUM, date, type.
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' 'BEGIN {OFS = "|"}
+  function key(cm, nm, amt) { nm = toupper(nm); gsub(/[^A-Z0-9]/, "", nm); return cm OFS nm OFS amt + 0 }
+  NR == FNR { if ($6 == "10" || $6 == "15") memo[key($1, $8, $15)] = 1; next }
+  $19 != "X" && $6 != "24T" { k = key($1, $8, $15); if (k in memo) print k, $18, $14, $6 }' memo.txt - > twin.txt
+# Each committee's counted-shape rows by type and entity, and those whose TRAN_ID names line 15 to 19.
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' 'BEGIN {OFS = "|"} $19 != "X" && $6 != "24T" {
+  k = $1 OFS $6 OFS $7; s[k] += $15; n[k]++; if (toupper($17) ~ /^SA1[5-9]/) { o[k] += $15; on[k]++ } }
+  END { for (k in s) print k, n[k], s[k] > "base.txt"; for (k in o) print k, on[k], o[k] > "base_other_line.txt" }'
+# The sample: sample_files.txt, one FILE_NUM a line, as the method says. Then:
+xargs -P 6 -n 1 ./grab.sh < sample_files.txt
+cd ../.. && docker compose exec -T app uv run python /app/data/neu2198/q14.py > data/neu2198/q14.out
+```
+
+```sh
+#!/bin/sh
+# extract.sh, in the directory holding indiv24.zip and oth24.zip.
+# memo.txt: every indiv memo line (MEMO_CD X), every column. memo_files.txt: their FILE_NUMs.
+# parent.txt: every row, not a memo line, of indiv or oth on a filing holding a memo line, as
+#   file|CMTE_ID|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|TRANSACTION_DT|TRANSACTION_AMT|TRAN_ID|FILE_NUM|SUB_ID
+# The zip repeats itcont.txt split by date: itcont.txt alone is read.
+set -eu
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' '$19 == "X"' > memo.txt
+LC_ALL=C awk -F'|' '{print $18}' memo.txt | sort -u > memo_files.txt
+for f in indiv oth; do
+  if [ $f = indiv ]; then z=indiv24.zip; m=itcont.txt; else z=oth24.zip; m=itoth.txt; fi
+  unzip -p $z $m | LC_ALL=C awk -F'|' -v file=$f 'BEGIN {OFS = "|"}
+    NR == FNR {keep[$1] = 1; next}
+    $19 != "X" && ($18 in keep) {print file, $1, $5, $6, $7, $8, $14, $15, $17, $18, $21}' memo_files.txt -
+done > parent.txt
+```
+
+```sh
+#!/bin/sh
+# grab.sh <FILE_NUM>: sa/<FILE_NUM>.txt, the raw filing's Schedule A records as
+# line|TRAN_ID|BACK_REF_TRAN_ID|entity|org name|last|first|date|amount|memo code (.fec 8.x fields 1, 3, 4,
+# 6, 7, 8, 9, 20, 21, 43). A record whose name holds a | is dropped (one, on filing 1729551).
+n=$1
+[ -s sa/$n.txt ] && exit 0
+curl -s --retry 3 https://docquery.fec.gov/dcdev/posted/$n.fec | LC_ALL=C awk -F'\034' 'BEGIN {OFS = "|"}
+  $1 ~ /^SA/ {print $1, $3, $4, $6, $7, $8, $9, $20, $21, $43}' | awk -F'|' 'NF == 10' > sa/$n.tmp \
+  && mv sa/$n.tmp sa/$n.txt
+```
+
+```python
+import glob
+import os
+import time
+from pathlib import Path
+
+import duckdb
+
+W = "/app/data/neu2198"
+con = duckdb.connect()
+con.execute(f"SET threads=6; SET memory_limit='7GB'; SET temp_directory='{W}/tmp'")
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + " --- |" * len(rel.columns))
+    for row in rows:
+        print("| " + " | ".join("" if v is None else f"{v:,}" if isinstance(v, int) else str(v) for v in row) + " |")
+    print(flush=True)
+
+
+def csv(name: str, columns: list[str], types: dict[str, str]) -> str:
+    cols = {c: types.get(c, "VARCHAR") for c in columns}
+    return f"read_csv('{W}/{name}', delim='|', header=false, quote='', escape='', columns={cols})"
+
+
+INDIV = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP", "ENTITY_TP", "NAME",
+         "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION", "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID",
+         "TRAN_ID", "FILE_NUM", "MEMO_CD", "MEMO_TEXT", "SUB_ID"]
+NUM = {"TRANSACTION_AMT": "DECIMAL(14,2)", "FILE_NUM": "BIGINT", "SUB_ID": "UBIGINT"}
+# Every memo line in `indiv` (memo.txt), and every row, not a memo line, of `indiv` or `oth` on a filing
+# holding one (parent.txt): where a memo line's parent would be.
+con.execute(f"CREATE TABLE memo AS SELECT * FROM {csv('memo.txt', INDIV, NUM)}")
+con.execute(f"""CREATE TABLE parent AS SELECT * FROM {csv('parent.txt', ['file', 'CMTE_ID', 'IMAGE_NUM',
+    'TRANSACTION_TP', 'ENTITY_TP', 'NAME', 'TRANSACTION_DT', 'TRANSACTION_AMT', 'TRAN_ID', 'FILE_NUM', 'SUB_ID'], NUM)}""")
+# The counted-shape rows (no memo line, no 24T) at a memo line's committee with its name key and amount.
+con.execute(f"""CREATE TABLE twin AS SELECT * FROM {csv('twin.txt', ['CMTE_ID', 'name_key', 'amount', 'FILE_NUM',
+    'TRANSACTION_DT', 'TRANSACTION_TP'], {'amount': 'DECIMAL(14,2)', 'FILE_NUM': 'BIGINT'})}""")
+# Each committee's counted-shape rows by type and entity, and those of them whose TRAN_ID names line 15 to 19.
+for t, f in (("base", "base.txt"), ("other_line", "base_other_line.txt")):
+    con.execute(f"""CREATE TABLE {t} AS SELECT * FROM {csv(f, ['CMTE_ID', 'TRANSACTION_TP', 'ENTITY_TP', 'n',
+        'dollars'], {'n': 'BIGINT', 'dollars': 'DECIMAL(16,2)'})}""")
+con.execute(f"CREATE TABLE cm AS SELECT column00 AS CMTE_ID, column09 AS CMTE_TP FROM read_csv('{W}/cm.txt', delim='|', header=false, quote='', all_varchar=true)")
+con.execute(f"""CREATE TABLE cs AS SELECT CMTE_ID, any_value(TRY_CAST(INDV_ITEM_CONTB AS DECIMAL(16,2))) AS item
+    FROM read_csv('{W}/committee_summary_2024.csv', header=true, all_varchar=true) GROUP BY 1""")
+
+show("Q14a: memo lines in indiv, by type and entity (the 20 largest)", """
+SELECT TRANSACTION_TP, trim(ENTITY_TP) AS entity, count(*) AS lines, sum(TRANSACTION_AMT) AS dollars,
+    count(DISTINCT CMTE_ID) AS committees
+FROM memo GROUP BY ALL ORDER BY dollars DESC LIMIT 20""")
+
+# The sampled raw filings' Schedule A: each memo line's BACK_REF_TRAN_ID names its parent.
+con.execute("CREATE TABLE raw_sa (FILE_NUM BIGINT, line VARCHAR, tran VARCHAR, back VARCHAR, entity VARCHAR,"
+            " org VARCHAR, last VARCHAR, first VARCHAR, dt VARCHAR, amt VARCHAR, memo VARCHAR)")
+for f in sorted(glob.glob(f"{W}/sa/*.txt")):
+    if os.path.getsize(f):
+        con.execute(f"""INSERT INTO raw_sa SELECT {int(os.path.basename(f)[:-4])}, * FROM read_csv('{f}', delim='|',
+            header=false, quote='', escape='', all_varchar=true, null_padding=true, columns={{'line':'VARCHAR',
+            'tran':'VARCHAR','back':'VARCHAR','entity':'VARCHAR','org':'VARCHAR','last':'VARCHAR','first':'VARCHAR',
+            'dt':'VARCHAR','amt':'VARCHAR','memo':'VARCHAR'}})""")
+con.execute("""CREATE TABLE labelled AS
+SELECT m.SUB_ID, m.CMTE_ID, m.FILE_NUM, m.TRANSACTION_TP, trim(m.ENTITY_TP) AS entity, m.TRANSACTION_AMT AS amt,
+    p.line AS parent_line, p.entity AS parent_entity,
+    CASE
+        WHEN r.tran IS NULL THEN 'unmatched'
+        WHEN nullif(r.back, '') IS NULL THEN 'no back-ref'
+        WHEN p.tran IS NULL THEN 'back-ref to nothing'
+        WHEN p.memo = 'X' THEN 'parent is a memo'
+        WHEN EXISTS (SELECT 1 FROM parent b WHERE b.FILE_NUM = m.FILE_NUM AND b.TRAN_ID = r.back) THEN 'parent in bulk'
+        ELSE 'parent missing from bulk'
+    END AS truth
+FROM memo AS m
+LEFT JOIN raw_sa AS r ON r.FILE_NUM = m.FILE_NUM AND r.tran = m.TRAN_ID
+LEFT JOIN raw_sa AS p ON p.FILE_NUM = m.FILE_NUM AND p.tran = r.back
+WHERE m.FILE_NUM IN (SELECT DISTINCT FILE_NUM FROM raw_sa)
+QUALIFY row_number() OVER (PARTITION BY m.SUB_ID ORDER BY p.memo NULLS LAST) = 1""")
+show("Q14b: the sampled filings' memo lines, by what their raw filing says of their parent", """
+SELECT truth, count(*) AS lines, sum(amt) AS dollars, count(DISTINCT FILE_NUM) AS filings FROM labelled GROUP BY 1 ORDER BY 3 DESC""")
+show("Q14c: memo lines whose parent bulk leaves out, by the parent's line and entity and the line's type and entity", """
+SELECT parent_line, parent_entity, TRANSACTION_TP, entity, count(*) AS lines, sum(amt) AS dollars, count(DISTINCT CMTE_ID) AS committees
+FROM labelled WHERE truth = 'parent missing from bulk' GROUP BY ALL ORDER BY dollars DESC LIMIT 8""")
+show("Q14d: where a parent bulk holds sits, in pages from its memo line", """
+SELECT CASE WHEN abs(TRY_CAST(m.IMAGE_NUM AS HUGEINT) - TRY_CAST(b.IMAGE_NUM AS HUGEINT)) <= 1 THEN 'same page or next'
+    ELSE 'further' END AS page_gap, count(*) AS lines, sum(abs(l.amt)) AS dollars
+FROM labelled AS l JOIN memo AS m USING (SUB_ID) JOIN raw_sa AS r ON r.FILE_NUM = m.FILE_NUM AND r.tran = m.TRAN_ID
+JOIN parent AS b ON b.FILE_NUM = m.FILE_NUM AND b.TRAN_ID = r.back
+WHERE l.truth = 'parent in bulk' GROUP BY 1 ORDER BY 1""")
+
+# The rule as shipped: 04_contribution.sql from `CREATE TEMP TABLE memo_line` to its drops, over `indiv` and
+# `oth` stood in for by the memo lines, the rows of their filings and their committees' twins.
+con.execute("""CREATE TABLE indiv AS
+SELECT CMTE_ID, IMAGE_NUM, TRANSACTION_TP, ENTITY_TP, NAME, EMPLOYER, TRANSACTION_DT, TRANSACTION_AMT, FILE_NUM,
+    MEMO_CD, MEMO_TEXT, SUB_ID FROM memo
+UNION ALL
+SELECT CMTE_ID, IMAGE_NUM, TRANSACTION_TP, ENTITY_TP, NAME, NULL, TRANSACTION_DT, TRANSACTION_AMT, FILE_NUM, NULL, NULL,
+    SUB_ID FROM parent WHERE file = 'indiv'
+UNION ALL
+SELECT CMTE_ID, NULL, TRANSACTION_TP, NULL, name_key, NULL, TRANSACTION_DT, amount, FILE_NUM, NULL, NULL, NULL FROM twin""")
+con.execute("""CREATE TABLE oth AS SELECT CMTE_ID, IMAGE_NUM, TRANSACTION_TP, ENTITY_TP, NAME, TRANSACTION_DT, TRANSACTION_AMT,
+    FILE_NUM, NULL::VARCHAR AS MEMO_CD, SUB_ID FROM parent WHERE file = 'oth'""")
+sql = Path("/app/sql/silver/04_contribution.sql").read_text()
+con.execute(sql[sql.index("CREATE TEMP TABLE memo_line AS"):sql.index("DROP TABLE attribution_shaped;")])
+
+# The ticket's two first cuts, over the same memo gifts (typed 10 or 15, from an individual, organization or
+# candidate): no row on the memo line's page; no row on its filing of its amount or of its group's sum (by date).
+con.execute("""CREATE TABLE ticket_rule AS
+WITH g AS (SELECT *, sum(TRANSACTION_AMT) OVER (PARTITION BY CMTE_ID, FILE_NUM, TRANSACTION_DT) AS s FROM memo
+    WHERE TRANSACTION_TP IN ('10', '15') AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'ORG', 'CAN'))
+SELECT g.SUB_ID, g.CMTE_ID, g.TRANSACTION_TP, g.TRANSACTION_AMT AS amt,
+    g.SUB_ID NOT IN (SELECT g2.SUB_ID FROM g AS g2 JOIN parent AS p ON p.FILE_NUM = g2.FILE_NUM AND p.IMAGE_NUM = g2.IMAGE_NUM) AS page_empty,
+    g.SUB_ID NOT IN (SELECT g2.SUB_ID FROM g AS g2 JOIN parent AS p ON p.FILE_NUM = g2.FILE_NUM AND p.CMTE_ID = g2.CMTE_ID
+        AND p.TRANSACTION_AMT IN (g2.TRANSACTION_AMT, g2.s)) AS no_sum
+FROM g""")
+con.execute("""CREATE TABLE taken AS
+SELECT 'page has no row' AS rule, SUB_ID, CMTE_ID, TRANSACTION_TP, amt FROM ticket_rule WHERE page_empty
+UNION ALL SELECT 'no row of its sum', SUB_ID, CMTE_ID, TRANSACTION_TP, amt FROM ticket_rule WHERE no_sum
+UNION ALL SELECT 'shipped', m.SUB_ID, m.CMTE_ID, m.TRANSACTION_TP, m.TRANSACTION_AMT FROM orphaned_attribution JOIN memo AS m USING (SUB_ID)""")
+
+# Each committee's rows on line 11(a)(i), as fec_line places them, from no committee giver, outside a hybrid
+# PAC's non-contribution account, less those whose TRAN_ID names line 15 to 19: the baseline the rules add to.
+ON_11AI = """TRANSACTION_TP IN ('15', '15E', '15I', '15T', '15Z', '11', '11J', '10', '10J', '24I')
+    AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'ORG', 'CAN')
+    AND NOT (TRANSACTION_TP IN ('10', '10J') AND CMTE_ID IN (SELECT CMTE_ID FROM cm WHERE CMTE_TP IN ('V', 'W')))"""
+con.execute(f"""CREATE TABLE before AS
+SELECT CMTE_ID, sum(dollars) - coalesce((SELECT sum(o.dollars) FROM other_line AS o WHERE o.CMTE_ID = b.CMTE_ID
+    AND o.TRANSACTION_TP IN ('15', '15E', '15I', '15T', '15Z', '11', '11J', '10', '10J', '24I')
+    AND coalesce(nullif(trim(o.ENTITY_TP), ''), 'IND') IN ('IND', 'ORG', 'CAN')
+    AND NOT (o.TRANSACTION_TP IN ('10', '10J') AND o.CMTE_ID IN (SELECT CMTE_ID FROM cm WHERE CMTE_TP IN ('V', 'W')))), 0) AS b
+FROM base AS b WHERE {ON_11AI} GROUP BY 1""")
+con.execute("""CREATE TABLE per AS
+SELECT t.rule, cs.CMTE_ID, cs.item, coalesce(b.b, 0) AS before, coalesce(b.b, 0) + t.added AS after, t.added, t.lines
+FROM (SELECT rule, CMTE_ID, sum(amt) AS added, count(*) AS lines FROM taken
+      WHERE NOT (TRANSACTION_TP = '10' AND CMTE_ID IN (SELECT CMTE_ID FROM cm WHERE CMTE_TP IN ('V', 'W'))) GROUP BY ALL) AS t
+JOIN cs USING (CMTE_ID) LEFT JOIN before AS b USING (CMTE_ID)
+WHERE cs.item > 0""")
+show("Q14e: each rule, and the committees it adds to against INDV_ITEM_CONTB", """
+SELECT rule, (SELECT count(*) FROM taken AS t WHERE t.rule = per.rule) AS lines,
+    (SELECT sum(amt) FROM taken AS t WHERE t.rule = per.rule) AS dollars,
+    (SELECT count(DISTINCT CMTE_ID) FROM taken AS t WHERE t.rule = per.rule) AS committees,
+    count(*) AS with_itemized_figure,
+    count(*) FILTER (WHERE before / item <= 1.01 AND after / item > 1.01) AS pushed_over_1pct,
+    sum(added) FILTER (WHERE before / item <= 1.01 AND after / item > 1.01) AS pushed_over_dollars,
+    count(*) FILTER (WHERE abs(after / item - 1) < abs(before / item - 1)) AS toward,
+    count(*) FILTER (WHERE abs(after / item - 1) > abs(before / item - 1)) AS away,
+    count(*) FILTER (WHERE abs(before / item - 1) > 0.01 AND abs(after / item - 1) <= 0.01) AS now_within_1pct
+FROM per GROUP BY rule ORDER BY rule""")
+show("Q14f: the shipped rule, the committees it adds most to", """
+SELECT CMTE_ID, item AS fec_itemized, before, added, lines, round(before / item, 3) AS before_ratio, round(after / item, 3) AS after_ratio
+FROM per WHERE rule = 'shipped' ORDER BY added DESC LIMIT 15""")
+show("Q14g: the shipped rule, the committees it moves away from FEC's figure", """
+SELECT CMTE_ID, item AS fec_itemized, before, added, lines, round(before / item, 3) AS before_ratio, round(after / item, 3) AS after_ratio
+FROM per WHERE rule = 'shipped' AND abs(after / item - 1) > abs(before / item - 1) ORDER BY added DESC""")
+show("Q14h: the shipped rule, by entity and type, and at hybrid PACs", """
+SELECT trim(m.ENTITY_TP) AS entity, m.TRANSACTION_TP, m.CMTE_ID IN (SELECT CMTE_ID FROM cm WHERE CMTE_TP IN ('V', 'W')) AS hybrid,
+    count(*) AS lines, sum(m.TRANSACTION_AMT) AS dollars, count(DISTINCT m.CMTE_ID) AS committees
+FROM orphaned_attribution JOIN memo AS m USING (SUB_ID) GROUP BY ALL ORDER BY dollars DESC""")
+show("Q14i: the shipped rule's sampled lines, by what their raw filing says of their parent", """
+SELECT l.truth, count(*) AS lines, sum(l.amt) AS dollars FROM labelled AS l JOIN orphaned_attribution USING (SUB_ID)
+GROUP BY 1 ORDER BY 3 DESC""")
+show("Q14j: Fairshake's memo lines the shipped rule leaves out", """
+SELECT NAME, EMPLOYER, TRANSACTION_DT, TRANSACTION_AMT, MEMO_TEXT, IMAGE_NUM FROM memo
+WHERE CMTE_ID = 'C00835959' AND SUB_ID NOT IN (SELECT SUB_ID FROM orphaned_attribution) ORDER BY TRANSACTION_DT""")
+```
+
+### Results
+
+**Q14a: memo lines in indiv, by type and entity (the 20 largest)  (0 s)**
+
+| TRANSACTION_TP | entity | lines | dollars | committees |
+| --- | --- | --- | --- | --- |
+| 10 | IND | 7,331 | 169298555.00 | 127 |
+| 15 | IND | 162,404 | 47593163.00 | 1,601 |
+| 15C | CAN | 602 | 18537975.00 | 110 |
+| 10 | ORG | 109 | 10412639.00 | 28 |
+| 32 | IND | 147 | 6367017.00 | 6 |
+| 24I | IND | 7,419 | 5173317.00 | 16 |
+| 31 | IND | 83 | 4822150.00 | 5 |
+| 15E | IND | 13,242 | 3150405.00 | 451 |
+| 15 | PAC | 74 | 2393560.00 | 25 |
+| 24I | PAC | 1,081 | 2055200.00 | 2 |
+| 15E | PAC | 4,103 | 1905610.00 | 48 |
+| 20Y | IND | 460 | 1251557.00 | 12 |
+| 30 | IND | 17 | 1158942.00 | 2 |
+| 15 | ORG | 804 | 787667.00 | 70 |
+| 31T | ORG | 13 | 716599.00 | 6 |
+| 22Y | IND | 483 | 518039.00 | 100 |
+| 32T | ORG | 12 | 517500.00 | 5 |
+| 15C | CCM | 2 | 500250.00 | 2 |
+| 24I | CCM | 128 | 444250.00 | 5 |
+| 30T | ORG | 3 | 371700.00 | 1 |
+
+**Q14b: the sampled filings' memo lines, by what their raw filing says of their parent  (0 s)**
+
+| truth | lines | dollars | filings |
+| --- | --- | --- | --- |
+| parent missing from bulk | 923 | 107639960.00 | 212 |
+| no back-ref | 16,552 | 100640849.00 | 248 |
+| parent in bulk | 2,937 | 16430230.00 | 143 |
+| parent is a memo | 23,344 | 10687865.00 | 73 |
+| unmatched | 1,359 | 571355.00 | 14 |
+
+**Q14c: memo lines whose parent bulk leaves out, by the parent's line and entity and the line's type and entity  (0 s)**
+
+| parent_line | parent_entity | TRANSACTION_TP | entity | lines | dollars | committees |
+| --- | --- | --- | --- | --- | --- | --- |
+| SA11AI | ORG | 10 | IND | 232 | 81512718.00 | 32 |
+| SA11AI | ORG | 15 | IND | 519 | 12832922.00 | 90 |
+| SA11AI | ORG | 10 | ORG | 10 | 3114397.00 | 5 |
+| SA17 | ORG | 10 | IND | 24 | 2907575.00 | 8 |
+| SA14A | ORG | 15 | IND | 4 | 2590294.00 | 1 |
+| SA17 | ORG | 31 | IND | 32 | 2175128.00 | 3 |
+| SA17 | ORG | 32 | IND | 27 | 1615740.00 | 2 |
+| SA17 | ORG | 30 | IND | 7 | 385000.00 | 1 |
+
+**Q14d: where a parent bulk holds sits, in pages from its memo line  (0 s)**
+
+| page_gap | lines | dollars |
+| --- | --- | --- |
+| further | 89 | 2776589.00 |
+| same page or next | 2,848 | 21767333.00 |
+
+**Q14e: each rule, and the committees it adds to against INDV_ITEM_CONTB  (0 s)**
+
+| rule | lines | dollars | committees | with_itemized_figure | pushed_over_1pct | pushed_over_dollars | toward | away | now_within_1pct |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| no row of its sum | 35,634 | 80162351.00 | 1,341 | 1,310 | 78 | 8285957.00 | 508 | 662 | 97 |
+| page has no row | 81,930 | 156908028.00 | 1,166 | 1,140 | 120 | 77624346.00 | 738 | 287 | 132 |
+| shipped | 1,041 | 127735639.00 | 199 | 192 | 3 | 68253200.00 | 186 | 6 | 43 |
+
+**Q14f: the shipped rule, the committees it adds most to  (0 s)**
+
+| CMTE_ID | fec_itemized | before | added | lines | before_ratio | after_ratio |
+| --- | --- | --- | --- | --- | --- | --- |
+| C00835959 | 217419084.11 | 174019082.00 | 68200000.00 | 15 | 0.8 | 1.114 |
+| C00879510 | 261527010.67 | 208912036.00 | 40867313.00 | 7 | 0.799 | 0.955 |
+| C00888172 | 6289392.19 | 3064379.00 | 3200000.00 | 2 | 0.487 | 0.996 |
+| C00834077 | 144589273.45 | 140775517.00 | 2352554.00 | 15 | 0.974 | 0.99 |
+| C00836221 | 5775000.01 | 4000000.00 | 1775000.00 | 6 | 0.693 | 1.0 |
+| C00834630 | 14154649.60 | 12779647.00 | 1250000.00 | 2 | 0.903 | 0.991 |
+| C00870030 | 26958160.00 | 25808157.00 | 1150000.00 | 2 | 0.957 | 1.0 |
+| C00796045 | 27840040.47 | 27064570.00 | 800000.00 | 3 | 0.972 | 1.001 |
+| C00825851 | 383797149.98 | 381132421.00 | 676942.00 | 2 | 0.993 | 0.995 |
+| C00003418 | 87269680.09 | 85352170.00 | 616389.00 | 28 | 0.978 | 0.985 |
+| C00877787 | 2660407.50 | 1054000.00 | 506403.00 | 12 | 0.396 | 0.587 |
+| C00849489 | 54857691.52 | 54087691.00 | 400000.00 | 3 | 0.986 | 0.993 |
+| C00841593 | 12652185.88 | 11612062.00 | 370100.00 | 7 | 0.918 | 0.947 |
+| C00568162 | 14218934.59 | 13672171.00 | 342428.00 | 59 | 0.962 | 0.986 |
+| C00887299 | 1617264.90 | 1295164.00 | 322100.00 | 2 | 0.801 | 1.0 |
+
+**Q14g: the shipped rule, the committees it moves away from FEC's figure  (0 s)**
+
+| CMTE_ID | fec_itemized | before | added | lines | before_ratio | after_ratio |
+| --- | --- | --- | --- | --- | --- | --- |
+| C00838169 | 838400.00 | 838400.00 | 50000.00 | 1 | 1.0 | 1.06 |
+| C00854059 | 1611877.50 | 1611062.00 | 10815.00 | 3 | 0.999 | 1.006 |
+| C00806612 | 5526941.56 | 5527916.00 | 10500.00 | 3 | 1.0 | 1.002 |
+| C00858654 | 316480.00 | 316480.00 | 3200.00 | 2 | 1.0 | 1.01 |
+| C00811307 | 620401.59 | 627697.00 | 1100.00 | 3 | 1.012 | 1.014 |
+| C00403071 | 157604.28 | 157595.00 | 216.00 | 1 | 1.0 | 1.001 |
+
+**Q14h: the shipped rule, by entity and type, and at hybrid PACs  (0 s)**
+
+| entity | TRANSACTION_TP | hybrid | lines | dollars | committees |
+| --- | --- | --- | --- | --- | --- |
+| IND | 10 | 0 | 239 | 123332720.00 | 36 |
+| IND | 15 | 0 | 764 | 4031224.00 | 153 |
+| IND | 10 | 1 | 11 | 300500.00 | 6 |
+| IND | 15 | 1 | 6 | 30000.00 | 2 |
+| ORG | 10 | 0 | 14 | 21945.00 | 3 |
+| ORG | 15 | 0 | 7 | 19250.00 | 7 |
+
+**Q14i: the shipped rule's sampled lines, by what their raw filing says of their parent  (0 s)**
+
+| truth | lines | dollars |
+| --- | --- | --- |
+| parent missing from bulk | 209 | 76187136.00 |
+| no back-ref | 21 | 49461250.00 |
+| parent is a memo | 16 | 580653.00 |
+| parent in bulk | 3 | 5000.00 |
+
+**Q14j: Fairshake's memo lines the shipped rule leaves out  (0 s)**
+
+| NAME | EMPLOYER | TRANSACTION_DT | TRANSACTION_AMT | MEMO_TEXT | IMAGE_NUM |
+| --- | --- | --- | --- | --- | --- |
+| WILSON, DONALD | CUMBERLAND DRW | 12142023 | 100000.00 |  | 202401319618984580 |
+| JAIN, TUSHAR | MULTICOIN CAPITAL | 12152023 | 100000.00 |  | 202401319618984583 |
+| WILSON, FRED | UNION SQUARE VENTURES | 12192023 | 1047540.00 |  | 202401319618984587 |
+
+**Q14k: Fairshake's 14 filings of the cycle, raw Schedule A (1717651 to 1873016)**
+
+| What | Dollars |
+| --- | --- |
+| Line 11(a)(i), rows not memo lines | 217,419,084.11 |
+| `committee_summary`'s `INDV_ITEM_CONTB` | 217,419,084.11 |
+| Line 11(a)(i), memo lines | 69,447,540.01 |
+| Of them, under a parent row bulk leaves out (AH Capital Management's $67.0M, Paradigm, Multicoin, Electric Capital, Blockchain Capital, Cumberland DRW) | 68,400,000.01 |
+| Of them, under no parent: FRED WILSON's 6,500 COIN shares, which FEC's figure does not count | 1,047,540.00 |
+| fundlens's B before (Q7a): line 11(a)(i) rows bulk holds, $149,019,082, and COINBASE COMMERCE's $25,000,000 typed 10 on line 17 of filing 1804981 | 174,019,082 |
+
+### Findings
+
+- **FEC's bulk file leaves out parent rows.** Of the sampled memo lines, $107.6M sit under a row
+  of their filing that bulk does not hold, against $16.4M under one it does (Q14b). Most are an
+  organization's gift on line 11(a)(i) attributed to individuals, typed 10 at super PACs and 15 at
+  campaigns (Q14c). The parent row is in the filer's line total and in FEC's itemized figure:
+  Fairshake's raw line 11(a)(i) rows add to its `INDV_ITEM_CONTB` to the cent, and $68.4M of them
+  are parents bulk dropped (Q14k). Why FEC drops some and not others is not visible in the data.
+- **Most memo lines are not that.** Of 199,118, most are earmarks' (ADR-0004), JFC attributions
+  typed 15 (`BIDEN VICTORY FUND`), reattributions and redesignations, a candidate's loan converted
+  to a contribution (15C), refunds, or a note of a gift filed elsewhere (`IN-KIND: STOCK TRANSFER,
+  SEE LINE 17`), whose parent is on another filing or none at all (Q14a). The ticket's two first
+  cuts count those too: "the memo line's page holds no other row" takes $156.9M and pushes 120
+  committees more than 1% over FEC's itemized figure; "no row on the filing of its amount or its
+  group's sum" takes $80.2M, moves 662 committees away from FEC's figure and pushes 78 over (Q14e).
+  The second also misses parents a group's sum lands on by chance: Fairshake's a16z pair ($25M)
+  against Ripple's $25M two pages away.
+- **The shipped rule takes what is shaped as an attribution and has no parent near it.** A memo
+  line typed 10 or 15 from an individual, organization or candidate, over $0, whose memo says
+  ATTRIBUTION (not REATTRIBUTION), or that has none, is typed 10 and is one of two or more names
+  sharing its filing, date and employer, which is not blank; with no row on its filing, dated the same or within one
+  page, of its amount or its group's sum (within $1 a line: bulk writes amounts in whole dollars,
+  so TARGETED VICTORY's $500,000 is three $166,666 shares), no organization's memo line so placed
+  that it is a share of, and no counted gift of its committee with its name and amount. A parent
+  bulk holds sits on its line's page or the next for 2,848 of 2,937 sampled lines (Q14d).
+- **On 2024 it takes 1,041 lines, $127,735,639, at 199 committees** (Q14e, Q14h): 239 lines typed
+  10 from individuals ($123.3M, 36 committees, nearly all super PACs) and 764 typed 15 ($4.0M, 153
+  committees). 17 lines ($330,500) are at hybrid PACs, where a 10 is the non-contribution account's.
+  Of the 192 committees with an itemized figure it adds to, 186 move toward FEC's figure, 43 come
+  within 1% of it and 6 move away, four of them by under 1% (Q14g). In the sample it takes $76.2M
+  under a parent bulk left out, $49.5M with no back-reference ($48.6M of it Fairshake's, whose vendor lists the partners
+  under the parent without one), $580,653 under a parent that is itself a memo line, and $5,000
+  under a parent bulk holds (Q14i).
+- **Fairshake: within 0.1% of FEC.** The rule takes 15 of its 18 memo lines, $68,200,000. B becomes
+  $242,219,082 against FEC's $217,419,084 itemized plus the $25,000,000 it filed on line 17 and
+  `indiv` types 10: $200,002 under, 0.08%. It leaves out FRED WILSON's $1,047,540, which FEC does
+  not count either; DONALD WILSON's $100,000, the only name under Cumberland DRW, with no memo; and
+  TUSHAR JAIN's $100,000, whose pair's $200,000 matches LIGHTSPARK GROUP's $200,000 on the next page
+  (Q14j). America PAC (C00879510) moves from 0.799 to 0.955 of FEC's figure with ELON MUSK's
+  in-kind attributions, $40.9M.
+- **Three committees go more than 1% over FEC's figure** (Q14e). Fairshake reads 1.114 only because
+  its $25M on line 17 has a `TRAN_ID` that does not name its line, so the baseline keeps it; on line
+  11(a)(i) it is at 0.999. C00838169 (+$50,000, 1.06) and C00858654 (+$3,200, 1.0101) are partners'
+  attributions of a parent that is itself a memo line bulk leaves out (SOUTH POINT HOTEL AND
+  CASINO's, CAPTAIN E LLC's and JONES RANCH INVESTMENTS LLC's, by their raw filings): the bulk
+  file holds nothing that tells them from an orphan.
+
+**What changed (NEU-2198).** `04_contribution.sql` builds `orphaned_attribution` by the shipped
+rule, and `contribution`, `organization_receipt` and `committee_transfer` read its lines as counted
+rows, each routed by its entity type as any `indiv` row is. The silver check
+`silver_contribution_no_memo` now fails the build if any other memo line is counted in any of the
+three. Rejected: counting every memo line, which double counts earmarks, JFC attributions and
+redesignations; the ticket's two first cuts, which push 78 and 120 committees over FEC's figure
+(Q14e); and the raw filings as a source, which is P-NEU-107 M5's question (NEU-2181). Review asked
+for three more guards, measured on the rule's 2024 lines. A blank employer no longer makes partners
+(53 lines, $503,160, at three committees, two of them moving away from FEC's figure: C00484642's
+BARRICK GOLD pair and C00822288's 48 lines). A parent found also by the sum of a page's or an
+employer's memo lines was rejected: it removes 101 lines, $1,503,000 of them under a parent bulk
+left out against $5,000 under one it holds. A guard against JFC attributions was not added: one
+line, $41, in the rule's take names a JFC.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to
@@ -6196,8 +6651,8 @@ pipeline for the 3 filings (162 rows) the bulk rule misses.
 5. **Over-1% causes and tickets**: NEU-2192 (hybrid non-contribution account), NEU-2193 (party
    accounts and other off-11(a)(i) types), NEU-2194 (15C self-funding), NEU-2195 (ORG-typed
    committee gifts), NEU-2196 (repeated rows), NEU-2197 (the 119 unexplained committees). Found on
-   the way: NEU-2198 (memo-only LLC attributions, under-count) and NEU-2199 (conduit refunds of
-   earmarks).
+   the way: NEU-2198 (memo-only LLC attributions, under-count; Q14) and NEU-2199 (conduit refunds
+   of earmarks).
 6. **For NEU-2142: do not catalogue `candidate_summary` or `webl`.** `candidate_summary` is the sum
    of `committee_summary`'s own P/A rows (2,315 of 2,321). Decision 1 does not read it, and it adds
    no column a candidate page needs that `committee_summary` lacks. `webl` repeats `weball`.

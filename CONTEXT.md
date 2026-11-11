@@ -22,6 +22,10 @@ _Avoid_: conduit contribution, pass-through
 A joint fundraising committee participant's memo line (FEC type 15J) naming the individual behind part of a JFC transfer and the share attributed to that participant. Evidence that the individual's money reached the participant; never a contribution, and never counted in a total.
 _Avoid_: JFC contribution, attributed contribution
 
+**Orphaned attribution**:
+A memo line that is the only record of a gift: a partnership's, LLC's or trust's gift itemized as its members' shares, whose parent row the regulator's bulk file leaves out. Counted as its giver's gift, a contribution or an organization receipt by its entity type. Every other memo line, an earmark's or a JFC attribution among them, is not counted.
+_Avoid_: memo contribution, unparented memo
+
 **JFC transfer**:
 A joint fundraising committee's transfer of its participants' shares to a participant committee: a receipt from a designation-J committee, whatever type the filer gave it (mostly 18G, some 18J and 15J). Counted for a candidate when the participant raises for one, apart from the candidate's contributions and committee gifts. Committee money, never a contribution.
 _Avoid_: JFC contribution

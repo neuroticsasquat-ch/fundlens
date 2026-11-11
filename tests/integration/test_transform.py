@@ -728,6 +728,41 @@ def test_a_filing_a_later_amendment_supersedes_counts_nowhere(fixture_silver: Pa
     assert {4240100000000000362, 4240100000000000365} <= contributions
 
 
+def test_a_memo_line_counts_only_when_it_is_the_only_record_of_a_gift(
+    fixture_silver: Path,
+) -> None:
+    # The super PAC's filing 1900215 (NEU-2198): THORVALDSEN's and IKEDA's shares of a partnership's
+    # gift whose row the filing lacks, and ROSENKRANTZ's trust attribution, count as contributions,
+    # and MAGOTHY HOLDINGS LLC's own memo line as an organization receipt. SEVERN CAPITAL's partners
+    # attribute its row ($1,998 against $2,000, written in whole dollars), MAGOTHY's partners its
+    # memo line, MBEKI's line restates her counted gift and PELLEGRINO's is no attribution: none
+    # counts anywhere.
+    contributions = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
+    }
+    receipts = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
+    }
+    transfers = {
+        row["source_record_id"] for row in local_silver(fixture_silver, "committee_transfer")
+    }
+    orphaned = {4240100000000000366, 4240100000000000367, 4240100000000000372}
+    assert orphaned <= contributions.keys()
+    assert [contributions[s]["amount"] for s in sorted(orphaned)] == [5000, 5000, 2500]
+    assert receipts[4240100000000000375]["organization_name"] == "MAGOTHY HOLDINGS LLC"
+    assert 4240100000000000368 in receipts
+    dropped = {
+        4240100000000000369,
+        4240100000000000370,
+        4240100000000000371,
+        4240100000000000373,
+        4240100000000000374,
+        4240100000000000376,
+        4240100000000000377,
+    }
+    assert dropped.isdisjoint(contributions.keys() | receipts.keys() | transfers)
+
+
 def key_of(row: Mapping[str, object]) -> str:
     """A silver contribution's contributor key as resolve.normalize builds it."""
 
@@ -1103,6 +1138,30 @@ def test_the_superseded_filing_check_fails_on_a_counted_row_of_one() -> None:
             ("committee_transfer", 3, 1001),
             ("contribution", 1, 1001),
             ("organization_receipt", 2, 1001),
+        ]
+
+
+def test_the_memo_check_fails_on_a_counted_memo_line_other_than_an_orphaned_attribution() -> None:
+    with duckdb.connect() as con:
+        # Memo lines 1 to 3, counted as a contribution, an organization receipt and a committee's
+        # gift; 4, an orphaned attribution (NEU-2198), counted; and 5, not a memo line.
+        con.execute(
+            "CREATE TABLE indiv AS SELECT * FROM (VALUES (1, 'C1', 10, 'X'), (2, 'C1', 20, 'X'),"
+            " (3, 'C1', 30, 'X'), (4, 'C1', 40, 'X'), (5, 'C1', 50, NULL))"
+            " AS t(SUB_ID, CMTE_ID, TRANSACTION_AMT, MEMO_CD)"
+        )
+        con.execute("CREATE TABLE orphaned_attribution AS SELECT 4 AS SUB_ID")
+        con.execute(
+            "CREATE TABLE contribution AS"
+            " SELECT * FROM (VALUES (1), (4), (5)) AS t(source_record_id)"
+        )
+        con.execute("CREATE TABLE organization_receipt AS SELECT 2 AS source_record_id")
+        con.execute("CREATE TABLE committee_transfer AS SELECT 3 AS source_record_id")
+
+        assert sorted(failing_rows(con, "silver_contribution_no_memo.sql")) == [
+            ("committee_transfer", 3, "C1", 30),
+            ("contribution", 1, "C1", 10),
+            ("organization_receipt", 2, "C1", 20),
         ]
 
 
