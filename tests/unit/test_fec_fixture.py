@@ -88,6 +88,63 @@ def is_refund(row: Row) -> bool:
     return re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) is not None
 
 
+def gift(row: Row) -> tuple[str, ...]:
+    """A gift as two filings are compared on it (NEU-2196): its committee, its giver's name key,
+    ZIP5, employer and occupation, and its amount and date."""
+    return (
+        row["CMTE_ID"],
+        name_key(row["NAME"]),
+        row["ZIP_CODE"][:5],
+        row["EMPLOYER"].upper(),
+        row["OCCUPATION"].upper(),
+        str(Decimal(row["TRANSACTION_AMT"])),
+        row["TRANSACTION_DT"],
+    )
+
+
+def is_dated(row: Row) -> bool:
+    """Whether `row`'s TRANSACTION_DT is a date, MMDDYYYY."""
+    try:
+        datetime.strptime(row["TRANSACTION_DT"], "%m%d%Y")
+    except ValueError:
+        return False
+    return True
+
+
+@functools.cache
+def superseded_filings() -> frozenset[str]:
+    """The filings a later amendment supersedes, by FILE_NUM (NEU-2196): an electronic filing
+    (FILE_NUM above 0) when a later-numbered one at the same committee, itself an amendment
+    (AMNDT_IND A), holds the gift of at least half its rows, no memo line or 24T. A row with no
+    date that parses repeats none."""
+    filings: defaultdict[str, list[Row]] = defaultdict(list)
+    for row in rows("indiv"):
+        if (
+            row["MEMO_CD"] != "X"
+            and row["TRANSACTION_TP"] != "24T"
+            and int(row["FILE_NUM"] or 0) > 0
+        ):
+            filings[row["FILE_NUM"]].append(row)
+    superseded: set[str] = set()
+    for earlier, filed in filings.items():
+        for later, amended in filings.items():
+            if (
+                int(later) > int(earlier)
+                and amended[0]["CMTE_ID"] == filed[0]["CMTE_ID"]
+                and any(r["AMNDT_IND"] == "A" for r in amended)
+            ):
+                gifts = {gift(r) for r in amended if is_dated(r)}
+                repeated = sum(is_dated(r) and gift(r) in gifts for r in filed)
+                if 2 * repeated >= len(filed):
+                    superseded.add(earlier)
+    return frozenset(superseded)
+
+
+def is_superseded(row: Row) -> bool:
+    """An `indiv` row on a filing a later amendment supersedes (NEU-2196)."""
+    return row["FILE_NUM"] in superseded_filings()
+
+
 @functools.cache
 def reversals() -> frozenset[str]:
     """The negative refunds that void a positive one, by SUB_ID. Each positive refund is voided
@@ -96,7 +153,7 @@ def reversals() -> frozenset[str]:
     refund like any other."""
     groups: defaultdict[tuple[str, str, int], list[Row]] = defaultdict(list)
     for row in rows("indiv"):
-        if is_refund(row) and row["MEMO_CD"] != "X" and row["NAME"]:
+        if is_refund(row) and row["MEMO_CD"] != "X" and row["NAME"] and not is_superseded(row):
             groups[row["CMTE_ID"], row["NAME"], abs(amount(row))].append(row)
     voids: set[str] = set()
     for group in groups.values():
@@ -198,7 +255,7 @@ def is_conduit_earmark_refund(row: Row) -> bool:
 def counts(row: Row) -> bool:
     """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no
     intermediary's 24I its recipient itemized too, no conduit's own line for an earmark or refund
-    of one, to a committee of the cycle."""
+    of one, on no superseded filing, to a committee of the cycle."""
     return (
         row["MEMO_CD"] != "X"
         and row["TRANSACTION_TP"] != "24T"
@@ -206,6 +263,7 @@ def counts(row: Row) -> bool:
         and not is_conduit_side(row)
         and not is_intermediary_earmark(row)
         and not is_conduit_earmark_refund(row)
+        and not is_superseded(row)
     )
 
 
@@ -746,6 +804,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
             is_conduit_side(r) and r["TRANSACTION_TP"] != "24T" for r in indiv
         ),
         "dropped_conduit_refund": sum(is_conduit_earmark_refund(r) for r in indiv),
+        "dropped_superseded": sum(is_superseded(r) for r in indiv),
         "dropped_unknown_recipient": sum(r["CMTE_ID"] not in committees for r in indiv),
         "dropped_not_individual": sum(not is_individual(r) for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),

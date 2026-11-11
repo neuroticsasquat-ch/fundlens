@@ -17,8 +17,9 @@
 -- From `indiv`: a counted row by contribution's rules (04_contribution.sql): no memo line
 -- (MEMO_CD = 'X'), no conduit's 24T, no intermediary's 24I its recipient itemized too
 -- (`intermediary_earmark`, NEU-2203), no conduit's own line for an earmark it passed on
--- (ADR-0004), no conduit's refund of an earmark (`conduit_earmark_refund`, NEU-2199), to a
--- committee in `cm` (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
+-- (ADR-0004), no conduit's refund of an earmark (`conduit_earmark_refund`, NEU-2199), on no
+-- filing a later amendment supersedes (`superseded_filing`, NEU-2196), to a committee in `cm`
+-- (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
 -- on a conduit's side; the rule stands for other cycles. A refund (a 2nY or 4nY type) subtracts
 -- whichever sign its filer wrote, and a negative refund mirroring a positive one reverses it and
 -- adds back, as in contribution (NEU-2073): each positive refund once (NEU-2269).
@@ -54,6 +55,7 @@ WITH individual AS (
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
+        AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
         AND NOT (
             CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
@@ -132,6 +134,7 @@ mirrored AS (
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
+        AND coalesce(indiv.FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
         AND NOT (
             indiv.CMTE_ID IN (SELECT committee_id FROM conduit)
             AND regexp_matches(coalesce(indiv.MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')

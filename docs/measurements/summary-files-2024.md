@@ -5753,6 +5753,362 @@ gift of its own, and the gold check `gold_conduit_individual_floor` if a conduit
 `total_individual` is below −$1M. Dropping every refund at a conduit was rejected: a refunded tip
 is real.
 
+## Q13: repeated itemized rows, and filings an amendment supersedes (NEU-2196)
+
+Measured for [NEU-2196](https://linear.app/neuroticsasquatch/issue/NEU-2196) on 2026-11-11. Q6's D2
+found counted rows repeating a gift (same committee, giver key, amount and date) under different
+`SUB_ID`s: 45,282 rows ($4,137,018) whose `FILE_NUM`s differ, and 805,063 ($14,998,710) on one
+filing, over the over-1% committees. The ticket asked whether the differing-file kind is an
+original report and its amendment both surviving in `indiv`, and whether the same-file kind is
+real.
+
+Every input is FEC's public data, so the run reads no fundlens store. It ran in the local `app`
+container, as Q9 to Q12 did.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-11 15:54–17:05 UTC, `app` container of the local dev stack, DuckDB 2.0.0; Q13a–e by `q13.py` below, 17:03 UTC |
+| Code | branch `fix/NEU-2196-superseded-filings` off `main` at `255c565`; the rule is read from `sql/silver/04_contribution.sql` |
+| `indiv24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/indiv24.zip`, its `itcont.txt` dated 2026-11-08 16:28, downloaded 2026-11-11T15:54Z |
+| `committee_summary_2024.csv` | `…/2024/committee_summary_2024.csv`, downloaded 2026-11-11T16:33Z |
+| FEC's filing index | OpenFEC `GET /v1/filings/?file_number=…` (100 per call, `DEMO_KEY`), 2026-11-11T16:09Z, for the 362 filings a first pass found holding a gift another filing holds too (it counted paper filings and undated rows, which Q13b does not). It returned 302: none of the 60 paper filings (negative `FILE_NUM`, 59 of them one committee's), and all but one electronic one. Q13b's 291 are the electronic filings holding a dated gift another holds; 52 of them have no `is_amended` in the index (blank), with no `amendment_chain` and a negative `previous_file_number` |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec`, 2026-11-11T16:16Z, for the same-file sample and Newsom's two filings |
+
+**Method.** `itcont.txt` alone (the zip repeats it split by date), every row but memo lines and
+24Ts: the rows silver can count. A *gift* is a row's committee, name key (uppercased, letters and
+digits), ZIP5, uppercased employer and occupation, amount and date; an undated row has none. A
+filing *repeats* another's row when it holds the same gift. FEC's index says a filing is amended
+(`is_amended`) when a later filing's `amendment_chain` names it. The rule measured is the one
+`04_contribution.sql` ships. FEC's itemized figure is `committee_summary`'s `INDV_ITEM_CONTB`. A
+committee's rows on it are its 15, 15E, 15I, 15T, 11 and 24I rows (Q6's `fec_line` 11(a)(i),
+refunds aside).
+
+```bash
+# Host, from the repository root, dev stack up. About 4.3 GB of download; ~15 minutes.
+# data/ is gitignored, and the container sees it as /app/data.
+mkdir -p data/neu2196 && cd data/neu2196
+B=https://www.fec.gov/files/bulk-downloads/2024
+curl -sSLO $B/indiv24.zip && curl -sSLO $B/committee_summary_2024.csv
+# The rows silver can count, with the columns the rule reads.
+unzip -p indiv24.zip itcont.txt | LC_ALL=C awk -F'|' 'BEGIN {OFS = "|"} $19 != "X" && $6 != "24T" {
+  print $1, $2, $3, $6, $7, $8, $11, $12, $13, $14, $15, $18, $21}' > slim.txt
+# FEC's index for the twinned filings: twinned_files.txt is the twinned table's FILE_NUMs, one per
+# line, from a first run of q13.py stopped before `idx` is read.
+split -l 100 twinned_files.txt fb_
+for f in fb_??; do q=$(sed 's/^/\&file_number=/' $f | tr -d '\n')
+  curl -s "https://api.open.fec.gov/v1/filings/?api_key=DEMO_KEY&per_page=100$q" -o $f.json; done
+echo committee_id,file_number,form_type,report_type,amendment_indicator,previous_file_number,\
+amendment_chain,is_amended,most_recent,most_recent_file_number,amended_by,cvg_start,cvg_end > idx_load.csv
+jq -rs '[.[].results[]] | .[] | [.committee_id, .file_number, .form_type, .report_type,
+  .amendment_indicator, .previous_file_number, (.amendment_chain | tostring), .is_amended,
+  .most_recent, .most_recent_file_number, (.amended_by | tostring), .coverage_start_date,
+  .coverage_end_date] | @csv' fb_*.json >> idx_load.csv
+# Save the Python block below as q13.py here, then, from the repository root:
+cd ../.. && docker compose exec -T app uv run python /app/data/neu2196/q13.py > data/neu2196/q13.out
+```
+
+```python
+import time
+from pathlib import Path
+
+import duckdb
+
+W = "/app/data/neu2196"
+con = duckdb.connect()
+con.execute(f"SET threads=6; SET memory_limit='7GB'; SET temp_directory='{W}/tmp'")
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + " --- |" * len(rel.columns))
+    for row in rows:
+        print("| " + " | ".join("" if v is None else f"{v:,}" if isinstance(v, int) else str(v) for v in row) + " |")
+    print(flush=True)
+
+
+# The counted-shape rows: no memo line, no 24T (slim.txt, from extract.sh), as `indiv` with a blank
+# MEMO_CD, so the rule reads them as 04_contribution.sql reads `indiv`.
+cols = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_TP", "ENTITY_TP", "NAME", "ZIP_CODE",
+        "EMPLOYER", "OCCUPATION", "TRANSACTION_DT", "TRANSACTION_AMT", "FILE_NUM", "SUB_ID"]
+types = {c: "VARCHAR" for c in cols} | {
+    "TRANSACTION_AMT": "DECIMAL(14,2)", "FILE_NUM": "BIGINT", "SUB_ID": "UBIGINT"}
+con.execute(f"""CREATE VIEW indiv AS SELECT *, NULL::VARCHAR AS MEMO_CD FROM read_csv('{W}/slim.txt',
+    delim='|', header=false, quote='', escape='', columns={types})""")
+# The rule, as shipped: 04_contribution.sql from `CREATE TEMP VIEW filed_gift` to the contribution table.
+sql = Path("/app/sql/silver/04_contribution.sql").read_text()
+rule = sql[sql.index("CREATE TEMP VIEW filed_gift"):sql.index("CREATE TABLE contribution AS")]
+start = time.monotonic()
+for statement in rule.split(";"):
+    body = "\n".join(line for line in statement.splitlines() if not line.lstrip().startswith("--"))
+    if body.strip():
+        con.execute(body)
+print(f"rule: {time.monotonic() - start:.0f} s\n")
+
+# Every gift (committee, name key, ZIP5, employer, occupation, amount, date) on more than one
+# row, and whether its rows' filings differ: the measure Q6's D2 took, over every committee.
+con.execute("""CREATE TABLE grp AS
+SELECT gift, count(*) AS n, min(FILE_NUM) <> max(FILE_NUM) AS files_differ, any_value(amt) AS amt
+FROM (SELECT hash(CMTE_ID, regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g'),
+        left(ZIP_CODE, 5), upper(EMPLOYER), upper(OCCUPATION), TRANSACTION_AMT, TRANSACTION_DT) AS gift,
+        FILE_NUM, TRANSACTION_AMT AS amt FROM indiv WHERE try_strptime(TRANSACTION_DT, '%m%d%Y') IS NOT NULL)
+GROUP BY gift HAVING count(*) > 1""")
+show("Q13a: repeated gifts, by whether their filings differ", """
+SELECT files_differ, count(*) AS gifts, sum(n - 1) AS extra_rows, sum((n - 1) * amt) AS extra_dollars
+FROM grp GROUP BY 1 ORDER BY 1""")
+
+# FEC's filing index for every filing holding a gift another filing holds too (OpenFEC /filings,
+# fetched by grab_index.sh): is_amended, and the amendment_chain of the filing that amends it.
+con.execute(f"CREATE TABLE idx AS SELECT * FROM read_csv('{W}/idx_load.csv', header=true)")
+con.execute("""CREATE TABLE twinned AS SELECT DISTINCT FILE_NUM FROM filing_gift
+WHERE gift IN (SELECT gift FROM grp WHERE files_differ)""")
+show("Q13b: the twinned filings, by FEC's index and the rule", """
+SELECT idx.is_amended AS fec_is_amended, s.FILE_NUM IS NOT NULL AS rule_superseded,
+    count(*) AS filings, sum(f.rows) AS rows
+FROM twinned AS t
+LEFT JOIN idx ON idx.file_number = t.FILE_NUM
+LEFT JOIN superseded_filing AS s ON s.FILE_NUM = t.FILE_NUM
+JOIN (SELECT FILE_NUM, sum(rows) AS rows FROM filing_gift GROUP BY 1) AS f ON f.FILE_NUM = t.FILE_NUM
+WHERE t.FILE_NUM > 0
+GROUP BY ALL ORDER BY ALL""")
+show("Q13c: what FEC says amends each filing the rule misses", """
+SELECT a.committee_id, a.file_number AS amended_by, a.form_type, a.report_type, a.amendment_chain
+FROM idx AS a WHERE a.amendment_indicator = 'A' AND list_has_any(string_split(trim(a.amendment_chain, '[]'), ','),
+    (SELECT list(CAST(t.FILE_NUM AS VARCHAR)) FROM twinned AS t JOIN idx ON idx.file_number = t.FILE_NUM
+     WHERE idx.is_amended AND t.FILE_NUM NOT IN (SELECT FILE_NUM FROM superseded_filing)))
+ORDER BY 1""")
+show("Q13d: what the rule drops", """
+SELECT count(DISTINCT FILE_NUM) AS filings, count(*) AS rows, sum(TRANSACTION_AMT) AS dollars,
+    count(DISTINCT CMTE_ID) AS committees
+FROM indiv WHERE FILE_NUM IN (SELECT FILE_NUM FROM superseded_filing)""")
+
+# FEC's itemized figure against the committee's rows on line 11(a)(i) types, every filing and
+# the rule's, for each committee the rule drops a filing at.
+con.execute(f"""CREATE TABLE cs AS SELECT DISTINCT CMTE_ID, CMTE_TP,
+    TRY_CAST(INDV_ITEM_CONTB AS DECIMAL(16, 2)) AS item
+FROM read_csv('{W}/committee_summary_2024.csv', header=true, all_varchar=true)""")
+show("Q13e: committees with a superseded filing, against INDV_ITEM_CONTB", """
+WITH r AS (
+    SELECT CMTE_ID, FILE_NUM IN (SELECT FILE_NUM FROM superseded_filing) AS superseded, TRANSACTION_AMT AS amt
+    FROM indiv
+    WHERE CMTE_ID IN (SELECT CMTE_ID FROM indiv WHERE FILE_NUM IN (SELECT FILE_NUM FROM superseded_filing))
+        AND TRANSACTION_TP IN ('15', '15E', '15I', '15T', '11', '24I')
+)
+SELECT CMTE_ID, any_value(cs.CMTE_TP) AS type, any_value(cs.item) AS fec_itemized, sum(amt) AS every_filing,
+    sum(amt) FILTER (WHERE NOT superseded) AS rule, round(sum(amt) / any_value(cs.item), 3) AS before,
+    round(sum(amt) FILTER (WHERE NOT superseded) / any_value(cs.item), 3) AS after
+FROM r LEFT JOIN cs USING (CMTE_ID)
+GROUP BY 1 HAVING sum(amt) FILTER (WHERE superseded) > 0 ORDER BY sum(amt) FILTER (WHERE superseded) DESC""")
+show("Q13h: differing-file repeats the rule leaves", """
+WITH kept AS (
+    SELECT hash(CMTE_ID, regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g'), left(ZIP_CODE, 5),
+            upper(EMPLOYER), upper(OCCUPATION), TRANSACTION_AMT, TRANSACTION_DT) AS gift, FILE_NUM, TRANSACTION_AMT AS amt
+    FROM indiv
+    WHERE try_strptime(TRANSACTION_DT, '%m%d%Y') IS NOT NULL
+        AND FILE_NUM NOT IN (SELECT FILE_NUM FROM superseded_filing)
+), g AS (SELECT gift, count(*) AS n, any_value(amt) AS amt FROM kept GROUP BY gift
+    HAVING count(*) > 1 AND min(FILE_NUM) <> max(FILE_NUM))
+SELECT count(*) AS gifts, sum(n - 1) AS extra_rows, sum((n - 1) * amt) AS extra_dollars FROM g""")
+show("Q13i: the superseded filings FEC's index holds no amendment chain for", """
+SELECT f.CMTE_ID, s.FILE_NUM, f.amendment_indicators, f.reports, f.rows
+FROM superseded_filing AS s
+JOIN (SELECT CMTE_ID, FILE_NUM, string_agg(DISTINCT AMNDT_IND, ',') AS amendment_indicators,
+        string_agg(DISTINCT RPT_TP, ',') AS reports, count(*) AS rows
+      FROM indiv WHERE FILE_NUM IN (SELECT FILE_NUM FROM superseded_filing) GROUP BY ALL) AS f USING (FILE_NUM)
+WHERE s.FILE_NUM IN (SELECT file_number FROM idx WHERE is_amended IS NULL)
+ORDER BY 1, 2""")
+```
+
+The same-file sample (Q13f) was drawn once, apart from `q13.py`: 20 of the gifts repeated within
+one electronic filing, at random (`USING SAMPLE reservoir(20000 ROWS) REPEATABLE (2196)` over the
+same-file gifts, then the first 20 by `hash(gift)` on filings of under 20,000 rows, so the raw
+filing is small enough to fetch). Each row's `TRAN_ID` was read back from `itcont.txt` by
+`SUB_ID` and looked up in its raw filing's Schedule A (`.fec` fields 1, 3, 22 and 44: line,
+`TRAN_ID`, aggregate year to date and memo).
+
+### Results
+
+rule: 20 s
+
+**Q13a: repeated gifts, by whether their filings differ  (0 s)**
+
+| files_differ | gifts | extra_rows | extra_dollars |
+| --- | --- | --- | --- |
+| 0 | 3,157,511 | 6,179,596 | 197965901.00 |
+| 1 | 9,294 | 47,544 | 12328526.00 |
+
+**Q13b: the twinned filings, by FEC's index and the rule  (0 s)**
+
+| fec_is_amended | rule_superseded | filings | rows |
+| --- | --- | --- | --- |
+| 0 | 0 | 208 | 1,873,041 |
+| 1 | 0 | 3 | 162 |
+| 1 | 1 | 28 | 28,082 |
+|  | 0 | 33 | 318 |
+|  | 1 | 19 | 91 |
+
+**Q13c: what FEC says amends each filing the rule misses  (0 s)**
+
+| committee_id | amended_by | form_type | report_type | amendment_chain |
+| --- | --- | --- | --- | --- |
+| C00445023 | 1,870,006 | F3 | Q1 | [1775222,1785463,1792992,1870006] |
+| C00848937 | 1,872,580 | F3X | Q1 | [1773325,1872580] |
+| C00876466 | 1,882,596 | F3X | 12G | [1841053,1882596] |
+
+**Q13d: what the rule drops  (5 s)**
+
+| filings | rows | dollars | committees |
+| --- | --- | --- | --- |
+| 47 | 28,173 | 11518148.00 | 32 |
+
+**Q13e: committees with a superseded filing, against INDV_ITEM_CONTB  (8 s)**
+
+| CMTE_ID | type | fec_itemized | every_filing | rule | before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| C00836353 | V | 6878563.72 | 6877588.00 | 3429113.00 | 1.0 | 0.499 |
+| C00868174 | H | 285800.00 | 285800.00 | 153400.00 | 1.0 | 0.537 |
+| C00876953 | N | 184689.20 | 179589.00 | 118895.00 | 0.972 | 0.644 |
+| C00864090 | H | 1183826.01 | 1181115.00 | 1133912.00 | 0.998 | 0.958 |
+| C00848937 | V | 114426.01 | 114629.00 | 67492.00 | 1.002 | 0.59 |
+| C00847491 | S | 96600.00 | 96600.00 | 57600.00 | 1.0 | 0.596 |
+| C00839126 | H | 49800.00 | 99800.00 | 75400.00 | 2.004 | 1.514 |
+| C00093054 | Q | 722663.67 | 716024.00 | 693943.00 | 0.991 | 0.96 |
+| C00840009 | N | 87280.00 | 87280.00 | 66430.00 | 1.0 | 0.761 |
+| C00833160 | P | 121128.54 | 45073.00 | 27932.00 | 0.372 | 0.231 |
+| C00832238 | O | 85172.62 | 72399.00 | 59461.00 | 0.85 | 0.698 |
+| C00406124 | Q | 14200.00 | 41200.00 | 29450.00 | 2.901 | 2.074 |
+| C00005132 | Q | 30550.00 | 30550.00 | 19500.00 | 1.0 | 0.638 |
+| C00199703 | Q | 308647.11 | 315308.00 | 307041.00 | 1.022 | 0.995 |
+| C00847210 | N | 8621.84 | 15005.00 | 8964.00 | 1.74 | 1.04 |
+| C00869404 | S | 9000.00 | 9000.00 | 4500.00 | 1.0 | 0.5 |
+| C00859587 | H | 16090.90 | 16090.00 | 11620.00 | 1.0 | 0.722 |
+| C00829499 | S | 21388.76 | 21385.00 | 17585.00 | 1.0 | 0.822 |
+| C00388157 | Q | 5250.34 | 8996.00 | 5248.00 | 1.713 | 1.0 |
+| C00011338 | Q | 17155.00 | 16250.00 | 15050.00 | 0.947 | 0.877 |
+| C00413401 | Q | 2189.75 | 3280.00 | 2120.00 | 1.498 | 0.968 |
+| C00844183 | S | 8500.00 | 8000.00 | 7000.00 | 0.941 | 0.824 |
+| C00172858 | Q | 23535.51 | 26619.00 | 25628.00 | 1.131 | 1.089 |
+| C00523217 | N | 38261.65 | 76862.00 | 76362.00 | 2.009 | 1.996 |
+| C00157958 | Q | 1744.77 | 2675.00 | 2209.00 | 1.533 | 1.266 |
+| C00832956 | H | 8574.52 | 3574.00 | 3524.00 | 0.417 | 0.411 |
+
+**Q13h: differing-file repeats the rule leaves  (10 s)**
+
+| gifts | extra_rows | extra_dollars |
+| --- | --- | --- |
+| 359 | 439 | 242985.00 |
+
+**Q13i: the superseded filings FEC's index holds no amendment chain for  (5 s)**
+
+| CMTE_ID | FILE_NUM | amendment_indicators | reports | rows |
+| --- | --- | --- | --- | --- |
+| C00011338 | 1,879,605 | A | 30G | 7 |
+| C00157958 | 1,882,947 | A | 30G | 2 |
+| C00172858 | 1,879,312 | A | 30G | 4 |
+| C00388157 | 1,878,571 | A | Q3 | 5 |
+| C00406124 | 1,793,474 | A | M4 | 17 |
+| C00413401 | 1,723,437 | A | MY | 3 |
+| C00523217 | 1,958,487 | A | Q1 | 1 |
+| C00832238 | 1,724,470 | A | 30S | 7 |
+| C00832956 | 1,882,858 | A | 12G | 2 |
+| C00847210 | 1,762,154 | A | Q3 | 2 |
+| C00847210 | 1,762,257 | A | YE | 4 |
+| C00847210 | 1,766,247 | A | YE | 1 |
+| C00847210 | 1,789,986 | A | Q3 | 3 |
+| C00847210 | 1,793,424 | A | YE | 4 |
+| C00847210 | 1,814,665 | A | YE | 4 |
+| C00847210 | 1,815,401 | A | YE | 6 |
+| C00847210 | 1,815,647 | A | YE | 12 |
+| C00847210 | 1,874,477 | A | YE | 6 |
+| C00891267 | 1,878,872 | A | 30G | 1 |
+
+**Q13f: 20 gifts repeated within one filing, against the raw filing**
+
+Givers are left out; committee and filing identify each.
+
+| # | Committee | Filing | Type | Amount | Rows | Line | Distinct `TRAN_ID`s | Aggregate on each row | Memo |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | C00027466 | 1690211 | 15E | 10 | 4 | SA11AI | 4 | 537.00 | EARMARKED FROM WINRED |
+| 2 | C00027466 | 1690211 | 15E | 8 | 2 | SA11AI | 2 | 2,140.50 | EARMARKED FROM WINRED |
+| 3 | C00030718 | 1722958 | 15 | 50 | 5 | SA11AI | 5 | 392.50 | |
+| 4 | C00202184 | 1732121 | 15 | 100 | 3 | SA11AI | 3 | 430.00 | |
+| 5 | C00271338 | 1784342 | 15E | 5 | 3 | SA11AI | 3 | 496.00 | Earmarked Contribution |
+| 6 | C00431056 | 1752871 | 15E | 10 | 2 | SA11AI | 2 | 262.50 | Earmarked Contribution |
+| 7 | C00550970 | 1875029 | 15E | 5 | 2 | SA11AI | 2 | 203.50 | Earmarked Contribution |
+| 8 | C00573261 | 1845384 | 15E | 10 | 2 | SA11AI | 2 | 888.63 | Earmarked Contribution |
+| 9 | C00665638 | 1839524 | 15E | 5 | 3 | SA11AI | 3 | 599.63 | Earmark via WinRed |
+| 10 | C00718627 | 1731096 | 15E | 1 | 4 | SA11AI | 4 | 371.60 | EARMARKED FROM WINRED |
+| 11 | C00730531 | 1713156 | 15E | 10 | 3 | SA11Ai | 3 | 297.00, 307.00, 317.00 | |
+| 12 | C00730531 | 1730113 | 15E | 10 | 3 | SA11AI | 3 | 615.28 | EARMARKED (NON-DIRECTED) THROUGH WINRED |
+| 13 | C00742007 | 1801674 | 15E | 12 | 2 | SA11AI | 2 | 363.15 | EARMARKED FROM WINRED |
+| 14 | C00754069 | 1866838 | 15E | 8 | 2 | SA11AI | 2 | 216.00 | Earmarked Contribution |
+| 15 | C00785311 | 1784431 | 10 | 25 | 2 | SA17 | 2 | 325.00 | Non-Contribution Account |
+| 16 | C00796144 | 1737938 | 15E | 3,300 | 2 | SA11AI | 2 | 6,600.00 | Earmarked Contribution |
+| 17 | C00808311 | 1854356 | 10 | 1 | 3 | SA17 | 3 | 242.04 | NON CONTRIBUTION ACCOUNT |
+| 18 | C00813758 | 1698707 | 15E | 100 | 2 | SA11AI | 2 | 300.00 | Earmarked Contribution |
+| 19 | C00833392 | 1848565 | 15E | 5 | 2 | SA17A | 2 | 1,986.58 | EARMARKED FROM WINRED |
+| 20 | C00844159 | 1880508 | 15E | 25 | 2 | SA11AI | 2 | 328.45 | Earmark via WinRed |
+
+**Q13g: Newsom for California Governor 2022's two filings, raw summary (Form 3X)**
+
+| Filing | Form | Report | Coverage | `HDR` amends | Line 11(a)(i) itemized |
+| --- | --- | --- | --- | --- | --- |
+| 1706672 | F3XT | TER | 2023-03-30 – 2023-05-31 | | 3,448,963.25 |
+| 1716822 | F3XA | TER | 2023-03-30 – 2023-06-30 | `FEC-1706672` | 3,429,600.47 |
+| Sum | | | | | 6,878,563.72 |
+
+`committee_summary`'s `INDV_ITEM_CONTB` for C00836353 is 6,878,563.72: the sum.
+
+### Findings
+
+- **The differing-file repeats are superseded filings.** Every filing FEC's index says a later twin
+  amends was filed again as an amendment that changed its form (F3X to F3, F3 to F3P), its report
+  type (12S to 12G, Q1 to TER, Q2 to 30S) or its coverage end (Newsom's TER, to June 30). FEC keeps
+  a report's newest version only, and these read to it as new reports, so both filings stay in
+  `indiv` (Q13c, Q13g). The amendment's own header names the filing it replaces.
+- **FEC publishes no bulk filing index**, only OpenFEC (an API key, 1,000 calls an hour; 2024 has
+  17,535 amended F3, F3X and F3P filings). So the rule reads the bulk file: a filing is superseded
+  when a later-numbered amendment at the same committee repeats at least half of its rows. It takes
+  28 of the 31 filings FEC says are amended, and none of the 208 it says are not (Q13b). The three
+  it misses (162 rows) had most of their rows changed by their amendment (Q13c). It also takes 19
+  filings FEC's index holds no amendment chain for (91 rows), each itself an amendment (`AMNDT_IND`
+  A) a later amendment repeats (Q13i). Where FEC's summary leaves those out, the rule brings the
+  committee to FEC's itemized figure: C00388157 from 1.713× to 1.0×, C00413401 from 1.498× to
+  0.968×, C00847210 from 1.74× to 1.04× (Q13e).
+- **On 2024 it drops 47 filings, 28,173 rows, $11,518,148, at 32 committees** (Q13d), $8,880,738 of
+  it Newsom's superseded TER (25,668 rows): $3,448,475 on line 11(a)(i) types (Q13e), the rest its
+  non-contribution account's type 10s, which `total_individual` does not count (NEU-2192).
+- **What the rule leaves is small.** Of the 47,544 differing-file rows beyond a gift's first (Q13a,
+  $12,328,526), 439 remain, $242,985 (Q13h): repeats across filings no amendment supersedes, such as
+  two reports' same-day gifts. So the differing-file kind is superseded filings, by dollars all but
+  2% of it; the rest is left counted, as the same-file kind is.
+- **FEC's own itemized figure counts most of these filings twice too.** Newsom's `INDV_ITEM_CONTB`
+  is its two filings' line 11(a)(i) added (Q13g), and for 12 more committees the rows of every
+  filing match FEC's figure to within 3% (Q13e, `before`). With the rule those 13 sit from 0.5% to
+  50% below it (`after`: C00199703 0.995, Newsom 0.499). A gift counts once, so this gap is by
+  design: these committees' coverage against `INDV_ITEM_CONTB` reads low, and a coverage figure
+  (NEU-2141) should say so rather than chase FEC's double count.
+- **The same-file repeats are real.** All 20 sampled are separate Schedule A transactions, each with
+  its own `TRAN_ID` (Q13f), on the line FEC files the type on. 16 are earmarks (15E), most through
+  WinRed: several gifts of one size from one donor on one day. One donor's year-to-date aggregate
+  steps 297.00, 307.00, 317.00 across three of them (row 11), and another's $3,300 pair sums to the
+  $6,600 aggregate (row 16). The filer's own line total counts each, and so does FEC's, so silver
+  keeps them. Q13a: 3,157,511 such gifts, 6,179,596 rows beyond the first, $197,965,901, every
+  committee.
+
+**What changed (NEU-2196).** `04_contribution.sql` builds `superseded_filing` by the rule above, and
+no `indiv` row of one is counted in `contribution`, `committee_transfer` or `organization_receipt`.
+The silver check `silver_superseded_filing` fails the build if one is. It reads the rule's own
+`superseded_filing`, so it catches a read that skips the filter, not a wrong rule: Q13b is the
+rule's measure against FEC. A superseded filing's `oth` rows were not measured and are read as
+before. Rejected: dropping every gift-equal repeat, since the same-file repeats are real gifts FEC
+counts; and OpenFEC's index as a source, which would add a keyed, rate-limited API to a bulk-only
+pipeline for the 3 filings (162 rows) the bulk rule misses.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to

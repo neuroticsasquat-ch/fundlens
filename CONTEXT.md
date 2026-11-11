@@ -49,6 +49,10 @@ A candidate's own money, including loans: a gift or loan to their own committee 
 A committee's gifts to one candidate that net below zero in a cycle: voids and refunds of gifts made in an earlier cycle, filed as negative gifts when they happen, with nothing in the cycle to net against. Kept as filed, and counted in the giver's own returned figure, never in its gifts to candidates, its top recipients, the candidate's committee total or a race's top committees. A void of a gift made in the same cycle nets against that gift instead.
 _Avoid_: negative contribution, refund received, clawback
 
+**Superseded filing**:
+A report a committee filed again as an amendment that changed its form, report type or coverage, so the regulator's bulk data keeps both. Its gifts are counted from the amendment alone, never from it, even where the regulator's own itemized figure adds the two. Told by the amendment repeating at least half of its gifts. Repeats within one filing are separate gifts, and count.
+_Avoid_: duplicate filing, stale report
+
 ### Parties
 
 **Donor**:
