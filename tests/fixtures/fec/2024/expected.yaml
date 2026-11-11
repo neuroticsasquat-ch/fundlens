@@ -221,6 +221,28 @@ returned_by_candidates:
   by_committee:
     C00800203: -1000
 
+# The refunds counted in a committee's total_individual or total_from_organizations (NEU-2265), by
+# SUB_ID: the 22Ys to individuals (LINDQVIST's, and its void, net to 0) and CHESAPEAKE STEEL's ORG
+# 22Y to the super PAC. Not the hybrid PAC's 20Y to HAYWARD (its non-contribution account) nor
+# OLD LINE REPUBLICAN COMMITTEE's 41Y to GALLAGHER (a party account, in total_other_lines).
+# by_committee is gold's total_refunds, their net amount; 0 at every other committee.
+refunds:
+  contributions:
+    - 4240100000000000018
+    - 4240100000000000020
+    - 4240100000000000305
+    - 4240100000000000307
+    - 4240100000000000308
+    - 4240100000000000336
+    - 4240100000000000349
+  organization_receipts: [4240100000000000323]
+  by_committee:
+    C00800106: -1000
+    C00800107: -500
+    C00800201: -2800
+    C00800204: -250
+    C00401224: -5
+
 # The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
 # blank-type ones naming one committee (NEU-2132), by SUB_ID: the committee each is a
 # committee_transfer receipt from, by the name rule above, or null when it is dropped (CHESAPEAKE

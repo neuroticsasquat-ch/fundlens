@@ -817,6 +817,31 @@ def test_the_expected_returns_are_the_24ks_of_pairs_netting_below_0() -> None:
     assert any(amount(r) < 0 for r in committee_contributions() if r not in returned)
 
 
+def test_the_expected_refunds_are_the_counted_refunds_on_line_20() -> None:
+    contributions = counted()
+    receipts = organization_receipts()
+    account = {r["SUB_ID"] for r in non_contribution_account([*contributions, *receipts])}
+
+    def in_totals(row: Row) -> bool:
+        return row["SUB_ID"] not in account and not is_other_line(row)
+
+    refunds = [r for r in contributions if is_refund(r) and not is_self_funding(r) and in_totals(r)]
+    organization_refunds = [r for r in receipts if is_refund(r) and in_totals(r)]
+    expected = EXPECTED["refunds"]
+    assert expected["contributions"] == [int(r["SUB_ID"]) for r in refunds]
+    assert expected["organization_receipts"] == [int(r["SUB_ID"]) for r in organization_refunds]
+    assert expected["by_committee"] == sum_by(
+        (r["CMTE_ID"], signed(r)) for r in [*refunds, *organization_refunds]
+    )
+    # The non-contribution account's 20Y and a party account's 41Y are refunds too, in neither
+    # total, so in no total_refunds.
+    assert {
+        r["TRANSACTION_TP"]
+        for r in [*contributions, *receipts]
+        if is_refund(r) and not in_totals(r)
+    } >= {"20Y", "41Y"}
+
+
 def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:
     receipts = organization_receipts()
     key_of = {r["SUB_ID"]: normalize.organization_key(r["NAME"]) or "" for r in receipts}
