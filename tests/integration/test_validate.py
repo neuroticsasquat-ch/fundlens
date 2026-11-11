@@ -31,7 +31,7 @@ from tests.integration.test_resolve import (
     donor_keys,
     keys_by_sub_id,
 )
-from tests.unit.test_fec_fixture import DIME, counted, dime_cids, signed
+from tests.unit.test_fec_fixture import DIME, counted_indiv, dime_cids, signed
 
 EXPECTED = fec_fixture.expected()
 VALIDATION = EXPECTED["validation"]
@@ -103,10 +103,11 @@ def expected_pairs(data_dir: Path, cids: set[str] | None = None) -> int:
 
 
 def top_cids() -> set[str]:
-    """The `TOP` DIME persons with the most counted dollars, ties to the lower `cid`."""
+    """The `TOP` DIME persons with the most counted dollars in labelled `indiv` rows, ties to the
+    lower `cid`: DIME labels no `oth` row (NEU-2071)."""
     cids = dime_cids()
     dollars: dict[str, int] = {}
-    for row in counted():
+    for row in counted_indiv():
         cid = cids[int(row["SUB_ID"])]
         dollars[cid] = dollars.get(cid, 0) + signed(row)
     ranked = sorted(dollars, key=lambda cid: (-dollars[cid], cid))

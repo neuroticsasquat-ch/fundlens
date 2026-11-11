@@ -55,7 +55,8 @@ OTH_NOT_RECEIPTS = {
     4240200000000000010,  # pas2's 24K, repeated in oth
     4240200000000000003,  # pas2's 24A, repeated in oth
     4240300000000000011,  # a 15J memo line
-    4240300000000000012,  # WHITLOCK's 16C loan to his campaign
+    4240300000000000012,  # WHITLOCK's 16C loan to his campaign: a contribution (NEU-2071)
+    4240300000000000029,  # and his campaign's 20C repayment of it
     # More 15J memo lines (spec §6.11): JFC attributions, an organization's, one to no committee.
     *range(4240300000000000015, 4240300000000000020),
     # 15J memo lines in the filings of the JFC's 18G and of its blank-OTHER_ID 15J.
@@ -570,13 +571,29 @@ def test_a_candidates_own_money_is_self_funding_only_to_their_own_committee(
     by_id = {row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")}
     donors = fec_fixture.expected()["donors"]
 
-    gift, loan = (by_id[sub_id] for sub_id in donors["self_funder"]["sub_ids"])
+    gift, loan, oth_loan, repayment = (by_id[sub_id] for sub_id in donors["self_funder"]["sub_ids"])
     assert (loan["transaction_type"], loan["amount"], loan["is_self_funding"]) == (
         "16C",
         1500000,
         True,
     )
     assert gift["is_self_funding"] and gift["conduit_committee_id"] is None
+    # His loan and its partial repayment filed in `oth` (NEU-2071): self-funding, the repayment
+    # subtracting, and his whatever giver id the row names (the repayment's is an old House id).
+    assert [
+        (
+            row["transaction_type"],
+            row["amount"],
+            row["candidate_id"],
+            row["is_self_funding"],
+            row["conduit_committee_id"],
+        )
+        for row in (oth_loan, repayment)
+    ] == [
+        ("16C", 250000, "S4MD00104", True, None),
+        ("20C", -100000, "S4MD00104", True, None),
+    ]
+    assert oth_loan["contributor_key"] == loan["contributor_key"]
     own, other = (by_id[sub_id] for sub_id in donors["candidate_as_donor"]["sub_ids"])
     # OKAFOR to her own committee, then to CALLOWAY's: an ordinary contribution from a candidate.
     assert (own["candidate_id"], own["is_self_funding"]) == ("S4MD00103", True)
@@ -1150,10 +1167,16 @@ def test_the_memo_check_fails_on_a_counted_memo_line_other_than_an_orphaned_attr
             " (3, 'C1', 30, 'X'), (4, 'C1', 40, 'X'), (5, 'C1', 50, NULL))"
             " AS t(SUB_ID, CMTE_ID, TRANSACTION_AMT, MEMO_CD)"
         )
+        # In `oth`, a candidate's loan memo line 6, counted, and loan 7, not a memo line (NEU-2071).
+        con.execute(
+            "CREATE TABLE oth AS SELECT * FROM (VALUES (6, 'C2', 60, 'X', '16C'),"
+            " (7, 'C2', 70, NULL, '16C'))"
+            " AS t(SUB_ID, CMTE_ID, TRANSACTION_AMT, MEMO_CD, TRANSACTION_TP)"
+        )
         con.execute("CREATE TABLE orphaned_attribution AS SELECT 4 AS SUB_ID")
         con.execute(
             "CREATE TABLE contribution AS"
-            " SELECT * FROM (VALUES (1), (4), (5)) AS t(source_record_id)"
+            " SELECT * FROM (VALUES (1), (4), (5), (6), (7)) AS t(source_record_id)"
         )
         con.execute("CREATE TABLE organization_receipt AS SELECT 2 AS source_record_id")
         con.execute("CREATE TABLE committee_transfer AS SELECT 3 AS source_record_id")
@@ -1161,6 +1184,7 @@ def test_the_memo_check_fails_on_a_counted_memo_line_other_than_an_orphaned_attr
         assert sorted(failing_rows(con, "silver_contribution_no_memo.sql")) == [
             ("committee_transfer", 3, "C1", 30),
             ("contribution", 1, "C1", 10),
+            ("contribution", 6, "C2", 60),
             ("organization_receipt", 2, "C1", 20),
         ]
 
@@ -1172,13 +1196,19 @@ def test_the_self_funding_checks_fail_on_an_unflagged_15c_and_an_earmark_of_anot
             " (1, 'C1', '15C', 'IND', 'DOE, JANE', CAST(NULL AS VARCHAR), false),"
             f" (2, 'C1', '15C', 'CAN', 'DOE, JANE', '{WINRED}', true),"
             f" (3, 'C1', '15E', 'CAN', 'DOE, JANE', '{WINRED}', true),"
-            " (4, 'C1', '15', 'CAN', 'DOE, JANE', NULL, true)"
+            " (4, 'C1', '15', 'CAN', 'DOE, JANE', NULL, true),"
+            # A candidate's loan and its repayment (NEU-2071).
+            " (5, 'C1', '16C', 'CCM', 'DOE FOR CONGRESS', NULL, false),"
+            " (6, 'C1', '20C', 'CAN', 'DOE, JANE', NULL, false),"
+            " (7, 'C1', '16C', 'IND', 'DOE, JANE', NULL, true)"
             ") AS t(source_record_id, recipient_committee_id, transaction_type, entity_type,"
             " contributor_name, conduit_committee_id, is_self_funding)"
         )
 
         assert failing_rows(con, "silver_contribution_15c_self_funding.sql") == [
-            (1, "C1", "IND", "DOE, JANE")
+            (1, "C1", "IND", "DOE, JANE"),
+            (5, "C1", "CCM", "DOE FOR CONGRESS"),
+            (6, "C1", "CAN", "DOE, JANE"),
         ]
         assert failing_rows(con, "silver_contribution_self_funding.sql") == [(3, "C1", WINRED)]
 
@@ -1507,13 +1537,12 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(fixture_silver: 
     assert {
         s for s, row in contributions.items() if row["is_other_line"] and not row["is_self_funding"]
     } == set(fec_fixture.expected()["other_lines"]["contributions"])
-    # The candidate's own loan is on line 13 too, and stays self-funding (gold's self_funding).
-    [loan] = [row for row in contributions.values() if row["transaction_type"] == "16C"]
-    assert (loan["fec_line"], loan["is_other_line"], loan["is_self_funding"]) == (
-        "13 loans",
-        True,
-        True,
-    )
+    # The candidate's own loans, in `indiv` and in `oth` (NEU-2071), are on line 13 too, and stay
+    # self-funding (gold's self_funding).
+    loans = [row for row in contributions.values() if row["transaction_type"] == "16C"]
+    assert [(row["fec_line"], row["is_other_line"], row["is_self_funding"]) for row in loans] == [
+        ("13 loans", True, True)
+    ] * 2
     # The party account's refund goes with its receipt; the loan stays the candidate's committee's.
     assert [
         (
@@ -1921,11 +1950,34 @@ def test_an_oth_receipt_mirroring_a_counted_indiv_row_is_read_once_from_indiv(
     assert len(rows) == fec_fixture.expected()["silver"]["organization_receipt"]
 
 
+def test_a_candidates_loan_in_oth_mirroring_one_in_indiv_is_read_once_from_indiv(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # WHITLOCK FOR SENATE files his `indiv` 16C in `oth` too, under another SUB_ID and giver id:
+    # the same committee, type, amount and date, so it is the same loan (NEU-2071).
+    oth = fec_fixture.bulk_text("oth") + (
+        "C00800104|N|Q1|P2024|1|16C|CAN|WHITLOCK, GORDON|POTOMAC|MD|20854|||"
+        "01052024|1500000|S4MD00104|SA13.00498|1900104|||4249999999999999962\n"
+    )
+    put_bronze(store, texts={"oth": oth})
+    seats_report()
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    rows = read_silver(store, "contribution", tmp_path)
+    by_id = {row["source_record_id"]: row for row in rows}
+    assert 4249999999999999962 not in by_id
+    assert by_id[4240100000000000022]["transaction_type"] == "16C"
+    assert len(rows) == fec_fixture.expected()["silver"]["contribution"]
+
+
 def test_an_organizations_loan_and_attribution_line_are_no_receipts(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
-    # A bank's 16F loan and its 16G repayment, an organization's 16C and 15J, and an ORG row whose
+    # A bank's 16F loan and its 16G repayment, a 16C and a 15J typed ORG, and an ORG row whose
     # OTHER_ID names a committee `cm` lacks (a committee's money, in committee_transfer as today).
+    # A 16C is a candidate's loan whatever its entity type: a self-funding contribution (NEU-2071).
     lines = [
         ("16F", "CHESAPEAKE BANK", "", "4249999999999999951"),
         ("16G", "CHESAPEAKE BANK", "", "4249999999999999952"),
@@ -1954,6 +2006,13 @@ def test_an_organizations_loan_and_attribution_line_are_no_receipts(
     }
     assert transfers[4249999999999999955] == "C00899998"
     assert 4249999999999999951 not in transfers
+    contributions = {
+        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+    }
+    assert contributions.keys() & {int(sub_id) for _, _, _, sub_id in lines} == {
+        4249999999999999953
+    }
+    assert contributions[4249999999999999953]["is_self_funding"]
 
 
 def test_a_duplicated_committee_receipt_aborts_the_run_before_any_upload(

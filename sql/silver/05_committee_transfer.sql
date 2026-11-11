@@ -15,8 +15,9 @@
 -- `oth` is not only receipts (NEU-2070). It also repeats every `pas2` row under the same SUB_ID,
 -- holds the filer's own disbursements (24G, 22Z), the memo lines itemizing individuals' gifts
 -- through a joint fundraising committee (15J, MEMO_CD = 'X') and candidates' loans to their
--- campaigns (16C). A receipt here is a receipt type (TRANSACTION_TP 1x, or 3x for a party's
--- convention, headquarters and recount accounts), not a memo line, from a giver whose id is a
+-- campaigns (16C, a contribution, NEU-2071). A receipt here is a receipt type (TRANSACTION_TP
+-- 1x, or 3x for a party's convention, headquarters and recount accounts), not a 16C, not a memo
+-- line, from a giver whose id is a
 -- committee's. A JFC's transfer is filed under any of several receipt types (18G mostly, some 18J,
 -- a few 15J) and now and then with OTHER_ID blank: Trump's campaign filed $32.3M of its 2024 JFC
 -- transfers so (NEU-2124). A blank OTHER_ID's giver is the joint fundraising committee (designation
@@ -151,6 +152,11 @@ receipt AS (
         AND cm_named.name_key = regexp_replace(upper(oth.NAME), '[^A-Z0-9]', '', 'g')
         AND cm_named.committee_id <> oth.CMTE_ID
     WHERE left(oth.TRANSACTION_TP, 1) IN ('1', '3') AND oth.MEMO_CD IS DISTINCT FROM 'X'
+        -- A 16C is the candidate's loan, whatever giver it names: a contribution
+        -- (04_contribution.sql, NEU-2071), never a committee's receipt. On 2024's file none
+        -- would be one (every 16C names a candidate id or, typed CAN or IND, none), so this
+        -- only keeps a SUB_ID in one table should a filer name a committee.
+        AND oth.TRANSACTION_TP <> '16C'
 ),
 named_gift AS (
     -- A counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified an organization's,

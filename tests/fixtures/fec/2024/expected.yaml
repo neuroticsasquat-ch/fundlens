@@ -12,7 +12,12 @@
 #   A refund (22Y, or any 2nY or 4nY type) is written positive and counted with its sign turned, so
 #   it nets out. A gift to a conduit itself is counted, with no conduit.
 # - Self-funding is a counted CAN row whose NAME is the cn name of the candidate its recipient
-#   committee is linked to. It is never in total_individual: it is its own total.
+#   committee is linked to, and every counted 15C, 16C (a loan from the candidate) and 20C (its
+#   repayment) whoever it names. It is never in total_individual: it is its own total.
+# - A candidate's loan to their campaign, and its repayment, are counted contributions from `oth`
+#   too (NEU-2071): a row typed 16C or 20C, MEMO_CD not X, to a committee in `cm`, mirroring no
+#   `indiv` row of its type, committee, amount and date. A 20C subtracts its amount as filed. Its
+#   candidate is its recipient's, never OTHER_ID's: WHITLOCK's repayment names his old House id.
 # - A candidate's money is that of the committees `ccl` links to them as principal (P) or
 #   authorized (A), and of the one their `cn` row names principal (CAND_PCC) whatever `ccl`'s
 #   designation: STRATTON's, a leadership PAC since the election. Any other leadership PAC (D) is
@@ -82,7 +87,7 @@ rows:
   ccl: 15
   indiv: 377
   pas2: 24
-  oth: 30
+  oth: 31
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
@@ -94,7 +99,7 @@ silver:
   committee: 23
   candidate: 15
   candidate_committee_link: 15
-  contribution: 322
+  contribution: 324
   independent_expenditure: 9
   committee_transfer: 32
   organization_receipt: 14
@@ -132,14 +137,14 @@ contributions:
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
   dropped_not_individual: 18
-  self_funding: 3
+  self_funding: 5
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
   earmarked:
     C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2453775
+  total_amount: 2603775
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -387,12 +392,12 @@ candidates:
     self_funding: 5000
     ie_support: 150000
     ie_oppose: 45000
-  S4MD00104: # WHITLOCK: the self-funder, with a loan
+  S4MD00104: # WHITLOCK: the self-funder: 250000 of his own, 1750000 lent, 100000 repaid (NEU-2071)
     race_id: 2024-S-MD-00
     total_individual: 31850
     total_committee: 6000
     total_jfc_transfers: 0
-    self_funding: 1750000
+    self_funding: 1900000
     ie_support: 0
     ie_oppose: 80000
   S4MD00105: # PELL
@@ -503,7 +508,7 @@ committees:
     ie_total: 0
   C00800104: # WHITLOCK FOR SENATE
     total_individual: 31850
-    self_funding: 1750000
+    self_funding: 1900000
     total_from_committees: 5000
     total_to_candidates: 0
     ie_total: 0
@@ -643,11 +648,11 @@ donors:
     resolved_by: none
     amount: 0
     sub_ids: [4240100000000000019, 4240100000000000020]
-  self_funder: # WHITLOCK, GORDON: self-funding, never a top donor
+  self_funder: # WHITLOCK, GORDON: self-funding, loans less their repayment, never a top donor
     bonica_cid: 100000009
     resolved_by: none
-    amount: 1750000
-    sub_ids: [4240100000000000021, 4240100000000000022]
+    amount: 1900000
+    sub_ids: [4240100000000000021, 4240100000000000022, 4240300000000000012, 4240300000000000029]
   candidate_as_donor: # OKAFOR, DIANA: 5000 self-funding, 2000 an ordinary gift to CALLOWAY
     bonica_cid: 100000010
     resolved_by: none
@@ -759,8 +764,10 @@ attributions:
 # with k contributor keys among its counted contributions contributes k(k-1)/2 true pairs.
 validation:
   dime_version: "4.0"
-  # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
-  # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
+  # Every counted `indiv` contribution with a date: the fixture labels them all, but the DIME
+  # import drops a label with no date and the validator matches on it, so VOSS's undated gift is
+  # never matched. DIME labels no `oth` row, so WHITLOCK's loan and repayment there (NEU-2071) are
+  # unmatched too; their contributor key is his labelled one.
   matched_rows: 321
   # Contributor keys with a dated counted contribution: 132 less the 15J-only key and VOSS's.
   labelled_keys: 130
