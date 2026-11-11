@@ -7,7 +7,12 @@
 -- committee other than their recipient, by 05_committee_transfer.sql's name match: that
 -- committee's gift, a transfer there, or dropped there when `oth` holds it already, so counted
 -- once either way. PAC, COM, CCM and PTY rows are committees' money (05_committee_transfer.sql)
--- or dropped, in neither table.
+-- or dropped, in neither table. An ORG row with no committee id (OTHER_ID blank or not
+-- C-prefixed) naming exactly one political `cm` committee, any type but I, C and E (`cm` read
+-- without those types, as 05_committee_transfer.sql's `political_named`), other than its
+-- recipient, is that committee's gift by the same rule (NEU-2195): a super PAC typed ORG by its
+-- recipient. One naming a Form 5, 7 or 9 filer alone (ONE NATION, a type I) stays here, as FEC
+-- counts it on line 11(a)(i).
 --
 -- From `indiv`: a counted row by contribution's rules (04_contribution.sql): no memo line
 -- (MEMO_CD = 'X'), no conduit's 24T, no intermediary's 24I its recipient itemized too
@@ -56,22 +61,44 @@ WITH individual AS (
         AND CMTE_ID IN (SELECT committee_id FROM committee)
 ),
 cm_named AS (
-    -- Each committee of the cycle by name, as in 05_committee_transfer.sql.
+    -- Each committee of the cycle by name, as in 05_committee_transfer.sql; `political` the same
+    -- among the political committees alone, its `political_named`.
     SELECT
         regexp_replace(upper(name), '[^A-Z0-9]', '', 'g') AS name_key,
-        min(committee_id) AS committee_id
+        min(committee_id) AS committee_id,
+        false AS political
     FROM committee
+    GROUP BY name_key
+    HAVING count(*) = 1
+    UNION ALL
+    SELECT
+        regexp_replace(upper(name), '[^A-Z0-9]', '', 'g') AS name_key,
+        min(committee_id) AS committee_id,
+        true AS political
+    FROM committee
+    WHERE nullif(trim(type), '') NOT IN ('I', 'C', 'E')
     GROUP BY name_key
     HAVING count(*) = 1
 ),
 classified_kept AS (
-    -- The `indiv` rows less the classified ones the name match makes a committee's gift. Joined
-    -- on the few organization rows, never on `indiv`.
+    -- The `indiv` rows less the classified ones, and the ORG ones naming a political committee,
+    -- the name match makes a committee's gift. Joined on the few organization rows, never on
+    -- `indiv`.
     SELECT individual.*
     FROM individual
     LEFT JOIN cm_named
-        ON nullif(trim(individual.ENTITY_TP), '') IS NULL
-        AND coalesce(trim(individual.OTHER_ID), '') = ''
+        ON (
+            (
+                nullif(trim(individual.ENTITY_TP), '') IS NULL
+                AND coalesce(trim(individual.OTHER_ID), '') = ''
+                AND NOT cm_named.political
+            )
+            OR (
+                trim(individual.ENTITY_TP) = 'ORG'
+                AND coalesce(trim(individual.OTHER_ID), '') NOT LIKE 'C%'
+                AND cm_named.political
+            )
+        )
         AND cm_named.name_key = regexp_replace(upper(individual.NAME), '[^A-Z0-9]', '', 'g')
         AND cm_named.committee_id <> individual.CMTE_ID
     WHERE cm_named.committee_id IS NULL

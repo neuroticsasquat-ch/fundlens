@@ -327,14 +327,17 @@ def test_a_committee_page_has_its_non_contribution_account(
 def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestClient) -> None:
     committee = ok(client.get("/v1/committees/C00800201"))
 
-    assert committee["cycles"][0]["total_from_organizations"] == 72500.0
+    # ONE NATION, a Form 5 filer, is an organization; RESTORATION PAC, a super PAC its filer typed
+    # ORG, is a committee and no organization (NEU-2195).
+    assert committee["cycles"][0]["total_from_organizations"] == 112500.0
     assert committee["cycles"][0]["top_organizations"] == [
         {
             "rank": 1,
             "name": "CHESAPEAKE STEEL, INC.",
             "organization_key": "CHESAPEAKE STEEL",
             "amount": 72500.0,
-        }
+        },
+        {"rank": 2, "name": "ONE NATION", "organization_key": "ONE NATION", "amount": 40000.0},
     ]
 
 

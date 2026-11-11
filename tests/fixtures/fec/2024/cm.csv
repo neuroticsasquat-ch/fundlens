@@ -30,3 +30,10 @@ C00800204,TIDEWATER ACTION FUND,"MORROW, ELLEN",1400 LIGHT ST,,BALTIMORE,MD,2123
 # on 2024-07-21, under its real id and named as `cm` names it today, as the vendored handoff list
 # (fec/handoffs.csv) names it. Its money is Biden's before that date and Harris's from it on.
 C00703975,HARRIS FOR PRESIDENT,,PO BOX 58174,,PHILADELPHIA,PA,19102,P,P,DEM,M,,,P00009423
+# Two givers an ORG-typed `indiv` row names (NEU-2195): RESTORATION PAC, a super PAC (type O), and
+# ONE NATION, an organization filing Form 5 (type I, a C9 id), which is no political committee. A
+# Form 9 filer (type E) shares the super PAC's name: no political committee, so the name still
+# names the super PAC alone among them.
+C00800205,RESTORATION PAC,"DUNMORE, LEWIS",1500 WACKER DR,,CHICAGO,IL,60606,U,O,,Q,,,
+C90800206,ONE NATION,"SALTER, RUTH",1600 KING ST,,ALEXANDRIA,VA,22314,U,I,,Q,,,
+C90800207,RESTORATION PAC,"DUNMORE, LEWIS",1500 WACKER DR,,CHICAGO,IL,60606,U,E,,Q,,,

@@ -130,6 +130,10 @@ NAMED_GIFT, NAMES_NONE, NAMES_SELF = (
     4240100000000000326,
 )
 OTH_NAMED_GIFT = 4240300000000000022
+# ORG-typed `indiv` rows with no OTHER_ID naming one `cm` committee (NEU-2195): RESTORATION PAC, a
+# super PAC, and ONE NATION, a Form 5 filer (type I).
+RESTORATION, ONE_NATION = 4240100000000000355, 4240100000000000356
+RESTORATION_PAC = "C00800205"
 # Rows filed with no entity type (NEU-2132): ACME WIDGETS INC, an organization by the classifier;
 # BANKS, JOHN, an individual; OLD LINE REPUBLICAN COMMITTEE, an organization naming one committee;
 # and CHESAPEAKE STEEL INC's 15J line, an organization's.
@@ -1199,14 +1203,15 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     receipts = [row for row in rows if row["side"] == "receipt"]
     disbursements = [row for row in rows if row["side"] == "disbursement"]
 
-    # Every `oth` receipt from a committee is a receipt, and the one `indiv` row a committee's by
-    # name (NEU-2131); every 24K `pas2` row a disbursement; nothing else is here. `oth`'s repeat
+    # Every `oth` receipt from a committee is a receipt, and the `indiv` rows a committee's by
+    # name (NEU-2131), RESTORATION PAC's ORG-typed one among them (NEU-2195); every 24K `pas2` row
+    # a disbursement; nothing else is here. `oth`'s repeat
     # of a pas2 24K and 24A, its 15J memo line, the 16C candidate loan and the union's gift are
     # none of those (NEU-2070); the 31K party-account receipt is one.
     receipt_ids = {row["source_record_id"] for row in receipts}
     assert receipt_ids & OTH_NOT_RECEIPTS == set()
     assert OTH_PARTY_ACCOUNT_RECEIPT in receipt_ids
-    assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS) + 1
+    assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS) + 2
     assert len(disbursements) == len(rows) - len(receipts)
     assert len(rows) == expected["silver"]["committee_transfer"]
     assert {row["transaction_type"] for row in disbursements} == {"24K"}
@@ -1649,13 +1654,48 @@ def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_nam
     assert {NAMED_GIFT, OTH_NAMED_GIFT} <= everywhere
     assert {
         sub_id: transfers[sub_id]["from_committee_id"] if sub_id in transfers else None
-        for sub_id in (NAMED_GIFT, NAMES_NONE, NAMES_SELF, OLD_LINE_BLANK)
+        for sub_id in (NAMED_GIFT, NAMES_NONE, NAMES_SELF, OLD_LINE_BLANK, RESTORATION)
     } == {int(sub_id): c for sub_id, c in expected["name_matched"].items()}
     receipts = [row for row in transfers.values() if row["side"] == "receipt"]
     assert (
         sum_by(receipts, "to_committee_id")[SUPER_PAC]
         == (expected["committees"][SUPER_PAC]["total_from_committees"])
     )
+
+
+def test_an_org_typed_gift_naming_a_political_committee_is_that_committees_receipt(
+    fixture_silver: Path,
+) -> None:
+    transfers = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "committee_transfer")
+    }
+    receipts = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
+    }
+
+    # The super PAC typed RESTORATION PAC's gift ORG, with no OTHER_ID: its NAME names one super
+    # PAC, so it is a receipt from it, kept as filed, and no organization receipt (NEU-2195). A
+    # Form 9 filer shares the name, but it is no political committee, so it names no second one.
+    restoration = transfers[RESTORATION]
+    assert (
+        restoration["from_committee_id"],
+        restoration["to_committee_id"],
+        restoration["candidate_id"],
+        restoration["amount"],
+        restoration["date"],
+        restoration["side"],
+    ) == (RESTORATION_PAC, SUPER_PAC, None, 90000, date(2024, 9, 5), "receipt")
+    assert RESTORATION not in receipts
+    # ONE NATION's NAME names a Form 5 filer (type I), no political committee: an organization's
+    # gift still, on line 11(a)(i).
+    assert ONE_NATION not in transfers
+    one_nation = receipts[ONE_NATION]
+    assert (
+        one_nation["organization_key"],
+        one_nation["recipient_committee_id"],
+        one_nation["amount"],
+        one_nation["fec_line"],
+    ) == ("ONE NATION", SUPER_PAC, 40000, "11(a)(i)")
 
 
 def test_a_blank_entity_type_the_classifier_calls_an_organization_is_no_contribution(
