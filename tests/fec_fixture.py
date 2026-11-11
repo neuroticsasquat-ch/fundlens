@@ -8,7 +8,10 @@ them. `expected.yaml` beside them records what the pipeline must make of them.
 """
 
 import csv
+import functools
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, TypedDict, cast
 
 import yaml
@@ -22,16 +25,23 @@ CYCLE = 2024
 # The one file each fixture zip holds, named as in FEC's own zips.
 MEMBERS: dict[FecFile, str] = {name: bulk.member for name, bulk in CATALOGUE.items()}
 
+# One fixture row, keyed by FEC column name. Read-only: `read_rows` hands every caller the same
+# cached rows, so a test that changed one would change it for every later test.
+type Row = Mapping[str, str]
+
 
 def fixture_dir(cycle: int = CYCLE) -> Path:
     return FIXTURES / "fec" / str(cycle)
 
 
-def read_rows(file: FecFile, directory: Path | None = None) -> list[dict[str, str]]:
+@functools.cache
+def read_rows(file: FecFile, directory: Path | None = None) -> tuple[Row, ...]:
     """One bulk file's rows from `<file>.csv`, keyed by FEC column name.
 
     Raises `ValueError` unless the header row is the vendored header exactly and every row has
     one value per column: a fixture that drifts from FEC's layout fails here, not in a transform.
+    Read once per file and directory, then cached (NEU-2267): the tally in
+    `tests/unit/test_fec_fixture.py` reads them inside per-row predicates.
     """
     path = (directory or fixture_dir()) / f"{file}.csv"
     lines = [line for line in path.read_text().splitlines() if not line.startswith("#")]
@@ -46,7 +56,7 @@ def read_rows(file: FecFile, directory: Path | None = None) -> list[dict[str, st
             raise ValueError(f"{path}: data row {n} has not {len(columns)} values")
         if any("|" in value for value in row.values()):
             raise ValueError(f"{path}: data row {n} holds a `|`, FEC's delimiter")
-    return rows
+    return tuple(MappingProxyType(row) for row in rows)
 
 
 def bulk_text(file: FecFile, directory: Path | None = None) -> str:
@@ -177,6 +187,8 @@ class Expected(TypedDict):
     validation: Validation
 
 
+@functools.cache
 def expected(cycle: int = CYCLE) -> Expected:
-    """The cycle's `expected.yaml`: the totals, counts and donor groupings the fixture plants."""
+    """The cycle's `expected.yaml`: the totals, counts and donor groupings the fixture plants.
+    Read once, then cached (NEU-2267): every caller shares it, so none may change it."""
     return cast(Expected, yaml.safe_load((fixture_dir(cycle) / "expected.yaml").read_text()))

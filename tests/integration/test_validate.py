@@ -5,6 +5,9 @@ file's wrong pairs apart (NEU-2182)."""
 
 import csv
 import re
+import shutil
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +15,8 @@ import duckdb
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from typer.testing import CliRunner, Result
 
@@ -23,10 +28,17 @@ from fundlens.resolve.validate import DIME_VERSION
 from fundlens.settings import Settings, get_settings
 from tests import fec_fixture
 from tests.fake_adjudicator import FakeAdjudicator
+from tests.integration.conftest import (
+    cli_pointed_at,
+    database_name,
+    empty_store,
+    scratch_database,
+)
 from tests.integration.test_load import load, rows
 from tests.integration.test_resolve import (
     AGAIN,
     FIXTURE_OVERRIDES,
+    MEMORY_LIMIT,
     MODEL,
     clusters,
     donor_keys,
@@ -36,6 +48,7 @@ from tests.integration.test_resolve import (
 
 # A fixture, imported so this module's tests can request it.
 from tests.integration.test_resolve import transformed as transformed
+from tests.integration.test_transform import put_bronze, seats_report, transform
 from tests.unit.test_fec_fixture import DIME, counted, dime_cids, signed
 
 EXPECTED = fec_fixture.expected()
@@ -43,6 +56,8 @@ VALIDATION = EXPECTED["validation"]
 TOP = VALIDATION["top"]["limit"]
 # The deployed release OTel names for the second resolve, which its run record keeps.
 RELEASE = "0123456789abcdef0123456789abcdef01234567"
+# The bucket the module's resolved state is built in once, and copied from for each test.
+SNAPSHOT_BUCKET = "fundlens-test-snapshot"
 
 
 def run(*args: str) -> Result:
@@ -57,30 +72,92 @@ def validate(*args: str) -> Result:
     return run("validate", "--cycle", "2024", "--top", str(TOP), *args)
 
 
-@pytest.fixture
-def resolved(transformed: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The fixture cycle resolved with the fixture overrides and the fake model's verdicts, as
-    model `AGAIN`; the `DATA_DIR`.
-
-    Twice, as the overrides runbook does: the split names a donor_id, which only a first run
-    without overrides hands out, and `adjudicate` chooses from the clusters of a run before it.
-    """
-    first = resolve("--full", "--build-id", MODEL)
-    assert first.exit_code == 0, first.output
-    client = FakeAdjudicator()
-
-    def client_for(settings: Settings) -> FakeAdjudicator:
-        return client
-
-    monkeypatch.setattr(adjudication, "client_for", client_for)
-    adjudicated = run("adjudicate")
-    assert adjudicated.exit_code == 0, adjudicated.output
-    monkeypatch.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
-    monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", f"service.version={RELEASE}")
+def resolved_env(env: pytest.MonkeyPatch) -> None:
+    """The settings the second resolve runs under, and every test after it: the pipeline's DuckDB
+    memory limit, the fixture overrides and the release OTel names."""
+    env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+    env.setenv("OVERRIDES_PATH", str(FIXTURE_OVERRIDES))
+    env.setenv("OTEL_RESOURCE_ATTRIBUTES", f"service.version={RELEASE}")
     get_settings.cache_clear()
-    again = resolve("--full", "--build-id", AGAIN)
-    assert again.exit_code == 0, again.output
-    return transformed
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """The fixture cycle resolved: its `DATA_DIR`, database and bucket."""
+
+    data_dir: Path
+    database: str
+    store: R2
+
+
+@pytest.fixture(scope="module")
+def snapshot(
+    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Snapshot]:
+    """The fixture cycle transformed, then resolved with the fixture overrides and the fake
+    model's verdicts as model `AGAIN`, once for the module (NEU-2267), in a bucket, database and
+    `DATA_DIR` of its own, which `resolved` copies for each test.
+
+    Resolved twice, as the overrides runbook does: the split names a donor_id, which only a first
+    run without overrides hands out, and `adjudicate` chooses from the clusters of a run before it.
+    """
+    data_dir = tmp_path_factory.mktemp("resolved")
+    bucket = empty_store(SNAPSHOT_BUCKET)
+    with scratch_database(template=migrated_template) as conninfo:
+        try:
+            with cli_pointed_at(
+                conninfo=conninfo, data_dir=data_dir, bucket=SNAPSHOT_BUCKET
+            ) as env:
+                put_bronze(bucket)
+                seats_report()
+                transform_run = transform()
+                assert transform_run.exit_code == 0, transform_run.output
+                env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+                get_settings.cache_clear()
+                first = resolve("--full", "--build-id", MODEL)
+                assert first.exit_code == 0, first.output
+                client = FakeAdjudicator()
+
+                def client_for(settings: Settings) -> FakeAdjudicator:
+                    return client
+
+                env.setattr(adjudication, "client_for", client_for)
+                adjudicated = run("adjudicate")
+                assert adjudicated.exit_code == 0, adjudicated.output
+                resolved_env(env)
+                again = resolve("--full", "--build-id", AGAIN)
+                assert again.exit_code == 0, again.output
+            yield Snapshot(data_dir, database_name(conninfo), bucket)
+        finally:
+            bucket.delete_prefix("")
+
+
+@pytest.fixture
+def resolved(
+    snapshot: Snapshot,
+    store: R2,
+    cli_env: Path,
+    migrated_db: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """The fixture cycle resolved as `snapshot` left it, copied into the test's own bucket,
+    database and `DATA_DIR`, which the test may change; the `DATA_DIR`."""
+    shutil.copytree(snapshot.data_dir, cli_env, dirs_exist_ok=True)
+    for key in snapshot.store.list_keys(""):
+        store.client.copy_object(
+            Bucket=store.bucket, Key=key, CopySource={"Bucket": snapshot.store.bucket, "Key": key}
+        )
+    # The test's database, under its own name, made over as a copy of the snapshot's.
+    name = sql.Identifier(database_name(migrated_db))
+    with psycopg.connect(make_conninfo(migrated_db, dbname="postgres"), autocommit=True) as conn:
+        conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(name))
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                name, sql.Identifier(snapshot.database)
+            )
+        )
+    resolved_env(monkeypatch)
+    return cli_env
 
 
 def quality(conninfo: str) -> dict[str, dict[str, Any]]:

@@ -9,7 +9,6 @@ from typing import Any
 
 import psycopg
 import pytest
-from alembic import command
 from fastapi.testclient import TestClient
 from httpx2 import Response
 from typer.testing import CliRunner
@@ -22,13 +21,7 @@ from fundlens.fec.files import files_for
 from fundlens.publish import gold as gold_publish
 from fundlens.settings import get_settings
 from tests import fec_fixture
-from tests.integration.conftest import (
-    NO_OVERRIDES,
-    TEST_BUCKET,
-    alembic_config,
-    empty_store,
-    scratch_database,
-)
+from tests.integration.conftest import Published, cli_pointed_at, empty_store, scratch_database
 from tests.integration.test_publish import load, transform
 from tests.integration.test_resolve import MODEL
 from tests.integration.test_transform import put_bronze
@@ -39,46 +32,36 @@ OFFICE_NAMES = {"P": "president", "S": "senate", "H": "house"}
 EXPECTED = fec_fixture.expected()
 
 
-def leave_logging_alone(level: str) -> None:
-    # The CLI's callback reconfigures the root logger, which would outlive the module.
-    pass
-
-
 @contextmanager
-def published_fixture_cycle(data_dir: Path, *, resolved: bool = False) -> Generator[str]:
+def published_fixture_cycle(
+    data_dir: Path, template: str, *, resolved: bool = False
+) -> Generator[str]:
     """A database whose live `gold` is the fixture cycle's, as `publish` leaves it, with that
-    build's silver under `data_dir`; the database's conninfo. `resolved`, its donors resolved
-    (with no overrides) before the load, so gold has its donor tables and silver its buckets."""
-    with scratch_database() as conninfo:
-        command.upgrade(alembic_config(conninfo), "head")
+    build's silver under `data_dir`; the database's conninfo. Copied from the migrated database
+    `template`. `resolved`, its donors resolved (with no overrides) before the load, so gold has
+    its donor tables and silver its buckets."""
+    with scratch_database(template=template) as conninfo:
         store = empty_store()
-        with pytest.MonkeyPatch.context() as env:
-            env.setattr(cli, "configure_logging", leave_logging_alone)
-            env.setenv("R2_BUCKET", TEST_BUCKET)
-            env.setenv("DATABASE_URL", conninfo)
-            env.setenv("DATA_DIR", str(data_dir))
-            env.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
-            get_settings.cache_clear()
-            try:
+        try:
+            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir):
                 put_bronze(store)
                 transform(BUILD)
                 if resolved:
                     result = CliRunner().invoke(cli.app, ["resolve", "--full", "--build-id", MODEL])
                     assert result.exit_code == 0, result.output
                 load(BUILD)
-            finally:
-                store.delete_prefix("")
-                get_settings.cache_clear()
+        finally:
+            store.delete_prefix("")
         with psycopg.connect(conninfo, autocommit=True) as conn:
             gold_publish.swap(conn)
         yield conninfo
 
 
 @pytest.fixture(scope="module")
-def gold_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    """A database whose live `gold` is the fixture cycle's, as `publish` leaves it."""
-    with published_fixture_cycle(tmp_path_factory.mktemp("data")) as conninfo:
-        yield conninfo
+def gold_db(published: Published) -> str:
+    """A database whose live `gold` is the fixture cycle's, as `publish` leaves it: the session's,
+    which this module's tests only read."""
+    return published.conninfo
 
 
 @pytest.fixture(scope="module")

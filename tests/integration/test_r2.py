@@ -5,10 +5,23 @@ import os
 from pathlib import Path
 
 import pytest
+from boto3.s3.transfer import TransferConfig
 
-from fundlens.r2 import MULTIPART_BYTES, R2
+from fundlens import r2
+from fundlens.r2 import R2
 
 MB = 1024 * 1024
+# S3's smallest part, in place of the client's 64 MB: the multipart path runs the same on a few
+# megabytes, which is all these tests move (NEU-2267).
+PART = 5 * MB
+
+
+@pytest.fixture(autouse=True)
+def small_parts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The client's uploads, downloads and copies in `PART`-sized parts above `PART`."""
+    monkeypatch.setattr(
+        r2, "_TRANSFER", TransferConfig(multipart_threshold=PART, multipart_chunksize=PART)
+    )
 
 
 def random_file(path: Path, size: int) -> str:
@@ -26,16 +39,18 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def test_a_100_mb_file_goes_up_in_parts_and_comes_back_whole(store: R2, tmp_path: Path) -> None:
+def test_a_file_over_the_part_size_goes_up_in_parts_and_comes_back_whole(
+    store: R2, tmp_path: Path
+) -> None:
     source = tmp_path / "big.bin"
-    expected = random_file(source, 100 * MB)
+    expected = random_file(source, 2 * PART + 2 * MB)
 
     store.put("bronze/big.bin", source)
     downloaded = store.download_to("bronze/big.bin", tmp_path / "cache" / "big.bin")
 
-    # A multipart upload's ETag ends in `-<parts>`: 64 MB + 36 MB.
+    # A multipart upload's ETag ends in `-<parts>`: 5 MB + 5 MB + 2 MB.
     head = store.client.head_object(Bucket=store.bucket, Key="bronze/big.bin")
-    assert head["ETag"].strip('"').endswith("-2")
+    assert head["ETag"].strip('"').endswith("-3")
     assert sha256(downloaded) == expected
     assert not (tmp_path / "cache" / "big.bin.part").exists()
 
@@ -103,7 +118,7 @@ def test_atomic_publish_moves_every_object_including_multipart_ones(
     # Over the threshold, so it was uploaded in parts and is copied in parts: the MinIO/R2
     # parity edge case spec §13 leaves to this ticket.
     big = tmp_path / "part-0001.parquet"
-    expected = random_file(big, MULTIPART_BYTES + MB)
+    expected = random_file(big, PART + MB)
     store.put("tmp/build=1/part-0000.parquet", b"small")
     store.put("tmp/build=1/part-0001.parquet", big)
 

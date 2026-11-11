@@ -6,14 +6,16 @@ are updated to match. It is not the pipeline, and nothing outside this module us
 """
 
 import csv
+import functools
 import io
 import re
 import zipfile
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
 from typing import get_args
 
 import pytest
@@ -22,7 +24,14 @@ from fundlens.fec.files import CATALOGUE, FecFile
 from fundlens.resolve import normalize
 from fundlens.transform.seats import Filing, races_for
 from tests import fec_fixture
-from tests.fec_fixture import CYCLE, MEMBERS, CandidateTotals, CommitteeTotals, RaceTotals
+from tests.fec_fixture import (
+    CYCLE,
+    MEMBERS,
+    CandidateTotals,
+    CommitteeTotals,
+    RaceTotals,
+    Row,
+)
 
 FILES: tuple[FecFile, ...] = get_args(FecFile)
 DIME = fec_fixture.FIXTURES / "dime" / "contribDB_2024.csv"
@@ -55,38 +64,45 @@ HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
 EXPECTED = fec_fixture.expected()
 
 
-def rows(file: FecFile) -> list[dict[str, str]]:
+def rows(file: FecFile) -> tuple[Row, ...]:
     return fec_fixture.read_rows(file)
 
 
-def amount(row: dict[str, str]) -> int:
+@functools.cache
+def committee_ids() -> frozenset[str]:
+    """The committees of the cycle: `cm`'s."""
+    return frozenset(row["CMTE_ID"] for row in rows("cm"))
+
+
+def amount(row: Row) -> int:
     value = Decimal(row["TRANSACTION_AMT"])
     # Every fixture amount is whole dollars, so the expected totals can be plain integers.
     assert value == value.to_integral_value(), row["SUB_ID"]
     return int(value)
 
 
-def is_refund(row: dict[str, str]) -> bool:
+def is_refund(row: Row) -> bool:
     return re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) is not None
 
 
-def signed(row: dict[str, str]) -> int:
+def signed(row: Row) -> int:
     """A contribution's amount as it counts. A refund (22Y, or any 2nY or 4nY type) subtracts
     whichever sign its filer wrote, unless it is negative and mirrors a positive refund to the same
     donor at the same committee: then it voids that refund and adds back."""
     if not is_refund(row):
         return amount(row)
     reverses = amount(row) < 0 and any(
-        is_refund(other)
-        and other["CMTE_ID"] == row["CMTE_ID"]
+        other["CMTE_ID"] == row["CMTE_ID"]
         and other["NAME"] == row["NAME"]
+        and is_refund(other)
         and amount(other) == -amount(row)
         for other in rows("indiv")
     )
     return -amount(row) if reverses else -abs(amount(row))
 
 
-def linked_candidates() -> dict[str, str]:
+@functools.cache
+def linked_candidates() -> Mapping[str, str]:
     """Committee → candidate, for the principal and authorized committees `ccl` links, and the
     principal campaign committee each `cn` row names whatever `ccl`'s designation (spec §4). A
     committee linked to two candidates is the principal link's, then the lower candidate_id's."""
@@ -103,10 +119,10 @@ def linked_candidates() -> dict[str, str]:
     linked: dict[str, str] = {}
     for _, candidate_id, committee_id in links:
         linked.setdefault(committee_id, candidate_id)
-    return linked
+    return MappingProxyType(linked)
 
 
-def candidate_of(committee_id: str, row: dict[str, str]) -> str | None:
+def candidate_of(committee_id: str, row: Row) -> str | None:
     """The candidate `row`'s money to `committee_id` is credited to: the one `ccl` links it to, or,
     for a handed-off committee, the candidate it was handed from before the handoff date and the
     one it was handed to on and after it, and an undated row's the latter's (NEU-2126)."""
@@ -117,7 +133,7 @@ def candidate_of(committee_id: str, row: dict[str, str]) -> str | None:
     return linked_candidates().get(committee_id)
 
 
-def is_conduit_side(row: dict[str, str]) -> bool:
+def is_conduit_side(row: Row) -> bool:
     """A conduit's own line for an earmark it passed on, filed as a 15 naming the recipient."""
     return (
         row["CMTE_ID"] in CONDUITS.values()
@@ -125,11 +141,11 @@ def is_conduit_side(row: dict[str, str]) -> bool:
     )
 
 
-def is_intermediary_earmark(row: dict[str, str]) -> bool:
+def is_intermediary_earmark(row: Row) -> bool:
     """An intermediary's 24I that its recipient itemized too (NEU-2203): OTHER_ID a committee of
     the cycle, no conduit and not the filer, holding a row of the same name and amount, no memo
     line, refund, 24T or 24I, dated within 30 days of it."""
-    others = {c["CMTE_ID"] for c in rows("cm")} - set(CONDUITS.values()) - {row["CMTE_ID"]}
+    others = committee_ids() - set(CONDUITS.values()) - {row["CMTE_ID"]}
     if row["TRANSACTION_TP"] != "24I" or row["MEMO_CD"] == "X" or row["OTHER_ID"] not in others:
         return False
     dated = datetime.strptime(row["TRANSACTION_DT"], "%m%d%Y").date()
@@ -146,7 +162,7 @@ def is_intermediary_earmark(row: dict[str, str]) -> bool:
     )
 
 
-def is_conduit_earmark_refund(row: dict[str, str]) -> bool:
+def is_conduit_earmark_refund(row: Row) -> bool:
     """A conduit's refund of an earmark (NEU-2199): a refund at a conduit mirroring no gift of the
     conduit's own there (no memo line, 24T or line for an earmark) by name key and amount."""
     if row["CMTE_ID"] not in CONDUITS.values() or not is_refund(row) or row["MEMO_CD"] == "X":
@@ -155,30 +171,29 @@ def is_conduit_earmark_refund(row: dict[str, str]) -> bool:
         own["CMTE_ID"] == row["CMTE_ID"]
         and own["MEMO_CD"] != "X"
         and own["TRANSACTION_TP"] != "24T"
+        and abs(amount(own)) == abs(amount(row))
         and not is_refund(own)
         and not is_conduit_side(own)
         and name_key(own["NAME"]) == name_key(row["NAME"])
-        and abs(amount(own)) == abs(amount(row))
         for own in rows("indiv")
     )
 
 
-def counts(row: dict[str, str]) -> bool:
+def counts(row: Row) -> bool:
     """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no
     intermediary's 24I its recipient itemized too, no conduit's own line for an earmark or refund
     of one, to a committee of the cycle."""
-    committees = {row["CMTE_ID"] for row in rows("cm")}
     return (
         row["MEMO_CD"] != "X"
         and row["TRANSACTION_TP"] != "24T"
-        and not is_intermediary_earmark(row)
+        and row["CMTE_ID"] in committee_ids()
         and not is_conduit_side(row)
+        and not is_intermediary_earmark(row)
         and not is_conduit_earmark_refund(row)
-        and row["CMTE_ID"] in committees
     )
 
 
-def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]]:
+def non_contribution_account(table: Iterable[Row]) -> list[Row]:
     """The rows of one table, the counted contributions or the organization receipts, a hybrid PAC
     took into or refunded from its non-contribution account (NEU-2192): a 10, 10J or 20Y to or
     from a committee typed V or W, or a 24I there whose memo names the account (NEU-2207), whoever
@@ -198,20 +213,20 @@ def non_contribution_account(table: list[dict[str, str]]) -> list[dict[str, str]
     ]
 
 
-def is_other_line(row: dict[str, str]) -> bool:
+def is_other_line(row: Row) -> bool:
     """A counted row or organization receipt whose type FEC files on a line no total_individual
     or total_from_organizations counts (NEU-2193, NEU-2205); a candidate's own money is
     self-funding whatever its line."""
     return re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None
 
 
-def is_classified(row: dict[str, str]) -> bool:
+def is_classified(row: Row) -> bool:
     """An `indiv` row filed with no entity type whose name the classifier calls an
     organization's (NEU-2132)."""
     return not row["ENTITY_TP"].strip() and normalize.is_organization_name(row["NAME"])
 
 
-def is_individual(row: dict[str, str]) -> bool:
+def is_individual(row: Row) -> bool:
     """An `indiv` row from an individual or a candidate: typed IND or CAN, or blank and not
     classified (NEU-2132)."""
     return row["ENTITY_TP"] in ("IND", "CAN") or (
@@ -219,10 +234,11 @@ def is_individual(row: dict[str, str]) -> bool:
     )
 
 
-def counted() -> list[dict[str, str]]:
+@functools.cache
+def counted() -> tuple[Row, ...]:
     """The `indiv` rows the contribution table keeps: individuals and candidates, earmarks once,
     to committees of the cycle."""
-    return [row for row in rows("indiv") if is_individual(row) and counts(row)]
+    return tuple(row for row in rows("indiv") if is_individual(row) and counts(row))
 
 
 def name_key(name: str) -> str:
@@ -235,7 +251,8 @@ def person(name: str) -> tuple[str, str]:
     return name_key(last), name_key(given.strip().partition(" ")[0])
 
 
-def aliases() -> dict[str, str]:
+@functools.cache
+def aliases() -> Mapping[str, str]:
     """Candidate alias → the candidate it is an alias of (NEU-2127): a candidate of the same race,
     under the same last and first given name, credited a committee `ccl` links both principal or
     authorized; the alias credited none, and in no handoff."""
@@ -260,15 +277,15 @@ def aliases() -> dict[str, str]:
             and names[alias] == names[holder]
         ):
             found[alias] = min(found.get(alias, holder), holder)
-    return found
+    return MappingProxyType(found)
 
 
-def is_receipt_line(row: dict[str, str]) -> bool:
+def is_receipt_line(row: Row) -> bool:
     """An `oth` row of a receipt type (1x, or 3x for a party's accounts) that is no memo line."""
     return row["TRANSACTION_TP"][:1] in ("1", "3") and row["MEMO_CD"] != "X"
 
 
-def named_committee(row: dict[str, str], *, classified: bool = False) -> str | None:
+def named_committee(row: Row, *, classified: bool = False) -> str | None:
     """The one `cm` committee a row typed PAC, COM, CCM or PTY with a blank OTHER_ID names
     (NEU-2131), or a `classified` `indiv` row does (NEU-2132), never its own recipient; None when
     it names several, none, or itself."""
@@ -278,7 +295,7 @@ def named_committee(row: dict[str, str], *, classified: bool = False) -> str | N
     return named[0] if len(named) == 1 and named[0] != row["CMTE_ID"] else None
 
 
-def has_twin(row: dict[str, str], committee_id: str) -> bool:
+def has_twin(row: Row, committee_id: str) -> bool:
     """Whether `oth` already holds `row`'s gift under `committee_id`: a receipt to the same
     recipient from that id, of the same amount on the same date (NEU-2131)."""
     return any(
@@ -292,7 +309,7 @@ def has_twin(row: dict[str, str], committee_id: str) -> bool:
     )
 
 
-def giver(row: dict[str, str]) -> str | None:
+def giver(row: Row) -> str | None:
     """The committee an `oth` row is from: OTHER_ID when it is a committee's id, else, when it is
     blank, the joint fundraising committee whose name NAME is (NEU-2124), else the one committee
     a PAC, COM, CCM or PTY row names (NEU-2131), unless `oth` holds the gift under that
@@ -309,13 +326,14 @@ def giver(row: dict[str, str]) -> str | None:
     return named if named is not None and not has_twin(row, named) else None
 
 
-def committee_receipts() -> list[dict[str, str]]:
+def committee_receipts() -> list[Row]:
     """The `oth` rows that are receipts from another committee: a receipt type (1x, or 3x for a
     party's accounts), not a memo line, from a giver."""
     return [row for row in rows("oth") if is_receipt_line(row) and giver(row) is not None]
 
 
-def name_matched() -> dict[str, str | None]:
+@functools.cache
+def name_matched() -> Mapping[str, str | None]:
     """Each counted `indiv` row typed PAC, COM, CCM or PTY with a blank OTHER_ID, by SUB_ID, and
     the committee it is a receipt from (NEU-2131): the one its NAME names, unless `oth` holds the
     gift under that id already; None when it is dropped. A classified row (NEU-2132) is here only
@@ -333,35 +351,35 @@ def name_matched() -> dict[str, str | None]:
         else:
             continue
         found[row["SUB_ID"]] = named if named and not has_twin(row, named) else None
-    return found
+    return MappingProxyType(found)
 
 
-def name_matched_gifts() -> list[dict[str, str]]:
+def name_matched_gifts() -> list[Row]:
     """The `indiv` rows that are committee_transfer receipts by the name rule."""
     kept = {sub_id for sub_id, committee_id in name_matched().items() if committee_id}
     return [row for row in rows("indiv") if row["SUB_ID"] in kept]
 
 
-def mirrors_counted_row(row: dict[str, str]) -> bool:
+def mirrors_counted_row(row: Row) -> bool:
     """Whether a counted `indiv` row is the same gift as `oth`'s `row`: same recipient, name,
     amount and date (NEU-2131), so the receipt is read once, from `indiv`."""
     return any(
-        counts(other)
-        and other["CMTE_ID"] == row["CMTE_ID"]
-        and name_key(other["NAME"]) == name_key(row["NAME"])
+        other["CMTE_ID"] == row["CMTE_ID"]
         and other["TRANSACTION_AMT"] == row["TRANSACTION_AMT"]
         and other["TRANSACTION_DT"] == row["TRANSACTION_DT"]
+        and name_key(other["NAME"]) == name_key(row["NAME"])
+        and counts(other)
         for other in rows("indiv")
     )
 
 
-def organization_receipts() -> list[dict[str, str]]:
+@functools.cache
+def organization_receipts() -> tuple[Row, ...]:
     """The rows of either file that are organization receipts (NEU-2131, ADR-0011): a counted
     `indiv` row typed ORG, or classified and naming no one committee (NEU-2132), or an `oth`
     receipt typed ORG from no committee id, naming no JFC, neither an attribution line nor a
     loan, to a committee of the cycle, mirroring no counted `indiv` row."""
-    committees = {row["CMTE_ID"] for row in rows("cm")}
-    return [
+    return tuple(
         row
         for row in rows("indiv")
         if counts(row)
@@ -369,7 +387,7 @@ def organization_receipts() -> list[dict[str, str]]:
             row["ENTITY_TP"] == ORGANIZATION
             or (is_classified(row) and named_committee(row, classified=True) is None)
         )
-    ] + [
+    ) + tuple(
         row
         for row in rows("oth")
         if is_receipt_line(row)
@@ -377,32 +395,31 @@ def organization_receipts() -> list[dict[str, str]]:
         and not row["OTHER_ID"].startswith("C")
         and giver(row) is None
         and row["TRANSACTION_TP"] not in NOT_GIFTS
-        and row["CMTE_ID"] in committees
+        and row["CMTE_ID"] in committee_ids()
         and not mirrors_counted_row(row)
-    ]
+    )
 
 
-def attributions() -> list[dict[str, str]]:
+def attributions() -> list[Row]:
     """The `oth` rows that are JFC attributions (spec §6.11): 15J memo lines from an individual
     (IND, or blank and not classified, NEU-2132) filed by a committee of the cycle."""
-    committees = {row["CMTE_ID"] for row in rows("cm")}
     return [
         row
         for row in rows("oth")
         if row["TRANSACTION_TP"] == "15J"
         and row["MEMO_CD"] == "X"
         and (row["ENTITY_TP"] == "IND" or (not row["ENTITY_TP"] and not is_classified(row)))
-        and row["CMTE_ID"] in committees
+        and row["CMTE_ID"] in committee_ids()
     ]
 
 
-def is_self_funding(row: dict[str, str]) -> bool:
+def is_self_funding(row: Row) -> bool:
     names = {r["CAND_ID"]: r["CAND_NAME"] for r in rows("cn")}
     candidate = candidate_of(row["CMTE_ID"], row)
     return row["ENTITY_TP"] == "CAN" and candidate is not None and names[candidate] == row["NAME"]
 
 
-def conduit(row: dict[str, str]) -> str | None:
+def conduit(row: Row) -> str | None:
     """The conduit an earmark came through; never the recipient itself (a gift to ActBlue)."""
     found = None
     if row["OTHER_ID"] in CONDUITS.values():
@@ -415,20 +432,23 @@ def conduit(row: dict[str, str]) -> str | None:
     return None if found == row["CMTE_ID"] else found
 
 
-def race_ids() -> dict[str, str | None]:
+@functools.cache
+def race_ids() -> Mapping[str, str | None]:
     """Candidate → the regular race its filing's seat names, or None when the seat is no race."""
     seats = {race.seat: race.race_id for race in races_for(CYCLE) if not race.is_special}
-    return {
-        row["CAND_ID"]: seats.get(
-            Filing(
-                row["CAND_ID"],
-                row["CAND_OFFICE"],
-                row["CAND_OFFICE_ST"],
-                row["CAND_OFFICE_DISTRICT"],
-            ).seat
-        )
-        for row in rows("cn")
-    }
+    return MappingProxyType(
+        {
+            row["CAND_ID"]: seats.get(
+                Filing(
+                    row["CAND_ID"],
+                    row["CAND_OFFICE"],
+                    row["CAND_OFFICE_ST"],
+                    row["CAND_OFFICE_DISTRICT"],
+                ).seat
+            )
+            for row in rows("cn")
+        }
+    )
 
 
 def sum_by[K](pairs: Iterable[tuple[K, int]]) -> dict[K, int]:
@@ -467,7 +487,7 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     }
 
 
-def committee_contributions() -> list[dict[str, str]]:
+def committee_contributions() -> list[Row]:
     """The `pas2` 24K rows that are a committee's gift: not a conduit's, whose 24K is its side of
     an earmark it passed on, counted on the recipient's `indiv` row (ADR-0004)."""
     return [
@@ -477,7 +497,7 @@ def committee_contributions() -> list[dict[str, str]]:
     ]
 
 
-def gift_candidate(row: dict[str, str]) -> str | None:
+def gift_candidate(row: Row) -> str | None:
     """The candidate a 24K is credited to: the one its recipient committee is linked to, else the
     giver's CAND_ID when that is a candidate of the cycle (the one it is an alias of, when it is an
     alias), else none."""
@@ -499,7 +519,7 @@ def gift_pairs() -> dict[tuple[str, str], int]:
     )
 
 
-def ie_candidate(row: dict[str, str]) -> str | None:
+def ie_candidate(row: Row) -> str | None:
     """The candidate an independent expenditure is for or against: the one it names."""
     return row["CAND_ID"]
 
@@ -652,7 +672,7 @@ def test_the_expected_totals_match_a_tally_of_the_fixture() -> None:
     assert EXPECTED["aliases"] == aliases()
 
 
-def contributor_key(row: dict[str, str]) -> str:
+def contributor_key(row: Row) -> str:
     """The contributor key of an `indiv` or `oth` row (spec §6.1), from the normalizers it is
     built from."""
     return normalize.contributor_key(

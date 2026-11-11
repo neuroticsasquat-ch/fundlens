@@ -60,9 +60,11 @@ def silver_rows(data_dir: Path, cycle: int, build_id: str, where: str = "true") 
 
 
 @pytest.fixture(scope="module")
-def published(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Published]:
+def published(
+    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Published]:
     data_dir = tmp_path_factory.mktemp("data")
-    with published_fixture_cycle(data_dir, resolved=True) as conninfo:
+    with published_fixture_cycle(data_dir, migrated_template, resolved=True) as conninfo:
         sub_ids = ", ".join(str(sub_id) for sub_id in MUSK["sub_ids"])
         [musk] = {
             donor_id
