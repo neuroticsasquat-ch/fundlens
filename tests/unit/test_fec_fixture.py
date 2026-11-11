@@ -85,20 +85,33 @@ def is_refund(row: Row) -> bool:
     return re.fullmatch(r"[24]\dY", row["TRANSACTION_TP"]) is not None
 
 
+@functools.cache
+def reversals() -> frozenset[str]:
+    """The negative refunds that void a positive one, by SUB_ID. Each positive refund is voided
+    once (NEU-2269): among the refunds to one giver at one committee of one size, the negatives in
+    order of date, then SUB_ID, void as many as there are positive ones. A further negative is a
+    refund like any other."""
+    groups: defaultdict[tuple[str, str, int], list[Row]] = defaultdict(list)
+    for row in rows("indiv"):
+        if is_refund(row) and row["MEMO_CD"] != "X" and row["NAME"]:
+            groups[row["CMTE_ID"], row["NAME"], abs(amount(row))].append(row)
+    voids: set[str] = set()
+    for group in groups.values():
+        negatives = sorted(
+            (r for r in group if amount(r) < 0),
+            key=lambda r: (datetime.strptime(r["TRANSACTION_DT"], "%m%d%Y"), int(r["SUB_ID"])),
+        )
+        voids.update(r["SUB_ID"] for r in negatives[: sum(amount(r) > 0 for r in group)])
+    return frozenset(voids)
+
+
 def signed(row: Row) -> int:
     """A contribution's amount as it counts. A refund (22Y, or any 2nY or 4nY type) subtracts
-    whichever sign its filer wrote, unless it is negative and mirrors a positive refund to the same
-    donor at the same committee: then it voids that refund and adds back."""
+    whichever sign its filer wrote, unless it is negative and voids a positive refund to the same
+    giver at the same committee (`reversals`): then it adds back."""
     if not is_refund(row):
         return amount(row)
-    reverses = amount(row) < 0 and any(
-        other["CMTE_ID"] == row["CMTE_ID"]
-        and other["NAME"] == row["NAME"]
-        and is_refund(other)
-        and amount(other) == -amount(row)
-        for other in rows("indiv")
-    )
-    return -amount(row) if reverses else -abs(amount(row))
+    return -amount(row) if row["SUB_ID"] in reversals() else -abs(amount(row))
 
 
 @functools.cache

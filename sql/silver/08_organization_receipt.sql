@@ -16,7 +16,7 @@
 -- committee in `cm` (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
 -- on a conduit's side; the rule stands for other cycles. A refund (a 2nY or 4nY type) subtracts
 -- whichever sign its filer wrote, and a negative refund mirroring a positive one reverses it and
--- adds back, as in contribution (NEU-2073).
+-- adds back, as in contribution (NEU-2073): each positive refund once (NEU-2269).
 --
 -- From `oth`: a receipt (TRANSACTION_TP 1x or 3x, no memo line) from a giver with no committee
 -- id: OTHER_ID blank or not C-prefixed (a C-prefixed id the cycle's `cm` lacks is still a
@@ -127,17 +127,25 @@ kept AS (
 ),
 reversal AS (
     -- A negative refund that mirrors a positive one (same committee, organization and size)
-    -- reverses it: a voided or uncashed refund check, which adds back (NEU-2073).
+    -- reverses it: a voided or uncashed refund check, which adds back (NEU-2073). Each positive
+    -- refund is reversed once, as in 04_contribution.sql (NEU-2269): the negatives in order of
+    -- date, then SUB_ID, reverse as many as there are positive ones, and any further one subtracts.
     WITH refund AS (
-        SELECT SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT
+        SELECT
+            SUB_ID,
+            TRANSACTION_AMT,
+            row_number() OVER (
+                PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT), TRANSACTION_AMT < 0
+                ORDER BY try_strptime(TRANSACTION_DT, '%m%d%Y') NULLS LAST, SUB_ID
+            ) AS nth,
+            count(*) FILTER (WHERE TRANSACTION_AMT > 0)
+                OVER (PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT)) AS positives
         FROM kept
-        WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$')
+        WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND NAME IS NOT NULL
     )
-    SELECT DISTINCT n.SUB_ID
-    FROM refund AS n
-    JOIN refund AS p
-        ON p.CMTE_ID = n.CMTE_ID AND p.NAME = n.NAME AND p.TRANSACTION_AMT = -n.TRANSACTION_AMT
-    WHERE n.TRANSACTION_AMT < 0
+    SELECT SUB_ID
+    FROM refund
+    WHERE TRANSACTION_AMT < 0 AND nth <= positives
 ),
 organization_name AS (
     SELECT NAME AS raw, organization_key(NAME) AS key
