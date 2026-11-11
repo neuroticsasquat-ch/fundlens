@@ -3302,6 +3302,139 @@ Q6x, measure B against FEC's itemized figure, at the committees Q13e found a sup
   comparable with Q6c's 805,063 rows: the over-1% list has shrunk since, as NEU-2192 and NEU-2193
   took the party and hybrid committees off it. Silver keeps them: they are real (Q13f).
 
+### Q5 and Q6 after NEU-2198
+
+NEU-2198 counts a memo line that is the only record of a gift (Q14). Its 2024 build
+`20261111T203943Z` (model `20261111T210941Z`, published 2026-11-11 21:33 UTC) added 1,020 rows to
+`contribution` (50,097,749 → 50,098,769) and 21 to `organization_receipt` (17,995 → 18,016), and
+moved `total_individual` by +$127,393,944 and `total_from_organizations` by +$41,195 at 193
+committees. Setup, `q5.py`, `q6core.py` and `q6.py` re-ran unchanged against it, 2026-11-11
+21:41–21:43 UTC (`./run.sh q5`, `./run.sh q6 q6core.py`), and one added block, `q14x.py`
+(`./run.sh q14x`), measures the ticket's definition of done. Its "orphaned attributions" are the
+live build's counted rows whose `SUB_ID` is an `indiv` memo line, on the lines B counts.
+
+```python
+# NEU-2198's definition of done against the live build: setup.py first, then this.
+bulk("indiv")
+show("Q14x1: Fairshake (C00835959), B against FEC's itemized figure, alone and plus the $25,000,000 it filed on line 17 (Q14k)", """
+SELECT committee_id, name, a, orgs, b, item, b - item AS b_less_itemized,
+    b - (item + 25000000) AS b_less_itemized_and_line_17, round(b / (item + 25000000), 4) AS ratio_with_line_17
+FROM cov WHERE committee_id = 'C00835959'
+""")
+# The memo lines the build counts (orphaned attributions, NEU-2198) on the lines B counts, per committee.
+con.execute("""
+CREATE TABLE orphaned_counted AS
+WITH memo AS (SELECT SUB_ID FROM indiv WHERE MEMO_CD = 'X')
+SELECT c.recipient_committee_id AS committee_id, c.amount
+FROM silver.contribution AS c JOIN memo ON memo.SUB_ID = c.source_record_id
+WHERE NOT c.is_self_funding AND NOT c.is_non_contribution_account AND NOT c.is_other_line
+UNION ALL
+SELECT o.recipient_committee_id, o.amount
+FROM silver.organization_receipt AS o JOIN memo ON memo.SUB_ID = o.source_record_id
+WHERE NOT o.is_non_contribution_account AND NOT o.is_other_line
+""")
+show("Q14x2: what the orphaned attributions add to B, and where they leave committees against FEC's itemized figure", """
+WITH a AS (SELECT committee_id, sum(amount) AS added, count(*) AS lines FROM orphaned_counted GROUP BY 1)
+SELECT count(*) AS committees, sum(a.lines) AS lines, sum(a.added) AS added,
+    count(*) FILTER (WHERE cov.item > 0) AS with_itemized_figure,
+    count(*) FILTER (WHERE cov.item > 0 AND abs(cov.b / cov.item - 1) < abs((cov.b - a.added) / cov.item - 1)) AS toward,
+    count(*) FILTER (WHERE cov.item > 0 AND abs(cov.b / cov.item - 1) > abs((cov.b - a.added) / cov.item - 1)) AS away,
+    count(*) FILTER (WHERE cov.item > 0 AND (cov.b - a.added) / cov.item <= 1.01 AND cov.b / cov.item > 1.01) AS pushed_over_1pct
+FROM a JOIN cov USING (committee_id)
+""")
+show("Q14x3: committees the orphaned attributions take from within 1% of FEC's itemized figure (or under it) to more than 1% over it", """
+WITH a AS (SELECT committee_id, sum(amount) AS added, count(*) AS lines FROM orphaned_counted GROUP BY 1)
+SELECT cov.committee_id, cov.name, cov.type, cov.item AS fec_itemized, cov.b, a.added, a.lines,
+    round((cov.b - a.added) / cov.item, 4) AS ratio_before, round(cov.b / cov.item, 4) AS ratio_after
+FROM a JOIN cov USING (committee_id)
+WHERE cov.item > 0 AND (cov.b - a.added) / cov.item <= 1.01 AND cov.b / cov.item > 1.01
+ORDER BY a.added DESC
+""")
+show("Q14x4: the committees the orphaned attributions add most to", """
+WITH a AS (SELECT committee_id, sum(amount) AS added, count(*) AS lines FROM orphaned_counted GROUP BY 1)
+SELECT cov.committee_id, cov.name, cov.item AS fec_itemized, cov.b, a.added, a.lines,
+    round((cov.b - a.added) / nullif(cov.item, 0), 4) AS ratio_before, round(cov.b / nullif(cov.item, 0), 4) AS ratio_after
+FROM a JOIN cov USING (committee_id) ORDER BY a.added DESC LIMIT 12
+""")
+show("Q14x5: the over-1% list now (Q5i's measure)", """
+SELECT count(*) AS committees, sum(excess_b) AS excess_b FROM over
+""")
+```
+
+**Q14x1: Fairshake (C00835959), B against FEC's itemized figure, alone and plus the $25,000,000 it filed on line 17 (Q14k)  (0 s)**
+
+| committee_id | name | a | orgs | b | item | b_less_itemized | b_less_itemized_and_line_17 | ratio_with_line_17 |
+|---|---|---|---|---|---|---|---|---|
+| C00835959 | FAIRSHAKE | 75,526,650 | 166,692,432 | 242,219,082 | 217,419,084 | 24,799,998 | -200,002 | 99.92% |
+
+**Q14x2: what the orphaned attributions add to B, and where they leave committees against FEC's itemized figure  (0 s)**
+
+| committees | lines | added | with_itemized_figure | toward | away | pushed_over_1pct |
+|---|---|---|---|---|---|---|
+| 193 | 1,030 | 127,435,139 | 192 | 185 | 7 | 4 |
+
+**Q14x3: committees the orphaned attributions take from within 1% of FEC's itemized figure (or under it) to more than 1% over it  (0 s)**
+
+| committee_id | name | type | fec_itemized | b | added | lines | ratio_before | ratio_after |
+|---|---|---|---|---|---|---|---|---|
+| C00835959 | FAIRSHAKE | O | 217,419,084 | 242,219,082 | 68,200,000 | 15 | 80.04% | 111.41% |
+| C00838169 | REPUBLICAN LEADERSHIP FUND INC. | O | 838,400 | 888,400 | 50,000 | 1 | 100.00% | 105.96% |
+| C00878215 | KANSAS CONSERVATIVE FUND | O | 48,900 | 60,900 | 30,000 | 2 | 63.19% | 124.54% |
+| C00858654 | JOHN HUFFMAN FOR CONGRESS | H | 316,480 | 319,680 | 3,200 | 2 | 100.00% | 101.01% |
+
+**Q14x4: the committees the orphaned attributions add most to  (0 s)**
+
+| committee_id | name | fec_itemized | b | added | lines | ratio_before | ratio_after |
+|---|---|---|---|---|---|---|---|
+| C00835959 | FAIRSHAKE | 217,419,084 | 242,219,082 | 68,200,000 | 15 | 80.04% | 111.41% |
+| C00879510 | AMERICA PAC | 261,527,011 | 249,779,349 | 40,867,313 | 7 | 79.88% | 95.51% |
+| C00888172 | MAHA ALLIANCE | 6,289,392 | 6,264,379 | 3,200,000 | 2 | 48.72% | 99.60% |
+| C00834077 | NEVER BACK DOWN INC. | 144,589,273 | 142,891,271 | 2,352,554 | 15 | 97.20% | 98.83% |
+| C00836221 | DEFEND AMERICAN JOBS | 5,775,000 | 5,775,000 | 1,775,000 | 6 | 69.26% | 100.00% |
+| C00834630 | BUCKEYE VALUES PAC | 14,154,650 | 14,029,647 | 1,250,000 | 2 | 90.29% | 99.12% |
+| C00870030 | MARYLAND'S FUTURE | 26,958,160 | 26,958,157 | 1,150,000 | 2 | 95.73% | 100.00% |
+| C00796045 | TRUTH AND COURAGE PAC | 27,840,040 | 27,561,722 | 800,000 | 3 | 96.13% | 99.00% |
+| C00825851 | MAKE AMERICA GREAT AGAIN INC. | 383,797,150 | 389,576,242 | 676,942 | 2 | 101.33% | 101.51% |
+| C00003418 | REPUBLICAN NATIONAL COMMITTEE | 87,269,680 | 85,604,831 | 616,389 | 28 | 97.39% | 98.09% |
+| C00877787 | SAVE OUR COUNTRY | 2,660,408 | 1,560,403 | 506,403 | 12 | 39.62% | 58.65% |
+| C00849489 | KEYSTONE RENEWAL PAC | 54,857,692 | 54,482,691 | 400,000 | 3 | 98.59% | 99.32% |
+
+**Q14x5: the over-1% list now (Q5i's measure)  (0 s)**
+
+| committees | excess_b |
+|---|---|
+| 281 | 150,902,779 |
+
+| | Before (after NEU-2196) | After |
+| --- | --- | --- |
+| Q6d2 total excess, over-1% committees | 125,107,888 | 150,906,728 |
+| Q6d2 D5, memo lines counted | 0 | 69,216,842 |
+| Q5i over-1% committees | not recorded | 281 (279 on B) |
+
+- **Fairshake is within 0.08% of FEC (DoD #2).** B is $242,219,082. FEC's itemized figure is
+  $217,419,084 and Fairshake also filed $25,000,000, COINBASE COMMERCE's type-10 row, on line 17
+  (Q14k; the ticket says line 15), which B counts. Against the two together B is $200,002 under:
+  Cumberland DRW's and Multicoin's $100,000 shares, which the rule leaves out (Q14j). Against FEC's
+  itemized figure alone it is 111.4%, which is why Fairshake is now on the over-1% list, and why
+  its excess, $24,799,998, is nearly all of the rise in Q6d2's total.
+- **Two committees go more than 1% over FEC because of the change (DoD #3), as Q14 predicted:**
+  REPUBLICAN LEADERSHIP FUND INC. (C00838169, +$50,000, 105.96%) and JOHN HUFFMAN FOR CONGRESS
+  (C00858654, +$3,200, 101.01%). Each is partners' attributions of a parent that is itself a memo
+  line FEC's bulk file leaves out (Q14), which nothing in the bulk file tells from an orphan.
+  Q14x3 lists two more that are not: Fairshake (above) and KANSAS CONSERVATIVE FUND (C00878215),
+  whose $30,000 brings its A to FEC's $48,900 exactly. Its B is over only by JORGENSEN LAND &
+  CATTLE PARTNERSHIP's $12,000 organization row, filed on line 17 (`SA17.4127`), which Q14's
+  baseline left out and B does not.
+- **Q6 now calls counted memo lines D5.** Its D5 diagnostic finds counted rows that are memo lines,
+  and by design there are some now: $69,216,842 at the over-1% committees, $68.2M of it Fairshake's.
+  Q6d marks each of the four above `explained` with D5 or D2 as its primary cause.
+- **What the orphaned attributions add:** 1,030 lines, $127,435,139, at 193 committees. Of the 192
+  with an itemized figure, 185 move toward it and 7 away (Q14x2). The 11 lines and $300,500 fewer
+  than Q14's take are its hybrid PACs' type-10 lines, the non-contribution account's, which B does
+  not count. America
+  PAC moves from 79.9% to 95.5% of FEC's figure, MAHA ALLIANCE from 48.7% to 99.6%, DEFEND
+  AMERICAN JOBS and MARYLAND'S FUTURE to 100.0% (Q14x4).
+
 ## Q7: the three named gaps
 
 ```python
