@@ -44,6 +44,9 @@ JFC = "J"
 # A giver's entity type: an organization's, and the ones that are a committee's (NEU-2131).
 ORGANIZATION = "ORG"
 COMMITTEE_TYPES = ("PAC", "COM", "CCM", "PTY")
+# The `cm` types that are no political committee: persons and organizations filing Forms 5, 7 and 9.
+# An ORG row naming one is an organization receipt still (NEU-2195).
+NOT_POLITICAL = ("I", "C", "E")
 # `oth` lines that are no organization receipt: a JFC attribution, and a loan or its repayment.
 NOT_GIFTS = ("15J", "16C", "16F", "16G")
 # A hybrid PAC's committee types, and the transaction types of its non-contribution account's
@@ -298,13 +301,25 @@ def is_receipt_line(row: Row) -> bool:
     return row["TRANSACTION_TP"][:1] in ("1", "3") and row["MEMO_CD"] != "X"
 
 
-def named_committee(row: Row, *, classified: bool = False) -> str | None:
+def named_committee(
+    row: Row, *, classified: bool = False, organization: bool = False
+) -> str | None:
     """The one `cm` committee a row typed PAC, COM, CCM or PTY with a blank OTHER_ID names
     (NEU-2131), or a `classified` `indiv` row does (NEU-2132), never its own recipient; None when
-    it names several, none, or itself."""
-    if (row["ENTITY_TP"] not in COMMITTEE_TYPES and not classified) or row["OTHER_ID"]:
+    it names several, none, or itself. An `organization` `indiv` row, typed ORG with no committee
+    id (OTHER_ID blank or not C-prefixed), is read against the political committees alone
+    (NEU-2195): typed, and of no type in NOT_POLITICAL."""
+    if organization:
+        if row["OTHER_ID"].startswith("C"):
+            return None
+    elif (row["ENTITY_TP"] not in COMMITTEE_TYPES and not classified) or row["OTHER_ID"]:
         return None
-    named = [r["CMTE_ID"] for r in rows("cm") if name_key(r["CMTE_NM"]) == name_key(row["NAME"])]
+    named = [
+        r["CMTE_ID"]
+        for r in rows("cm")
+        if name_key(r["CMTE_NM"]) == name_key(row["NAME"])
+        and (not organization or r["CMTE_TP"].strip() not in ("", *NOT_POLITICAL))
+    ]
     return named[0] if len(named) == 1 and named[0] != row["CMTE_ID"] else None
 
 
@@ -349,13 +364,20 @@ def committee_receipts() -> list[Row]:
 def name_matched() -> Mapping[str, str | None]:
     """Each counted `indiv` row typed PAC, COM, CCM or PTY with a blank OTHER_ID, by SUB_ID, and
     the committee it is a receipt from (NEU-2131): the one its NAME names, unless `oth` holds the
-    gift under that id already; None when it is dropped. A classified row (NEU-2132) is here only
-    when its NAME names one committee: naming none, it is an organization receipt."""
+    gift under that id already; None when it is dropped. A classified row (NEU-2132), or one typed
+    ORG (NEU-2195), is here only when its NAME names one committee: naming none, it is an
+    organization receipt."""
     found: dict[str, str | None] = {}
     for row in rows("indiv"):
-        if row["OTHER_ID"] or not counts(row):
+        if not counts(row):
             continue
-        if row["ENTITY_TP"] in COMMITTEE_TYPES:
+        if row["ENTITY_TP"] == ORGANIZATION:
+            named = named_committee(row, organization=True)
+            if named is None:
+                continue
+        elif row["OTHER_ID"]:
+            continue
+        elif row["ENTITY_TP"] in COMMITTEE_TYPES:
             named = named_committee(row)
         elif is_classified(row):
             named = named_committee(row, classified=True)
@@ -389,7 +411,8 @@ def mirrors_counted_row(row: Row) -> bool:
 @functools.cache
 def organization_receipts() -> tuple[Row, ...]:
     """The rows of either file that are organization receipts (NEU-2131, ADR-0011): a counted
-    `indiv` row typed ORG, or classified and naming no one committee (NEU-2132), or an `oth`
+    `indiv` row typed ORG and naming no one political committee (NEU-2195), or classified and
+    naming no one committee (NEU-2132), or an `oth`
     receipt typed ORG from no committee id, naming no JFC, neither an attribution line nor a
     loan, to a committee of the cycle, mirroring no counted `indiv` row."""
     return tuple(
@@ -397,7 +420,7 @@ def organization_receipts() -> tuple[Row, ...]:
         for row in rows("indiv")
         if counts(row)
         and (
-            row["ENTITY_TP"] == ORGANIZATION
+            (row["ENTITY_TP"] == ORGANIZATION and named_committee(row, organization=True) is None)
             or (is_classified(row) and named_committee(row, classified=True) is None)
         )
     ) + tuple(
@@ -879,16 +902,36 @@ def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:
 
 def test_the_expected_name_matches_are_the_fixtures_pac_rows_without_an_id() -> None:
     assert EXPECTED["name_matched"] == {int(s): c for s, c in name_matched().items()}
-    # Two join committee_transfer, one of them a classified blank-type row (NEU-2132); one names
-    # no committee; one names its own recipient.
+    # Three join committee_transfer, one of them a classified blank-type row (NEU-2132) and one an
+    # ORG row (NEU-2195); one names no committee; one names its own recipient.
     kept = [c for c in EXPECTED["name_matched"].values() if c]
-    assert len(kept) == 2 and len(EXPECTED["name_matched"]) == 4
+    assert len(kept) == 3 and len(EXPECTED["name_matched"]) == 5
     by_sub_id = {int(r["SUB_ID"]): r for r in rows("indiv")}
     assert any(is_classified(by_sub_id[s]) for s, c in EXPECTED["name_matched"].items() if c)
     by_id = {r["SUB_ID"]: r for r in rows("indiv")}
     names = {r["CMTE_ID"]: name_key(r["CMTE_NM"]) for r in rows("cm")}
     dropped = [by_id[str(s)] for s, c in EXPECTED["name_matched"].items() if c is None]
     assert sorted(name_key(r["NAME"]) == names[r["CMTE_ID"]] for r in dropped) == [False, True]
+
+
+def test_an_org_row_is_a_committees_gift_only_when_it_names_a_political_committee() -> None:
+    # NEU-2195: both rows are typed ORG with no OTHER_ID, and each NAME names exactly one `cm`
+    # committee. RESTORATION PAC is a super PAC: its gift is a committee_transfer receipt.
+    # ONE NATION files Form 5 (type I), no political committee: an organization receipt still.
+    # A Form 9 filer (type E) shares RESTORATION PAC's name: read against the political
+    # committees alone, the name names the super PAC.
+    by_name = {r["NAME"]: r for r in rows("indiv") if r["ENTITY_TP"] == ORGANIZATION}
+    types: defaultdict[str, list[str]] = defaultdict(list)
+    for r in rows("cm"):
+        types[r["CMTE_NM"]].append(r["CMTE_TP"])
+    restoration, one_nation = by_name["RESTORATION PAC"], by_name["ONE NATION"]
+    assert (types["RESTORATION PAC"], types["ONE NATION"]) == (["O", "E"], ["I"])
+    assert not restoration["OTHER_ID"] and not one_nation["OTHER_ID"]
+
+    assert EXPECTED["name_matched"][int(restoration["SUB_ID"])] == "C00800205"
+    assert int(restoration["SUB_ID"]) not in EXPECTED["organization_receipts"]["keys"]
+    assert int(one_nation["SUB_ID"]) not in EXPECTED["name_matched"]
+    assert int(one_nation["SUB_ID"]) in EXPECTED["organization_receipts"]["keys"]
 
 
 def test_the_expected_attributions_are_the_fixtures_and_one_is_of_no_contributor() -> None:

@@ -42,6 +42,15 @@
 -- committees or none is an organization receipt instead (08_organization_receipt.sql): nothing
 -- says it is a committee's. A blank row the classifier calls a person's is never matched by name,
 -- nor is a blank entity type in `oth`.
+-- A counted `indiv` row typed ORG with no committee id (OTHER_ID blank or not C-prefixed) takes
+-- the rule too, among the political committees alone (NEU-2195): its NAME names exactly one `cm`
+-- committee of any type but I, C and E, the persons and organizations filing Forms 5, 7 and 9,
+-- whatever filer of those types shares the name, as NEU-2140's D4 measured. Super PACs give so,
+-- typed ORG by their recipient: BRIGHT FUTURE FUND's $12.3M, RESTORATION PAC's $9.0M, $27.6M in
+-- all in 2024 (NEU-2140 Q6 D4), which FEC counts as committee money (lines 11(b)/(c)). ONE NATION,
+-- AFL-CIO and Koch Industries name type I filers, whose gifts FEC counts on 11(a)(i):
+-- organization receipts still. So is an ORG row naming several political committees or none
+-- (08_organization_receipt.sql), or one with a C-prefixed OTHER_ID.
 --
 -- A receipt's candidate is the one its recipient committee raises for, by contribution's rule
 -- (NEU-2124), so a JFC's transfer to a campaign is that candidate's (gold's
@@ -102,6 +111,18 @@ cm_named AS (
     GROUP BY name_key
     HAVING count(*) = 1
 ),
+political_named AS (
+    -- Each political committee of the cycle by name, for a row typed ORG with no committee id
+    -- (NEU-2195): any type but I, C and E, and not untyped; a name two of them share names
+    -- neither.
+    SELECT
+        regexp_replace(upper(name), '[^A-Z0-9]', '', 'g') AS name_key,
+        min(committee_id) AS committee_id
+    FROM committee
+    WHERE nullif(trim(type), '') NOT IN ('I', 'C', 'E')
+    GROUP BY name_key
+    HAVING count(*) = 1
+),
 receipt AS (
     SELECT
         oth.*,
@@ -131,8 +152,9 @@ receipt AS (
 ),
 named_gift AS (
     -- A counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified an organization's,
-    -- with no OTHER_ID, naming exactly one `cm` committee that is not its recipient. `indiv` on the
-    -- left: the join builds on `cm_named`.
+    -- with no OTHER_ID, naming exactly one `cm` committee, or typed ORG with no committee id,
+    -- naming exactly one political one; never its recipient. `indiv` on the left: the join builds
+    -- on the few names. A row's entity type picks one of the two lists, so it matches once.
     SELECT
         indiv.SUB_ID,
         indiv.CMTE_ID,
@@ -140,17 +162,33 @@ named_gift AS (
         indiv.TRANSACTION_DT,
         indiv.TRANSACTION_TP,
         CAST(try_strptime(indiv.TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date,
-        cm_named.committee_id AS giver
+        named.committee_id AS giver
     FROM indiv
-    JOIN cm_named ON cm_named.name_key = regexp_replace(upper(indiv.NAME), '[^A-Z0-9]', '', 'g')
+    JOIN (
+        SELECT name_key, committee_id, false AS political FROM cm_named
+        UNION ALL
+        SELECT name_key, committee_id, true AS political FROM political_named
+    ) AS named ON named.name_key = regexp_replace(upper(indiv.NAME), '[^A-Z0-9]', '', 'g')
     WHERE (
-            trim(indiv.ENTITY_TP) IN ('PAC', 'COM', 'CCM', 'PTY')
+            (
+                (
+                    trim(indiv.ENTITY_TP) IN ('PAC', 'COM', 'CCM', 'PTY')
+                    OR (
+                        nullif(trim(indiv.ENTITY_TP), '') IS NULL
+                        AND indiv.NAME IN (
+                            SELECT raw FROM organization_name_class WHERE is_organization
+                        )
+                    )
+                )
+                AND coalesce(trim(indiv.OTHER_ID), '') = ''
+                AND NOT named.political
+            )
             OR (
-                nullif(trim(indiv.ENTITY_TP), '') IS NULL
-                AND indiv.NAME IN (SELECT raw FROM organization_name_class WHERE is_organization)
+                trim(indiv.ENTITY_TP) = 'ORG'
+                AND coalesce(trim(indiv.OTHER_ID), '') NOT LIKE 'C%'
+                AND named.political
             )
         )
-        AND coalesce(trim(indiv.OTHER_ID), '') = ''
         AND indiv.MEMO_CD IS DISTINCT FROM 'X'
         AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
         AND indiv.SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
@@ -160,7 +198,7 @@ named_gift AS (
             AND regexp_matches(coalesce(indiv.MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
         )
         AND indiv.CMTE_ID IN (SELECT committee_id FROM committee)
-        AND cm_named.committee_id <> indiv.CMTE_ID
+        AND named.committee_id <> indiv.CMTE_ID
 ),
 by_name AS (
     -- Every row the name-match rule gives a giver, from either file.

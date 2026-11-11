@@ -36,11 +36,14 @@
 #   makes a counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified (NEU-2132),
 #   with a blank OTHER_ID a receipt from the one committee its NAME names, dropped when it names
 #   none or its own recipient (a classified row is an organization receipt then), or when `oth`
-#   already holds the gift under that committee's id (same recipient, amount and date). A
+#   already holds the gift under that committee's id (same recipient, amount and date). So does
+#   a counted `indiv` row typed ORG with no committee id (OTHER_ID blank or not C-prefixed) whose
+#   NAME names one committee of a political type, any but I, C and E (NEU-2195). A
 #   committee's gift to a candidate is in both files (the giver's 24K, the recipient's 18K): no
 #   figure adds the two.
-# - An organization receipt (NEU-2131, ADR-0011) is an `indiv` row typed ORG, or blank and
-#   classified and naming no one committee (NEU-2132, `classified`), that would otherwise
+# - An organization receipt (NEU-2131, ADR-0011) is an `indiv` row typed ORG and no committee's
+#   gift by the name rule above (NEU-2195), or blank and classified and naming no one committee
+#   (NEU-2132, `classified`), that would otherwise
 #   count (MEMO_CD not X, not 24T, not a conduit's side, to a committee in `cm`), its refunds
 #   subtracted as a contribution's are, or an `oth` receipt (1x or 3x, MEMO_CD not X) typed ORG
 #   with no committee id in OTHER_ID (blank or not C-prefixed), naming no JFC, not a 15J nor a loan
@@ -74,10 +77,10 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded.
 rows:
-  cm: 20
+  cm: 23
   cn: 15
   ccl: 15
-  indiv: 354
+  indiv: 356
   pas2: 24
   oth: 30
 
@@ -88,13 +91,13 @@ rows:
 # conduit (a disbursement, recorded by the giver): the one gift on both sides, each side its own
 # row. organization_receipt is one row per `organization_receipts` receipt below.
 silver:
-  committee: 20
+  committee: 23
   candidate: 15
   candidate_committee_link: 15
   contribution: 313
   independent_expenditure: 9
-  committee_transfer: 31
-  organization_receipt: 10
+  committee_transfer: 32
+  organization_receipt: 11
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -118,7 +121,7 @@ contributions:
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
-  dropped_not_individual: 12
+  dropped_not_individual: 14
   self_funding: 3
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
@@ -145,6 +148,7 @@ organization_receipts:
     4240100000000000346: PISCATAWAY CONOY TRIBE # a 31T to the party's headquarters account (NEU-2205)
     4240100000000000347: BALTIMORE HARBOR PILOTS # a 15 to the party, line 11(a)(i)
     4240300000000000028: CHESAPEAKE ELECTION LAW GROUP # a 32J to the party's recount account, in oth
+    4240100000000000356: ONE NATION # names a type I filer, no political committee (NEU-2195)
   # Net amount by organization key, refunds subtracted.
   by_key:
     ACME CONCRETE: 5000
@@ -153,15 +157,16 @@ organization_receipts:
     CHESAPEAKE ELECTION LAW GROUP: 20000
     CHESAPEAKE STEEL: 72500
     IRONWORKERS LOCAL 16: 4000
+    ONE NATION: 40000
     PATAPSCO HOLDINGS: 250000
     PISCATAWAY CONOY TRIBE: 15000
   # Net amount by receiving committee.
   by_committee:
     C00800105: 8000
-    C00800201: 72500
+    C00800201: 112500
     C00800203: 44000
     C00800204: 250000
-  total_amount: 374500
+  total_amount: 414500
   # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
   # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
   # Ranked by amount, then key; an organization netting to $0 or less is on no list.
@@ -171,6 +176,7 @@ organization_receipts:
       - [ACME WIDGETS, ACME WIDGETS INC, 3000]
     C00800201:
       - [CHESAPEAKE STEEL, "CHESAPEAKE STEEL, INC.", 72500]
+      - [ONE NATION, ONE NATION, 40000]
     C00800203:
       - [CHESAPEAKE ELECTION LAW GROUP, CHESAPEAKE ELECTION LAW GROUP, 20000]
       - [PISCATAWAY CONOY TRIBE, PISCATAWAY CONOY TRIBE, 15000]
@@ -248,7 +254,9 @@ refunds:
     C00401224: -5
 
 # The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
-# blank-type ones naming one committee (NEU-2132), by SUB_ID: the committee each is a
+# blank-type ones naming one committee (NEU-2132) and the ORG ones with no committee id naming one
+# political committee (NEU-2195: RESTORATION PAC, a super PAC; not ONE NATION, a type I filer, an
+# organization receipt), by SUB_ID: the committee each is a
 # committee_transfer receipt from, by the name rule above, or null when it is dropped (CHESAPEAKE
 # LABOR COUNCIL PAC names no committee; MARYLAND FORWARD PAC names its own recipient). BRICKLAYERS
 # UNITED PAC's is in the super PAC's total_from_committees, and the blank-type OLD LINE REPUBLICAN
@@ -260,6 +268,7 @@ name_matched:
   4240100000000000325: null
   4240100000000000326: null
   4240100000000000329: C00800203
+  4240100000000000355: C00800205
 
 # cn filings whose (office, state, district) is no seat in the calendar: MD has no 9th district.
 unmatched_filings: [H4MD09109]
@@ -521,10 +530,10 @@ committees:
     total_from_committees: 1000
     total_to_candidates: 0
     ie_total: 0
-  C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' name-matched `indiv` gift is a receipt
+  C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' and RESTORATION PAC's name-matched `indiv` gifts are receipts
     total_individual: 401725
     self_funding: 0
-    total_from_committees: 65000
+    total_from_committees: 155000
     total_to_candidates: 0
     ie_total: 670000
   C00800202: # BRICKLAYERS UNITED PAC: LACROIX's gift it passed on to WHITLOCK, who itemized none
@@ -541,6 +550,24 @@ committees:
     ie_total: 45000
   C00800204: # TIDEWATER ACTION FUND: a hybrid PAC, its contribution account only (NEU-2192)
     total_individual: 3750
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800205: # RESTORATION PAC: a super PAC, its gift to MARYLAND FORWARD PAC recorded by the recipient
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C90800206: # ONE NATION: a Form 5 filer (type I), an organization by its gifts
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C90800207: # RESTORATION PAC: a Form 9 filer (type E) under the super PAC's name, which names no gift
+    total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
