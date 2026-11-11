@@ -22,12 +22,11 @@ from fundlens.settings import get_settings
 from fundlens.transform.runner import ChecksFailed
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT
-from tests.integration.test_resolve import BEYOND_LINKAGE, MODEL
+from tests.integration.test_resolve import BEYOND_LINKAGE
 from tests.integration.test_transform import (
     BUILD,
     failing_rows,
     put_bronze,
-    seats_report,
     transform,
 )
 
@@ -64,11 +63,8 @@ def dollars(value: Decimal) -> int:
 
 
 def test_load_builds_every_gold_table_to_the_expected_totals(
-    store: R2, cli_env: Path, migrated_db: str
+    store: R2, transformed: Path, migrated_db: str
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
 
     result = load()
 
@@ -287,12 +283,12 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert any("UNIQUE INDEX race_slug" in definition for (definition,) in indexes)
     assert extension_schema == ("public",)
     # The work directory is gone; the silver partitions it read stay cached.
-    assert not (cli_env / "scratch" / f"load-2024-{BUILD}").exists()
-    assert (cli_env / "silver" / "contribution").exists()
+    assert not (transformed / "scratch" / f"load-2024-{BUILD}").exists()
+    assert (transformed / "silver" / "contribution").exists()
 
 
 def test_a_jfc_attribution_adds_nothing_to_its_participants_or_its_races_totals(
-    store: R2, cli_env: Path, migrated_db: str
+    store: R2, transformed: Path, migrated_db: str
 ) -> None:
     # Evidence, never money (spec §6.11): the participant's share is the JFC's transfer.
     def totals() -> list[dict[str, Any]]:
@@ -306,9 +302,6 @@ def test_a_jfc_attribution_adds_nothing_to_its_participants_or_its_races_totals(
             )
         ]
 
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
     assert load().exit_code == 0
     before = totals()
     oth = fec_fixture.bulk_text("oth") + (
@@ -317,10 +310,10 @@ def test_a_jfc_attribution_adds_nothing_to_its_participants_or_its_races_totals(
     )
     put_bronze(store, texts={"oth": oth})
     assert run("seats", "--cycle", "2024", build_id=NEWER).exit_code == 0
-    transformed = run("transform", "--cycle", "2024", build_id=NEWER)
-    assert transformed.exit_code == 0, transformed.output
+    newer = run("transform", "--cycle", "2024", build_id=NEWER)
+    assert newer.exit_code == 0, newer.output
     attributions = fec_fixture.expected()["silver"]["jfc_attribution"] + 1
-    assert f"jfc_attribution: {attributions} rows" in transformed.output
+    assert f"jfc_attribution: {attributions} rows" in newer.output
 
     result = load(NEWER)
 
@@ -341,13 +334,8 @@ def silver(data_dir: Path, table: SilverTable, columns: str) -> list[dict[str, A
 
 
 def test_load_of_a_resolved_build_builds_the_donor_tables(
-    store: R2, cli_env: Path, migrated_db: str
+    store: R2, resolved: Path, migrated_db: str
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
-    resolved = CliRunner().invoke(cli.app, ["resolve", "--full", "--build-id", MODEL])
-    assert resolved.exit_code == 0, resolved.output
     # A redirect the crosswalk wrote earlier: gold serves app's, whichever ids it names.
     with psycopg.connect(migrated_db) as conn:
         conn.execute("INSERT INTO app.donor_redirect (old_donor_id, donor_id) VALUES (9001, 1)")
@@ -357,11 +345,11 @@ def test_load_of_a_resolved_build_builds_the_donor_tables(
     assert result.exit_code == 0, result.output
     expected = fec_fixture.expected()
     lines = silver(
-        cli_env,
+        resolved,
         "contribution",
         "source_record_id, contributor_key, donor_id, candidate_id, amount, is_self_funding",
     )
-    attributions = silver(cli_env, "jfc_attribution", "source_record_id, donor_id")
+    attributions = silver(resolved, "jfc_attribution", "source_record_id, donor_id")
     donor_of = {line["source_record_id"]: line["donor_id"] for line in lines + attributions}
 
     def donor(name: str) -> int:
@@ -474,11 +462,8 @@ def test_load_of_a_resolved_build_builds_the_donor_tables(
 
 
 def test_load_without_a_build_id_takes_the_newest_transformed_build(
-    store: R2, cli_env: Path, migrated_db: str
+    store: R2, transformed: Path, migrated_db: str
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
     assert run("seats", "--cycle", "2024", build_id=NEWER).exit_code == 0
     assert run("transform", "--cycle", "2024", build_id=NEWER).exit_code == 0
 
@@ -522,11 +507,8 @@ def test_load_with_the_race_partition_under_another_build_says_to_run_seats(
 
 
 def test_a_failing_gold_check_leaves_no_gold_build_and_no_marker(
-    store: R2, cli_env: Path, migrated_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    store: R2, transformed: Path, migrated_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
     sql_dir = tmp_path / "sql"
     shutil.copytree(REPO_ROOT / "sql", sql_dir)
     (sql_dir / "checks" / "gold_always_fails.sql").write_text("SELECT 'boom' AS what;\n")
@@ -543,13 +525,8 @@ def test_a_failing_gold_check_leaves_no_gold_build_and_no_marker(
 
 
 def test_a_top_donor_list_counting_own_money_fails_its_check(
-    store: R2, cli_env: Path, migrated_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    store: R2, resolved: Path, migrated_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
-    resolved = CliRunner().invoke(cli.app, ["resolve", "--full", "--build-id", MODEL])
-    assert resolved.exit_code == 0, resolved.output
     sql_dir = tmp_path / "sql"
     shutil.copytree(REPO_ROOT / "sql", sql_dir)
     model = sql_dir / "gold" / "14_candidate_top_donor.sql"
@@ -646,11 +623,8 @@ def test_the_conduit_floor_check_fails_on_a_conduit_below_minus_1m() -> None:
 
 
 def test_load_twice_for_the_same_build_rebuilds_gold_build(
-    store: R2, cli_env: Path, migrated_db: str
+    store: R2, transformed: Path, migrated_db: str
 ) -> None:
-    put_bronze(store)
-    seats_report()
-    assert transform().exit_code == 0
 
     assert load().exit_code == 0
     result = load()

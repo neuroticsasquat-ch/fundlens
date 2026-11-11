@@ -14,7 +14,7 @@ from fundlens.fec.files import FecFile
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 from tests import fec_fixture, seed
-from tests.integration.conftest import TEST_BUCKET
+from tests.integration.conftest import TEST_BUCKET, cap_duckdb
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def seed_env(
     monkeypatch.setenv("R2_BUCKET", TEST_BUCKET)
     monkeypatch.setenv("DATABASE_URL", migrated_db)
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    get_settings.cache_clear()
+    cap_duckdb(monkeypatch)
     yield migrated_db
     get_settings.cache_clear()
 

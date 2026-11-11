@@ -41,6 +41,7 @@ dev = [
     "httpx2>=2.16.0",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
+    "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.17.3",
     "types-pyyaml>=6.0.12.20261030",
@@ -77,4 +78,7 @@ typeCheckingMode = "strict"
 testpaths = ["tests"]
 # The 25 slowest tests on every run, the pre-commit hook's included (it runs verbose): a test that
 # rebuilds expensive state shows up on the commit that adds it (NEU-2267).
-addopts = ["--durations=25"]
+# In parallel (NEU-2268), here rather than in the Taskfile because CI runs a bare `pytest`: a
+# worker per core, at most 8 so the dev box keeps room for Postgres and MinIO, and each file on
+# one worker so its module fixtures build once. `-n0` runs serially.
+addopts = ["--durations=25", "-n", "auto", "--maxprocesses=8", "--dist", "loadfile"]

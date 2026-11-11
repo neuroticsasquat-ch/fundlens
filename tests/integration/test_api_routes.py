@@ -25,6 +25,7 @@ from tests.integration.conftest import Published, cli_pointed_at, empty_store, s
 from tests.integration.test_publish import load, transform
 from tests.integration.test_resolve import MODEL
 from tests.integration.test_transform import put_bronze
+from tests.timing import assert_within
 
 BUILD = "20261030T030000Z"
 CYCLE = fec_fixture.CYCLE
@@ -385,13 +386,15 @@ def test_search_finds_a_person_under_one_candidate_id(client: TestClient) -> Non
 
 def test_search_ranks_trigram_matches_fast(client: TestClient) -> None:
     client.get("/v1/search", params={"q": "calloway"})  # A warm pool and build-id cache.
+    responses: list[Response] = []
 
-    started = time.perf_counter()
-    response = client.get("/v1/search", params={"q": "calloway"})
-    elapsed = time.perf_counter() - started
+    def search() -> float:
+        started = time.perf_counter()
+        responses.append(client.get("/v1/search", params={"q": "calloway"}))
+        return time.perf_counter() - started
 
-    results = ok(response)
-    assert elapsed < 0.05
+    assert_within(0.05, search)
+    results = ok(responses[-1])
     assert {(r["kind"], r["id"]) for r in results} >= {
         ("candidate", "H4MD05106"),
         ("committee", "C00800106"),

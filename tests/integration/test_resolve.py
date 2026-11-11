@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import shutil
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,13 +21,8 @@ from fundlens.resolve import crosswalk, model, nicknames
 from fundlens.resolve.cluster import cluster, recluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
-from tests.integration.conftest import (
-    REPO_ROOT,
-    cli_pointed_at,
-    empty_store,
-    scratch_database,
-)
-from tests.integration.test_transform import BUILD, put_bronze, seats_report, transform
+from tests.integration.conftest import REPO_ROOT, Snapshot
+from tests.integration.test_transform import BUILD, transform
 
 MODEL = "20261031T040000Z"
 AGAIN = "20261107T040000Z"
@@ -45,42 +39,12 @@ def resolve(*args: str) -> Result:
     return CliRunner().invoke(cli.app, ["resolve", *args])
 
 
-@pytest.fixture
-def transformed(store: R2, cli_env: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The fixture cycle transformed as build `BUILD`, with the pipeline's DuckDB memory limit
-    set; the `DATA_DIR`."""
-    put_bronze(store)
-    seats_report()
-    result = transform()
-    assert result.exit_code == 0, result.output
-    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
-    get_settings.cache_clear()
-    return cli_env
-
-
 @pytest.fixture(scope="module")
-def fixture_resolved(
-    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[Path]:
-    """The fixture cycle transformed and resolved once, as `transformed` and then `resolve --full`
-    as model `MODEL` leave it, for the module's tests that only read the working file and local
-    silver (NEU-2267); the `DATA_DIR`. Not the bucket: every test's `store` empties it."""
-    data_dir = tmp_path_factory.mktemp("resolved")
-    with scratch_database(template=migrated_template) as conninfo:
-        store = empty_store()
-        try:
-            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir) as env:
-                put_bronze(store)
-                seats_report()
-                transform_run = transform()
-                assert transform_run.exit_code == 0, transform_run.output
-                env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
-                get_settings.cache_clear()
-                result = resolve("--full", "--build-id", MODEL)
-                assert result.exit_code == 0, result.output
-        finally:
-            store.delete_prefix("")
-    yield data_dir
+def fixture_resolved(resolved_snapshot: Snapshot) -> Path:
+    """The fixture cycle transformed and resolved as model `MODEL`, as conftest's `resolved`
+    leaves it, for the module's tests that only read the working file and local silver
+    (NEU-2267): the session snapshot's own `DATA_DIR`, which they must not change."""
+    return resolved_snapshot.data_dir
 
 
 def clusters(data_dir: Path) -> dict[str, str]:
