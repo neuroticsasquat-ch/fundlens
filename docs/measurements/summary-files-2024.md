@@ -3249,6 +3249,59 @@ total excess is now $125,175,813 (D3 $26,729,093, D8 $72,957,061, unexplained $3
 D4 row can leave the list because its committee is no longer over. The transform's 267 moved rows,
 counted across every committee, are the measure that does not depend on the list.
 
+### Q6 D2 after NEU-2196
+
+NEU-2196 counts no `indiv` row of a filing a later amendment supersedes (Q13). Its 2024 build
+`20261111T170417Z` (model `20261111T174430Z`, published 2026-11-11 18:16 UTC) dropped 28,116 rows:
+27,974 from `contribution` (50,125,723 → 50,097,749), 136 from `organization_receipt` (18,131 →
+17,995) and 6 from `committee_transfer` (359,187 → 359,181). Setup, `q6core.py` and `q6.py` re-ran
+unchanged against it, 2026-11-11 18:27 UTC (`./run.sh q6x q6core.py q6.py`), with one added
+query, `q6x.py`:
+
+```python
+show("Q6x: the committees NEU-2196's rule drops a filing at, measure B against INDV_ITEM_CONTB", """
+SELECT committee_id, name, type, a, b, item, round(b / nullif(item, 0), 3) AS b_ratio
+FROM cov WHERE committee_id IN ('C00836353', 'C00868174', 'C00876953', 'C00864090', 'C00848937',
+    'C00847491', 'C00839126', 'C00093054', 'C00840009', 'C00833160', 'C00388157', 'C00413401', 'C00847210')
+ORDER BY committee_id""")
+```
+
+| | rows | dollars | committees |
+| --- | --- | --- | --- |
+| D2 duplicate, files differ, before (Q6c above) | 45,282 | 4,137,018 | 24 |
+| D2 duplicate, files differ, after | 94 | 33,721 | 10 |
+
+Q6x, measure B against FEC's itemized figure, at the committees Q13e found a superseded filing at:
+
+| committee_id | name | type | b | item | b_ratio |
+| --- | --- | --- | --- | --- | --- |
+| C00093054 | WALMART INC. PAC FOR RESPONSIBLE GOVERNMENT | Q | 693,693 | 722,664 | 96.00% |
+| C00388157 | AMERICAN COMPOSITES MANUFACTURERS ASSOCIATION POLITICAL ACTION COMMITTEE | Q | 5,248 | 5,250 | 100.00% |
+| C00413401 | HAWAIIAN TELCOM COMMUNICATIONS INC FEDPAC | Q | 2,120 | 2,190 | 96.80% |
+| C00833160 | PERRY JOHNSON FOR PRESIDENT INC. | P | 27,932 | 121,129 | 23.10% |
+| C00836353 | NEWSOM FOR CALIFORNIA GOVERNOR 2022 | V | 3,429,113 | 6,878,564 | 49.90% |
+| C00839126 | MARVIN ABNEY FOR CONGRESS | H | 75,400 | 49,800 | 151.40% |
+| C00840009 | SENATE VICTORY 2023 | N | 66,430 | 87,280 | 76.10% |
+| C00847210 | THE GREAT AMERICAN PAC | N | 7,964 | 8,622 | 92.40% |
+| C00847491 | BENNET WARNER VICTORY | S | 57,600 | 96,600 | 59.60% |
+| C00848937 | BAN ASSAULT WEAPONS NOW PAC | V | 66,942 | 114,426 | 58.50% |
+| C00864090 | TRISHA 4 COLORADO | H | 1,090,137 | 1,183,826 | 92.10% |
+| C00868174 | JKLC VICTORY FUND | H | 153,400 | 285,800 | 53.70% |
+| C00876953 | INTEGRITY TOUR 2024 | N | 118,895 | 184,689 | 64.40% |
+
+- **The differing-file repeats are gone from the over-1% committees**: $33,721 is left, at 10
+  committees, under the $1M at which a follow-up would be filed.
+- **Newsom for California Governor 2022 is no longer over FEC: it is under, at 49.9%**, by design.
+  FEC's `INDV_ITEM_CONTB` adds the superseded TER to its amendment (Q13g), and fundlens counts each
+  gift once. It was not on the over-1% list before this build either: there its B was $6,877,588
+  ($6,706,588 individual, $171,000 organizations, step 7 of NEU-2196's rebuild), 99.99% of FEC's
+  figure, which counts the same pair. So Q6d2's total excess moves only $67,925 (125,175,813 →
+  125,107,888). MARVIN ABNEY FOR CONGRESS is still over, at 151.4%. Its remaining excess is not a
+  differing-file repeat: Q6c's H rows are $4,300 at 2 committees.
+- The same-file repeats (D2 $4,448,565 in 68,359 rows across the types above) are not
+  comparable with Q6c's 805,063 rows: the over-1% list has shrunk since, as NEU-2192 and NEU-2193
+  took the party and hybrid committees off it. Silver keeps them: they are real (Q13f).
+
 ## Q7: the three named gaps
 
 ```python
