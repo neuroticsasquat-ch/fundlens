@@ -1,10 +1,17 @@
 """A MinIO bucket and a Postgres database of the integration tests' own.
 
 Each test's database is a copy of one migrated once per session (NEU-2267): `CREATE DATABASE …
-TEMPLATE` takes milliseconds where `alembic upgrade head` takes most of a second.
+TEMPLATE` takes milliseconds where `alembic upgrade head` takes most of a second. A test that
+changes pipeline state starts from a copy of a session snapshot of it, not from a rebuild
+(NEU-2268).
+
+Under pytest-xdist each worker is a process of its own, with its own buckets (`bucket_name`),
+snapshots and module fixtures; databases are uuid-named and data dirs come from `tmp_path`.
 """
 
-from collections.abc import Generator, Iterator
+import os
+import shutil
+from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,8 +29,16 @@ from fundlens import cli
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 
+
+def bucket_name(purpose: str = "") -> str:
+    """The name of a test bucket: `fundlens-test`, then `purpose` if any, then the xdist worker
+    (`gw0`…) if the run is parallel, so no two workers ever share one."""
+    parts = ["fundlens-test", purpose, os.environ.get("PYTEST_XDIST_WORKER", "")]
+    return "-".join(part for part in parts if part)
+
+
 # Not `R2_BUCKET`: the dev seed writes there, and every test here empties its bucket afterwards.
-TEST_BUCKET = "fundlens-test"
+TEST_BUCKET = bucket_name()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The overrides the CLI resolves with unless a test says otherwise: none (`fixtures/resolution/`).
@@ -117,6 +132,14 @@ def leave_logging_alone(level: str) -> None:
     pass
 
 
+def cap_duckdb(env: pytest.MonkeyPatch) -> None:
+    """DuckDB's caps for every CLI-driven step, serial or parallel: eight workers stay within
+    8 GB and 16 threads. A test that sets its own limit afterwards (`MEMORY_LIMIT`) wins."""
+    env.setenv("DUCKDB_MEMORY_LIMIT", "1GB")
+    env.setenv("DUCKDB_THREADS", "2")
+    get_settings.cache_clear()
+
+
 def point_cli_at(
     env: pytest.MonkeyPatch, *, conninfo: str, data_dir: Path, bucket: str = TEST_BUCKET
 ) -> None:
@@ -127,7 +150,7 @@ def point_cli_at(
     env.setenv("DATABASE_URL", conninfo)
     env.setenv("DATA_DIR", str(data_dir))
     env.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
-    get_settings.cache_clear()
+    cap_duckdb(env)
 
 
 @contextmanager
@@ -174,3 +197,189 @@ def published(
     data_dir = tmp_path_factory.mktemp("published")
     with published_fixture_cycle(data_dir, migrated_template) as conninfo:
         yield Published(conninfo, data_dir)
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """Pipeline state built once per session: its `DATA_DIR`, database and bucket. Nothing is
+    connected to the database, which is only ever a `CREATE DATABASE … TEMPLATE` source."""
+
+    data_dir: Path
+    database: str
+    store: R2
+
+
+def copy_files(snapshot: Snapshot, *, store: R2, data_dir: Path) -> None:
+    """`snapshot`'s `DATA_DIR` into `data_dir`, and its objects into `store`, server-side."""
+    shutil.copytree(snapshot.data_dir, data_dir, dirs_exist_ok=True)
+    source = snapshot.store.bucket
+    for key in snapshot.store.list_keys(""):
+        store.client.copy_object(
+            Bucket=store.bucket, Key=key, CopySource={"Bucket": source, "Key": key}
+        )
+
+
+def restore(snapshot: Snapshot, *, store: R2, data_dir: Path, conninfo: str) -> None:
+    """Make `store`, `data_dir` and the database `conninfo` over as copies of `snapshot`'s: the
+    database keeps its name and becomes a copy of the snapshot's, sequences and `app` rows
+    included."""
+    copy_files(snapshot, store=store, data_dir=data_dir)
+    name = sql.Identifier(database_name(conninfo))
+    with psycopg.connect(make_conninfo(conninfo, dbname="postgres"), autocommit=True) as conn:
+        conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(name))
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                name, sql.Identifier(snapshot.database)
+            )
+        )
+
+
+def build_snapshot(
+    rung: str,
+    tmp_path_factory: pytest.TempPathFactory,
+    *,
+    template: str,
+    steps: Callable[[pytest.MonkeyPatch], None],
+    parent: Snapshot | None = None,
+) -> Generator[Snapshot]:
+    """A session fixture's body: a bucket, database and `DATA_DIR` of `rung`'s own, holding
+    `parent`'s state if given (else an empty bucket and a copy of database `template`), the CLI
+    pointed at them while `steps` runs; the snapshot, emptied and dropped after the session."""
+    data_dir = tmp_path_factory.mktemp(rung)
+    store = empty_store(bucket_name(f"snapshot-{rung}"))
+    with scratch_database(template=template if parent is None else parent.database) as conninfo:
+        try:
+            if parent is not None:
+                copy_files(parent, store=store, data_dir=data_dir)
+            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir, bucket=store.bucket) as env:
+                steps(env)
+            yield Snapshot(data_dir, database_name(conninfo), store)
+        finally:
+            store.delete_prefix("")
+
+
+# The three rungs below import their steps inside their bodies, as `published` does: the test
+# modules that hold them import this one.
+
+
+@pytest.fixture(scope="session")
+def transformed_snapshot(
+    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Snapshot]:
+    """The fixture cycle's bronze and seat calendar, transformed as build `BUILD`."""
+    from tests.integration.test_transform import put_bronze, seats_report, transform
+
+    def steps(env: pytest.MonkeyPatch) -> None:
+        put_bronze(R2.from_settings(get_settings()))
+        seats_report()
+        result = transform()
+        assert result.exit_code == 0, result.output
+
+    yield from build_snapshot(
+        "transformed", tmp_path_factory, template=migrated_template, steps=steps
+    )
+
+
+@pytest.fixture(scope="session")
+def resolved_snapshot(
+    transformed_snapshot: Snapshot,
+    migrated_template: str,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[Snapshot]:
+    """`transformed_snapshot` resolved as model `MODEL` under `MEMORY_LIMIT`, with no verdicts."""
+    from tests.integration.test_resolve import MEMORY_LIMIT, MODEL, resolve
+
+    def steps(env: pytest.MonkeyPatch) -> None:
+        env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+        get_settings.cache_clear()
+        result = resolve("--full", "--build-id", MODEL)
+        assert result.exit_code == 0, result.output
+
+    yield from build_snapshot(
+        "resolved",
+        tmp_path_factory,
+        template=migrated_template,
+        steps=steps,
+        parent=transformed_snapshot,
+    )
+
+
+@pytest.fixture(scope="session")
+def validated_snapshot(
+    resolved_snapshot: Snapshot,
+    migrated_template: str,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[Snapshot]:
+    """`resolved_snapshot` adjudicated by the fake model, then resolved again as model `AGAIN`
+    with the fixture overrides and the release name, as test_validate needs it.
+
+    Resolved twice, as the overrides runbook does: the split names a donor_id, which only a first
+    run without overrides hands out, and `adjudicate` chooses from the clusters of a run before it.
+    """
+    from fundlens.resolve import adjudicate as adjudication
+    from fundlens.settings import Settings
+    from tests.fake_adjudicator import FakeAdjudicator
+    from tests.integration.test_resolve import AGAIN, MEMORY_LIMIT, resolve
+    from tests.integration.test_validate import resolved_env, run
+
+    def steps(env: pytest.MonkeyPatch) -> None:
+        client = FakeAdjudicator()
+
+        def client_for(settings: Settings) -> FakeAdjudicator:
+            return client
+
+        env.setattr(adjudication, "client_for", client_for)
+        # As `resolved_snapshot` ran: the overrides and release name are the second resolve's.
+        env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+        get_settings.cache_clear()
+        adjudicated = run("adjudicate")
+        assert adjudicated.exit_code == 0, adjudicated.output
+        resolved_env(env)
+        again = resolve("--full", "--build-id", AGAIN)
+        assert again.exit_code == 0, again.output
+
+    yield from build_snapshot(
+        "validated",
+        tmp_path_factory,
+        template=migrated_template,
+        steps=steps,
+        parent=resolved_snapshot,
+    )
+
+
+@pytest.fixture
+def transformed(
+    transformed_snapshot: Snapshot,
+    store: R2,
+    cli_env: Path,
+    migrated_db: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """The fixture cycle transformed as build `BUILD`, copied into the test's own bucket, database
+    and `DATA_DIR`, which the test may change, with the pipeline's DuckDB memory limit set; the
+    `DATA_DIR`."""
+    from tests.integration.test_resolve import MEMORY_LIMIT
+
+    restore(transformed_snapshot, store=store, data_dir=cli_env, conninfo=migrated_db)
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+    get_settings.cache_clear()
+    return cli_env
+
+
+@pytest.fixture
+def resolved(
+    resolved_snapshot: Snapshot,
+    store: R2,
+    cli_env: Path,
+    migrated_db: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """`transformed`, resolved once as model `MODEL` with no verdicts yet, copied into the test's
+    own bucket, database and `DATA_DIR`; the `DATA_DIR`. test_validate has a `resolved` of its
+    own, further along."""
+    from tests.integration.test_resolve import MEMORY_LIMIT
+
+    restore(resolved_snapshot, store=store, data_dir=cli_env, conninfo=migrated_db)
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+    get_settings.cache_clear()
+    return cli_env

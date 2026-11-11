@@ -13,7 +13,7 @@ from fundlens import cli, paths
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 from tests.fake_fec import zipped
-from tests.integration.conftest import TEST_BUCKET
+from tests.integration.conftest import TEST_BUCKET, cap_duckdb
 
 BUILD = "20261030T030000Z"
 CN_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/fec/2026/cn.txt"
@@ -36,7 +36,7 @@ def cli_env(
     monkeypatch.setenv("R2_BUCKET", TEST_BUCKET)
     monkeypatch.setenv("DATABASE_URL", migrated_db)
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    get_settings.cache_clear()
+    cap_duckdb(monkeypatch)
     yield tmp_path
     get_settings.cache_clear()
 

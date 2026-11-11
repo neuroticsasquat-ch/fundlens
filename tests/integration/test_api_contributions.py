@@ -26,6 +26,7 @@ from fundlens.load.db import create_pool
 from fundlens.settings import get_settings
 from tests.integration.conftest import Published
 from tests.integration.test_api_routes import BUILD, CYCLE, ok
+from tests.timing import assert_within
 
 NEXT_BUILD = "20261106T030000Z"
 # The committee with the most counted contributions in the fixture (OKAFOR's principal).
@@ -307,11 +308,13 @@ def test_a_cursor_whose_build_was_pruned_is_gone(
 def test_a_page_is_answered_in_under_100_ms_at_p95(client: TestClient) -> None:
     url = f"/v1/committees/{COMMITTEE}/contributions"
     client.get(url, params={"cycle": CYCLE})  # DuckDB's first scan of the file
-    timings: list[float] = []
-    for _ in range(40):
-        started = time.perf_counter()
-        ok(client.get(url, params={"cycle": CYCLE}))
-        timings.append(time.perf_counter() - started)
 
-    p95 = statistics.quantiles(timings, n=20)[18]
-    assert p95 < 0.1, f"p95 {p95 * 1000:.1f} ms"
+    def p95() -> float:
+        timings: list[float] = []
+        for _ in range(40):
+            started = time.perf_counter()
+            ok(client.get(url, params={"cycle": CYCLE}))
+            timings.append(time.perf_counter() - started)
+        return statistics.quantiles(timings, n=20)[18]
+
+    assert_within(0.1, p95)

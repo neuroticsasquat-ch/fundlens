@@ -8,9 +8,9 @@ minimum_pre_commit_version: "3.5.0"
 #
 # The hooks run what CI runs (.github/workflows/ci.yml), so a commit that passes them passes CI:
 # a CI failure costs far more than a slower commit. That means the whole pytest suite, its
-# integration tests included, against the dev stack's Postgres and MinIO (about five minutes),
-# whenever anything it reads changes: Python, SQL, fixtures, migrations, resolution data. A
-# commit touching only sql/ runs it too. Each hook fires only on the paths its CI job depends
+# integration tests included, against the dev stack's Postgres and MinIO (about 35 seconds on 8
+# xdist workers, NEU-2268), whenever anything it reads changes: Python, SQL, fixtures,
+# migrations, resolution data. A commit touching only sql/ runs it too. Each hook fires only on the paths its CI job depends
 # on, so a docs-only commit runs none.
 repos:
   - repo: local

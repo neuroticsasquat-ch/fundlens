@@ -129,7 +129,7 @@ tasks:
       - "{{.EXEC}} python -m tests.seed"
 
   test:
-    desc: Run the whole pytest suite (task test -- <path> for one file)
+    desc: Run the whole pytest suite in parallel (task test -- <path> for one file; -- -n0 to run serially)
     cmds:
       - "{{.EXEC}} pytest {{.CLI_ARGS}}"
   test:unit:

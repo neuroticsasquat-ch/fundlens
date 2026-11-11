@@ -15,10 +15,7 @@ from fundlens.resolve.adjudicate import Reply
 from fundlens.resolve.cluster import cluster_fingerprint
 from fundlens.settings import Settings, get_settings
 from tests.fake_adjudicator import FakeAdjudicator
-from tests.integration.test_resolve import AGAIN, MODEL, clusters, donor_keys, resolve
-
-# A fixture, imported so this module's tests can request it.
-from tests.integration.test_resolve import transformed as transformed
+from tests.integration.test_resolve import AGAIN, clusters, donor_keys, resolve
 
 PROMPT_VERSION = "adjudicate_v1"
 
@@ -37,14 +34,6 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeAdjudicator:
 
     monkeypatch.setattr(adjudication, "client_for", client_for)
     return client
-
-
-@pytest.fixture
-def resolved(transformed: Path) -> Path:
-    """The fixture cycle resolved once, with no verdicts yet; the `DATA_DIR`."""
-    result = resolve("--full", "--build-id", MODEL)
-    assert result.exit_code == 0, result.output
-    return transformed
 
 
 def verdicts(conninfo: str) -> dict[str, tuple[Any, ...]]:
