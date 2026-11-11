@@ -49,6 +49,11 @@ COMMITTEE_TYPES = ("PAC", "COM", "CCM", "PTY")
 NOT_POLITICAL = ("I", "C", "E")
 # `oth` lines that are no organization receipt: a JFC attribution, and a loan or its repayment.
 NOT_GIFTS = ("15J", "16C", "16F", "16G")
+# A candidate's loan to their campaign and its repayment (NEU-2071), contributions from `oth`; with
+# a 15C, the types that are the candidate's own money whoever the row names (NEU-2194).
+LOAN_REPAYMENT = "20C"
+CANDIDATE_LOANS = ("16C", LOAN_REPAYMENT)
+CANDIDATE_TYPES = ("15C", *CANDIDATE_LOANS)
 # A hybrid PAC's committee types, and the transaction types of its non-contribution account's
 # receipts and refunds (NEU-2192). A 24I, an earmark through a conduit, is one of them when its
 # memo begins with the account's name (NEU-2203, NEU-2207); a hybrid PAC files its other 24Is on
@@ -245,7 +250,10 @@ def reversals() -> frozenset[str]:
 def signed(row: Row) -> int:
     """A contribution's amount as it counts. A refund (22Y, or any 2nY or 4nY type) subtracts
     whichever sign its filer wrote, unless it is negative and voids a positive refund to the same
-    giver at the same committee (`reversals`): then it adds back."""
+    giver at the same committee (`reversals`): then it adds back. A loan repaid to the candidate
+    (20C) subtracts as filed, so a negative one, a correction, adds back (NEU-2071)."""
+    if row["TRANSACTION_TP"] == LOAN_REPAYMENT:
+        return -amount(row)
     if not is_refund(row):
         return amount(row)
     return -amount(row) if row["SUB_ID"] in reversals() else -abs(amount(row))
@@ -386,10 +394,38 @@ def is_individual(row: Row) -> bool:
 
 
 @functools.cache
-def counted() -> tuple[Row, ...]:
+def candidate_loans() -> tuple[Row, ...]:
+    """The `oth` rows that are a candidate's loan to their campaign or its repayment (NEU-2071):
+    typed 16C or 20C, whoever the row names as giver, no memo line, to a committee of the cycle,
+    and mirroring no `indiv` row of the same type (same committee, amount and date)."""
+    mirrored = {
+        (r["CMTE_ID"], r["TRANSACTION_TP"], amount(r), r["TRANSACTION_DT"])
+        for r in rows("indiv")
+        if r["TRANSACTION_TP"] in CANDIDATE_LOANS and r["MEMO_CD"] != "X"
+    }
+    return tuple(
+        row
+        for row in rows("oth")
+        if row["TRANSACTION_TP"] in CANDIDATE_LOANS
+        and row["MEMO_CD"] != "X"
+        and row["CMTE_ID"] in committee_ids()
+        and (row["CMTE_ID"], row["TRANSACTION_TP"], amount(row), row["TRANSACTION_DT"])
+        not in mirrored
+    )
+
+
+@functools.cache
+def counted_indiv() -> tuple[Row, ...]:
     """The `indiv` rows the contribution table keeps: individuals and candidates, earmarks once,
-    to committees of the cycle."""
+    to committees of the cycle. DIME labels these, and no `oth` row."""
     return tuple(row for row in rows("indiv") if is_individual(row) and counts(row))
+
+
+@functools.cache
+def counted() -> tuple[Row, ...]:
+    """The rows the contribution table keeps: `counted_indiv`, and the candidates' loans and
+    repayments in `oth` (NEU-2071)."""
+    return (*counted_indiv(), *candidate_loans())
 
 
 def name_key(name: str) -> str:
@@ -585,6 +621,10 @@ def attributions() -> list[Row]:
 
 
 def is_self_funding(row: Row) -> bool:
+    """A candidate's own money: a 15C, a 16C loan or its 20C repayment whoever it names (NEU-2194,
+    NEU-2071), or a CAN row under the name of the candidate its recipient raises for."""
+    if row["TRANSACTION_TP"] in CANDIDATE_TYPES:
+        return True
     names = {r["CAND_ID"]: r["CAND_NAME"] for r in rows("cn")}
     candidate = candidate_of(row["CMTE_ID"], row)
     return row["ENTITY_TP"] == "CAN" and candidate is not None and names[candidate] == row["NAME"]
@@ -1102,21 +1142,34 @@ def dime_cids() -> dict[int, str]:
     for row in dime_rows():
         labels[row["efec.comid.orig"], row["efec.transaction.id.orig"]].add(row["bonica.cid"])
     cids: dict[int, str] = {}
-    for row in counted():
+    for row in counted_indiv():
         [cids[int(row["SUB_ID"])]] = labels[row["CMTE_ID"], row["TRAN_ID"]]
     return cids
 
 
-def test_every_counted_contribution_has_exactly_one_dime_label() -> None:
-    assert len(dime_rows()) == len(counted())
+def donor_cids() -> dict[int, str]:
+    """Each counted contribution's DIME donor: its label (`dime_cids`), or, for a candidate's loan
+    or repayment from `oth`, which DIME does not label, the one donor the labelled rows of its
+    contributor key are."""
     cids = dime_cids()
-    assert len(cids) == len(counted())
+    by_key: defaultdict[str, set[str]] = defaultdict(set)
+    for row in counted_indiv():
+        by_key[contributor_key(row)].add(cids[int(row["SUB_ID"])])
+    for row in candidate_loans():
+        [cids[int(row["SUB_ID"])]] = by_key[contributor_key(row)]
+    return cids
+
+
+def test_every_counted_indiv_contribution_has_exactly_one_dime_label() -> None:
+    assert len(dime_rows()) == len(counted_indiv())
+    cids = dime_cids()
+    assert len(cids) == len(counted_indiv())
     assert EXPECTED["distinct_donors"] == len(set(cids.values()))
 
 
 def test_each_donor_grouping_is_its_contributions_and_one_dime_donor() -> None:
     by_sub_id = {int(r["SUB_ID"]): r for r in counted()}
-    cids = dime_cids()
+    cids = donor_cids()
     for label, donor in EXPECTED["donors"].items():
         assert set(donor["sub_ids"]) <= by_sub_id.keys(), label
         assert donor["amount"] == sum(signed(by_sub_id[s]) for s in donor["sub_ids"]), label
@@ -1133,8 +1186,8 @@ def test_the_expected_validation_labels_every_dated_counted_contribution_and_its
     validation = EXPECTED["validation"]
     # The DIME import drops a label with no date, and the validator matches on the date: a counted
     # contribution with none (VOSS's, NEU-2126) is labelled in the file but never matched.
-    dated = [r for r in counted() if r["TRANSACTION_DT"]]
-    assert len(dated) < len(counted()) == len(dime_cids())
+    dated = [r for r in counted_indiv() if r["TRANSACTION_DT"]]
+    assert len(dated) < len(counted_indiv()) == len(dime_cids())
     assert validation["matched_rows"] == len(dated)
     cids = dime_cids()
     assert validation["labelled_keys"] == len(

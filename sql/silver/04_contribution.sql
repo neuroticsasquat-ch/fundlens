@@ -1,4 +1,6 @@
--- contribution (spec §4): one row per counted `indiv` contribution.
+-- contribution (spec §4): one row per counted `indiv` contribution, and per `oth` loan from a
+-- candidate to their campaign or its repayment (`candidate_loan`, below, NEU-2071), the
+-- candidate's own money.
 --
 -- Counted: a gift from an individual (IND) or a candidate (CAN); an organization's is not one. FEC
 -- fills ENTITY_TP only on electronic filings since April 2002, so a blank one is an individual
@@ -65,12 +67,45 @@ WHERE TRANSACTION_TP = '15J'
     AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') = 'IND'
     AND CMTE_ID IN (SELECT committee_id FROM committee);
 
+-- `candidate_loan` is a candidate's loan to their own campaign and its repayment (NEU-2071): an
+-- `oth` row typed 16C, FEC's "loan received from the candidate", or 20C, its "loan repayment made
+-- to the candidate", not a memo line, to a committee in `cm`. The type is the evidence, as a 15C's
+-- is (NEU-2194): 2024's 4,005 16Cs ($424.3M) are typed CAN mostly, but also IND (Ramaswamy's
+-- $23.75M to VIVEK 2024, OTHER_ID blank), CCM, ORG, COM and PTY, and their OTHER_ID is often a
+-- stale candidate id or none (Trone's 31, $62,877,799 to his 2024 Senate campaign, name his old
+-- House ids or nothing). So the candidate is never read from OTHER_ID: a loan is a contribution,
+-- credited by contribution's rule to the candidate its recipient raises for. Its memo lines stay
+-- dropped: Busch Valentine's 2024 memo 20Cs itemize $15M against FEC's $290,510 of repayments. A
+-- row mirroring an `indiv` row of the same type (same committee, amount and date) is read once,
+-- from `indiv`: 2024's `indiv` holds no 16C or 20C, but nothing says an older cycle's does not.
+-- Measured against FEC's `weball24` CAND_LOANS and CAND_LOAN_REPAY on the 2024 files: loans
+-- $418.4M against $423.6M, 776 of 865 candidates within 1%; repayments $77.5M against $77.4M,
+-- 497 of 549 within 1%.
+CREATE TEMP TABLE candidate_loan AS
+SELECT *
+FROM oth
+WHERE TRANSACTION_TP IN ('16C', '20C')
+    AND MEMO_CD IS DISTINCT FROM 'X'
+    AND CMTE_ID IN (SELECT committee_id FROM committee)
+    AND NOT EXISTS (
+        SELECT 1
+        FROM indiv
+        WHERE indiv.TRANSACTION_TP IN ('16C', '20C')
+            AND indiv.MEMO_CD IS DISTINCT FROM 'X'
+            AND indiv.CMTE_ID = oth.CMTE_ID
+            AND indiv.TRANSACTION_TP = oth.TRANSACTION_TP
+            AND indiv.TRANSACTION_AMT = oth.TRANSACTION_AMT
+            AND indiv.TRANSACTION_DT = oth.TRANSACTION_DT
+    );
+
 CREATE TEMP TABLE contributor_value AS
 SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION
 FROM (
     SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM indiv
     UNION ALL
     SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM jfc_line_reported
+    UNION ALL
+    SELECT NAME, ZIP_CODE, EMPLOYER, OCCUPATION FROM candidate_loan
 )
 GROUP BY GROUPING SETS ((NAME), (ZIP_CODE), (EMPLOYER), (OCCUPATION));
 
@@ -207,8 +242,9 @@ WHERE refund.is_refund
 -- filings' line 11(a)(i) added together. So a committee with a superseded filing sits below that
 -- figure by design: a gift counts once.
 -- A superseded filing's `indiv` rows are counted nowhere: not here, in 05_committee_transfer.sql or
--- in 08_organization_receipt.sql (a row with no FILE_NUM is on no superseded filing). Its `oth`
--- rows were not measured and are read as before. Built in three steps so `indiv` is never held: the
+-- in 08_organization_receipt.sql (a row with no FILE_NUM is on no superseded filing), nor are its
+-- candidates' loans in `oth` (NEU-2071). Its other `oth` rows were not measured and are read as
+-- before. Built in three steps so `indiv` is never held: the
 -- gifts on more than one filing (a hash of the committee and gift, grouped), then each filing's
 -- rows and its rows holding such a gift, then the pairs.
 CREATE TEMP VIEW filed_gift AS
@@ -457,27 +493,41 @@ individual AS (
         regexp_replace(upper(coalesce(MEMO_TEXT, '')), '[^A-Z0-9]', '', 'g') AS memo_key,
         -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
         CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date
-    FROM indiv
-    WHERE (
-            trim(ENTITY_TP) IN ('IND', 'CAN')
-            OR (
-                nullif(trim(ENTITY_TP), '') IS NULL
-                AND (
-                    NAME IS NULL
-                    OR NAME NOT IN (SELECT raw FROM organization_name_class WHERE is_organization)
+    FROM (
+        SELECT *, false AS is_candidate_loan
+        FROM indiv
+        WHERE (
+                trim(ENTITY_TP) IN ('IND', 'CAN')
+                OR (
+                    nullif(trim(ENTITY_TP), '') IS NULL
+                    AND (
+                        NAME IS NULL
+                        OR NAME NOT IN (
+                            SELECT raw FROM organization_name_class WHERE is_organization
+                        )
+                    )
                 )
             )
-        )
-        AND (MEMO_CD IS DISTINCT FROM 'X' OR SUB_ID IN (SELECT SUB_ID FROM orphaned_attribution))
-        AND TRANSACTION_TP IS DISTINCT FROM '24T'
-        AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
-        AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
-        AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
-        AND NOT (
-            CMTE_ID IN (SELECT committee_id FROM conduit)
-            AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
-        )
-        AND CMTE_ID IN (SELECT committee_id FROM committee)
+            AND (
+                MEMO_CD IS DISTINCT FROM 'X'
+                OR SUB_ID IN (SELECT SUB_ID FROM orphaned_attribution)
+            )
+            AND TRANSACTION_TP IS DISTINCT FROM '24T'
+            AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
+            AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
+            AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
+            AND NOT (
+                CMTE_ID IN (SELECT committee_id FROM conduit)
+                AND regexp_matches(coalesce(MEMO_TEXT, ''), 'EARMARKED FOR .*\(C[0-9]{{8}}\)')
+            )
+            AND CMTE_ID IN (SELECT committee_id FROM committee)
+        UNION ALL
+        -- A candidate's loan or its repayment, from `oth` (NEU-2071, `candidate_loan` above), on
+        -- no filing a later amendment supersedes: such a filing's rows count nowhere (NEU-2196).
+        SELECT *, true AS is_candidate_loan
+        FROM candidate_loan
+        WHERE coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
+    )
 ),
 kept AS (
     SELECT
@@ -485,8 +535,9 @@ kept AS (
         -- An earmark whose OTHER_ID is blank names its conduit only in MEMO_TEXT ('EARMARKED
         -- THROUGH WINRED'), by name or by FEC id; one naming two takes the lower id. A memo that
         -- says EARMARK but names no conduit gives none: there is no committee to record. Nor is
-        -- a committee ever the conduit of a gift to itself.
-        nullif(
+        -- a committee ever the conduit of a gift to itself, nor a candidate's loan ever routed
+        -- through one: it is the candidate's money, lent straight to the campaign.
+        CASE WHEN NOT individual.is_candidate_loan THEN nullif(
             coalesce(
                 by_id.committee_id,
                 list_filter(
@@ -496,7 +547,7 @@ kept AS (
                 )[1].committee_id
             ),
             individual.CMTE_ID
-        ) AS conduit_committee_id
+        ) END AS conduit_committee_id
     FROM individual
     CROSS JOIN conduits
     LEFT JOIN committee AS by_id
@@ -554,6 +605,11 @@ SELECT
     kept.CMTE_ID AS recipient_committee_id,
     linked.candidate_id,
     CASE
+        -- A loan repaid to the candidate (NEU-2071) subtracts, as filed: filers write it
+        -- positive, and a negative one corrects repayments filed before it and adds back
+        -- (Schweikert's 2024 20Cs net to $11,566 as filed, FEC's CAND_LOAN_REPAY $11,578; with
+        -- every sign turned negative they would be $110,966).
+        WHEN kept.TRANSACTION_TP = '20C' THEN -kept.TRANSACTION_AMT
         WHEN NOT regexp_matches(kept.TRANSACTION_TP, '^[24][0-9]Y$') THEN kept.TRANSACTION_AMT
         WHEN kept.SUB_ID IN (SELECT SUB_ID FROM reversal) THEN -kept.TRANSACTION_AMT
         ELSE -abs(kept.TRANSACTION_AMT)
@@ -569,10 +625,12 @@ SELECT
     -- (NEU-2194): FEC's "contribution from the candidate", on line 11(d), so the filer's choice of
     -- type is the evidence. 2024 files most of its own money typed IND or under a variant name
     -- ('MARYOTT - PERSONAL FUNDS, BRIAN', 'TORRESS, JERRY'), and some at a committee linked to no
-    -- candidate, whose self_funding it is. Any other type is when it is a CAN gift to a committee
-    -- raising for the candidate, under their last name and first given name ('WHITLOCK, GORDON R.
-    -- MR' is 'WHITLOCK, GORDON'), and not routed through a conduit: that is an earmark.
-    kept.TRANSACTION_TP IS NOT DISTINCT FROM '15C'
+    -- candidate, whose self_funding it is. So, by the same evidence, is a 16C, the candidate's
+    -- loan, and a 20C, its repayment, which nets it out (NEU-2071). Any other type is when it is a
+    -- CAN gift to a committee raising for the candidate, under their last name and first given
+    -- name ('WHITLOCK, GORDON R. MR' is 'WHITLOCK, GORDON'), and not routed through a conduit: that
+    -- is an earmark.
+    coalesce(kept.TRANSACTION_TP, '') IN ('15C', '16C', '20C')
     OR coalesce(
         kept.ENTITY_TP = 'CAN'
         AND kept.conduit_committee_id IS NULL
