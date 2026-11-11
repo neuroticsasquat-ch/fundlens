@@ -22,7 +22,8 @@
 -- 4nY type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total.
 -- Most filers write a refund positive, some negative, so its sign is not trusted: every refund
 -- counts as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which
--- reverses it and adds back (NEU-2073).
+-- reverses it and adds back (NEU-2073). A positive refund is reversed once, however many
+-- negatives mirror it (NEU-2269).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -282,19 +283,29 @@ kept AS (
 ),
 reversal AS (
     -- A negative refund that mirrors a positive one (same committee, donor and size) reverses it: a
-    -- voided or uncashed refund check. It adds back, so the pair nets to nothing. Built from its own
-    -- narrow scan of the refunds alone: a second reference to `individual` would make DuckDB
-    -- materialize every contribution row, and run out of memory on a real cycle.
+    -- voided or uncashed refund check. It adds back, so the pair nets to nothing. Each positive
+    -- refund is reversed once (NEU-2269): within a committee, donor and size, the negatives in
+    -- order of date, then SUB_ID, reverse as many refunds as there are positive ones, and any
+    -- further negative subtracts as every other refund does. Built from its own narrow scan of the
+    -- refunds alone: a second reference to `individual` would make DuckDB materialize every
+    -- contribution row, and run out of memory on a real cycle.
     WITH refund AS (
-        SELECT SUB_ID, CMTE_ID, NAME, TRANSACTION_AMT
+        SELECT
+            SUB_ID,
+            TRANSACTION_AMT,
+            row_number() OVER (
+                PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT), TRANSACTION_AMT < 0
+                ORDER BY try_strptime(TRANSACTION_DT, '%m%d%Y') NULLS LAST, SUB_ID
+            ) AS nth,
+            count(*) FILTER (WHERE TRANSACTION_AMT > 0)
+                OVER (PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT)) AS positives
         FROM indiv
         WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND MEMO_CD IS DISTINCT FROM 'X'
+            AND NAME IS NOT NULL
     )
-    SELECT DISTINCT n.SUB_ID
-    FROM refund AS n
-    JOIN refund AS p
-        ON p.CMTE_ID = n.CMTE_ID AND p.NAME = n.NAME AND p.TRANSACTION_AMT = -n.TRANSACTION_AMT
-    WHERE n.TRANSACTION_AMT < 0
+    SELECT SUB_ID
+    FROM refund
+    WHERE TRANSACTION_AMT < 0 AND nth <= positives
 )
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,

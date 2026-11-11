@@ -77,7 +77,7 @@ rows:
   cm: 20
   cn: 15
   ccl: 15
-  indiv: 350
+  indiv: 354
   pas2: 24
   oth: 30
 
@@ -91,7 +91,7 @@ silver:
   committee: 20
   candidate: 15
   candidate_committee_link: 15
-  contribution: 309
+  contribution: 313
   independent_expenditure: 9
   committee_transfer: 31
   organization_receipt: 10
@@ -100,7 +100,7 @@ silver:
   # One row per contributor key among the counted contributions and the JFC attributions (spec
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
-  contributor: 123
+  contributor: 124
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T.
@@ -126,7 +126,7 @@ contributions:
     C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2435675
+  total_amount: 2436275
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -222,7 +222,8 @@ returned_by_candidates:
     C00800203: -1000
 
 # The refunds counted in a committee's total_individual or total_from_organizations (NEU-2265), by
-# SUB_ID: the 22Ys to individuals (LINDQVIST's, and its void, net to 0) and CHESAPEAKE STEEL's ORG
+# SUB_ID: the 22Ys to individuals (LINDQVIST's, and its void, net to 0; BRANDVOLD's three, a void
+# of one refund and a second refund, net to -400, NEU-2269) and CHESAPEAKE STEEL's ORG
 # 22Y to the super PAC. Not the hybrid PAC's 20Y to HAYWARD (its non-contribution account) nor
 # OLD LINE REPUBLICAN COMMITTEE's 41Y to GALLAGHER (a party account, in total_other_lines).
 # by_committee is gold's total_refunds, their net amount; 0 at every other committee.
@@ -235,11 +236,14 @@ refunds:
     - 4240100000000000308
     - 4240100000000000336
     - 4240100000000000349
+    - 4240100000000000352
+    - 4240100000000000353
+    - 4240100000000000354
   organization_receipts: [4240100000000000323]
   by_committee:
     C00800106: -1000
     C00800107: -500
-    C00800201: -2800
+    C00800201: -3200
     C00800204: -250
     C00401224: -5
 
@@ -518,7 +522,7 @@ committees:
     total_to_candidates: 0
     ie_total: 0
   C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' name-matched `indiv` gift is a receipt
-    total_individual: 401125
+    total_individual: 401725
     self_funding: 0
     total_from_committees: 65000
     total_to_candidates: 0
@@ -662,9 +666,16 @@ donors:
     resolved_by: none
     amount: 1750
     sub_ids: [4240100000000000341, 4240100000000000342, 4240100000000000343]
+  # BRANDVOLD, INGRID (NEU-2269): $1000 less a $400 refund whose check she voids, then a second $400
+  # refund. The void reverses one refund, not both: she keeps 600.
+  refund_after_void:
+    bonica_cid: 100000116
+    resolved_by: none
+    amount: 600
+    sub_ids: [4240100000000000351, 4240100000000000352, 4240100000000000353, 4240100000000000354]
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 115
+distinct_donors: 116
 
 # JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank and not
 # classified: CHESAPEAKE STEEL INC's line is in no table, NEU-2132) filed by a committee in `cm`.
@@ -689,8 +700,8 @@ validation:
   dime_version: "4.0"
   # Every counted contribution with a date: the fixture labels them all, but the DIME import drops
   # a label with no date and the validator matches on it, so VOSS's undated gift is never matched.
-  matched_rows: 308
-  # Contributor keys with a dated counted contribution: 123 less the 15J-only key and VOSS's.
-  labelled_keys: 121
+  matched_rows: 312
+  # Contributor keys with a dated counted contribution: 124 less the 15J-only key and VOSS's.
+  labelled_keys: 122
   overall: {precision: 1.0, recall: 1.0}
   top: {limit: 3, precision: 1.0, recall: 1.0}

@@ -687,6 +687,17 @@ def test_a_refund_subtracts_whichever_sign_its_filer_wrote_and_a_void_adds_back(
     assert (lindqvist, lindqvist_refund, lindqvist_void) == (500, -200, 200)
 
 
+def test_a_void_reverses_one_refund_and_a_second_negative_refund_subtracts(
+    fixture_silver: Path,
+) -> None:
+    # The fixture's BRANDVOLD rows (NEU-2269): a gift, a refund written positive, its void, and a
+    # second refund of the same size written negative. Both negatives mirror the one refund; only
+    # the first, by date, voids it.
+    by_id = {row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")}
+    amounts = tuple(by_id[4240100000000000350 + n]["amount"] for n in (1, 2, 3, 4))
+    assert amounts == (1000, -400, 400, -400)
+
+
 def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
     fixture_silver: Path,
 ) -> None:
