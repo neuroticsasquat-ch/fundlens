@@ -3225,6 +3225,30 @@ FROM verdict ORDER BY excess DESC
   | D6: dated after the summary's coverage end | 1 | $3,000 | none: FEC's roll-up lag |
   | D1: refunds | 199 | −$20,129,599 | none: lowers fundlens, explains no excess |
 
+### Q6 D4 after NEU-2195
+
+NEU-2195 counts an ORG-typed `indiv` gift as a committee transfer when its name names exactly one
+political `cm` committee other than its recipient. Its 2024 build `20261111T040014Z` (model
+`20261111T145138Z`, published 2026-11-11) moved 267 rows from `organization_receipt` (18,398 →
+18,131) to `committee_transfer` (358,920 → 359,187). Setup, `q6core.py` and `q6.py` re-run unchanged
+against it, 2026-11-11 15:38 UTC:
+
+| | rows | dollars | committees |
+|---|---|---|---|
+| D4 before (Q6a above) | 73 | 27,639,632 | 28 |
+| D4 after | 2 | 500 | 1 |
+
+What is left is 2 rows, $500, naming FRIENDS OF SHERROD BROWN (C00264697, type S), read from
+`organization_receipt` at one recipient. Their cause was not traced. NEU-2195 left out of scope
+`oth` rows and rows whose `OTHER_ID` is C-prefixed, and $500 is under the $1M at which a follow-up
+would be filed.
+
+The over-1% list is the 2026-11-11 gold's, not the one above. The fixes since (NEU-2192, NEU-2193,
+NEU-2194, NEU-2196, NEU-2199, NEU-2203, NEU-2204, NEU-2207, NEU-2265, NEU-2269) shrank it too: Q6d2's
+total excess is now $125,175,813 (D3 $26,729,093, D8 $72,957,061, unexplained $34,459,496). So a
+D4 row can leave the list because its committee is no longer over. The transform's 267 moved rows,
+counted across every committee, are the measure that does not depend on the list.
+
 ## Q7: the three named gaps
 
 ```python
