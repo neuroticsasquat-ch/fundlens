@@ -60,6 +60,14 @@ EXPECTED_COLUMNS = {
 }
 
 
+@pytest.fixture
+def migrated_db(scratch_db: str) -> str:
+    """A scratch database upgraded to head by Alembic here, not copied from the session's template
+    as every other test's is: the upgrade is what this module tests."""
+    command.upgrade(alembic_config(scratch_db), "head")
+    return scratch_db
+
+
 def app_objects(conninfo: str) -> dict[str, set[str]]:
     """Every relation in `app`, by kind (`r` table, `S` sequence, `i` index)."""
     with psycopg.connect(conninfo) as conn:

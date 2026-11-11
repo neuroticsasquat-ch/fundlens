@@ -24,26 +24,14 @@ from fundlens.api.deps import get_itemized, get_page_size
 from fundlens.api.itemized import ItemizedReader, Recipient, read_live_builds
 from fundlens.load.db import create_pool
 from fundlens.settings import get_settings
-from tests.integration.test_api_routes import BUILD, CYCLE, ok, published_fixture_cycle
+from tests.integration.conftest import Published
+from tests.integration.test_api_routes import BUILD, CYCLE, ok
 
 NEXT_BUILD = "20261106T030000Z"
 # The committee with the most counted contributions in the fixture (OKAFOR's principal).
 COMMITTEE = "C00800103"
 PAGE = 7
 ACTBLUE = "C00401224"
-
-
-@dataclass(frozen=True)
-class Published:
-    conninfo: str
-    data_dir: Path
-
-
-@pytest.fixture(scope="module")
-def published(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Published]:
-    data_dir = tmp_path_factory.mktemp("data")
-    with published_fixture_cycle(data_dir) as conninfo:
-        yield Published(conninfo, data_dir)
 
 
 @pytest.fixture(scope="module")

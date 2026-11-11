@@ -4,7 +4,7 @@
 import io
 import logging
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -22,6 +22,7 @@ from fundlens.resolve import normalize
 from fundlens.transform.runner import ChecksFailed, render
 from tests import fec_fixture
 from tests.fake_fec import zipped
+from tests.integration.conftest import cli_pointed_at, empty_store, scratch_database
 
 BUILD = "20261030T030000Z"
 TABLES: tuple[SilverTable, ...] = (
@@ -195,12 +196,42 @@ def read_silver(
 ) -> list[dict[str, object]]:
     """The rows of one uploaded silver partition, fetched back from MinIO."""
     key = f"{paths.silver_partition(table, cycle, BUILD)}/{paths.part(0)}"
-    local = store.download_to(key, tmp_path / "fetched" / f"{table}.parquet")
+    return parquet_rows(store.download_to(key, tmp_path / "fetched" / f"{table}.parquet"))
+
+
+def parquet_rows(path: Path) -> list[dict[str, object]]:
     with duckdb.connect() as con:
         # The file's own columns: DuckDB would otherwise add `build` from a hive-style path.
-        cursor = con.execute(f"SELECT * FROM read_parquet('{local}', hive_partitioning = false)")
+        cursor = con.execute(f"SELECT * FROM read_parquet('{path}', hive_partitioning = false)")
         names = [column[0] for column in cursor.description]
         return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+
+
+def local_silver(data_dir: Path, table: SilverTable, cycle: int = 2024) -> list[dict[str, object]]:
+    """The rows of one silver partition, as the transform left it under `data_dir`."""
+    key = f"{paths.silver_partition(table, cycle, BUILD)}/{paths.part(0)}"
+    return parquet_rows(paths.local_path(data_dir, key))
+
+
+@pytest.fixture(scope="module")
+def fixture_silver(
+    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Path]:
+    """The fixture cycle transformed once for the module's tests that only read its silver
+    (NEU-2267); the `DATA_DIR`. They read it there, not from MinIO: every test's `store` empties
+    the bucket."""
+    data_dir = tmp_path_factory.mktemp("transformed")
+    with scratch_database(template=migrated_template) as conninfo:
+        store = empty_store()
+        try:
+            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir):
+                put_bronze(store)
+                seats_report()
+                result = transform()
+                assert result.exit_code == 0, result.output
+        finally:
+            store.delete_prefix("")
+    yield data_dir
 
 
 def uploaded_silver(store: R2) -> list[str]:
@@ -447,13 +478,9 @@ def sum_by(rows: list[dict[str, object]], key: str) -> dict[object, int]:
 
 
 def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    rows = read_silver(store, "contribution", tmp_path)
+    rows = local_silver(fixture_silver, "contribution")
     expected = fec_fixture.expected()
     by_id = {row["source_record_id"]: row for row in rows}
 
@@ -519,7 +546,7 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
         if totals["self_funding"]
     }
     races = {
-        row["candidate_id"]: row["race_id"] for row in read_silver(store, "candidate", tmp_path)
+        row["candidate_id"]: row["race_id"] for row in local_silver(fixture_silver, "candidate")
     }
     race_totals = sum_by(
         [
@@ -534,13 +561,9 @@ def test_contributions_count_each_earmark_once_and_add_up_to_the_expected_totals
 
 
 def test_a_candidates_own_money_is_self_funding_only_to_their_own_committee(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    by_id = {row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")}
     donors = fec_fixture.expected()["donors"]
 
     gift, loan = (by_id[sub_id] for sub_id in donors["self_funder"]["sub_ids"])
@@ -652,15 +675,11 @@ def test_a_file_mixing_encodings_is_read_whole(store: R2, cli_env: Path, tmp_pat
 
 
 def test_a_refund_subtracts_whichever_sign_its_filer_wrote_and_a_void_adds_back(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
     # The fixture's OSEI and LINDQVIST rows (NEU-2073): a gift and its refund written negative;
     # a gift, its refund written positive, and the refund check voided by a mirroring negative.
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    by_id = {row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)}
+    by_id = {row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")}
     osei, osei_refund, lindqvist, lindqvist_refund, lindqvist_void = (
         by_id[4240100000000000300 + n]["amount"] for n in (4, 5, 6, 7, 8)
     )
@@ -669,15 +688,11 @@ def test_a_refund_subtracts_whichever_sign_its_filer_wrote_and_a_void_adds_back(
 
 
 def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
     # The fixture's NORRIS row: a few fringe filers report gifts to a committee FEC's `cm` lacks,
     # which would belong to no committee (NEU-2070).
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    rows = read_silver(store, "contribution", tmp_path)
+    rows = local_silver(fixture_silver, "contribution")
     assert NORRIS_UNKNOWN_RECIPIENT not in {row["source_record_id"] for row in rows}
     assert "C00899999" not in {row["recipient_committee_id"] for row in rows}
 
@@ -697,17 +712,13 @@ def key_of(row: Mapping[str, object]) -> str:
 
 
 def test_contributions_reduce_to_contributor_keys_spelled_as_the_normalizers_spell_them(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    contributions = read_silver(store, "contribution", tmp_path)
+    contributions = local_silver(fixture_silver, "contribution")
     contributors = {
-        row["contributor_key"]: row for row in read_silver(store, "contributor", tmp_path)
+        row["contributor_key"]: row for row in local_silver(fixture_silver, "contributor")
     }
-    attributions = read_silver(store, "jfc_attribution", tmp_path)
+    attributions = local_silver(fixture_silver, "jfc_attribution")
     assert all(row["contributor_key"] == key_of(row) for row in [*contributions, *attributions])
     assert {row["contributor_key"] for row in [*contributions, *attributions]} == (
         contributors.keys()
@@ -871,19 +882,15 @@ def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(
 
 
 def test_a_handed_off_committees_money_is_split_between_its_candidates_by_date(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     contributions = {
         row["source_record_id"]: row
-        for row in read_silver(store, "contribution", tmp_path)
+        for row in local_silver(fixture_silver, "contribution")
         if row["recipient_committee_id"] == HANDED_OFF
     }
     transfers = {
-        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "committee_transfer")
     }
 
     # Before the handoff date the committee's money is BIDEN's; on and after it, HARRIS's, and a
@@ -1174,13 +1181,9 @@ def test_an_odd_cycle_is_a_usage_error(store: R2, cli_env: Path) -> None:
 
 
 def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_totals(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
-    rows = read_silver(store, "committee_transfer", tmp_path)
+    rows = local_silver(fixture_silver, "committee_transfer")
     expected = fec_fixture.expected()
     receipts = [row for row in rows if row["side"] == "receipt"]
     disbursements = [row for row in rows if row["side"] == "disbursement"]
@@ -1279,14 +1282,10 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
 
 
 def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_no_total(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     expected = fec_fixture.expected()
-    rows = read_silver(store, "organization_receipt", tmp_path)
+    rows = local_silver(fixture_silver, "organization_receipt")
     by_id = {row["source_record_id"]: row for row in rows}
 
     # Every ORG row of either file that counts, and nothing else: the 15J line of an
@@ -1330,29 +1329,25 @@ def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_
         ("fec", "US", 2024)
     }
     # No contribution, no transfer and no contributor reads them (ADR-0011).
-    contributions = read_silver(store, "contribution", tmp_path)
+    contributions = local_silver(fixture_silver, "contribution")
     assert {row["source_record_id"] for row in contributions}.isdisjoint(by_id)
     assert len(contributions) == expected["silver"]["contribution"]
-    transfers = read_silver(store, "committee_transfer", tmp_path)
+    transfers = local_silver(fixture_silver, "committee_transfer")
     assert {row["source_record_id"] for row in transfers}.isdisjoint(by_id)
-    contributors = read_silver(store, "contributor", tmp_path)
+    contributors = local_silver(fixture_silver, "contributor")
     assert len(contributors) == expected["silver"]["contributor"]
     assert "CHESAPEAKE STEEL" not in {row["employer_norm"] for row in contributors}
 
 
 def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account_money(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     expected = fec_fixture.expected()["non_contribution_account"]
     contributions = {
-        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
     }
     receipts = {
-        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
     }
 
     # Only the hybrid PAC's 10s, and its 20Y refund, are marked: its 15 is the contribution
@@ -1391,15 +1386,9 @@ def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account
     )
 
 
-def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
-    store: R2, cli_env: Path, tmp_path: Path
-) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
+def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(fixture_silver: Path) -> None:
     contributions = {
-        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
     }
 
     assert {
@@ -1439,7 +1428,7 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
     # An organization's gift to a party account is marked by the same rule, from either file
     # (NEU-2205); its 15 to the same party is line 11(a)(i) money, unmarked.
     receipts = {
-        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
     }
     assert {s for s, row in receipts.items() if row["is_other_line"]} == set(
         fec_fixture.expected()["other_lines"]["organization_receipts"]
@@ -1465,21 +1454,17 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(
 
 
 def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24i_counts(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     contributions = {
-        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
     }
 
     # The intermediary's side is in no table; the recipient's own row of the gift counts, OKAFOR's.
     assert INTERMEDIARY_24I not in contributions
     for table in ("committee_transfer", "organization_receipt"):
         assert INTERMEDIARY_24I not in {
-            row["source_record_id"] for row in read_silver(store, table, tmp_path)
+            row["source_record_id"] for row in local_silver(fixture_silver, table)
         }
     assert [
         (
@@ -1619,15 +1604,11 @@ def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts
 
 
 def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_name_names(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     expected = fec_fixture.expected()
     transfers = {
-        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "committee_transfer")
     }
 
     # BRICKLAYERS' gift to the super PAC, filed in `indiv` under its name alone, is a receipt from
@@ -1651,7 +1632,7 @@ def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_nam
     everywhere = {
         row["source_record_id"]
         for table in ("contribution", "committee_transfer", "organization_receipt")
-        for row in read_silver(store, cast(SilverTable, table), tmp_path)
+        for row in local_silver(fixture_silver, cast(SilverTable, table))
     }
     assert {NAMES_NONE, NAMES_SELF}.isdisjoint(everywhere)
     assert {NAMED_GIFT, OTH_NAMED_GIFT} <= everywhere
@@ -1667,21 +1648,17 @@ def test_a_pac_typed_gift_with_no_id_is_a_receipt_from_the_one_committee_its_nam
 
 
 def test_a_blank_entity_type_the_classifier_calls_an_organization_is_no_contribution(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     expected = fec_fixture.expected()
     contributions = {
-        row["source_record_id"]: row for row in read_silver(store, "contribution", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
     }
     transfers = {
-        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "committee_transfer")
     }
     receipts = {
-        row["source_record_id"]: row for row in read_silver(store, "organization_receipt", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
     }
 
     # ACME WIDGETS INC is an organization receipt, classified, and no contribution or contributor.
@@ -1690,7 +1667,7 @@ def test_a_blank_entity_type_the_classifier_calls_an_organization_is_no_contribu
         "ACME WIDGETS",
         True,
     )
-    contributors = read_silver(store, "contributor", tmp_path)
+    contributors = local_silver(fixture_silver, "contributor")
     assert not any(row["name_raw"] == "ACME WIDGETS INC" for row in contributors)
     # BANKS, JOHN is an individual's contribution, as a blank type was before the classifier.
     banks = contributions[BANKS]
@@ -1711,7 +1688,7 @@ def test_a_blank_entity_type_the_classifier_calls_an_organization_is_no_contribu
     ) == (PARTY, DRISCOLL_COMMITTEE, DRISCOLL, 2000, "receipt")
     assert OLD_LINE_BLANK not in contributions and OLD_LINE_BLANK not in receipts
     # The organization's 15J line is in no table.
-    attributions = read_silver(store, "jfc_attribution", tmp_path)
+    attributions = local_silver(fixture_silver, "jfc_attribution")
     assert CLASSIFIED_LINE not in {row["source_record_id"] for row in attributions}
     assert len(attributions) == expected["silver"]["jfc_attribution"]
 
@@ -1848,14 +1825,10 @@ def test_a_duplicated_committee_receipt_aborts_the_run_before_any_upload(
 
 
 def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
-    store: R2, cli_env: Path, tmp_path: Path
+    fixture_silver: Path,
 ) -> None:
-    put_bronze(store)
-    seats_report()
-
-    assert transform().exit_code == 0
     expected = fec_fixture.expected()
-    rows = {row["source_record_id"]: row for row in read_silver(store, "jfc_attribution", tmp_path)}
+    rows = {row["source_record_id"]: row for row in local_silver(fixture_silver, "jfc_attribution")}
 
     # Each line's JFC is the committee its MEMO_TEXT names ('* OKAFOR VICTORY FUND', or after
     # '2024 AGGREGATE; JFC ATTRIB:'), else the one JFC its filing has transfers from, of any type:
@@ -1879,7 +1852,7 @@ def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
     # A person known only from a 15J line is a contributor with no money; VANTERPOOL's line joins
     # her contribution's key, a line more and not a dollar more.
     contributors = {
-        row["contributor_key"]: row for row in read_silver(store, "contributor", tmp_path)
+        row["contributor_key"]: row for row in local_silver(fixture_silver, "contributor")
     }
     only = contributors[cast(str, rows[ACHTERBERG]["contributor_key"])]
     assert (
@@ -1890,7 +1863,7 @@ def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
     ) == ("ACHTERBERG, LIESBETH", 0, 0, 1)
     [gift] = [
         row
-        for row in read_silver(store, "contribution", tmp_path)
+        for row in local_silver(fixture_silver, "contribution")
         if row["source_record_id"] == VANTERPOOL
     ]
     assert rows[VANTERPOOL_LINE]["contributor_key"] == gift["contributor_key"]
@@ -1904,7 +1877,7 @@ def test_jfc_attributions_are_the_15j_lines_of_individuals_and_carry_no_money(
     # The money is the JFC's transfers, receipts like any other; the one with OTHER_ID blank is
     # the JFC's because its NAME is the JFC's, case and punctuation aside.
     transfers = {
-        row["source_record_id"]: row for row in read_silver(store, "committee_transfer", tmp_path)
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "committee_transfer")
     }
     assert {
         sub_id: (

@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,12 @@ from fundlens.resolve import crosswalk, model, nicknames
 from fundlens.resolve.cluster import cluster, recluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
-from tests.integration.conftest import REPO_ROOT
+from tests.integration.conftest import (
+    REPO_ROOT,
+    cli_pointed_at,
+    empty_store,
+    scratch_database,
+)
 from tests.integration.test_transform import BUILD, put_bronze, seats_report, transform
 
 MODEL = "20261031T040000Z"
@@ -52,6 +58,31 @@ def transformed(store: R2, cli_env: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
     return cli_env
 
 
+@pytest.fixture(scope="module")
+def fixture_resolved(
+    migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Path]:
+    """The fixture cycle transformed and resolved once, as `transformed` and then `resolve --full`
+    as model `MODEL` leave it, for the module's tests that only read the working file and local
+    silver (NEU-2267); the `DATA_DIR`. Not the bucket: every test's `store` empties it."""
+    data_dir = tmp_path_factory.mktemp("resolved")
+    with scratch_database(template=migrated_template) as conninfo:
+        store = empty_store()
+        try:
+            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir) as env:
+                put_bronze(store)
+                seats_report()
+                transform_run = transform()
+                assert transform_run.exit_code == 0, transform_run.output
+                env.setenv("DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT)
+                get_settings.cache_clear()
+                result = resolve("--full", "--build-id", MODEL)
+                assert result.exit_code == 0, result.output
+        finally:
+            store.delete_prefix("")
+    yield data_dir
+
+
 def clusters(data_dir: Path) -> dict[str, str]:
     """Each contributor key's cluster, from resolution's working file."""
     with duckdb.connect(paths.resolution_database(data_dir), read_only=True) as con:
@@ -77,17 +108,14 @@ def partition(groups: dict[str, str]) -> set[frozenset[str]]:
     return {frozenset(keys) for keys in members.values()}
 
 
-def test_resolve_full_clusters_the_fixture_as_its_donors(transformed: Path) -> None:
-    result = resolve("--full", "--build-id", MODEL)
-
-    assert result.exit_code == 0, result.output
+def test_resolve_full_clusters_the_fixture_as_its_donors(fixture_resolved: Path) -> None:
     expected = fec_fixture.expected()
-    key_of = keys_by_sub_id(transformed)
+    key_of = keys_by_sub_id(fixture_resolved)
     donor_keys = {
         name: {key_of[sub_id] for sub_id in donor["sub_ids"]}
         for name, donor in expected["donors"].items()
     }
-    found = clusters(transformed)
+    found = clusters(fixture_resolved)
     # Every key is one donor's, so a key outside the planted donors is a donor of its own: the
     # keys less those the planted donors share make the fixture's distinct donors, and the people
     # known only from JFC attributions, whom DIME (counting contributions) does not know.
@@ -185,12 +213,9 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
 
 
 def test_each_key_carries_the_names_the_nickname_table_links_to_its_first_name(
-    transformed: Path,
+    fixture_resolved: Path,
 ) -> None:
-    result = resolve("--full", "--build-id", MODEL)
-
-    assert result.exit_code == 0, result.output
-    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+    with duckdb.connect(paths.resolution_database(fixture_resolved), read_only=True) as con:
         found = dict(
             con.execute(
                 "SELECT DISTINCT first_name, first_name_nicknames FROM contributor"
@@ -204,14 +229,11 @@ def test_each_key_carries_the_names_the_nickname_table_links_to_its_first_name(
 
 
 def test_the_chain_is_one_component_and_two_clusters_and_the_working_file_keeps_its_edges(
-    transformed: Path,
+    fixture_resolved: Path,
 ) -> None:
-    result = resolve("--full", "--build-id", MODEL)
-
-    assert result.exit_code == 0, result.output
-    [beatrice, bridge] = sorted(donor_keys(transformed, "chain_end_beatrice"))
-    [desmond] = donor_keys(transformed, "chain_end_desmond")
-    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+    [beatrice, bridge] = sorted(donor_keys(fixture_resolved, "chain_end_beatrice"))
+    [desmond] = donor_keys(fixture_resolved, "chain_end_desmond")
+    with duckdb.connect(paths.resolution_database(fixture_resolved), read_only=True) as con:
         components = dict(
             con.execute("SELECT contributor_key, cluster_id FROM component").fetchall()
         )
@@ -220,7 +242,7 @@ def test_the_chain_is_one_component_and_two_clusters_and_the_working_file_keeps_
         ).fetchall()
     # Linkage alone makes the chain one donor; re-clustering parts its ends.
     assert components[beatrice] == components[bridge] == components[desmond]
-    found = clusters(transformed)
+    found = clusters(fixture_resolved)
     assert found[beatrice] == found[bridge] != found[desmond]
     assert edges
     threshold = get_settings().resolve_match_threshold
@@ -642,17 +664,14 @@ def runbook_query() -> str:
     return query
 
 
-def test_the_runbook_query_finds_the_keys_of_a_fixture_donor(transformed: Path) -> None:
-    result = resolve("--full", "--build-id", MODEL)
-    assert result.exit_code == 0, result.output
-
-    with duckdb.connect(paths.resolution_database(transformed), read_only=True) as con:
+def test_the_runbook_query_finds_the_keys_of_a_fixture_donor(fixture_resolved: Path) -> None:
+    with duckdb.connect(paths.resolution_database(fixture_resolved), read_only=True) as con:
         # As `rq` runs it, with the runbook's own `SURNAME`.
         rows = con.execute(runbook_query(), {"surname": "ABERNATHY"}).fetchall()
 
     # ABERNATHY, CHARLES JR and SR: the two keys linkage put under one donor_id.
-    keys = donor_keys(transformed, "split_override_jr") | donor_keys(
-        transformed, "split_override_sr"
+    keys = donor_keys(fixture_resolved, "split_override_jr") | donor_keys(
+        fixture_resolved, "split_override_sr"
     )
     assert {row[1] for row in rows} == keys
     assert {row[0] for row in rows} == {1}
