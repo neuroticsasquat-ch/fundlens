@@ -318,3 +318,6 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00317,15,1000,2024-08-12,100000120,"fairweather, gaston",fairweather,gaston,I,laurel,MD,20707,physician,johns hopkins,maryland forward pac,comm100007,SA11AI.00363,C00800201
 2024,dime00318,15,150,2024-09-03,100000121,"nakashima, emi",nakashima,emi,I,columbia,MD,21044,analyst,howard county,maryland forward pac,comm100007,SA11AI.00364,C00800201
 2024,dime00319,15,300,2024-08-05,100000119,"espinoza, marisol",espinoza,marisol,I,gaithersburg,MD,20878,architect,self-employed,maryland forward pac,comm100007,SA11AI.00365,C00800201
+2024,dime00320,10,5000,2024-07-15,100000122,"thorvaldsen, kwame",thorvaldsen,kwame,I,baltimore,MD,21201,partner,patapsco river ventures llc,maryland forward pac,comm100007,SA11AI.00366.0,C00800201
+2024,dime00321,10,5000,2024-07-15,100000123,"ikeda, astrid",ikeda,astrid,I,annapolis,MD,21401,partner,patapsco river ventures llc,maryland forward pac,comm100007,SA11AI.00366.1,C00800201
+2024,dime00322,10,2500,2024-08-01,100000124,"rosenkrantz, beatrix",rosenkrantz,beatrix,I,easton,MD,21601,retired,retired,maryland forward pac,comm100007,SA11AI.00372,C00800201

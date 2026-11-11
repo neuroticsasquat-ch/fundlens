@@ -145,6 +145,83 @@ def is_superseded(row: Row) -> bool:
     return row["FILE_NUM"] in superseded_filings()
 
 
+def says_attribution(memo_text: str) -> bool:
+    """A memo that calls its line an attribution, and not a reattribution (NEU-2198)."""
+    text = memo_text.upper()
+    return re.search(r"(^|[^E])ATTRIBUTION", text) is not None and "REATTRIBUT" not in text
+
+
+@functools.cache
+def orphaned_attributions() -> frozenset[str]:
+    """The memo lines that are the only record of a gift, by SUB_ID (NEU-2198): a gift typed 10
+    or 15 from an individual, organization or candidate, of more than $0, whose memo says it is an
+    attribution, or which has none, is typed 10 and is one of two or more names sharing its filing,
+    date and employer, not blank; and that attributes nothing either file holds. It attributes a
+    row, not a memo line, on its filing, dated the same or within a page of it, whose amount is its
+    own or its group's (its filing's memo lines of its date, an organization's apart from anyone
+    else's), within $1 a line; or such an organization's memo line, unless it is an organization's
+    itself; or it restates a counted-shape row of its committee with its name and amount."""
+    indiv, oth = rows("indiv"), rows("oth")
+    memo = [r for r in indiv if r["MEMO_CD"] == "X" and r["FILE_NUM"]]
+
+    def is_org(row: Row) -> bool:
+        return row["ENTITY_TP"].strip() == ORGANIZATION
+
+    lines = [
+        r
+        for r in memo
+        if r["TRANSACTION_TP"] in ("10", "15")
+        and (r["ENTITY_TP"].strip() or "IND") in ("IND", ORGANIZATION, "CAN")
+    ]
+    groups: defaultdict[tuple[str, str, str, bool], list[Row]] = defaultdict(list)
+    names: defaultdict[tuple[str, str, str, str], set[str]] = defaultdict(set)
+    for r in lines:
+        groups[r["CMTE_ID"], r["FILE_NUM"], r["TRANSACTION_DT"], is_org(r)].append(r)
+        names[r["CMTE_ID"], r["FILE_NUM"], r["TRANSACTION_DT"], r["EMPLOYER"].strip().upper()].add(
+            name_key(r["NAME"])
+        )
+    parents = [(r, False) for f in (indiv, oth) for r in f if r["MEMO_CD"] != "X"] + [
+        (r, True) for r in memo if is_org(r)
+    ]
+    orphaned: set[str] = set()
+    for r in lines:
+        group = groups[r["CMTE_ID"], r["FILE_NUM"], r["TRANSACTION_DT"], is_org(r)]
+        total = sum(amount(g) for g in group)
+        shaped = says_attribution(r["MEMO_TEXT"]) or (
+            not r["MEMO_TEXT"].strip()
+            and r["TRANSACTION_TP"] == "10"
+            and r["EMPLOYER"].strip()
+            and len(
+                names[
+                    r["CMTE_ID"], r["FILE_NUM"], r["TRANSACTION_DT"], r["EMPLOYER"].strip().upper()
+                ]
+            )
+            >= 2
+        )
+        attributes = any(
+            p["CMTE_ID"] == r["CMTE_ID"]
+            and p["FILE_NUM"] == r["FILE_NUM"]
+            and not (is_memo and is_org(r))
+            and (
+                abs(int(p["IMAGE_NUM"]) - int(r["IMAGE_NUM"])) <= 1
+                or p["TRANSACTION_DT"] == r["TRANSACTION_DT"]
+            )
+            and (amount(p) == amount(r) or abs(amount(p) - total) <= len(group))
+            for p, is_memo in parents
+        )
+        restates = any(
+            o["CMTE_ID"] == r["CMTE_ID"]
+            and o["MEMO_CD"] != "X"
+            and o["TRANSACTION_TP"] != "24T"
+            and amount(o) == amount(r)
+            and name_key(o["NAME"]) == name_key(r["NAME"])
+            for o in indiv
+        )
+        if amount(r) > 0 and shaped and not attributes and not restates:
+            orphaned.add(r["SUB_ID"])
+    return frozenset(orphaned)
+
+
 @functools.cache
 def reversals() -> frozenset[str]:
     """The negative refunds that void a positive one, by SUB_ID. Each positive refund is voided
@@ -253,11 +330,11 @@ def is_conduit_earmark_refund(row: Row) -> bool:
 
 
 def counts(row: Row) -> bool:
-    """An `indiv` row that counts, whoever gave it: no memo line, no conduit's 24T, no
-    intermediary's 24I its recipient itemized too, no conduit's own line for an earmark or refund
-    of one, on no superseded filing, to a committee of the cycle."""
+    """An `indiv` row that counts, whoever gave it: no memo line but an orphaned attribution, no
+    conduit's 24T, no intermediary's 24I its recipient itemized too, no conduit's own line for an
+    earmark or refund of one, on no superseded filing, to a committee of the cycle."""
     return (
-        row["MEMO_CD"] != "X"
+        (row["MEMO_CD"] != "X" or row["SUB_ID"] in orphaned_attributions())
         and row["TRANSACTION_TP"] != "24T"
         and row["CMTE_ID"] in committee_ids()
         and not is_conduit_side(row)
@@ -797,7 +874,10 @@ def test_the_expected_counts_match_the_fixture() -> None:
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}
     assert EXPECTED["contributions"] == {
-        "dropped_memo": sum(r["MEMO_CD"] == "X" for r in indiv),
+        "dropped_memo": sum(
+            r["MEMO_CD"] == "X" and r["SUB_ID"] not in orphaned_attributions() for r in indiv
+        ),
+        "orphaned_attribution": len(orphaned_attributions()),
         "dropped_conduit_24t": sum(r["TRANSACTION_TP"] == "24T" for r in indiv),
         "dropped_intermediary_24i": sum(is_intermediary_earmark(r) for r in indiv),
         "dropped_conduit_side": sum(

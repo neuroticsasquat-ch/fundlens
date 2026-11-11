@@ -266,6 +266,148 @@ JOIN filing AS original ON original.FILE_NUM = earlier.FILE_NUM
 GROUP BY earlier.FILE_NUM, later.FILE_NUM, original.rows
 HAVING sum(earlier.rows) * 2 >= original.rows;
 
+-- A memo line that is the only record of a gift (NEU-2198). A partnership's, LLC's or trust's
+-- gift is itemized as the entity's row with its members' shares as memo lines under it, and the
+-- memo lines are dropped as attributions of a row that counts. But FEC's bulk file leaves out some
+-- of those parent rows and keeps their memo lines: Fairshake's (C00835959) $68.4M from AH Capital
+-- Management and five other firms is on its filings' line 11(a)(i), and in FEC's itemized figure,
+-- with only the partners' memo lines in `indiv`. Such a line counts, as a gift of its own, when it
+-- is shaped as an attribution and nothing it could be the attribution of is in either file:
+--   - a gift typed 10 or 15, from an individual, organization or candidate (as `indiv` rows are
+--     sorted below), of more than $0;
+--   - its MEMO_TEXT says ATTRIBUTION ('PARTNERSHIP ATTRIBUTION', 'TRUST ATTRIBUTION'; never
+--     REATTRIBUTION), or it has none, is typed 10 and is one of two or more names sharing its
+--     filing, date and employer, which is not blank (a16z's partners at Fairshake carry no memo;
+--     a blank employer says nothing of a firm);
+--   - no row of `indiv` or `oth` on its filing, not a memo line, on its date or within one page
+--     (IMAGE_NUM) of it, has its amount or its group's sum, the memo lines of its filing and date
+--     from an organization, or from anyone else: a parent's row sits on its members' page or the
+--     next (2,848 of 2,937 sampled parents), and bulk writes amounts in whole dollars, so a group's
+--     sum may miss its parent's by up to $1 a line (TARGETED VICTORY's $500,000 is 3 x $166,666);
+--   - no organization's memo line (of any type) on its filing, on its date or within a page, has
+--     its amount or its group's sum, unless it is an organization's itself: a chain's top counts,
+--     not the members whose shares it holds;
+--   - no counted-shape row at its committee has its name, compared as names are, and amount: a
+--     gift restated under a memo ('ORIGINAL CONTRIBUTION AS PREVIOUSLY REPORTED') counts already.
+-- Any other memo line stays dropped: earmarks' (ADR-0004), JFC attributions, reattributions,
+-- redesignations, loan conversions, and gifts noted elsewhere ('IN-KIND: STOCK TRANSFER, SEE
+-- LINE 17'). The ticket's first cuts, any memo line on a page with no other row or with no row of
+-- its amount or group's sum on its filing, were rejected: on 2024 they push 120 and 78 committees
+-- more than 1% over FEC's itemized figure. This rule takes 1,041 lines, $127.7M, at 199
+-- committees, and of the 192 with an itemized figure moves 186 toward it and pushes two more than
+-- 1% over it ($53,200), partners' attributions of a parent that is itself a memo line bulk leaves
+-- out (docs/measurements/summary-files-2024.md Q14). 05_committee_transfer.sql and
+-- 08_organization_receipt.sql read these lines as counted rows too.
+CREATE TEMP TABLE memo_line AS
+SELECT
+    SUB_ID,
+    CMTE_ID,
+    FILE_NUM,
+    TRANSACTION_TP,
+    TRANSACTION_AMT,
+    regexp_replace(upper(coalesce(NAME, '')), '[^A-Z0-9]', '', 'g') AS name_key,
+    upper(trim(coalesce(EMPLOYER, ''))) AS employer,
+    upper(coalesce(MEMO_TEXT, '')) AS memo_text,
+    trim(ENTITY_TP) IS NOT DISTINCT FROM 'ORG' AS is_organization,
+    coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'ORG', 'CAN') AS is_giver,
+    CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date,
+    TRY_CAST(IMAGE_NUM AS HUGEINT) AS page
+FROM indiv
+WHERE MEMO_CD = 'X' AND FILE_NUM IS NOT NULL;
+
+-- The memo gifts, each with its group's sum and lines. Tables, not CTEs: DuckDB 2.0 reads a window
+-- sum as 0 from a CTE read twice.
+CREATE TEMP TABLE memo_gift AS
+SELECT
+    *,
+    sum(TRANSACTION_AMT) OVER group_of AS group_amount,
+    count(*) OVER group_of AS group_lines
+FROM memo_line
+WHERE TRANSACTION_TP IN ('10', '15') AND is_giver
+WINDOW group_of AS (PARTITION BY CMTE_ID, FILE_NUM, transaction_date, is_organization);
+
+CREATE TEMP TABLE attribution_shaped AS
+SELECT memo_gift.*
+FROM memo_gift
+LEFT JOIN (
+    SELECT CMTE_ID, FILE_NUM, transaction_date, employer, count(DISTINCT name_key) AS names
+    FROM memo_gift
+    GROUP BY ALL
+) AS partners USING (CMTE_ID, FILE_NUM, transaction_date, employer)
+WHERE TRANSACTION_AMT > 0
+    AND (
+        (regexp_matches(memo_text, '(^|[^E])ATTRIBUTION') AND NOT contains(memo_text, 'REATTRIBUT'))
+        OR (
+            trim(memo_text) = '' AND TRANSACTION_TP = '10' AND employer <> ''
+            AND partners.names >= 2
+        )
+    );
+
+CREATE TEMP TABLE orphaned_attribution AS
+WITH filed AS (
+    -- Every row, not a memo line, on a filing holding a shaped line: where its parent would be.
+    SELECT CMTE_ID, FILE_NUM, TRANSACTION_AMT, TRANSACTION_DT, IMAGE_NUM
+    FROM indiv
+    WHERE MEMO_CD IS DISTINCT FROM 'X' AND FILE_NUM IN (SELECT FILE_NUM FROM attribution_shaped)
+    UNION ALL
+    SELECT CMTE_ID, FILE_NUM, TRANSACTION_AMT, TRANSACTION_DT, IMAGE_NUM
+    FROM oth
+    WHERE MEMO_CD IS DISTINCT FROM 'X' AND FILE_NUM IN (SELECT FILE_NUM FROM attribution_shaped)
+),
+parent AS (
+    SELECT
+        CMTE_ID,
+        FILE_NUM,
+        TRANSACTION_AMT,
+        CAST(try_strptime(TRANSACTION_DT, '%m%d%Y') AS DATE) AS transaction_date,
+        TRY_CAST(IMAGE_NUM AS HUGEINT) AS page,
+        false AS is_memo
+    FROM filed
+    UNION ALL
+    SELECT CMTE_ID, FILE_NUM, TRANSACTION_AMT, transaction_date, page, true
+    FROM memo_line
+    WHERE is_organization
+),
+attributes AS (
+    -- The shaped lines with a parent. An organization's memo line is the parent of an individual's
+    -- alone, never of its own or another organization's.
+    SELECT DISTINCT shaped.SUB_ID
+    FROM attribution_shaped AS shaped
+    JOIN parent USING (CMTE_ID, FILE_NUM)
+    WHERE NOT (parent.is_memo AND shaped.is_organization)
+        AND (
+            abs(parent.page - shaped.page) <= 1
+            OR parent.transaction_date = shaped.transaction_date
+        )
+        AND (
+            parent.TRANSACTION_AMT = shaped.TRANSACTION_AMT
+            OR parent.TRANSACTION_AMT BETWEEN shaped.group_amount - shaped.group_lines
+                AND shaped.group_amount + shaped.group_lines
+        )
+),
+restated AS (
+    -- A counted-shape row at the committee with the shaped line's name and amount. `indiv` is on
+    -- the left, so the join builds on the few shaped lines.
+    SELECT DISTINCT shaped.SUB_ID
+    FROM indiv
+    JOIN attribution_shaped AS shaped
+        ON shaped.CMTE_ID = indiv.CMTE_ID
+        AND shaped.TRANSACTION_AMT = indiv.TRANSACTION_AMT
+        AND shaped.name_key
+            = regexp_replace(upper(coalesce(indiv.NAME, '')), '[^A-Z0-9]', '', 'g')
+    WHERE indiv.CMTE_ID IN (SELECT CMTE_ID FROM attribution_shaped)
+        AND indiv.MEMO_CD IS DISTINCT FROM 'X'
+        AND indiv.TRANSACTION_TP IS DISTINCT FROM '24T'
+)
+SELECT SUB_ID
+FROM attribution_shaped
+WHERE SUB_ID NOT IN (SELECT SUB_ID FROM attributes)
+    AND SUB_ID NOT IN (SELECT SUB_ID FROM restated);
+
+DROP TABLE attribution_shaped;
+DROP TABLE memo_gift;
+DROP TABLE memo_line;
+
 CREATE TABLE contribution AS
 WITH linked AS (
     -- The candidate a principal (P) or authorized (A) committee raises for; any other committee,
@@ -326,7 +468,7 @@ individual AS (
                 )
             )
         )
-        AND MEMO_CD IS DISTINCT FROM 'X'
+        AND (MEMO_CD IS DISTINCT FROM 'X' OR SUB_ID IN (SELECT SUB_ID FROM orphaned_attribution))
         AND TRANSACTION_TP IS DISTINCT FROM '24T'
         AND SUB_ID NOT IN (SELECT SUB_ID FROM intermediary_earmark)
         AND SUB_ID NOT IN (SELECT SUB_ID FROM conduit_earmark_refund)
