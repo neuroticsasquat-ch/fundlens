@@ -33,6 +33,10 @@ NEXT_BUILD = "20261106T030000Z"
 COMMITTEE = "C00800103"
 PAGE = 7
 ACTBLUE = "C00401224"
+# MARYLAND FORWARD PAC, the fixture's super PAC, and OLD LINE REPUBLICAN COMMITTEE, a party
+# committee with an independent expenditure and a coordinated one.
+SUPER_PAC = "C00800201"
+PARTY = "C00800203"
 
 
 @pytest.fixture(scope="module")
@@ -164,9 +168,76 @@ def test_an_earmark_is_listed_once_with_its_conduit(
     ) == [("CONTRIBUTION TO ACTBLUE", None), ("REFUND OF CONTRIBUTION TO ACTBLUE", None)]
 
 
+def walk_expenditures(client: TestClient, committee_id: str) -> list[dict[str, Any]]:
+    """Every independent expenditure the committee's pages hold, following `next_cursor`."""
+    rows: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        params = {"cycle": CYCLE} | ({"cursor": cursor} if cursor else {})
+        body = ok(client.get(f"/v1/committees/{committee_id}/expenditures", params=params))
+        rows += body["expenditures"]
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return rows
+
+
+def test_a_super_pacs_independent_expenditures_page_newest_first(
+    app: FastAPI, client: TestClient
+) -> None:
+    small_pages(app, 4)
+
+    rows = walk_expenditures(client, SUPER_PAC)
+
+    assert [
+        (row["date"], row["amount"], row["support_oppose"], row["candidate_id"]) for row in rows
+    ] == [
+        ("2024-10-28", 400000.0, "S", "P40000101"),
+        ("2024-10-22", 30000.0, "S", "S4MD00103"),
+        ("2024-10-14", 15000.0, "O", "H4MD05107"),
+        ("2024-10-12", 25000.0, "S", "H4MD05106"),
+        ("2024-10-05", 80000.0, "O", "S4MD00104"),
+        ("2024-09-20", 120000.0, "S", "S4MD00103"),
+    ]
+    assert rows[0] | {"source_record_id": None} == {
+        "cycle": CYCLE,
+        "source_record_id": None,
+        "date": "2024-10-28",
+        "amount": 400000.0,
+        "committee_id": SUPER_PAC,
+        "candidate_id": "P40000101",
+        "candidate_name": "HARGROVE, ELLEN",
+        "race_id": "2024-P-US-00",
+        "support_oppose": "S",
+        "transaction_type": "24E",
+    }
+    # The rows the committee page's ie_total sums.
+    [committee_cycle] = ok(client.get(f"/v1/committees/{SUPER_PAC}"))["cycles"]
+    assert sum(row["amount"] for row in rows) == committee_cycle["ie_total"]
+
+
+def test_a_coordinated_expenditure_is_no_independent_expenditure(client: TestClient) -> None:
+    body = ok(client.get(f"/v1/committees/{PARTY}/expenditures", params={"cycle": CYCLE}))
+
+    # Its 24A against OKAFOR, not its 24C for WHITLOCK.
+    assert [(row["transaction_type"], row["candidate_name"]) for row in body["expenditures"]] == [
+        ("24A", "OKAFOR, DIANA")
+    ]
+    assert body["next_cursor"] is None
+
+
+def test_a_committee_that_spent_nothing_has_no_expenditures(client: TestClient) -> None:
+    body = ok(client.get(f"/v1/committees/{COMMITTEE}/expenditures", params={"cycle": CYCLE}))
+
+    assert body == {"expenditures": [], "next_cursor": None}
+
+
 @pytest.mark.parametrize(
     ("url", "params", "status"),
     [
+        ("/v1/committees/C99999999/expenditures", {"cycle": CYCLE}, 404),
+        (f"/v1/committees/{SUPER_PAC}/expenditures", {"cycle": 2022}, 404),
+        (f"/v1/committees/{SUPER_PAC}/expenditures", {}, 422),
+        (f"/v1/committees/{SUPER_PAC}/expenditures", {"cycle": CYCLE, "cursor": "nope"}, 400),
         ("/v1/committees/C99999999/contributions", {"cycle": CYCLE}, 404),
         ("/v1/candidates/H9XX99999/contributions", {"cycle": CYCLE}, 404),
         (f"/v1/committees/{COMMITTEE}/contributions", {"cycle": 2022}, 404),

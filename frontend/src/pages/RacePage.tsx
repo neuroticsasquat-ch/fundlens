@@ -99,6 +99,21 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     render: (candidate) => money(candidateTotal(candidate)),
     sortValue: candidateTotal,
   },
+  // Spent by committees for or against the candidate, never theirs, so after their Total.
+  {
+    key: "ie-support",
+    header: "Independent expenditures for",
+    align: "right",
+    render: (candidate) => money(candidate.ie_support),
+    sortValue: (candidate) => candidate.ie_support,
+  },
+  {
+    key: "ie-oppose",
+    header: "Independent expenditures against",
+    align: "right",
+    render: (candidate) => money(candidate.ie_oppose),
+    sortValue: (candidate) => candidate.ie_oppose,
+  },
 ];
 
 const COMMITTEE_KINDS: Record<RaceTopCommittee["kind"], string> = {
@@ -254,6 +269,12 @@ function RaceDetail({ race }: { race: Race }) {
           {race.total_jfc_transfers > 0 &&
             ` · ${money(race.total_jfc_transfers)} via joint fundraising`}
         </Text>
+        {(race.ie_support !== 0 || race.ie_oppose !== 0) && (
+          <Text c="dimmed">
+            Independent expenditures: {money(race.ie_support)} for candidates,{" "}
+            {money(race.ie_oppose)} against
+          </Text>
+        )}
       </Stack>
       {race.candidates.length === 0 ? (
         <Text>

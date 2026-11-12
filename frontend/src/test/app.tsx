@@ -14,6 +14,7 @@ import {
   CYCLES,
   DONOR_IDS,
   DONOR_MARLOWE,
+  EXPENDITURES,
   MARLOWE_CONTRIBUTIONS,
   META,
   problem,
@@ -24,9 +25,9 @@ import {
 
 /**
  * The fixture API: the 2024 cycle, its races and their pages, OKAFOR's candidate page, three
- * committees' pages, their 2024 contributions on one page, MARLOWE's donor page and his
- * contributions on one page (the id a merge retired redirecting to his), and hits for any query
- * containing "calloway".
+ * committees' pages, their 2024 contributions and independent expenditures on one page each,
+ * MARLOWE's donor page and his contributions on one page (the id a merge retired redirecting to
+ * his), and hits for any query containing "calloway".
  */
 export const fixtureApi = (): HttpHandler[] => [
   http.get("/v1/cycles", ({ response }) => response(200).json(CYCLES)),
@@ -66,6 +67,12 @@ export const fixtureApi = (): HttpHandler[] => [
       contributions: CONTRIBUTIONS.filter(
         (row) => row.recipient_committee_id === params.committee_id,
       ),
+      next_cursor: null,
+    }),
+  ),
+  http.get("/v1/committees/{committee_id}/expenditures", ({ params, response }) =>
+    response(200).json({
+      expenditures: EXPENDITURES.filter((row) => row.committee_id === params.committee_id),
       next_cursor: null,
     }),
   ),

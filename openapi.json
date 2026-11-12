@@ -862,6 +862,127 @@
         "title": "Health",
         "type": "object"
       },
+      "IndependentExpenditure": {
+        "description": "One independent expenditure from silver `independent_expenditure` (spec \u00a74): a committee's\nspending for or against a candidate, never a gift to one.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Name"
+          },
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "race_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Race Id"
+          },
+          "source_record_id": {
+            "title": "Source Record Id",
+            "type": "string"
+          },
+          "support_oppose": {
+            "enum": [
+              "S",
+              "O"
+            ],
+            "title": "Support Oppose",
+            "type": "string"
+          },
+          "transaction_type": {
+            "title": "Transaction Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cycle",
+          "source_record_id",
+          "date",
+          "amount",
+          "committee_id",
+          "candidate_id",
+          "candidate_name",
+          "race_id",
+          "support_oppose",
+          "transaction_type"
+        ],
+        "title": "IndependentExpenditure",
+        "type": "object"
+      },
+      "IndependentExpenditurePage": {
+        "description": "A page of independent expenditures, newest first; `next_cursor` fetches the next, None on\nthe last.",
+        "properties": {
+          "expenditures": {
+            "items": {
+              "$ref": "#/components/schemas/IndependentExpenditure"
+            },
+            "title": "Expenditures",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "expenditures",
+          "next_cursor"
+        ],
+        "title": "IndependentExpenditurePage",
+        "type": "object"
+      },
       "Meta": {
         "description": "The live gold build (`gold.meta`, spec \u00a77.1): how its donors were resolved and how well\nthat scored against DIME, which the methodology page prints (NEU-2056).",
         "properties": {
@@ -2085,6 +2206,140 @@
           }
         },
         "summary": "Get Committee Contributions"
+      }
+    },
+    "/v1/committees/{committee_id}/expenditures": {
+      "get": {
+        "description": "The independent expenditures the committee made in `cycle`, for and against candidates,\nnewest first: the rows its `ie_total` sums.",
+        "operationId": "get_committee_expenditures_v1_committees__committee_id__expenditures_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "committee_id",
+            "required": true,
+            "schema": {
+              "title": "Committee Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "minimum": 1980,
+              "multipleOf": 2,
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndependentExpenditurePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Committee Expenditures"
       }
     },
     "/v1/cycles": {

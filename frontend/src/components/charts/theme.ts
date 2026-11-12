@@ -12,6 +12,9 @@ export type ChartTheme = {
   background: string;
   /** `PARTY_COLOURS`, resolved to the colours ECharts draws with. */
   party: Record<PartyColourKey, string>;
+  /** Independent expenditures for a candidate and against them: neither party's colour. */
+  support: string;
+  oppose: string;
 };
 
 // A `blue.6` token as the colour itself: a canvas cannot draw Mantine's CSS variables.
@@ -42,5 +45,7 @@ function chartTheme(theme: MantineTheme, dark: boolean): ChartTheme {
       REP: resolve(PARTY_COLOURS.REP, theme),
       other: resolve(PARTY_COLOURS.other, theme),
     },
+    support: theme.colors.teal[dark ? 4 : 6],
+    oppose: theme.colors.orange[dark ? 4 : 6],
   };
 }

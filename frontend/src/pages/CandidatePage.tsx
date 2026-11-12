@@ -73,6 +73,22 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
     render: (row) => money(candidateTotal(row)),
     sortValue: candidateTotal,
   },
+  // Spent by committees for or against the candidate, never theirs, so after their Total and in
+  // no bar of the chart.
+  {
+    key: "ie-support",
+    header: "Independent expenditures for",
+    align: "right",
+    render: (row) => money(row.ie_support),
+    sortValue: (row) => row.ie_support,
+  },
+  {
+    key: "ie-oppose",
+    header: "Independent expenditures against",
+    align: "right",
+    render: (row) => money(row.ie_oppose),
+    sortValue: (row) => row.ie_oppose,
+  },
 ];
 
 const CYCLE_SERIES: CycleSeries<CandidateCycle>[] = [

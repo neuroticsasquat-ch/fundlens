@@ -5,6 +5,7 @@ import type {
   Contribution,
   Cycle,
   Donor,
+  IndependentExpenditure,
   Meta,
   Problem,
   Race,
@@ -183,15 +184,24 @@ export const RACE_SENATE_MD: Race = {
     }),
   ],
   top_committees: [
+    // The super PAC's $150,000 for OKAFOR and $80,000 against WHITLOCK.
+    { rank: 1, committee_id: "C00800201", name: "MARYLAND FORWARD PAC", amount: 230000, kind: "ie" },
     {
-      rank: 1,
+      rank: 2,
+      committee_id: "C00800203",
+      name: "OLD LINE REPUBLICAN COMMITTEE",
+      amount: 45000,
+      kind: "ie",
+    },
+    {
+      rank: 3,
       committee_id: "C00800202",
       name: "BRICKLAYERS UNITED PAC",
       amount: 5000,
       kind: "contribution",
     },
     {
-      rank: 2,
+      rank: 4,
       committee_id: "C00800203",
       name: "OLD LINE REPUBLICAN COMMITTEE",
       amount: 5000,
@@ -715,3 +725,38 @@ export const problem = (status: number, title: string, detail: string): Problem 
   status,
   detail,
 });
+
+const expenditure = (
+  source_record_id: string,
+  date: string,
+  amount: number,
+  candidate_id: string,
+  candidate_name: string,
+  race_id: string,
+  support_oppose: "S" | "O",
+  transaction_type: string,
+): IndependentExpenditure => ({
+  cycle: 2024,
+  source_record_id,
+  date,
+  amount,
+  committee_id: "C00800201",
+  candidate_id,
+  candidate_name,
+  race_id,
+  support_oppose,
+  transaction_type,
+});
+
+/**
+ * MARYLAND FORWARD PAC's six independent expenditures in the fixture (pas2.csv, by SUB_ID), newest
+ * first: they add up to its ie_total.
+ */
+export const EXPENDITURES: IndependentExpenditure[] = [
+  expenditure("4240200000000000006", "2024-10-28", 400000, "P40000101", "HARGROVE, ELLEN", "2024-P-US-00", "S", "24E"),
+  expenditure("4240200000000000002", "2024-10-22", 30000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E"),
+  expenditure("4240200000000000005", "2024-10-14", 15000, "H4MD05107", "DRISCOLL, PETER", "2024-H-MD-05", "O", "24A"),
+  expenditure("4240200000000000004", "2024-10-12", 25000, "H4MD05106", "CALLOWAY, RUTH", "2024-H-MD-05", "S", "24E"),
+  expenditure("4240200000000000003", "2024-10-05", 80000, "S4MD00104", "WHITLOCK, GORDON", "2024-S-MD-00", "O", "24A"),
+  expenditure("4240200000000000001", "2024-09-20", 120000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E"),
+];

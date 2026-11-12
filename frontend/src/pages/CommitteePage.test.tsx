@@ -121,8 +121,9 @@ describe("CommitteePage", () => {
       await screen.findByText("PAC, qualified · Lobbyist/registrant PAC · FEC C00800202"),
     ).toBeInTheDocument();
     expect(screen.getByText("Connected organization: BRICKLAYERS UNITED")).toBeInTheDocument();
+    // Its $3,000 for CALLOWAY, spent and not given.
     expect(rows("Totals by cycle").map(cells)).toEqual([
-      ["2024", "$4,050", "$0", "$0", "$17,500"],
+      ["2024", "$4,050", "$0", "$0", "$17,500", "$3,000"],
     ]);
     expect(rows("Top recipients").map(cells)).toEqual([
       ["1", "CALLOWAY, RUTH", "Candidate", "$5,000"],
@@ -170,13 +171,62 @@ describe("CommitteePage", () => {
       "From organizations",
       "Self-funding",
       "To candidates",
+      "Independent expenditures",
     ]);
     expect(rows("Totals by cycle").map(cells)).toEqual([
-      ["2024", "$395,875", "$65,000", "$72,500", "$0", "$0"],
+      ["2024", "$395,875", "$65,000", "$72,500", "$0", "$0", "$670,000"],
     ]);
     expect(rows("Top organizations").map(cells)).toEqual([
       ["1", "CHESAPEAKE STEEL, INC.", "$72,500"],
     ]);
+  });
+
+  it("lists a super PAC's independent expenditures in a tab beside its contributions", async () => {
+    renderApp("/committee/C00800201");
+    const itemized = await screen.findByRole("region", { name: "Itemized" });
+
+    // Contributions first; the expenditures are asked for only once their tab is opened.
+    expect(within(itemized).getByRole("tab", { name: "Contributions received" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.click(within(itemized).getByRole("tab", { name: "Independent expenditures" }));
+    const panel = await within(itemized).findByRole("tabpanel", {
+      name: "Independent expenditures",
+    });
+
+    expect(
+      await within(panel).findByText("6 independent expenditures, newest first"),
+    ).toBeInTheDocument();
+    expect(
+      within(panel)
+        .getAllByRole("row")
+        .slice(1)
+        .map(cells),
+    ).toEqual([
+      ["2024-10-28", "HARGROVE, ELLEN", "For", "$400,000"],
+      ["2024-10-22", "OKAFOR, DIANA", "For", "$30,000"],
+      ["2024-10-14", "DRISCOLL, PETER", "Against", "$15,000"],
+      ["2024-10-12", "CALLOWAY, RUTH", "For", "$25,000"],
+      ["2024-10-05", "WHITLOCK, GORDON", "Against", "$80,000"],
+      ["2024-09-20", "OKAFOR, DIANA", "For", "$120,000"],
+    ]);
+    expect(within(panel).getAllByRole("link", { name: "WHITLOCK, GORDON" })[0]).toHaveAttribute(
+      "href",
+      "/candidate/S4MD00104",
+    );
+  });
+
+  it("lists a committee's contributions with no tabs when it made no independent expenditures", async () => {
+    renderApp("/committee/C00800103");
+    await screen.findByRole("region", { name: "Contributions received" });
+
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(
+      within(section("Totals by cycle"))
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).not.toContain("Independent expenditures");
   });
 
   it("lists the top organizations in rank order, unlinked, after the top donors", async () => {

@@ -96,6 +96,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/committees/{committee_id}/expenditures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Committee Expenditures
+         * @description The independent expenditures the committee made in `cycle`, for and against candidates,
+         *     newest first: the rows its `ie_total` sums.
+         */
+        get: operations["get_committee_expenditures_v1_committees__committee_id__expenditures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cycles": {
         parameters: {
             query?: never;
@@ -492,6 +513,47 @@ export interface components {
             silver: string;
         };
         /**
+         * IndependentExpenditure
+         * @description One independent expenditure from silver `independent_expenditure` (spec §4): a committee's
+         *     spending for or against a candidate, never a gift to one.
+         */
+        IndependentExpenditure: {
+            /** Amount */
+            amount: number;
+            /** Candidate Id */
+            candidate_id: string | null;
+            /** Candidate Name */
+            candidate_name: string | null;
+            /** Committee Id */
+            committee_id: string;
+            /** Cycle */
+            cycle: number;
+            /** Date */
+            date: string | null;
+            /** Race Id */
+            race_id: string | null;
+            /** Source Record Id */
+            source_record_id: string;
+            /**
+             * Support Oppose
+             * @enum {string}
+             */
+            support_oppose: "S" | "O";
+            /** Transaction Type */
+            transaction_type: string;
+        };
+        /**
+         * IndependentExpenditurePage
+         * @description A page of independent expenditures, newest first; `next_cursor` fetches the next, None on
+         *     the last.
+         */
+        IndependentExpenditurePage: {
+            /** Expenditures */
+            expenditures: components["schemas"]["IndependentExpenditure"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
          * Meta
          * @description The live gold build (`gold.meta`, spec §7.1): how its donors were resolved and how well
          *     that scored against DIME, which the methodology page prints (NEU-2056).
@@ -791,6 +853,8 @@ export type Donor = components['schemas']['Donor'];
 export type DonorCycle = components['schemas']['DonorCycle'];
 export type DonorTopRecipient = components['schemas']['DonorTopRecipient'];
 export type Health = components['schemas']['Health'];
+export type IndependentExpenditure = components['schemas']['IndependentExpenditure'];
+export type IndependentExpenditurePage = components['schemas']['IndependentExpenditurePage'];
 export type Meta = components['schemas']['Meta'];
 export type MetaCycle = components['schemas']['MetaCycle'];
 export type Office = components['schemas']['Office'];
@@ -1055,6 +1119,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContributionPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_committee_expenditures_v1_committees__committee_id__expenditures_get: {
+        parameters: {
+            query: {
+                cycle: number;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                committee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndependentExpenditurePage"];
                 };
             };
             /** @description Bad Request */

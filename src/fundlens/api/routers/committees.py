@@ -1,17 +1,20 @@
-"""`GET /v1/committees/{committee_id}`: a committee page, and its itemized receipts (spec §7.2)."""
+"""`GET /v1/committees/{committee_id}`: a committee page, its itemized receipts and its independent
+expenditures (spec §7.2)."""
 
 from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException
 from psycopg.rows import dict_row
 
-from fundlens.api.contributions import CursorParam, CycleParam, contributions_page
+from fundlens.api.contributions import CursorParam, CycleParam, contributions_page, read_page
 from fundlens.api.deps import Conn, Itemized, PageSize
 from fundlens.api.schemas import (
     Committee,
     CommitteeCycle,
     CommitteeTopRecipient,
     ContributionPage,
+    IndependentExpenditure,
+    IndependentExpenditurePage,
     TopDonor,
     TopOrganization,
     problem_responses,
@@ -106,4 +109,47 @@ def get_committee_contributions(
         cycle=cycle,
         cursor=cursor,
         page_size=page_size,
+    )
+
+
+@router.get(
+    "/committees/{committee_id}/expenditures", responses=problem_responses(400, 404, 410, 422, 503)
+)
+def get_committee_expenditures(
+    conn: Conn,
+    itemized: Itemized,
+    page_size: PageSize,
+    committee_id: str,
+    cycle: CycleParam,
+    cursor: CursorParam = None,
+) -> IndependentExpenditurePage:
+    """The independent expenditures the committee made in `cycle`, for and against candidates,
+    newest first: the rows its `ie_total` sums."""
+    found = conn.execute(
+        "SELECT 1 FROM gold.committee WHERE committee_id = %s", (committee_id,)
+    ).fetchone()
+    if found is None:
+        raise HTTPException(404, f"No committee {committee_id}.")
+    page = read_page(
+        lambda: itemized.expenditures(cycle, committee_id, cursor=cursor, limit=page_size)
+    )
+    # A page's candidates' names: one primary-key lookup of at most a page of ids.
+    names: dict[str, str | None] = dict(
+        conn.execute(
+            "SELECT candidate_id, name FROM gold.candidate WHERE candidate_id = ANY(%s)",
+            ([row["candidate_id"] for row in page.rows if row["candidate_id"] is not None],),
+        ).fetchall()
+    )
+    return IndependentExpenditurePage(
+        expenditures=[
+            IndependentExpenditure.model_validate(
+                row
+                | {
+                    "source_record_id": str(row["source_record_id"]),
+                    "candidate_name": names.get(row["candidate_id"] or ""),
+                }
+            )
+            for row in page.rows
+        ],
+        next_cursor=page.next_cursor,
     )

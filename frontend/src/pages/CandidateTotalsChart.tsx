@@ -4,7 +4,7 @@ import type { RaceCandidate } from "../api/client";
 import EChart from "../components/charts/EChart";
 import { useChartTheme } from "../components/charts/theme";
 import { count } from "../components/format";
-import { candidateTotal } from "../domain/candidates";
+import { candidateSpending } from "../domain/candidates";
 import { candidateTotalsOption } from "./candidateTotalsOption";
 
 // The most bars charted. A presidential race lists every filer (1,602 in 2024, most with nothing),
@@ -12,17 +12,18 @@ import { candidateTotalsOption } from "./candidateTotalsOption";
 const CHARTED = 15;
 
 /**
- * The race split: the candidates with the most money, each total a bar coloured by party, most
- * first by the table's Total rather than the API's order; a candidate with none is left out, and
- * so is the chart when nobody has any.
+ * The race split: the candidates with the most money raised and spent for or against them, each a
+ * bar of what they raised, coloured by party, and the independent expenditures for and against
+ * them, most first rather than in the API's order; a candidate with none is left out, and so is
+ * the chart when nobody has any.
  */
 function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
   const theme = useChartTheme();
   const charted = useMemo(
     () =>
       candidates
-        .filter((candidate) => candidateTotal(candidate) > 0)
-        .sort((a, b) => candidateTotal(b) - candidateTotal(a))
+        .filter((candidate) => candidateSpending(candidate) > 0)
+        .sort((a, b) => candidateSpending(b) - candidateSpending(a))
         .slice(0, CHARTED),
     [candidates],
   );

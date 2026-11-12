@@ -303,6 +303,37 @@ class Contribution(BaseModel):
     image_num: str | None
 
 
+class IndependentExpenditure(BaseModel):
+    """One independent expenditure from silver `independent_expenditure` (spec §4): a committee's
+    spending for or against a candidate, never a gift to one."""
+
+    cycle: int
+    # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
+    source_record_id: str
+    # None for a filing whose date FEC could not parse.
+    date: date | None
+    # As filed: a negative one is a correction, and nets out of the spender's ie_total.
+    amount: float
+    committee_id: str
+    # The candidate it was spent for or against, None when FEC's CAND_ID names no candidate of
+    # the cycle; their name from `gold.candidate`.
+    candidate_id: str | None
+    candidate_name: str | None
+    # The candidate's race, None when their seat is not up this cycle.
+    race_id: str | None
+    # S for the candidate (FEC's 24E), O against (24A).
+    support_oppose: Literal["S", "O"]
+    transaction_type: str
+
+
+class IndependentExpenditurePage(BaseModel):
+    """A page of independent expenditures, newest first; `next_cursor` fetches the next, None on
+    the last."""
+
+    expenditures: list[IndependentExpenditure]
+    next_cursor: str | None
+
+
 class DonorCycle(BaseModel):
     """`gold.donor_cycle`: a donor's counted money in one cycle."""
 
