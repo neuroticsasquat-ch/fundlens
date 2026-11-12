@@ -1,5 +1,6 @@
 -- committee_top_recipient (spec §7.1): the 100 candidates and committees a committee gave most to,
--- ranked together by amount, then kind, then id, so the order is stable.
+-- ranked together by amount, then kind, then id, so the order is stable. Each cycle is its own list
+-- (NEU-2059), its gifts paired and its recipients named within that cycle.
 --
 -- A candidate row (recipient_kind 'candidate') is the disbursement side of committee_transfer, the
 -- giver's 24Ks, summed by the candidate each is credited to, a pair netting below 0 left out: it
@@ -22,23 +23,25 @@
 CREATE TABLE committee_top_recipient AS
 WITH to_candidates AS (
     SELECT
+        cycle,
         from_committee_id AS committee_id,
         'candidate' AS recipient_kind,
         candidate_id AS recipient_id,
         sum(amount) AS amount
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND candidate_id IS NOT NULL
-    GROUP BY from_committee_id, candidate_id
+    GROUP BY cycle, from_committee_id, candidate_id
     HAVING sum(amount) >= 0
 ),
 gift AS (
     SELECT
+        cycle,
         from_committee_id,
         to_committee_id,
         amount,
         candidate_id,
         row_number() OVER (
-            PARTITION BY from_committee_id, to_committee_id, amount
+            PARTITION BY cycle, from_committee_id, to_committee_id, amount
             ORDER BY date, source_record_id
         ) AS nth
     FROM silver.committee_transfer
@@ -46,11 +49,12 @@ gift AS (
 ),
 receipt AS (
     SELECT
+        cycle,
         from_committee_id,
         to_committee_id,
         amount,
         row_number() OVER (
-            PARTITION BY from_committee_id, to_committee_id, amount
+            PARTITION BY cycle, from_committee_id, to_committee_id, amount
             ORDER BY date, source_record_id
         ) AS nth
     FROM silver.committee_transfer AS transfer
@@ -60,18 +64,21 @@ receipt AS (
             SELECT 1
             FROM silver.committee_transfer AS credited
             WHERE credited.side = 'disbursement'
+                AND credited.cycle = transfer.cycle
                 AND credited.from_committee_id = transfer.from_committee_id
                 AND credited.candidate_id = transfer.candidate_id
         )
 ),
 to_committees AS (
     SELECT
+        cycle,
         committee_id,
         'committee' AS recipient_kind,
         recipient_id,
         sum(amount) AS amount
     FROM (
         SELECT
+            receipt.cycle,
             receipt.from_committee_id AS committee_id,
             receipt.to_committee_id AS recipient_id,
             receipt.amount
@@ -79,25 +86,30 @@ to_committees AS (
         WHERE NOT EXISTS (
             SELECT 1
             FROM gift
-            WHERE gift.from_committee_id = receipt.from_committee_id
+            WHERE gift.cycle = receipt.cycle
+                AND gift.from_committee_id = receipt.from_committee_id
                 AND gift.to_committee_id = receipt.to_committee_id
                 AND gift.amount = receipt.amount
                 AND gift.nth = receipt.nth
         )
         UNION ALL
-        SELECT from_committee_id, to_committee_id, amount
+        SELECT cycle, from_committee_id, to_committee_id, amount
         FROM gift
         WHERE candidate_id IS NULL
     ) AS given
-    WHERE recipient_id IN (SELECT committee_id FROM silver.committee)
-    GROUP BY committee_id, recipient_id
+    WHERE EXISTS (
+        SELECT 1
+        FROM silver.committee AS recipient
+        WHERE recipient.cycle = given.cycle AND recipient.committee_id = given.recipient_id
+    )
+    GROUP BY cycle, committee_id, recipient_id
     HAVING sum(amount) >= 0
 ),
 ranked AS (
     SELECT
         *,
         row_number() OVER (
-            PARTITION BY committee_id ORDER BY amount DESC, recipient_kind, recipient_id
+            PARTITION BY cycle, committee_id ORDER BY amount DESC, recipient_kind, recipient_id
         ) AS rank
     FROM (
         SELECT * FROM to_candidates
@@ -107,7 +119,7 @@ ranked AS (
 )
 SELECT
     ranked.committee_id,
-    CAST({cycle} AS INTEGER) AS cycle,
+    CAST(ranked.cycle AS INTEGER) AS cycle,
     CAST(ranked.rank AS INTEGER) AS rank,
     ranked.recipient_kind,
     ranked.recipient_id,
@@ -115,7 +127,11 @@ SELECT
     CAST(ranked.amount AS DECIMAL(16, 2)) AS amount
 FROM ranked
 LEFT JOIN silver.candidate AS candidate
-    ON ranked.recipient_kind = 'candidate' AND candidate.candidate_id = ranked.recipient_id
+    ON ranked.recipient_kind = 'candidate'
+    AND candidate.cycle = ranked.cycle
+    AND candidate.candidate_id = ranked.recipient_id
 LEFT JOIN silver.committee AS committee
-    ON ranked.recipient_kind = 'committee' AND committee.committee_id = ranked.recipient_id
+    ON ranked.recipient_kind = 'committee'
+    AND committee.cycle = ranked.cycle
+    AND committee.committee_id = ranked.recipient_id
 WHERE ranked.rank <= 100;

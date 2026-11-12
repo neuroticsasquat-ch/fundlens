@@ -39,6 +39,9 @@ _MODEL_KEY = re.compile(r"resolution/model/(\d{8}T\d{6}Z)\.json")
 # Every completion marker of every cycle lives under here (`markers_dir`).
 MARKERS_PREFIX = "markers/"
 
+# Each cycle's live build, rewritten on every publish and rollback (`markers.read_live`).
+LIVE_BUILDS = f"{MARKERS_PREFIX}live.json"
+
 # Every saved Splink model (`resolution_model`).
 MODEL_PREFIX = "resolution/model/"
 

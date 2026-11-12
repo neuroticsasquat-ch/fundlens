@@ -3,7 +3,38 @@
 -- `ccl` can link one candidate and committee once per CAND_ELECTION_YR (a senator's committee
 -- for this race and the next). The key is the pair, so the link kept is the one whose
 -- CAND_ELECTION_YR is the cycle's where there is one, else the newest.
+--
+-- FEC publishes `ccl` from 2000 (spec §4); before it the runner gives an empty one, and a cycle
+-- whose `ccl` has no rows links through the two masters instead: the principal campaign committee
+-- a candidate's `cn` row names (CAND_PCC), designated P, and each committee whose `cm` row names a
+-- candidate (CAND_ID), designated as `cm` designates it. A pair both name is the P link. These
+-- links have no linkage_id. Where `ccl` has rows, it alone links.
 CREATE TABLE candidate_committee_link AS
+WITH from_ccl AS (
+    SELECT CAND_ID, CMTE_ID, CMTE_TP, CMTE_DSGN, LINKAGE_ID
+    FROM ccl
+    QUALIFY row_number() OVER (
+        PARTITION BY CAND_ID, CMTE_ID
+        ORDER BY CAND_ELECTION_YR = {cycle} DESC, LINKAGE_ID DESC
+    ) = 1
+),
+from_masters AS (
+    SELECT CAND_ID, CMTE_ID, CMTE_TP, CMTE_DSGN, NULL::BIGINT AS LINKAGE_ID
+    FROM (
+        SELECT cn.CAND_ID, cn.CAND_PCC AS CMTE_ID, cm.CMTE_TP, 'P' AS CMTE_DSGN
+        FROM cn
+        LEFT JOIN cm ON cm.CMTE_ID = cn.CAND_PCC
+        WHERE nullif(trim(cn.CAND_PCC), '') IS NOT NULL
+        UNION ALL
+        SELECT CAND_ID, CMTE_ID, CMTE_TP, CMTE_DSGN
+        FROM cm
+        WHERE nullif(trim(CAND_ID), '') IS NOT NULL
+    ) AS named
+    WHERE NOT EXISTS (SELECT 1 FROM ccl)
+    QUALIFY row_number() OVER (
+        PARTITION BY CAND_ID, CMTE_ID ORDER BY CMTE_DSGN = 'P' DESC, CMTE_DSGN
+    ) = 1
+)
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
     CAND_ID AS candidate_id,
@@ -13,11 +44,18 @@ SELECT
     CMTE_TP AS committee_type,
     CMTE_DSGN AS designation,
     LINKAGE_ID AS linkage_id
-FROM ccl
-QUALIFY row_number() OVER (
-    PARTITION BY CAND_ID, CMTE_ID
-    ORDER BY CAND_ELECTION_YR = {cycle} DESC, LINKAGE_ID DESC
-) = 1;
+FROM from_ccl
+UNION ALL
+SELECT
+    CAST({cycle} AS INTEGER),
+    CAND_ID,
+    CMTE_ID,
+    'fec',
+    'US',
+    CMTE_TP,
+    CMTE_DSGN,
+    LINKAGE_ID
+FROM from_masters;
 
 -- candidate.alias_of (NEU-2127): FEC sometimes registers one person under two candidate ids for
 -- the same seat and cycle, an old id from an earlier run beside a new one, both linked to the same

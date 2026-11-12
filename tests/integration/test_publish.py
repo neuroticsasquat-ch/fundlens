@@ -252,9 +252,11 @@ def test_rollback_restores_the_previous_build_and_a_second_rollback_undoes_it(
     publish(conn, store, cli_env, Recorder(OK))
     recorder = Recorder(OK)
 
-    rolled = gold_publish.rollback(conn, purge=recorder.purge, sleep=recorder.sleep)
+    rolled = gold_publish.rollback(conn, store, purge=recorder.purge, sleep=recorder.sleep)
 
     assert (rolled.build_id, rolled.previous_build_id) == (B1, B2)
+    # The next load rebuilds the other cycles from what is live now (NEU-2059).
+    assert markers.read_live(store) == {CYCLE: B1}
     live, previous = meta(migrated_db, "gold"), meta(migrated_db, "gold_prev")
     assert live is not None and previous is not None
     assert (live["build_id"], previous["build_id"]) == (B1, B2)
@@ -264,9 +266,10 @@ def test_rollback_restores_the_previous_build_and_a_second_rollback_undoes_it(
     assert markers.exists("published", store, cycle=CYCLE, build_id=B1)
     assert markers.exists("published", store, cycle=CYCLE, build_id=B2)
 
-    again = gold_publish.rollback(conn, purge=recorder.purge, sleep=recorder.sleep)
+    again = gold_publish.rollback(conn, store, purge=recorder.purge, sleep=recorder.sleep)
 
     assert (again.build_id, again.previous_build_id) == (B2, B1)
+    assert markers.read_live(store) == {CYCLE: B2}
     live = meta(migrated_db, "gold")
     assert live is not None and live["build_id"] == B2
     assert len(recorder.cloudflare.posts) == 2
@@ -356,13 +359,13 @@ def test_publish_told_a_build_refuses_another_before_swapping_it_in(
     assert not markers.exists("published", store, cycle=CYCLE, build_id=B1)
 
 
-def test_rollback_with_no_previous_build_is_an_error(cli_env: Path, conn: Any) -> None:
+def test_rollback_with_no_previous_build_is_an_error(store: R2, cli_env: Path, conn: Any) -> None:
     result = run("publish", "--rollback")
 
     assert result.exit_code == 1
     assert "nothing to roll back" in result.output
     with pytest.raises(NothingToRollBack):
-        gold_publish.rollback(conn, purge=None, sleep=lambda s: None)
+        gold_publish.rollback(conn, store, purge=None, sleep=lambda s: None)
 
 
 def test_publish_needs_exactly_one_of_cycle_and_rollback(cli_env: Path) -> None:

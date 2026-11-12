@@ -191,10 +191,15 @@ CHECKS = Path(__file__).resolve().parents[2] / "sql" / "checks"
 def put_bronze(
     store: R2, cycle: int = 2024, texts: Mapping[FecFile, str | bytes] | None = None
 ) -> None:
-    """Every file of `cycle` in bronze: the fixture's, or the text `texts` gives for it."""
+    """Every file of `cycle` in bronze: the fixture's for that cycle
+    (`tests/fixtures/fec/<cycle>/`), or the text `texts` gives for it."""
     texts = texts or {}
     for bulk in files_for(cycle):
-        text = texts.get(bulk.name, fec_fixture.bulk_text(bulk.name))
+        text = (
+            texts[bulk.name]
+            if bulk.name in texts
+            else fec_fixture.bulk_text(bulk.name, fec_fixture.fixture_dir(cycle))
+        )
         body = zipped(fec_fixture.MEMBERS[bulk.name], text)
         store.put(paths.bronze_zip(cycle, bulk.name, date(2026, 10, 30)), body)
 

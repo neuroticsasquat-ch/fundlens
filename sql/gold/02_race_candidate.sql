@@ -1,4 +1,5 @@
--- race_candidate (spec §7.1): the candidates attached to a race, with candidate_cycle's money.
+-- race_candidate (spec §7.1): the candidates attached to a race, with candidate_cycle's money. A
+-- race is one cycle's, so each row is the candidate as that cycle's `cn` lists them.
 CREATE TABLE race_candidate AS
 SELECT
     candidate_cycle.race_id,
@@ -14,5 +15,5 @@ SELECT
     candidate_cycle.ie_support,
     candidate_cycle.ie_oppose
 FROM candidate_cycle
-JOIN silver.candidate AS candidate USING (candidate_id)
+JOIN silver.candidate AS candidate USING (cycle, candidate_id)
 WHERE candidate_cycle.race_id IS NOT NULL;

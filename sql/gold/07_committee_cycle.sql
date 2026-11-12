@@ -1,4 +1,5 @@
--- committee_cycle (spec §7.1, NEU-2039 §3): one row per committee of the cycle.
+-- committee_cycle (spec §7.1, NEU-2039 §3): one row per committee of each cycle, every figure the
+-- cycle's own, summed over that cycle's silver rows (NEU-2059).
 --
 -- total_individual and self_funding are the counted contributions it received, the candidate's own
 -- money kept apart (a candidate committee's receipts would otherwise hide or include it).
@@ -34,6 +35,7 @@
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
+        cycle,
         recipient_committee_id AS committee_id,
         coalesce(
             sum(amount) FILTER (
@@ -58,16 +60,17 @@ WITH received AS (
         coalesce(sum(amount) FILTER (WHERE is_other_line AND NOT is_self_funding), 0)
             AS other_lines
     FROM silver.contribution
-    GROUP BY recipient_committee_id
+    GROUP BY cycle, recipient_committee_id
 ),
 from_committees AS (
-    SELECT to_committee_id AS committee_id, sum(amount) AS total_from_committees
+    SELECT cycle, to_committee_id AS committee_id, sum(amount) AS total_from_committees
     FROM silver.committee_transfer
     WHERE side = 'receipt'
-    GROUP BY to_committee_id
+    GROUP BY cycle, to_committee_id
 ),
 from_organizations AS (
     SELECT
+        cycle,
         recipient_committee_id AS committee_id,
         coalesce(
             sum(amount) FILTER (WHERE NOT is_non_contribution_account AND NOT is_other_line), 0
@@ -84,31 +87,32 @@ from_organizations AS (
             AS non_contribution_account,
         coalesce(sum(amount) FILTER (WHERE is_other_line), 0) AS other_lines
     FROM silver.organization_receipt
-    GROUP BY recipient_committee_id
+    GROUP BY cycle, recipient_committee_id
 ),
 given AS (
-    SELECT from_committee_id AS committee_id, candidate_id, sum(amount) AS amount
+    SELECT cycle, from_committee_id AS committee_id, candidate_id, sum(amount) AS amount
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND candidate_id IS NOT NULL
-    GROUP BY from_committee_id, candidate_id
+    GROUP BY cycle, from_committee_id, candidate_id
 ),
 to_candidates AS (
     SELECT
+        cycle,
         committee_id,
         coalesce(sum(amount) FILTER (WHERE amount >= 0), 0) AS total_to_candidates,
         coalesce(sum(amount) FILTER (WHERE amount < 0), 0) AS total_returned_by_candidates
     FROM given
-    GROUP BY committee_id
+    GROUP BY cycle, committee_id
 ),
 independent AS (
-    SELECT committee_id, sum(amount) AS ie_total
+    SELECT cycle, committee_id, sum(amount) AS ie_total
     FROM silver.independent_expenditure
     WHERE kind = 'ie'
-    GROUP BY committee_id
+    GROUP BY cycle, committee_id
 )
 SELECT
     committee.committee_id,
-    CAST({cycle} AS INTEGER) AS cycle,
+    CAST(committee.cycle AS INTEGER) AS cycle,
     CAST(coalesce(received.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
     CAST(coalesce(received.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
@@ -131,8 +135,8 @@ SELECT
         AS total_returned_by_candidates,
     CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee
-LEFT JOIN received USING (committee_id)
-LEFT JOIN from_committees USING (committee_id)
-LEFT JOIN from_organizations USING (committee_id)
-LEFT JOIN to_candidates USING (committee_id)
-LEFT JOIN independent USING (committee_id);
+LEFT JOIN received USING (cycle, committee_id)
+LEFT JOIN from_committees USING (cycle, committee_id)
+LEFT JOIN from_organizations USING (cycle, committee_id)
+LEFT JOIN to_candidates USING (cycle, committee_id)
+LEFT JOIN independent USING (cycle, committee_id);

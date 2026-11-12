@@ -3,13 +3,16 @@
 -- donor (spec §2). A donor resolved across several spellings is one row (spec §6). A candidate the
 -- donor's gifts net to exactly nothing is left out of candidates, which so always add up to amount
 -- (one netting below nothing stays, and lowers it); a donor whose gifts to the race net to nothing
--- or less is left out. Ranked by amount, then donor id.
+-- or less is left out. Ranked by amount, then donor id. A race is one cycle's, so only that cycle's
+-- gifts to its candidates count (NEU-2059).
 CREATE TABLE race_top_donor AS
 WITH given AS (
-    SELECT race_candidate.race_id, contribution.donor_id, contribution.candidate_id, sum(contribution.amount) AS amount
+    SELECT candidate_cycle.race_id, contribution.donor_id, contribution.candidate_id, sum(contribution.amount) AS amount
     FROM silver.contribution AS contribution
-    JOIN race_candidate USING (candidate_id)
-    WHERE NOT contribution.is_self_funding AND contribution.donor_id IS NOT NULL
+    JOIN candidate_cycle USING (cycle, candidate_id)
+    WHERE NOT contribution.is_self_funding
+        AND contribution.donor_id IS NOT NULL
+        AND candidate_cycle.race_id IS NOT NULL
     GROUP BY ALL
     HAVING sum(contribution.amount) <> 0
 ),
