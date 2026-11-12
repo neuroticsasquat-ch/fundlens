@@ -88,7 +88,7 @@ rows:
   cn: 15
   ccl: 15
   indiv: 378
-  pas2: 28
+  pas2: 30
   oth: 31
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
@@ -102,7 +102,7 @@ silver:
   candidate: 15
   candidate_committee_link: 15
   contribution: 324
-  independent_expenditure: 13
+  independent_expenditure: 15
   committee_transfer: 32
   organization_receipt: 15
   # One row per `attributions` line below.
@@ -350,7 +350,7 @@ top_recipients:
 race_top_committees:
   2024-P-US-00:
     - [ie, C00800201, 400000]
-    - [ie, C00800202, 13000]
+    - [ie, C00800202, 21000]
     - [contribution, C00800202, 7500]
   2024-S-MD-00:
     - [ie, C00800201, 230000]
@@ -378,8 +378,8 @@ races:
     total_individual: 58625
     total_committee: 7500
     total_jfc_transfers: 0
-    ie_support: 413000
-    ie_oppose: 0
+    ie_support: 416000
+    ie_oppose: 5000
   2024-S-MD-00:
     candidate_count: 4
     total_individual: 92975
@@ -437,14 +437,14 @@ candidates:
     self_funding: 0
     ie_support: 2000
     ie_oppose: 0
-  P00009423: # HARRIS: C00703975's money and BIDEN's spending from the handoff on, and undated
+  P00009423: # HARRIS: C00703975's money, BIDEN's spending from the handoff on or undated, and a corrected row (NEU-2279)
     race_id: 2024-P-US-00
     total_individual: 2350
     total_committee: 0
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 11000
-    ie_oppose: 0
+    ie_support: 14000
+    ie_oppose: 5000
   P40000110: # QUILL: no committee
     race_id: 2024-P-US-00
     total_individual: 0
@@ -634,7 +634,7 @@ committees:
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 23000
-    ie_total: 16000
+    ie_total: 24000
   C00800203: # OLD LINE REPUBLICAN COMMITTEE: DONNELLY's 15, on line 15 by its TRAN_ID, is in total_other_lines
     total_individual: 13300
     self_funding: 0

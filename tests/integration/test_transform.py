@@ -176,6 +176,9 @@ SPENT_BEFORE_HANDOFF, SPENT_ON_HANDOFF, SPENT_UNDATED, SPENT_AFTER_HANDOFF = (
     4240200000000000027,
     4240200000000000028,
 )
+# BRICKLAYERS' spending under SUB_IDs listed in fec/ie_candidate_corrections.csv (NEU-2279): one
+# coded BIDEN's as the list says, which its filing names HARRIS for, and one FEC has recoded since.
+SPENT_CORRECTED, SPENT_RECODED = 4111920241070657390, 4060220251204384159
 # Rows whose TRAN_ID names their line (NEU-2276): DONNELLY's 15 to the party on line 15 (SA15) and
 # SEVERN STATE LEADERSHIP FUND's 10 to the super PAC on 11(c) (SA11C), both off line 11(a)(i);
 # the presidential committee's gifts on Form 3P line 17(a) (SA17A), individuals' money.
@@ -1071,6 +1074,45 @@ def test_spending_naming_a_handed_off_candidate_is_split_between_its_candidates_
         (HARRIS, "2024-P-US-00", "S"),
         (HARRIS, "2024-P-US-00", "S"),
     ]
+
+
+def test_spending_pas2_codes_to_the_wrong_candidate_is_the_one_its_filing_names(
+    fixture_silver: Path,
+) -> None:
+    spending = {
+        row["source_record_id"]: (row["candidate_id"], row["race_id"], row["support_oppose"])
+        for row in local_silver(fixture_silver, "independent_expenditure")
+    }
+
+    # Coded BIDEN's and dated before the handoff, so the handoff leaves it his: the list makes it
+    # HARRIS's. The other is coded HARRIS's, not BIDEN's as the list corrects, so it stays hers.
+    assert [spending[s] for s in (SPENT_CORRECTED, SPENT_RECODED)] == [
+        (HARRIS, "2024-P-US-00", "S"),
+        (HARRIS, "2024-P-US-00", "O"),
+    ]
+
+
+def test_the_correction_check_fails_on_a_correction_to_no_candidate_of_the_cycle() -> None:
+    with duckdb.connect() as con:
+        con.execute(f"CREATE TABLE candidate AS SELECT '{HARRIS}' AS candidate_id")
+        con.execute(
+            "CREATE TABLE ie_candidate_correction AS SELECT * FROM (VALUES"
+            f" (1, '{BIDEN}', '{HARRIS}'),"
+            f" (2, '{BIDEN}', 'P99999999'),"
+            f" (3, '{BIDEN}', 'P99999999'),"
+            f" (4, '{BIDEN}', 'P99999999')"
+            ") AS t(sub_id, pas2_candidate_id, candidate_id)"
+        )
+        # 1 is corrected to a candidate of the cycle; 2 to none. 3's row FEC has recoded since, and
+        # 4's is another cycle's: neither correction applies.
+        con.execute(
+            "CREATE TABLE pas2 AS SELECT * FROM (VALUES"
+            f" (1, '{BIDEN}'), (2, '{BIDEN}'), (3, '{HARRIS}')"
+            ") AS t(SUB_ID, CAND_ID)"
+        )
+
+        failed = failing_rows(con, "silver_independent_expenditure_correction.sql")
+        assert [str(row[0]) for row in failed] == ["2"]
 
 
 def test_the_handoff_expenditure_check_fails_on_spending_left_with_the_candidate_handed_from() -> (
