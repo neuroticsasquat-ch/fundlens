@@ -11,6 +11,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
   handed from one candidate to another, whose money is the first's before the date and the
   second's on and after it (NEU-2126);
+- `ie_candidate_correction`, the vendored independent expenditures FEC's `pas2` credits to a
+  candidate other than the one the filing names (`fec/ie_candidate_corrections.csv`, NEU-2279);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
@@ -236,6 +238,21 @@ def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
         con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?)", rows)
 
 
+def _register_ie_candidate_corrections(con: duckdb.DuckDBPyConnection) -> None:
+    # Keyed by SUB_ID, unique across FEC's files, so every cycle can load the whole list: a row of
+    # another cycle matches nothing.
+    text = package_files("fundlens.fec").joinpath("ie_candidate_corrections.csv").read_text()
+    rows = [
+        (int(row["sub_id"]), row["pas2_candidate_id"], row["candidate_id"])
+        for row in csv.DictReader(io.StringIO(text))
+    ]
+    con.execute(
+        "CREATE TABLE ie_candidate_correction (sub_id UBIGINT, pas2_candidate_id VARCHAR,"
+        " candidate_id VARCHAR)"
+    )
+    con.executemany("INSERT INTO ie_candidate_correction VALUES (?, ?, ?)", rows)
+
+
 def _register_unmatched(
     con: duckdb.DuckDBPyConnection, conn: Connection[TupleRow], cycle: int
 ) -> None:
@@ -348,6 +365,7 @@ def transform(
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
             _register_handoffs(con, cycle)
+            _register_ie_candidate_corrections(con)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
             lines.register(con)

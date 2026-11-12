@@ -14,6 +14,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
+from importlib.resources import files as package_files
 from pathlib import Path
 from types import MappingProxyType
 from typing import get_args
@@ -72,6 +73,12 @@ OTHER_NAMED_LINES = frozenset({"11B", "11C", "12", "13", "14", "15", "16", "17",
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
+# The fixture's rows of the vendored correction list (fec/ie_candidate_corrections.csv) as the tally
+# reads it: SUB_ID → (the candidate `pas2` codes, the one the filing names) (NEU-2279).
+IE_CORRECTIONS = {
+    "4111920241070657390": ("P80000722", "P00009423"),
+    "4060220251204384159": ("P80000722", "P80001571"),
+}
 
 EXPECTED = fec_fixture.expected()
 
@@ -743,14 +750,28 @@ def gift_pairs() -> dict[tuple[str, str], int]:
 
 
 def ie_candidate(row: Row) -> str | None:
-    """The candidate an independent expenditure is for or against: the one it names, unless a
-    committee was handed from them, and then the one it was handed to when the row is dated on or
-    after the handoff date or undated (NEU-2277)."""
+    """The candidate an independent expenditure is for or against: the one it names, or its filing
+    names where `pas2` still codes it as the correction list says (NEU-2279), unless a committee was
+    handed from them, and then the one it was handed to when the row is dated on or after the
+    handoff date or undated (NEU-2277)."""
     named, dated = row["CAND_ID"], row["TRANSACTION_DT"]
+    correction = IE_CORRECTIONS.get(row["SUB_ID"])
+    if correction is not None and named == correction[0]:
+        named = correction[1]
     for before, after, handoff in HANDOFFS.values():
         if named == before and not (dated and datetime.strptime(dated, "%m%d%Y").date() < handoff):
             return after
     return named
+
+
+def test_the_tallys_ie_corrections_are_the_vendored_lists() -> None:
+    text = package_files("fundlens.fec").joinpath("ie_candidate_corrections.csv").read_text()
+    vendored = {
+        row["sub_id"]: (row["pas2_candidate_id"], row["candidate_id"])
+        for row in csv.DictReader(io.StringIO(text))
+    }
+
+    assert {s: vendored.get(s) for s in IE_CORRECTIONS} == IE_CORRECTIONS
 
 
 def tally_candidates() -> dict[str, CandidateTotals]:

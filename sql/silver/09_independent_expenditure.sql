@@ -15,9 +15,16 @@
 -- in 2024).
 --
 -- The candidate is CAND_ID's, or the id it is an alias of (NEU-2127), when it is a candidate of the
--- cycle; else none. The race is the candidate's race in the seat calendar, or none. A candidate a
--- spender targets is not always one of the cycle: in 2024, 1,282 IE rows ($54,429,826, memo lines
--- among them) name an id `cn` lacks or none, and others a candidate whose seat is not up (a
+-- cycle; else none. CAND_ID is FEC's coding of the candidate the filing names, and is sometimes
+-- another's, mostly where FEC recodes a correct filed id, now and then a filer's wrong id (the
+-- filed name wins): Future Forward's three 2024 lines against TRUMP, filed with his id, are Biden's
+-- in `pas2`. A row listed in `ie_candidate_correction`
+-- (fec/ie_candidate_corrections.csv, NEU-2279) names the candidate its filing names instead, while
+-- CAND_ID is still the one the list corrects: once FEC recodes the row itself, the correction no
+-- longer applies. The handoff below then applies to the corrected candidate as to any other.
+--
+-- The race is the candidate's race in the seat calendar, or none. A candidate a spender targets
+-- is not always one of the cycle: in 2024, 1,282 IE rows ($54,429,826, memo lines among them) name an id `cn` lacks or none, and others a candidate whose seat is not up (a
 -- 2026 senator, a 2028 hopeful). Such a row is kept, its candidate or race null: the money is the
 -- spender's ie_total all the same, and in no candidate's or race's figure.
 --
@@ -37,7 +44,11 @@ WITH spending AS (
         -- FEC writes MMDDYYYY; a malformed date is null rather than a failed build.
         CAST(try_strptime(pas2.TRANSACTION_DT, '%m%d%Y') AS DATE) AS spent_on
     FROM pas2
-    LEFT JOIN candidate AS named ON named.candidate_id = nullif(trim(pas2.CAND_ID), '')
+    LEFT JOIN ie_candidate_correction AS corrected
+        ON corrected.sub_id = pas2.SUB_ID
+        AND corrected.pas2_candidate_id = trim(pas2.CAND_ID)
+    LEFT JOIN candidate AS named
+        ON named.candidate_id = coalesce(corrected.candidate_id, nullif(trim(pas2.CAND_ID), ''))
     WHERE pas2.TRANSACTION_TP IN ('24A', '24E', '24C', '24F', '24N')
         AND coalesce(pas2.MEMO_CD, '') <> 'X'
         AND pas2.CMTE_ID IN (SELECT committee_id FROM committee)

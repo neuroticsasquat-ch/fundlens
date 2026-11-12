@@ -11,7 +11,7 @@ One itemized transfer of money from a contributor to a committee, as reported to
 _Avoid_: donation, transaction, record
 
 **Independent expenditure**:
-Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, unless that candidate is a **Handoff**'s first and the spending is dated on or after the handoff, or undated: then it is the second candidate's. It is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
+Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, unless that candidate is a **Handoff**'s first and the spending is dated on or after the handoff, or undated: then it is the second candidate's. The candidate it names is the one its filing names: where `pas2`'s candidate id is another's, whether FEC coded it so or the filer did, a hand-curated list (`fec/ie_candidate_corrections.csv`) names the filed one. It is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
 _Avoid_: IE spend, outside money, super PAC money
 
 **Earmark**:
