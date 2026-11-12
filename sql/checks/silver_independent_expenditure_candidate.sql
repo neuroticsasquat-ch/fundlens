@@ -1,9 +1,11 @@
--- Every expenditure is attached as its CAND_ID says (NEU-2057): to a candidate of the cycle that
--- is no alias (NEU-2127) and to that candidate's race, or, when CAND_ID names no candidate of the
--- cycle, to neither. A spender may target an id `cn` lacks or a candidate whose seat is not up
--- (1,282 of 2024's IE rows, $54.4M, name an id `cn` lacks or none), so an unattached row is kept,
--- in its spender's ie_total alone; what this fails on is a row attached to the wrong candidate or
--- race, or a kind or side its transaction type does not give.
+-- Every expenditure is attached as its CAND_ID says (NEU-2057), or past a handoff to the candidate
+-- the committee was handed to (NEU-2277, silver_independent_expenditure_handoff.sql): to a
+-- candidate of the cycle that is no alias (NEU-2127) and to that candidate's race, or, when
+-- CAND_ID names no candidate of the cycle, to neither. A spender may target an id `cn` lacks or a
+-- candidate whose seat is not up (1,282 of 2024's IE rows, $54.4M, name an id `cn` lacks or
+-- none), so an unattached row is kept, in its spender's ie_total alone; what this fails on is a
+-- row attached to the wrong candidate or race, or a kind or side its transaction type does not
+-- give.
 SELECT spending.source_record_id, spending.candidate_id, spending.race_id, spending.kind
 FROM independent_expenditure AS spending
 LEFT JOIN candidate USING (candidate_id)

@@ -743,8 +743,14 @@ def gift_pairs() -> dict[tuple[str, str], int]:
 
 
 def ie_candidate(row: Row) -> str | None:
-    """The candidate an independent expenditure is for or against: the one it names."""
-    return row["CAND_ID"]
+    """The candidate an independent expenditure is for or against: the one it names, unless a
+    committee was handed from them, and then the one it was handed to when the row is dated on or
+    after the handoff date or undated (NEU-2277)."""
+    named, dated = row["CAND_ID"], row["TRANSACTION_DT"]
+    for before, after, handoff in HANDOFFS.values():
+        if named == before and not (dated and datetime.strptime(dated, "%m%d%Y").date() < handoff):
+            return after
+    return named
 
 
 def tally_candidates() -> dict[str, CandidateTotals]:
