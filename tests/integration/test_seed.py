@@ -1,4 +1,5 @@
-"""`task db:seed` (`tests.seed`) against MinIO and a migrated Postgres (spec §12)."""
+"""`task db:seed` (`tests.seed`) against MinIO and a migrated Postgres (spec §12): `fundlens run`
+end to end on the fixture, every marker under the one build (NEU-2061)."""
 
 from collections.abc import Iterator
 from pathlib import Path
