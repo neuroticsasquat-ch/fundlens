@@ -64,7 +64,8 @@ only.
   `fec_line` cannot place by type (NEU-2276). A `TRAN_ID` that names the line tells $24.6M of it.
   A rule on that leaves Form 3P's 17(a), the presidential campaigns' individuals' line, alone, and
   it moves 71 committees toward FEC's figure against 39 away. The rest needs the raw filings
-  (NEU-2181).
+  (NEU-2181). The rebuild with the rule moved exactly those committees, by exactly that much. 71
+  committees are still unexplained, $10,791,881 (Q6 after NEU-2276).
 - **The three named gaps.** Senate Leadership Fund's $34.6M excess and MAGA Inc.'s $5.1M are
   organization money each filer put on line 15, other receipts (line 17 on their Form 3X, by
   `TRAN_ID`, Q15), not line 11(a)(i). Fairshake's $43.4M
@@ -3448,6 +3449,347 @@ SELECT count(*) AS committees, sum(excess_b) AS excess_b FROM over
   not count. America
   PAC moves from 79.9% to 95.5% of FEC's figure, MAHA ALLIANCE from 48.7% to 99.6%, DEFEND
   AMERICAN JOBS and MARYLAND'S FUTURE to 100.0% (Q14x4).
+
+### Q6 after NEU-2276
+
+NEU-2276 places a row on the Schedule A line its filer's `TRAN_ID` names (`SA11C001`,
+`SA17.4313`): 11(b), 11(c), 12 to 17 or Schedule L, not 17(a), wherever the transaction type would
+put it on a counted line or none (Q15g, `src/fundlens/fec/lines.py`). Such a row is other-lines
+money, in `total_other_lines` and neither `total_individual` nor `total_from_organizations`.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-12 03:47–03:49 UTC, over SSH on `music-box-dancer` (`./run.sh q6 q6core.py`, then `./run.sh q6m`) |
+| Code | `main` at `98f8c1d5c2e441f37fbeb087da16a209ab155b45` (the `pipeline` container's `service.version`) |
+| Live gold | build `20261112T021826Z` (model `20261112T025210Z`), published 2026-11-12 03:41:53 UTC; 2024 source dates as Q15's, all 2026-10-31 |
+| `gold_prev` | build `20261112T001753Z` (model `20261112T004841Z`), Q15's |
+
+The build's silver row counts equal the previous build's table for table (the rule marks rows; it
+drops none), its resolution moved no key (`crosswalk: 0 new donors, 0 keys re-pointed, 0
+redirects`), and validation is unchanged (0.8243 / 0.9076, top 0.9762 / 0.7874). Across 2024's
+committees, `total_individual` fell $9,305,457 and `total_from_organizations` $83,996,511, and
+`total_other_lines` rose by the sum, $93,301,968: Q15g2's toward, no-FEC-figure and away rows
+added together, to the dollar. So the rule's `oth` organization receipts, which Q15 did not
+measure, added nothing net. RSLC PAC (C00779595) is $0 in `total_from_organizations`
+and $19,293,000 in `total_other_lines`, where the previous build had the reverse.
+
+Setup, `q6core.py` and `q6.py` re-ran unchanged against the build. One added block, `q6m.py`,
+compares each committee's measure B with `gold_prev`'s, by Q15g2's test:
+
+```python
+# NEU-2276: each committee's measure B (total_individual + total_from_organizations) on the published
+# build against the build before it (gold_prev), toward or away from FEC's itemized figure, as Q15g2
+# predicted (71 toward, $52.1M; 39 away, $2.5M; within 1%: 15 -> 66). setup.py first.
+import psycopg
+from fundlens.settings import get_settings
+
+prev_csv = work / "gold_prev_committee_cycle.csv"
+with psycopg.connect(get_settings().database_url) as prev_pg, prev_csv.open("wb") as out:
+    with prev_pg.cursor().copy(
+        "COPY (SELECT committee_id, total_individual, total_from_organizations"
+        " FROM gold_prev.committee_cycle WHERE cycle = 2024) TO STDOUT WITH (FORMAT csv, HEADER)"
+    ) as copy:
+        for block in copy:
+            out.write(block)
+print("previous build", prev_csv)
+con.execute(f"""
+CREATE TABLE moved AS
+SELECT cov.committee_id, cov.name, cov.type, cov.item, cov.b,
+    CAST(p.total_individual + p.total_from_organizations AS DECIMAL(16, 2)) AS b_prev
+FROM cov JOIN read_csv({literal(prev_csv)}, header = true) AS p USING (committee_id)
+WHERE cov.b <> CAST(p.total_individual + p.total_from_organizations AS DECIMAL(16, 2));
+""")
+show("Q6m1: committees whose measure B the rule moved, toward or away from FEC's itemized figure", """
+SELECT CASE WHEN item IS NULL OR item = 0 THEN 'no FEC figure or 0'
+        WHEN abs(b / item - 1) < abs(b_prev / item - 1) THEN 'toward'
+        WHEN abs(b / item - 1) > abs(b_prev / item - 1) THEN 'away' ELSE 'no change' END AS move,
+    count(*) AS committees, sum(b_prev - b) AS dollars,
+    count(*) FILTER (WHERE item > 0 AND abs(b_prev / item - 1) <= 0.01) AS within_1pct_before,
+    count(*) FILTER (WHERE item > 0 AND abs(b / item - 1) <= 0.01) AS within_1pct_after
+FROM moved GROUP BY ALL ORDER BY dollars DESC
+""")
+show("Q6m2: the committees it moved away from FEC's figure, largest first", """
+SELECT committee_id, name, type, item AS fec_itemized, b_prev, b, b_prev - b AS moved,
+    round(b_prev / item, 4) AS ratio_before, round(b / item, 4) AS ratio_after
+FROM moved WHERE item > 0 AND abs(b / item - 1) > abs(b_prev / item - 1)
+ORDER BY moved DESC LIMIT 15
+""")
+```
+
+#### Results
+
+**Q6d: verdicts and primary causes  (0 s)**
+
+| primary_cause | verdict | committees | excess | unexplained_dollars |
+|---|---|---|---|---|
+| D2 duplicates | explained | 33 | 1,972,041 | -1,968,986 |
+| D2 duplicates | no FEC figure | 2 | 2,922,774 | 2,907,576 |
+| D2 duplicates | unexplained | 21 | 969,376 | 832,971 |
+| D3 other line | explained | 7 | 76,877 | -4,420,373 |
+| D3 other line | no FEC figure | 1 | 15,128 | 0 |
+| D4 names a committee | explained | 1 | 500 | 0 |
+| D5 memo line | explained | 2 | 24,849,998 | -43,400,002 |
+| D7 own money | explained | 7 | 29,769 | -1,227 |
+| D7 own money | no FEC figure | 1 | 190 | 0 |
+| D7 own money | unexplained | 2 | 32,390 | 21,185 |
+| D8 organizations on line 15 | explained | 19 | 12,594,605 | 3,475 |
+| D8 organizations on line 15 | unexplained | 14 | 12,601,980 | 8,999,429 |
+| none | no FEC figure | 46 | 6,721,625 | 6,721,625 |
+| none | unexplained | 34 | 926,549 | 938,296 |
+
+**Q6d2: dollars per diagnostic over every over-1% committee  (0 s)**
+
+| total_excess | d1 | d2 | d3 | d4 | d5 | d6 | d7 | d8 | unexplained | c2 | c3 | c4 | c6 | c7 | c8 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 63,713,801 | -697,654 | 4,228,974 | 4,504,990 | 500 | 68,254,300 | 3,000 | 43,929 | 16,044,140 | 10,791,881 | 73 | 8 | 1 | 1 | 11 | 34 |
+
+**Q6e: every over-1% committee, by excess  (0 s)**
+
+| committee_id | name | type | fec_itemized | a | b | measure | excess | excess_pct | d1_refunds | d2_duplicates | d3_other_line | d4_names_committee | d5_memo | d6_after_cvg_end | d7_own_money | d8_orgs_on_line_15 | unexplained_dollars | primary_cause | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C00835959 | FAIRSHAKE | O | 217,419,084 | 75,526,650 | 242,219,082 | B | 24,799,998 | 11.41% | 0 | 0 | 0 | 0 | 68,200,000 | 0 | 0 | 0 | -43,400,002 | D5 memo line | explained |
+| C00627372 | UNITE HERE PAC | O | 0 | 0 | 5,000,000 | B | 5,000,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,782,500 | 3,217,500 | D8 organizations on line 15 | unexplained |
+| C00754051 | WORKERS VOTE | O | 1,754,906 | 1,754,905 | 6,545,484 | B | 4,790,578 | 272.98% | 0 | 6,000 | 0 | 0 | 0 | 0 | 0 | 4,784,578 | 0 | D8 organizations on line 15 | explained |
+| C00887182 | PLANNED PARENTHOOD VOTES NORTH CAROLINA | O | 0 | 0 | 3,678,228 | B | 3,678,228 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3,678,228 | 0 | D8 organizations on line 15 | explained |
+| C90018904 | THE CONSERVATIVE CAUCUS DBA AMERICANS FOR CONSTITUTIONAL LIBERTY | I |  | 2,908,450 | 2,919,950 | B | 2,919,950 |  | 0 | 12,993 | 0 | 0 | 0 | 0 | 0 | 0 | 2,906,957 | D2 duplicates | no FEC figure |
+| C00808998 | DEMOCRACYFIRST PAC | Q | 25,295 | 1,927,884 | 2,135,380 | B | 2,110,085 | 8341.91% | -2,105 | -75 | 0 | 0 | 0 | 0 | 0 | 207,496 | 1,902,664 | D8 organizations on line 15 | unexplained |
+| C00620971 | FOR OUR FUTURE | O | 2,147,548 | 0 | 4,228,896 | B | 2,081,348 | 96.92% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 38,791 | 2,042,557 | D8 organizations on line 15 | unexplained |
+| C90016106 | AFL-CIO COMMITTEE ON POLITICAL EDUCATION TREASURY FUND | I |  | 0 | 1,546,157 | B | 1,546,157 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,546,157 | none | no FEC figure |
+| C00804856 | REPUBLICAN ACCOUNTABILITY PAC | O | 39,216,320 | 33,575,341 | 40,562,085 | B | 1,345,765 | 3.43% | -1,685 | 300 | 0 | 0 | 0 | 0 | 0 | 1,345,465 | 0 | D8 organizations on line 15 | explained |
+| C90019472 | MONTANA RURAL VOTERS (WORC) | I |  | 28,083 | 1,319,083 | B | 1,319,083 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,319,083 | none | no FEC figure |
+| C00041269 | GEORGIA FEDERAL ELECTIONS COMMITTEE | Y | 2,681,478 | 2,765,413 | 3,619,067 | B | 937,589 | 34.97% | -64,980 | 42,078 | 0 | 0 | 0 | 0 | 0 | 531,563 | 363,948 | D8 organizations on line 15 | unexplained |
+| C00693382 | DEMOCRACY PAC | O | 70,002,500 | 2,500 | 70,740,507 | B | 738,007 | 1.05% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 738,007 | 0 | D8 organizations on line 15 | explained |
+| C90022476 | STAND UP FOR OHIO (OHIO ORGANIZING CAMPAIGN) | I |  | 0 | 725,000 | B | 725,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 725,000 | none | no FEC figure |
+| C00817122 | GOA VICTORY FUND | O | 645,720 | 45,621 | 1,345,621 | B | 699,901 | 108.39% | 0 | 545 | 0 | 0 | 0 | 0 | 0 | 4,000 | 695,356 | D8 organizations on line 15 | unexplained |
+| C00855379 | AMERICA'S PROMISE | O | 0 | 463,473 | 653,168 | B | 653,168 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 189,695 | 463,473 | D8 organizations on line 15 | unexplained |
+| C00756056 | PROTECT THE VOTE | O | 7,682 | 599,732 | 599,732 | B | 592,050 | 7706.98% | 0 | 39,091 | 0 | 0 | 0 | 0 | 0 | 0 | 552,959 | D2 duplicates | unexplained |
+| C00834424 | MARIANNE WILLIAMSON FOR PRESIDENT | P | 2,273,142 | 2,797,460 | 2,796,710 | B | 523,568 | 23.03% | -248,092 | 797,370 | 0 | 0 | 0 | 0 | 0 | 0 | -273,802 | D2 duplicates | explained |
+| C90022229 | BRIGHTER FUTURE ALLIANCE | I |  | 514,090 | 514,090 | B | 514,090 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 514,090 | none | no FEC figure |
+| C00490375 | NATIONAL NURSES UNITED FOR PATIENT PROTECTION | O | 0 | 0 | 500,000 | B | 500,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 500,000 | 0 | D8 organizations on line 15 | explained |
+| C00528455 | INTERNATIONAL ALLIANCE OF THEATRICAL STAGE EMPLOYEES FEDERAL SPEECH PAC | O | 0 | 0 | 473,700 | B | 473,700 |  | 0 | 15,000 | 0 | 0 | 0 | 0 | 0 | 458,700 | 0 | D8 organizations on line 15 | explained |
+| C00167015 | DEMOCRATIC PARTY OF ILLINOIS | Y | 776,707 | 760,742 | 1,237,748 | B | 461,041 | 59.36% | -11,950 | 715 | 0 | 0 | 0 | 0 | 0 | 397,267 | 63,060 | D8 organizations on line 15 | unexplained |
+| C00858233 | FIGHTING FOR AMERICA'S FUTURE | O | 5,000 | 5,000 | 355,000 | B | 350,000 | 7000.00% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 350,000 | 0 | D8 organizations on line 15 | explained |
+| C90016023 | 32BJ UNITED AMERICAN DREAM FUND | I |  | 0 | 337,500 | B | 337,500 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 337,500 | none | no FEC figure |
+| C90022872 | IN UNION USA ACTION | I |  | 0 | 300,995 | B | 300,995 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 300,995 | none | no FEC figure |
+| C00884130 | ROAD2RIGHTS | O | 0 | 281,162 | 281,162 | B | 281,162 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 281,162 | none | unexplained |
+| C90017492 | INDIVISIBLE PROJECT INC. | I |  | 275,486 | 276,486 | B | 276,486 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 276,486 | none | no FEC figure |
+| C00025254 | MINNESOTA DEMOCRATIC-FARMER-LABOR PARTY | Y | 2,945,906 | 2,996,511 | 3,209,082 | B | 263,176 | 8.93% | -18,525 | 8,460 | 0 | 0 | 0 | 0 | 0 | 212,571 | 42,145 | D8 organizations on line 15 | unexplained |
+| C90017898 | PROTECT OUR WINTERS ACTION FUND | I |  | 140,466 | 261,966 | B | 261,966 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 261,966 | none | no FEC figure |
+| C90018177 | THE WILDERNESS SOCIETY ACTION FUND | I |  | 0 | 250,000 | B | 250,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 250,000 | none | no FEC figure |
+| C00667196 | UNITE AMERICA REFORM FUND | O | 1,967,500 | 1,967,500 | 2,217,500 | B | 250,000 | 12.71% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 250,000 | 0 | D8 organizations on line 15 | explained |
+| C00885426 | CARDS AGAINST HUMANITY PAC | O | 102,072 | 2,065 | 352,065 | B | 249,993 | 244.92% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 249,993 | none | unexplained |
+| C00773820 | ENGEL FOR ARIZONA | H | 5,202,576 | 5,447,500 | 5,451,800 | B | 249,224 | 4.79% | -66,126 | 618,852 | 0 | 0 | 0 | 0 | 0 | 0 | -369,628 | D2 duplicates | explained |
+| C00660795 | DAN CRENSHAW FOR CONGRESS | H | 1,540,266 | 1,742,414 | 1,753,164 | B | 212,898 | 13.82% | -8,020 | 262,351 | 0 | 0 | 0 | 0 | 0 | 0 | -49,453 | D2 duplicates | explained |
+| C00546119 | SELECT MEDICAL CORPORATION PAC | Q | 609,519 | 795,006 | 795,006 | B | 185,487 | 30.43% | 0 | 186,659 | 0 | 0 | 0 | 0 | 0 | 0 | -1,172 | D2 duplicates | explained |
+| C00867762 | PAPERBACK PAC, INC. | O | 1,000 | 1,000 | 180,809 | B | 179,809 | 17980.90% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 179,809 | 0 | D8 organizations on line 15 | explained |
+| C00473918 | WOMEN VOTE | O | 14,592,865 | 11,062,850 | 14,769,817 | B | 176,952 | 1.21% | -1,000 | 1,005,500 | 0 | 0 | 0 | 0 | 0 | 0 | -828,548 | D2 duplicates | explained |
+| C00836403 | TEAM EMMER | N | 3,007,632 | 3,164,232 | 3,164,232 | B | 156,600 | 5.21% | 0 | 431,904 | 0 | 0 | 0 | 0 | 0 | 0 | -275,304 | D2 duplicates | explained |
+| C90022997 | PAC FOR GEORGIA'S YOUTH | I |  | 0 | 153,998 | B | 153,998 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 153,998 | none | no FEC figure |
+| C00488494 | NEW PROSPERITY FOUNDATION; THE | O | 0 | 150,000 | 150,000 | B | 150,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 150,000 | none | unexplained |
+| C00099267 | TEXAS DEMOCRATIC PARTY | Y | 1,021,498 | 1,116,898 | 1,164,218 | B | 142,720 | 13.97% | -9,229 | 6,705 | 0 | 0 | 0 | 0 | 0 | 47,320 | 88,695 | D8 organizations on line 15 | unexplained |
+| C00640300 | ACTIVATE AMERICA | O | 1,287,409 | 1,222,341 | 1,429,791 | B | 142,382 | 11.06% | -8,763 | 175,424 | 0 | 0 | 0 | 0 | 0 | 0 | -33,042 | D2 duplicates | explained |
+| C90019357 | FOOD AND WATER ACTION | I |  | 0 | 140,000 | B | 140,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 140,000 | none | no FEC figure |
+| C90021155 | NATIONAL WOMEN''S LAW CENTER ACTION FUND | I |  | 110,000 | 135,000 | B | 135,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 135,000 | none | no FEC figure |
+| C00838862 | DEVELOPMENT NOW FOR CHICAGO | X |  | 119,000 | 119,000 | B | 119,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 119,000 | none | no FEC figure |
+| C00776526 | TIM SCOTT VICTORY FUND | N | 2,492,048 | 2,611,035 | 2,611,035 | B | 118,987 | 4.77% | 0 | 6,050 | 0 | 0 | 0 | 0 | 0 | 0 | 112,937 | D2 duplicates | unexplained |
+| C00010439 | IDAHO STATE DEMOCRATIC PARTY | Y | 1,298,557 | 1,341,568 | 1,408,748 | B | 110,191 | 8.49% | -15,825 | 30,593 | 0 | 0 | 0 | 0 | 0 | 46,464 | 33,134 | D8 organizations on line 15 | unexplained |
+| C90021692 | 350 WISCONSIN ACTION | I |  | 29,000 | 109,000 | B | 109,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 109,000 | none | no FEC figure |
+| C00005561 | DEMOCRATIC EXECUTIVE COMMITTEE OF FLORIDA | Y | 2,585,922 | 2,494,331 | 2,681,729 | B | 95,807 | 3.70% | -83,373 | 11,911 | 0 | 0 | 0 | 0 | 0 | 83,896 | 0 | D8 organizations on line 15 | explained |
+| C00527226 | WE VOTE - NOSOTROS VOTAMOS - PPAMM COMMITTEE | O | 365,749 | 413,579 | 454,330 | B | 88,581 | 24.22% | -1,250 | 7,725 | 0 | 0 | 0 | 0 | 0 | 40,751 | 40,105 | D8 organizations on line 15 | unexplained |
+| C90022740 | MARCH FOR OUR LIVES ACTION FUND | I |  | 9,991 | 84,991 | B | 84,991 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 84,991 | none | no FEC figure |
+| C90022104 | NH PEACE ACTION | I |  | 7,500 | 82,500 | B | 82,500 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 82,500 | none | no FEC figure |
+| C00532465 | ROUNDS FOR SENATE | S | 319,746 | 393,161 | 395,661 | B | 75,915 | 23.74% | -925 | 86,842 | 0 | 0 | 0 | 0 | 0 | 0 | -10,927 | D2 duplicates | explained |
+| C00388181 | CONNELL FOLEY PAC A NEW JERSEY NON-PROFIT CORPORATION | N | 48,000 | 122,885 | 122,885 | B | 74,885 | 156.01% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 74,885 | none | unexplained |
+| C00169441 | DICKIE, MCCAMEY & CHILCOTE, PC POLITICAL ACTION COMMITTEE | Q | 0 | 63,225 | 63,225 | B | 63,225 |  | 0 | 7,650 | 0 | 0 | 0 | 0 | 0 | 0 | 55,575 | D2 duplicates | unexplained |
+| C00190934 | OKLAHOMA DEMOCRATIC PARTY | Y | 445,212 | 322,453 | 502,453 | B | 57,241 | 12.86% | -1,369 | 21,509 | 0 | 0 | 0 | 0 | 0 | 35,732 | 0 | D8 organizations on line 15 | explained |
+| C00888131 | DALLAS COUNTY DEMOCRATIC PARTY (FEDERAL) | X | 284,342 | 334,643 | 334,643 | B | 50,301 | 17.69% | 0 | 32,600 | 0 | 0 | 0 | 0 | 0 | 0 | 17,701 | D2 duplicates | unexplained |
+| C00838169 | REPUBLICAN LEADERSHIP FUND INC. | O | 838,400 | 728,400 | 888,400 | B | 50,000 | 5.96% | 0 | 0 | 0 | 0 | 50,000 | 0 | 0 | 0 | 0 | D5 memo line | explained |
+| C00846139 | MONTANA VALUES FOR AMERICA, INC. | O | 0 | 0 | 46,000 | B | 46,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 46,000 | 0 | D8 organizations on line 15 | explained |
+| C90020454 | FREEDOM ACTION NOW INC. | I |  | 0 | 45,435 | B | 45,435 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 45,435 | none | no FEC figure |
+| C00851790 | DEREK TRAN FOR CONGRESS | H | 3,636,550 | 3,676,360 | 3,679,960 | B | 43,410 | 1.19% | -61,053 | 26,970 | 0 | 0 | 0 | 0 | 0 | 3,600 | 12,840 | D2 duplicates | explained |
+| C90012956 | PATRIOT MAJORITY USA | I |  | 42,500 | 42,500 | B | 42,500 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 42,500 | none | no FEC figure |
+| C90023193 | LIBERTY FIRST USA | I |  | 40,000 | 40,000 | B | 40,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 40,000 | none | no FEC figure |
+| C90023052 | POWER ACTION FUND | I |  | 0 | 40,000 | B | 40,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 40,000 | none | no FEC figure |
+| C00523217 | MASSACHUSETTS BLUE PAC OF BLUE CROSS BLUE SHIELD OF MASSACHUSETTS | N | 38,262 | 76,362 | 76,362 | B | 38,100 | 99.58% | 0 | 9,881 | 0 | 0 | 0 | 3,000 | 0 | 0 | 25,219 | D2 duplicates | unexplained |
+| C00154625 | KAPTUR FOR CONGRESS | H | 2,318,109 | 2,345,954 | 2,353,254 | B | 35,145 | 1.52% | -13,085 | 98,526 | 0 | 0 | 0 | 0 | 0 | 0 | -63,381 | D2 duplicates | explained |
+| C00348540 | 1199 SEIU UNITED HEALTHCARE WORKERS EAST FEDERAL POLITICAL ACTION FUND | Q | 111,984 | 149,882 | 145,978 | B | 33,994 | 30.36% | -10,671 | 49,253 | 0 | 0 | 0 | 0 | 0 | 0 | -15,259 | D2 duplicates | explained |
+| C00167346 | TENNESSEE DEMOCRATIC PARTY | Y | 787,512 | 817,236 | 821,236 | B | 33,724 | 4.28% | -4,192 | 1,675 | 0 | 0 | 0 | 0 | 0 | 4,000 | 28,049 | D8 organizations on line 15 | unexplained |
+| C90022799 | ALL IN ACTION FUND | I |  | 0 | 31,248 | B | 31,248 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 31,248 | none | no FEC figure |
+| C00739557 | ASIAN AMERICAN ADVOCACY FUND PAC | O | 66,431 | 59,275 | 97,431 | B | 31,000 | 46.66% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 31,000 | 0 | D8 organizations on line 15 | explained |
+| C00839308 | PROTECT THE HOUSE CALIFORNIA 2024 | N | 2,015,915 | 2,046,389 | 2,046,389 | B | 30,474 | 1.51% | 0 | 8,500 | 0 | 0 | 0 | 0 | 0 | 0 | 21,974 | D2 duplicates | unexplained |
+| C90011156 | WORKING AMERICA | I |  | 30,000 | 30,000 | B | 30,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 30,000 | none | no FEC figure |
+| C90018045 | UNITED WE DREAM ACTION | I |  | 27,890 | 27,890 | B | 27,890 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 27,890 | none | no FEC figure |
+| C00738039 | MIJENTE PAC | W | 10,698 | 37,198 | 37,198 | B | 26,500 | 247.71% | -1,156 | 0 | 473,971 | 0 | 0 | 0 | 0 | 0 | -447,471 | D3 other line | explained |
+| C00804179 | COINBASE, INC. INNOVATION PAC (COINBASE INNOVATION PAC) | Q | 161,413 | 187,451 | 187,451 | B | 26,038 | 16.13% | 0 | 26,217 | 0 | 0 | 0 | 0 | 0 | 0 | -179 | D2 duplicates | explained |
+| C00839126 | MARVIN ABNEY FOR CONGRESS | H | 49,800 | 75,400 | 75,400 | B | 25,600 | 51.41% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 25,600 | none | unexplained |
+| C00889196 | SAVE CENTRAL NEW YORK PAC | O | 63,500 | 63,500 | 88,500 | B | 25,000 | 39.37% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 25,000 | 0 | D8 organizations on line 15 | explained |
+| C00216614 | DEMOCRATIC PARTY COMMITTEE ABROAD | Y | 1,075,168 | 1,100,050 | 1,100,050 | B | 24,882 | 2.31% | -11,160 | 57,166 | 0 | 0 | 0 | 0 | 0 | 0 | -32,284 | D2 duplicates | explained |
+| C00852699 | RIC HOLDEN FOR MONTANA | H | 9,927 | 6,940 | 34,009 | B | 24,082 | 242.60% | 0 | 300 | 27,069 | 0 | 0 | 0 | 0 | 0 | -3,287 | D3 other line | explained |
+| C00408435 | SOCIETY OF INTERVENTIONAL RADIOLOGY POLITICAL ACTION COMMITTEE | Q | 82,955 | 106,330 | 106,330 | B | 23,375 | 28.18% | -1,000 | 24,375 | 0 | 0 | 0 | 0 | 0 | 0 | -1,000 | D2 duplicates | explained |
+| C90022393 | FAITH VOTERS FOR GOOD | I |  | 21,112 | 21,112 | B | 21,112 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 21,112 | none | no FEC figure |
+| C00768101 | MISSION DEMOCRACY PAC | N | 29,545 | 50,590 | 50,590 | B | 21,045 | 71.23% | -37,512 | 525 | 0 | 0 | 0 | 0 | 2,012 | 0 | 18,508 | D7 own money | unexplained |
+| C90022237 | BLUE HORIZON | I |  | 20,000 | 20,000 | B | 20,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 20,000 | none | no FEC figure |
+| C00801910 | FOOD AND WATER ACTION PAC | O | 1,000 | 19,000 | 20,697 | B | 19,697 | 1969.70% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,697 | 18,000 | D8 organizations on line 15 | unexplained |
+| C00829549 | TEAMSTERS LOCAL 79 PAC FOR BETTER GOVERNMENT | N | 0 | 18,950 | 18,950 | B | 18,950 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 18,950 | none | unexplained |
+| C00867291 | ARIZONANS FOR A SECURE AMERICA | O | 25,000 | 15,000 | 41,000 | B | 16,000 | 64.00% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16,000 | none | unexplained |
+| C00301358 | BLUE CROSS AND BLUE SHIELD OF KANSAS CITY FEDERAL PAC | Q | 23,500 | 39,350 | 39,350 | B | 15,850 | 67.45% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 15,850 | none | unexplained |
+| C00866822 | MONTANA''S ELECTRIC COOPERATIVES PAC | N | 60,873 | 76,617 | 76,617 | B | 15,744 | 25.86% | 0 | 18,183 | 0 | 0 | 0 | 0 | 0 | 0 | -2,439 | D2 duplicates | explained |
+| C00406124 | HANSON PROFESSIONAL SERVICES INC PAC | Q | 14,200 | 29,450 | 29,450 | B | 15,250 | 107.39% | 0 | 4,500 | 0 | 0 | 0 | 0 | 0 | 0 | 10,750 | D2 duplicates | unexplained |
+| C00868521 | SCHAEFER FOR US SENATE NV2024 | S |  | 0 | 15,128 | B | 15,128 |  | 0 | 0 | 15,128 | 0 | 0 | 0 | 0 | 0 | 0 | D3 other line | no FEC figure |
+| C90022252 | 60 PLUS, ANUZIS | I |  | 14,550 | 14,550 | B | 14,550 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 14,550 | none | no FEC figure |
+| C90022617 | CALIFORNIA CONFERENCE OF CARPENTERS | I |  | 0 | 14,250 | B | 14,250 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 14,250 | none | no FEC figure |
+| C00687491 | PLANNED PARENTHOOD ADVOCACY PROJECT LOS ANGELES COUNTY ACTION FUND | O | 880,370 | 883,845 | 894,145 | B | 13,775 | 1.56% | -500 | 0 | 0 | 0 | 0 | 0 | 0 | 10,300 | 3,475 | D8 organizations on line 15 | explained |
+| C00771097 | STACKEDPAC | V | 240 | 13,990 | 13,990 | B | 13,750 | 5729.17% | 0 | 0 | 20,700 | 0 | 0 | 0 | 0 | 0 | -6,950 | D3 other line | explained |
+| C00765982 | STAND FOR AMERICA PAC | Q | 1,277,754 | 1,290,908 | 1,290,908 | B | 13,154 | 1.03% | -1,000 | -10,947 | 0 | 0 | 0 | 0 | 0 | 0 | 24,101 | none | unexplained |
+| C00456335 | PHYSICIANS MUTUAL INSURANCE COMPANY PAC | Q | 20,450 | 33,000 | 33,000 | B | 12,550 | 61.37% | 0 | 12,550 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C00763375 | AMERICAN LEBANESE POLICY INSTITUTE PAC - ALPI PAC | N | 5,500 | 5,500 | 18,000 | B | 12,500 | 227.27% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 12,500 | 0 | D8 organizations on line 15 | explained |
+| C00389601 | ASSOCIATION OF MARYLAND PILOTS PAC | Q | 0 | 11,976 | 11,976 | B | 11,976 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 11,976 | none | unexplained |
+| C00835025 | VICE MAYOR DAYSOG FOR US CONGRESS | H | 2,657 | 14,361 | 14,361 | B | 11,704 | 440.40% | 0 | 0 | 0 | 0 | 0 | 0 | 12,703 | 0 | -999 | D7 own money | explained |
+| C00837609 | COSTELLO FOR SENATE | S | 19,692 | 31,175 | 31,175 | B | 11,483 | 58.31% | 0 | 0 | 0 | 0 | 0 | 0 | 11,683 | 0 | -200 | D7 own money | explained |
+| C00879197 | HEITHOLD FOR CONGRESS | H | 4,660 | 15,760 | 16,005 | B | 11,345 | 243.46% | 0 | 0 | 0 | 0 | 0 | 0 | 8,668 | 0 | 2,677 | D7 own money | unexplained |
+| C00717553 | FEMS FOR DEMS PAC | N | 32,897 | 43,477 | 43,477 | B | 10,580 | 32.16% | 0 | 1,225 | 0 | 0 | 0 | 0 | 0 | 0 | 9,355 | D2 duplicates | unexplained |
+| C00322362 | RHODE ISLAND BROTHERHOOD OF CORRECTIONAL OFFICERS | Q | 0 | 10,142 | 10,142 | B | 10,142 |  | -558 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10,142 | none | unexplained |
+| C00847319 | CLATTERBUCK FOR CONGRESS | H | 1,095 | 2,588 | 11,188 | B | 10,093 | 921.51% | 0 | 0 | 8,600 | 0 | 0 | 0 | 2,088 | 0 | -595 | D3 other line | explained |
+| C00877928 | FRISCH VICTORY FUND | N | 131,800 | 141,800 | 141,800 | B | 10,000 | 7.59% | -10,000 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10,000 | none | unexplained |
+| C00811307 | TEAM MONICA VICTORY | N | 620,402 | 628,797 | 628,797 | B | 8,395 | 1.35% | 0 | 21,141 | 0 | 0 | 1,100 | 0 | 0 | 0 | -13,846 | D2 duplicates | explained |
+| C00827824 | TURNOUT 2022 | O | 9,000 | 9,000 | 17,000 | B | 8,000 | 88.89% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 8,000 | none | unexplained |
+| C00248948 | PEOPLE HELPING PEOPLE | Q | 40,000 | 47,080 | 47,080 | B | 7,080 | 17.70% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7,080 | none | unexplained |
+| C00778548 | COMPLETE PARACHUTE SOLUTIONS INC POLITICAL ACTION COMMITTEE 'CPS PAC' | N | 12,294 | 19,080 | 19,080 | B | 6,786 | 55.20% | 0 | 1,560 | 0 | 0 | 0 | 0 | 0 | 0 | 5,226 | D2 duplicates | unexplained |
+| C00001214 | TEXAS MEDICAL ASSOCIATION POLITICAL ACTION COMMITTEE | Q | 60,250 | 66,945 | 66,945 | B | 6,695 | 11.11% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6,695 | none | unexplained |
+| C00117911 | NORTH DAKOTA BANKERS ASSOCIATION POLITICAL ACTION COMMITTEE | Q | 18,170 | 24,780 | 24,780 | B | 6,610 | 36.38% | 0 | 6,590 | 0 | 0 | 0 | 0 | 0 | 0 | 20 | D2 duplicates | explained |
+| C00887034 | RACHEL FIORI PRESIDENTIAL CANDIDATE | P | 11,068 | 17,674 | 17,674 | B | 6,606 | 59.69% | 0 | 5,007 | 0 | 0 | 0 | 0 | 0 | 0 | 1,600 | D2 duplicates | unexplained |
+| C00891440 | NORTHERN CALIFORNIA CARPENTERS REGIONAL COUNCIL POWER PAC | O | 204,830 | 0 | 211,117 | B | 6,287 | 3.07% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6,287 | 0 | D8 organizations on line 15 | explained |
+| C00573519 | THINK BIG AMERICA PAC | Q | 255,260 | 261,515 | 261,515 | B | 6,255 | 2.45% | 0 | 11,593 | 0 | 0 | 0 | 0 | 0 | 0 | -5,338 | D2 duplicates | explained |
+| C00215699 | CHRISTOPHER SHAYS FOR CONGRESS COMMITTEE | H | 0 | 5,951 | 5,951 | B | 5,951 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5,951 | none | unexplained |
+| C00853200 | SHIRLEY FOR NEW JERSEY | H | 33,717 | 39,597 | 39,597 | B | 5,880 | 17.44% | 0 | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 5,830 | D2 duplicates | unexplained |
+| C00803197 | SUMMIT COUNTY PROGRESSIVE DEMOCRATS FEDERAL PAC | N | 14,535 | 20,250 | 20,250 | B | 5,715 | 39.32% | 0 | 4,750 | 0 | 0 | 0 | 0 | 0 | 0 | 965 | D2 duplicates | unexplained |
+| C90022146 | SEATTLE DSA | I |  | 5,400 | 5,400 | B | 5,400 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5,400 | none | no FEC figure |
+| C90020041 | EQUALITY FLORIDA ACTION INC. | I |  | 5,212 | 5,212 | B | 5,212 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5,212 | none | no FEC figure |
+| C90018078 | NEW JERSEY CITIZEN ACTION | I |  | 0 | 5,000 | B | 5,000 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5,000 | none | no FEC figure |
+| C00610956 | MEMORIALHEALTHPAC | Q | 132,363 | 137,261 | 137,261 | B | 4,898 | 3.70% | -2,500 | 830 | 0 | 0 | 0 | 0 | 0 | 0 | 4,068 | D2 duplicates | unexplained |
+| C00548719 | MCKINNEY TEA PARTY | N | 14,846 | 13,646 | 19,501 | B | 4,655 | 31.36% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4,655 | none | unexplained |
+| C00870170 | LEHIGH VALLEY FOR ALL PAC | N | 9,280 | 12,780 | 13,780 | B | 4,500 | 48.49% | 0 | 3,500 | 0 | 0 | 0 | 0 | 0 | 0 | 1,000 | D2 duplicates | unexplained |
+| C00836866 | VOTERS DESERVE BETTER | O | 33,891 | 33,499 | 37,597 | B | 3,706 | 10.93% | 0 | 2,031 | 0 | 0 | 0 | 0 | 0 | 0 | 1,675 | D2 duplicates | unexplained |
+| C00859140 | COMMITTEE TO ELECT MISSI HESKETH FOR CONGRESS | H | 7,335 | 7,935 | 11,035 | B | 3,700 | 50.44% | -50 | 1,650 | 0 | 0 | 0 | 0 | 0 | 0 | 2,050 | D2 duplicates | unexplained |
+| C90022609 | DRIFTLESS DADS | I |  | 3,447 | 3,447 | B | 3,447 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3,447 | none | no FEC figure |
+| C90022435 | COBALT ADVOCATES  | I |  | 0 | 3,305 | B | 3,305 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3,305 | none | no FEC figure |
+| C00858654 | JOHN HUFFMAN FOR CONGRESS | H | 316,480 | 319,680 | 319,680 | B | 3,200 | 1.01% | 0 | 6,450 | 0 | 0 | 3,200 | 0 | 0 | 0 | -6,450 | D2 duplicates | explained |
+| C90023136 | ROSE MARY HUTCHINSON | I |  | 2,824 | 2,824 | B | 2,824 |  | 0 | 2,205 | 0 | 0 | 0 | 0 | 0 | 0 | 619 | D2 duplicates | no FEC figure |
+| C00724237 | SHARICE DAVIDS VICTORY FUND 2024 | N | 140,751 | 93,247 | 143,564 | B | 2,813 | 2.00% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2,813 | none | unexplained |
+| C90022666 | YEAGER, THOMAS FREDERICK | I |  | 410 | 2,778 | B | 2,778 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2,778 | none | no FEC figure |
+| C00336131 | INTELLECTUAL PROPERTY OWNERS ASSOCIATION POLITICAL ACTION FUND | N | 4,250 | 7,000 | 7,000 | B | 2,750 | 64.71% | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 2,250 | D2 duplicates | unexplained |
+| C00432815 | LOCAL 399 INTERNATIONAL UNION OF OPERATING ENGINEERS FEDERAL PAC (LOCAL 399 IUOE FED PAC) | N | 38,329 | 41,045 | 41,045 | B | 2,716 | 7.09% | 0 | 2,010 | 0 | 0 | 0 | 0 | 0 | 0 | 706 | D2 duplicates | unexplained |
+| C90023003 | HERR, STEVEN | I |  | 2,514 | 2,514 | B | 2,514 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2,514 | none | no FEC figure |
+| C00686832 | WAY TO LEAD PAC | W | 192,512 | 194,861 | 194,861 | B | 2,349 | 1.22% | 0 | 5,000 | 3,957,250 | 0 | 0 | 0 | 0 | 0 | -3,959,901 | D3 other line | explained |
+| C00172858 | NEBRASKA CREDIT UNION LEAGUE POLITICAL ACTION COMMITTEE--(NCULPAC) | Q | 23,536 | 25,628 | 25,628 | B | 2,092 | 8.89% | 0 | 2,151 | 0 | 0 | 0 | 0 | 0 | 0 | -59 | D2 duplicates | explained |
+| C00767541 | DEMOCRATIC CLUB AT CEDAR CREST | N | 985 | 3,000 | 3,000 | B | 2,015 | 204.57% | 0 | 1,250 | 0 | 0 | 0 | 0 | 0 | 0 | 765 | D2 duplicates | unexplained |
+| C00765198 | LEADING PEOPLE FORWARD PAC | Q | 52,500 | 54,500 | 54,500 | B | 2,000 | 3.81% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2,000 | none | unexplained |
+| C00517235 | TURQUOISE PAC | Q | 137,616 | 50,415 | 139,615 | B | 1,999 | 1.45% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,999 | none | unexplained |
+| C00864439 | JOSHUA JAMES FOR TENNESSEE | H | 2,800 | 3,690 | 4,690 | B | 1,890 | 67.50% | 0 | 0 | 0 | 0 | 0 | 0 | 1,890 | 0 | 0 | D7 own money | explained |
+| C90014580 | 350.ORG ACTION FUND | I |  | 1,850 | 1,850 | B | 1,850 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,850 | none | no FEC figure |
+| C00650655 | MICHAEL KOTICK FOR CONGRESS | H | 0 | 1,750 | 1,750 | B | 1,750 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,750 | none | unexplained |
+| C00839878 | ZANE 4 SENATE COMMITTEE | S | 0 | 1,740 | 1,740 | B | 1,740 |  | 0 | 0 | 0 | 0 | 0 | 0 | 1,740 | 0 | 0 | D7 own money | explained |
+| C90022682 | SISTERHOOD 2024 | I |  | 1,673 | 1,673 | B | 1,673 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,673 | none | no FEC figure |
+| C00736348 | PEOPLE FOR CHARLES HUGHES | H | 0 | 1,550 | 1,550 | B | 1,550 |  | 0 | 0 | 0 | 0 | 0 | 0 | 1,550 | 0 | 0 | D7 own money | explained |
+| C90022708 | FARNAM, JAMES B. | I |  | 1,500 | 1,500 | B | 1,500 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,500 | none | no FEC figure |
+| C00873828 | THE 2024 VICTORY COMMITTEE | N | 83,742 | 85,030 | 85,030 | B | 1,288 | 1.54% | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 788 | D2 duplicates | explained |
+| C00542902 | AMERICARISINGPAC.ORG | O | -1,810 | -550 | -550 | B | 1,260 | -69.61% | 0 | -300 | 0 | 0 | 0 | 0 | 0 | 0 | 1,560 | none | unexplained |
+| C00806323 | DE LA CRUZ FOR CONGRESS | H | -2,250 | -1,000 | -1,000 | B | 1,250 | -55.56% | 0 | -500 | 0 | 0 | 0 | 0 | 0 | 0 | 1,750 | none | unexplained |
+| C90022377 | WESTERN MONTANA DEMOCRATIC SOCIALISTS OF AMERICA | I |  | 1,182 | 1,182 | B | 1,182 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,182 | none | no FEC figure |
+| C00117614 | FARMERS MUTUAL HAIL INS CO OF IOWA POLITICAL ACTION COMMITTEE (FMH PAC) | Q | 22,288 | 23,422 | 23,422 | B | 1,134 | 5.09% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,134 | none | unexplained |
+| C00184382 | MODERN WOODMEN OF AMERICA POLITICAL ACTION COMMITTEE | Q | 2,050 | 3,100 | 3,100 | B | 1,050 | 51.22% | 0 | 1,550 | 0 | 0 | 0 | 0 | 0 | 0 | -500 | D2 duplicates | explained |
+| C00794669 | GEORGE WASHINGTON INITIATIVE ACTION FUND | O | 9,150 | 1,650 | 10,150 | B | 1,000 | 10.93% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,000 | none | unexplained |
+| C00866137 | JOHN HENRY NEWMAN FOR CONGRESS | H | 750 | 1,750 | 1,750 | B | 1,000 | 133.33% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,000 | none | unexplained |
+| C00843318 | SCOTT FOR UTAH | H | 1,300 | 2,300 | -1,549 | A | 1,000 | 76.92% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1,000 | none | unexplained |
+| C00876839 | DEVIN DAVIS FOR CONGRESS | H | 81,036 | 82,033 | 82,033 | B | 998 | 1.23% | 0 | 25 | 0 | 0 | 0 | 0 | 1,000 | 0 | -28 | D7 own money | explained |
+| C90023169 | GREG JERGESON | I |  | 912 | 912 | B | 912 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 912 | none | no FEC figure |
+| C00626119 | COMMITTEE FOR WORKING FAMILIES, SPONSORED BY LABOR ORGANIZATIONS | O | 0 | 0 | 906 | B | 906 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 906 | 0 | D8 organizations on line 15 | explained |
+| C00890889 | CONGRESS MAJORITY PAC | O | 83,315 | 84,215 | 84,215 | B | 900 | 1.08% | 0 | 1,200 | 0 | 0 | 0 | 0 | 0 | 0 | -300 | D2 duplicates | explained |
+| C00845172 | JAMES BUFORD FOR CONGRESS | H | 9,250 | 10,100 | 10,100 | B | 850 | 9.19% | 0 | 850 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C90019662 | NILC IMMIGRANT JUSTICE FUND | I |  | 783 | 783 | B | 783 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 783 | none | no FEC figure |
+| C00103861 | SOUTH CAROLINA BANKERS POLITICAL ACTION COMMITTE | Q | 69,230 | 70,010 | 69,910 | A | 780 | 1.13% | 0 | 500 | 0 | 0 | 0 | 0 | 0 | 0 | 280 | D2 duplicates | explained |
+| C00140772 | JOHN H HAAKE BRANCH 343 NATIONAL ASSOCIATION OF LETTER CARRIERS POLITICAL ACTION FUND | Q | 4,900 | 5,675 | 5,675 | B | 775 | 15.82% | 0 | 650 | 0 | 0 | 0 | 0 | 0 | 0 | 125 | D2 duplicates | unexplained |
+| C00888487 | BLACK MEN VOTING | O | 0 | 259 | 759 | B | 759 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16 | 743 | D8 organizations on line 15 | unexplained |
+| C90018771 | FORFACT, LLC | I |  | 759 | 759 | B | 759 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 759 | none | no FEC figure |
+| C90010620 | VOTEVETS.ORG ACTION FUND | I |  | 750 | 750 | B | 750 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 750 | none | no FEC figure |
+| C00429241 | FRIENDS OF CMU | Q | 4,500 | 5,250 | 5,250 | B | 750 | 16.67% | 0 | 750 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C90023110 | JANICE NORLIN | I |  | 697 | 697 | B | 697 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 697 | none | no FEC figure |
+| C90019027 | METRO DC DEMOCRATIC SOCIALISTS OF AMERICA | I |  | 593 | 593 | B | 593 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 593 | none | no FEC figure |
+| C00099754 | BAKEPAC - THE POLITICAL ACTION COMMITTEE OF THE INDEPENDENT BAKERS ASSOCIATION | Q | 0 | 0 | 500 | B | 500 |  | 0 | 0 | 0 | 500 | 0 | 0 | 0 | 0 | 0 | D4 names a committee | explained |
+| C00157958 | MISSOURI RIGHT TO LIFE FEDERAL POLITICAL ACTION COMMITTEE | Q | 1,745 | 2,209 | 2,209 | B | 464 | 26.61% | 0 | 466 | 0 | 0 | 0 | 0 | 0 | 0 | -2 | D2 duplicates | explained |
+| C00582072 | SAVING OUR LAKES AND OPEN SPACES IN RANCHO MURIETA POLITICAL ACTION COMMITTEE | O | 510 | 200 | 920 | B | 410 | 80.39% | 0 | 410 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C00832303 | JUSTIN LASTER FOR CONGRESS | H | 0 | 405 | 405 | B | 405 |  | 0 | 0 | 0 | 0 | 0 | 0 | 405 | 0 | 0 | D7 own money | explained |
+| C00455725 | MARIPOSA COUNTY REPUBLICAN CENTRAL COMMITTEE (FEDERAL) | Y | 2,800 | 3,160 | 3,160 | B | 360 | 12.86% | 0 | 120 | 0 | 0 | 0 | 0 | 0 | 0 | 240 | D2 duplicates | unexplained |
+| C90023243 | KATHRYN A HOGG | I |  | 300 | 300 | B | 300 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 300 | none | no FEC figure |
+| C00353037 | NATIONAL FEDERATION OF DEMOCRATIC WOMEN PAC | N | 10,930 | 11,230 | 11,230 | B | 300 | 2.74% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 300 | none | unexplained |
+| C00320143 | HAWAII OPTOMETRIC POLITICAL ACTION COMMITTEE | Q | 3,699 | 3,999 | 3,999 | B | 300 | 8.11% | 0 | 300 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C00843193 | COMMITTEE TO ELECT GUY WARNER | H | 0 | 250 | 250 | B | 250 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 250 | none | unexplained |
+| C00128975 | CMHA BLOCK & PAVER PAC CONCRETE MASONRY AND HARDSCAPES VALLEY DRIVE | Q | 14,400 | 14,650 | 14,650 | B | 250 | 1.74% | 0 | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C00003061 | NORTH DAKOTA MEDICAL ASSOCIATION POLITICAL ACTION COMMITTEE | Q | 10,400 | 10,650 | 10,650 | B | 250 | 2.40% | 0 | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | D2 duplicates | explained |
+| C00846808 | J.EMILIO MARTINEZ FOR CONGRESS 2024 | H | 250 | 500 | 500 | B | 250 | 100.00% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 250 | none | unexplained |
+| C00377754 | FLORIDA MUNICIPAL ELECTRIC ASSOCIATION INC PAC FMEA PAC | Q | 5,150 | 5,400 | 5,400 | B | 250 | 4.85% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 250 | none | unexplained |
+| C90022336 | BOZEMAN DEMOCRATIC SOCALISTS OF AMERICAN | I |  | 219 | 219 | B | 219 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 219 | none | no FEC figure |
+| C00629048 | RAY J WRITZ FOR US SENATE | S |  | 190 | 190 | B | 190 |  | 0 | 0 | 0 | 0 | 0 | 0 | 190 | 0 | 0 | D7 own money | no FEC figure |
+| C00672204 | MS VOTERS INFORMATION PROVIDERS PAC | N | 800 | 450 | 950 | B | 150 | 18.75% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 150 | none | unexplained |
+| C00875492 | SHAUN GREENE FOR CONGRESS | H | 0 | 0 | 80 | B | 80 |  | 0 | 0 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | D3 other line | explained |
+| C00508556 | CENTRIST INDEPENDENT VOTER POLITICAL ACTION COMMITTEE | O | 1,127 | 1,158 | 1,158 | B | 31 | 2.76% | 0 | 34 | 0 | 0 | 0 | 0 | 0 | 0 | -3 | D2 duplicates | explained |
+| C00437079 | WESTCHESTER-PLAYA DEMOCRATIC CLUB | Q | 1,658 | 1,685 | 1,685 | B | 27 | 1.63% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 27 | none | unexplained |
+| C00129627 | PIPEFITTERS LOCAL 636 POLITICAL ACTION COMMITTEE | Q | 170 | 194 | 194 | B | 24 | 13.87% | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 24 | none | unexplained |
+| C00648246 | SPECIALIZED MEDICINE AND RESPONSIBLE TREATMENT PAC | V | 169 | 192 | 192 | B | 23 | 13.76% | 0 | 0 | 2,192 | 0 | 0 | 0 | 0 | 0 | -2,169 | D3 other line | explained |
+| C00623355 | NATIONAL TREASURY EMPLOYEES UNION ADVOCACY COMMITTEE | O | 0 | 0 | 1 | B | 1 |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | D8 organizations on line 15 | explained |
+
+**Q6m1: committees whose measure B the rule moved, toward or away from FEC's itemized figure  (0 s)**
+
+| move | committees | dollars | within_1pct_before | within_1pct_after |
+|---|---|---|---|---|
+| toward | 71 | 52,102,231 | 15 | 66 |
+| no FEC figure or 0 | 36 | 38,679,476 | 0 | 0 |
+| away | 39 | 2,520,261 | 15 | 9 |
+
+**Q6m2: the committees it moved away from FEC's figure, largest first  (0 s)**
+
+| committee_id | name | type | fec_itemized | b_prev | b | moved | ratio_before | ratio_after |
+|---|---|---|---|---|---|---|---|---|
+| C00796045 | TRUTH AND COURAGE PAC | O | 27,840,040 | 27,561,722 | 26,614,570 | 947,152 | 99.00% | 95.60% |
+| C00867036 | RIGHT FOR AMERICA | O | 69,832,771 | 69,872,769 | 69,347,769 | 525,000 | 100.06% | 99.31% |
+| C00553859 | DR. BRIAN BABIN FOR CONGRESS | H | 315,760 | 295,960 | -9,500 | 305,460 | 93.73% | -3.01% |
+| C00582841 | COALITION FOR PROGRESS | O | 2,646,200 | 2,093,753 | 1,893,850 | 199,903 | 79.12% | 71.57% |
+| C00851980 | FRIENDS OF DAVE MCCORMICK | S | 14,231,088 | 14,239,233 | 14,112,004 | 127,229 | 100.06% | 99.16% |
+| C00866368 | CONSERVATIVE VOTERS ALLIANCE | O | 1,650,000 | 1,455,421 | 1,364,000 | 91,421 | 88.21% | 82.67% |
+| C00825786 | BABIN VICTORY FUND | N | 431,991 | 429,741 | 365,766 | 63,975 | 99.48% | 84.67% |
+| C00834077 | NEVER BACK DOWN INC. | O | 144,589,273 | 142,891,271 | 142,840,658 | 50,613 | 98.83% | 98.79% |
+| C00832238 | DEMOCRACY THROUGH VOTING | O | 85,173 | 94,196 | 48,416 | 45,780 | 110.59% | 56.84% |
+| C00434076 | OPERATING ENGINEERS LOCAL 478 POLITICAL ACTION COMMITTEE (OE478PAC) | Q | 74,567 | 41,497 | 13,630 | 27,867 | 55.65% | 18.28% |
+| C00855064 | CONSERVATIVE VALUES FOR UTAH | O | 4,920,400 | 4,820,400 | 4,795,400 | 25,000 | 97.97% | 97.46% |
+| C00542431 | JOHN BOLTON PAC | W | 672,567 | 672,555 | 652,555 | 20,000 | 100.00% | 97.02% |
+| C00829721 | EARLY VOTE ACTION PAC | O | 4,704,093 | 4,706,820 | 4,694,820 | 12,000 | 100.06% | 99.80% |
+| C00770214 | CHAMPION AMERICAN VALUES | W | 2,829,515 | 2,676,289 | 2,665,654 | 10,635 | 94.58% | 94.21% |
+| C00785790 | PROTECTING AMERICANS PROJECT ACTION FUND | V | 49,570 | 49,570 | 39,570 | 10,000 | 100.00% | 79.83% |
+
+#### Findings
+
+| | Before (Q15, build `20261112T001753Z`) | After (build `20261112T021826Z`) |
+| --- | --- | --- |
+| Q6d2 total excess, over-1% committees | 150,906,728 | 63,713,801 |
+| Over-1% committees (Q6e) | not recorded | 190 |
+| Unexplained committees | 112 | 71 |
+| Unexplained dollars | 34,444,474 | 10,791,881 |
+| Committees the rule moves toward FEC's figure (Q6m1) | 71 predicted, $52,102,231 (Q15g2) | 71, $52,102,231 |
+| Committees within 1% among them | 15 → 66 predicted | 15 → 66 |
+| Committees it moves away | 39 predicted, $2,520,261 | 39, $2,520,261 |
+
+- **The rebuild is Q15g2's prediction exactly.** Q6m1's three rows are Q15g2's, committee for
+  committee and dollar for dollar, and Q6m2 is Q15g3's list. The 39 committees it moves away are
+  out of NEU-2276's scope, as the ticket says. Whether their filings put those rows on line
+  11(a)(i) after all, whatever the `TRAN_ID` says, needs the raw filings (NEU-2181).
+- **71 committees are still unexplained, $10,791,881.** D8, organization money a filer put on line
+  15 or 17 that Q6 fits rather than measures, is the primary cause at 14 of them with $8,999,429
+  unexplained (UNITE HERE PAC's $3,217,500 first). No diagnostic takes the rest: 34 committees with
+  $938,296, 21 whose duplicates leave $832,971, and 2 with own money, $21,185. Q15 found this
+  money by the raw filings' line numbers ($13.9M at the sample whose `TRAN_ID` names no line),
+  which the bulk file drops: NEU-2181's question.
+- **190 committees are over 1% (Q6e):** 69 explained, 50 with no FEC figure, 71 unexplained.
+  The previous build's Q6e count was not recorded; Q14x5's 281 is Q5i's measure, not Q6's.
 
 ## Q7: the three named gaps
 
