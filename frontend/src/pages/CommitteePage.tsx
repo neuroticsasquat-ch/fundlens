@@ -1,11 +1,12 @@
-import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Group, Stack, Tabs, Text, Title } from "@mantine/core";
 import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
 import type { Committee, CommitteeCycle, TopOrganization } from "../api/client";
-import { CONTRIBUTION_PAGES } from "../api/contributions";
+import { CONTRIBUTION_PAGES, EXPENDITURE_PAGES } from "../api/contributions";
 import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
+import ExpendituresTable from "../components/ExpendituresTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
 import TopDonorsTable from "../components/TopDonorsTable";
@@ -88,11 +89,26 @@ const NON_CONTRIBUTION_ACCOUNT_SERIES: CycleSeries<CommitteeCycle> = {
   value: (row) => row.total_non_contribution_account,
 };
 
+// Spending for or against candidates, never given to them, so a column after "To candidates" and in
+// no bar of the chart, which stacks what the committee received.
+const INDEPENDENT_EXPENDITURES_COLUMN: Column<CommitteeCycle> = {
+  key: "independent-expenditures",
+  header: "Independent expenditures",
+  align: "right",
+  render: (row) => money(row.ie_total),
+  sortValue: (row) => row.ie_total,
+};
+
 /**
  * The table's columns and the chart's series, with organizations' money and a hybrid PAC's
- * non-contribution account after "From committees" when the committee has any.
+ * non-contribution account after "From committees" when the committee has any, and its
+ * independent expenditures last when it made any.
  */
-function cycleTotals(fromOrganizations: boolean, nonContributionAccount: boolean) {
+function cycleTotals(
+  fromOrganizations: boolean,
+  nonContributionAccount: boolean,
+  independentExpenditures: boolean,
+) {
   const columns = [
     ...(fromOrganizations ? [ORGANIZATIONS_COLUMN] : []),
     ...(nonContributionAccount ? [NON_CONTRIBUTION_ACCOUNT_COLUMN] : []),
@@ -102,7 +118,12 @@ function cycleTotals(fromOrganizations: boolean, nonContributionAccount: boolean
     ...(nonContributionAccount ? [NON_CONTRIBUTION_ACCOUNT_SERIES] : []),
   ];
   return {
-    columns: [...CYCLE_COLUMNS.slice(0, 3), ...columns, ...CYCLE_COLUMNS.slice(3)],
+    columns: [
+      ...CYCLE_COLUMNS.slice(0, 3),
+      ...columns,
+      ...CYCLE_COLUMNS.slice(3),
+      ...(independentExpenditures ? [INDEPENDENT_EXPENDITURES_COLUMN] : []),
+    ],
     series: [...CYCLE_SERIES.slice(0, 2), ...series, ...CYCLE_SERIES.slice(2)],
   };
 }
@@ -170,10 +191,12 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
   const nonContributionAccount = committee.cycles.some(
     (row) => row.total_non_contribution_account !== 0,
   );
+  // Most committees spend nothing independently of a campaign; a super PAC mostly does that.
+  const independentExpenditures = committee.cycles.some((row) => row.ie_total !== 0);
   // Memoized, so the chart's option is not rebuilt on every render.
   const totals = useMemo(
-    () => cycleTotals(fromOrganizations, nonContributionAccount),
-    [fromOrganizations, nonContributionAccount],
+    () => cycleTotals(fromOrganizations, nonContributionAccount, independentExpenditures),
+    [fromOrganizations, nonContributionAccount, independentExpenditures],
   );
 
   return (
@@ -221,6 +244,13 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
               <Text c="dimmed" size="sm">
                 Non-contribution account: what individuals and organizations give a hybrid PAC
                 outside its contribution account, without limit, and counted in no other column.
+              </Text>
+            )}
+            {independentExpenditures && (
+              <Text c="dimmed" size="sm">
+                Independent expenditures: what the committee spent for or against candidates
+                without coordinating with them, for and against together. It is never a
+                contribution to them.
               </Text>
             )}
           </Stack>
@@ -272,12 +302,35 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
                 />
               </section>
             )}
-            <section aria-labelledby="contributions">
-              <Title order={3} id="contributions" mb="sm">
-                Contributions received
-              </Title>
-              <CommitteeContributions id={committee.committee_id} cycle={shown.cycle} />
-            </section>
+            {/* The tab is shown by the cycle's net ie_total, which the page already has: a cycle
+                whose expenditures net to exactly $0, a correction cancelling a filing, has none. */}
+            {shown.ie_total === 0 ? (
+              <section aria-labelledby="contributions">
+                <Title order={3} id="contributions" mb="sm">
+                  Contributions received
+                </Title>
+                <CommitteeContributions id={committee.committee_id} cycle={shown.cycle} />
+              </section>
+            ) : (
+              <section aria-labelledby="itemized">
+                <Title order={3} id="itemized" mb="sm">
+                  Itemized
+                </Title>
+                {/* Not kept mounted: a tab asks the API for its rows only once opened. */}
+                <Tabs defaultValue="contributions" keepMounted={false}>
+                  <Tabs.List>
+                    <Tabs.Tab value="contributions">Contributions received</Tabs.Tab>
+                    <Tabs.Tab value="expenditures">Independent expenditures</Tabs.Tab>
+                  </Tabs.List>
+                  <Tabs.Panel value="contributions" pt="md">
+                    <CommitteeContributions id={committee.committee_id} cycle={shown.cycle} />
+                  </Tabs.Panel>
+                  <Tabs.Panel value="expenditures" pt="md">
+                    <CommitteeExpenditures id={committee.committee_id} cycle={shown.cycle} />
+                  </Tabs.Panel>
+                </Tabs>
+              </section>
+            )}
           </Stack>
         </section>
       )}
@@ -296,6 +349,21 @@ function CommitteeContributions({ id, cycle }: { id: string; cycle: number }) {
     <ContributionsTable
       query={contributions}
       emptyMessage={`No itemized contributions to this committee in ${cycle}.`}
+    />
+  );
+}
+
+function CommitteeExpenditures({ id, cycle }: { id: string; cycle: number }) {
+  const expenditures = $api.useInfiniteQuery(
+    "get",
+    "/v1/committees/{committee_id}/expenditures",
+    { params: { path: { committee_id: id }, query: { cycle } } },
+    EXPENDITURE_PAGES,
+  );
+  return (
+    <ExpendituresTable
+      query={expenditures}
+      emptyMessage={`No independent expenditures by this committee in ${cycle}.`}
     />
   );
 }

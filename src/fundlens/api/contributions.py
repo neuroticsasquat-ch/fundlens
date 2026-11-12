@@ -1,5 +1,5 @@
-"""What the `/contributions` routes share: their parameters, and the itemized reader's answers
-and failures as HTTP (spec §7.2)."""
+"""What the `/contributions` and `/expenditures` routes share: their parameters, and the itemized
+reader's answers and failures as HTTP (spec §7.2)."""
 
 from collections.abc import Callable
 from typing import Annotated
@@ -43,8 +43,20 @@ def contributions_page(
 
 def as_contribution_page(read: Callable[[], Page]) -> ContributionPage:
     """The page `read` returns, its failures as problems."""
+    page = read_page(read)
+    return ContributionPage(
+        contributions=[
+            Contribution.model_validate(row | {"source_record_id": str(row["source_record_id"])})
+            for row in page.rows
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+def read_page(read: Callable[[], Page]) -> Page:
+    """The page `read` returns, the itemized reader's failures raised as HTTP problems."""
     try:
-        page = read()
+        return read()
     except CycleNotLive as exc:
         raise HTTPException(404, f"No published build covers cycle {exc.args[0]}.") from None
     except BadCursor:
@@ -55,10 +67,3 @@ def as_contribution_page(read: Callable[[], Page]) -> ContributionPage:
             "The data this cursor pages through has been replaced by a newer build."
             " Start again from the first page, without a cursor.",
         ) from None
-    return ContributionPage(
-        contributions=[
-            Contribution.model_validate(row | {"source_record_id": str(row["source_record_id"])})
-            for row in page.rows
-        ],
-        next_cursor=page.next_cursor,
-    )

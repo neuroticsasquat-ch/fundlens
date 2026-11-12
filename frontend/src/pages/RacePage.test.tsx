@@ -30,17 +30,50 @@ describe("RacePage", () => {
     expect(document.title).toBe("2024 Senate · Maryland · fundlens");
 
     expect(rows("Candidates").map(cells)).toEqual([
-      ["WHITLOCK, GORDON", "REP", "Open", "$31,850", "$5,000", "$0", "$1,750,000", "$1,786,850"],
-      ["OKAFOR, DIANA", "DEM", "Open", "$49,700", "$5,000", "$19,500", "$5,000", "$79,200"],
-      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$0", "$7,175"],
-      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250"],
+      [
+        "WHITLOCK, GORDON",
+        "REP",
+        "Open",
+        "$31,850",
+        "$5,000",
+        "$0",
+        "$1,750,000",
+        "$1,786,850",
+        "$0",
+        "$80,000",
+      ],
+      [
+        "OKAFOR, DIANA",
+        "DEM",
+        "Open",
+        "$49,700",
+        "$5,000",
+        "$19,500",
+        "$5,000",
+        "$79,200",
+        "$150,000",
+        "$45,000",
+      ],
+      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$0", "$7,175", "$0", "$0"],
+      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250", "$0", "$0"],
     ]);
+    expect(
+      screen.getByText("Independent expenditures: $150,000 for candidates, $125,000 against"),
+    ).toBeInTheDocument();
     expect(
       within(section("Candidates"))
         .getAllByRole("columnheader")
         .map((header) => header.textContent)
-        .slice(3, 7),
-    ).toEqual(["From individuals", "From committees", "Via joint fundraising", "Self-funding"]);
+        .slice(3),
+    ).toEqual([
+      "From individuals",
+      "From committees",
+      "Via joint fundraising",
+      "Self-funding",
+      "Total ▼",
+      "Independent expenditures for",
+      "Independent expenditures against",
+    ]);
     const candidates = section("Candidates");
     expect(within(candidates).getByRole("columnheader", { name: /Total/ })).toHaveAttribute(
       "aria-sort",
@@ -79,6 +112,34 @@ describe("RacePage", () => {
     expect(screen.queryByText(/via joint fundraising/)).not.toBeInTheDocument();
   });
 
+  it("says nothing of independent expenditures in a race that had none", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      ie_support: 0,
+      ie_oppose: 0,
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({ ...RACE_SENATE_MD, ie_support: 0, ie_oppose: 0, candidates }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Candidates" });
+
+    expect(screen.queryByText(/^Independent expenditures:/)).not.toBeInTheDocument();
+    // A bar of what each raised, and no legend.
+    expect(lastOption().series).toMatchObject([{ name: "Raised" }]);
+    expect(lastOption().legend).toMatchObject({ show: false });
+  });
+
+  it("has a fixture whose candidates' independent expenditures add up to the race's", () => {
+    const sum = (key: "ie_support" | "ie_oppose") =>
+      RACE_SENATE_MD.candidates.reduce((total, candidate) => total + candidate[key], 0);
+    expect(sum("ie_support")).toBe(RACE_SENATE_MD.ie_support);
+    expect(sum("ie_oppose")).toBe(RACE_SENATE_MD.ie_oppose);
+  });
+
   it("sorts the candidates from a column header", async () => {
     renderApp("/race/2024/senate/MD");
     const candidates = await screen.findByRole("region", { name: "Candidates" });
@@ -98,12 +159,17 @@ describe("RacePage", () => {
     await screen.findByRole("region", { name: "Top committees" });
 
     expect(rows("Top committees").map(cells)).toEqual([
-      ["1", "BRICKLAYERS UNITED PAC", "Contributions", "$5,000"],
-      ["2", "OLD LINE REPUBLICAN COMMITTEE", "Contributions", "$5,000"],
+      ["1", "MARYLAND FORWARD PAC", "Independent expenditures", "$230,000"],
+      ["2", "OLD LINE REPUBLICAN COMMITTEE", "Independent expenditures", "$45,000"],
+      ["3", "BRICKLAYERS UNITED PAC", "Contributions", "$5,000"],
+      ["4", "OLD LINE REPUBLICAN COMMITTEE", "Contributions", "$5,000"],
     ]);
     expect(
       within(section("Top committees")).getByRole("link", { name: "BRICKLAYERS UNITED PAC" }),
     ).toHaveAttribute("href", "/committee/C00800202");
+    expect(
+      within(section("Top committees")).getByRole("link", { name: "MARYLAND FORWARD PAC" }),
+    ).toHaveAttribute("href", "/committee/C00800201");
   });
 
   it("lists the top donors with what each gave each candidate, and no self-funder", async () => {
@@ -135,7 +201,7 @@ describe("RacePage", () => {
     expect(rows("Top donors").map((row) => cells(row)[1])).not.toContain("WHITLOCK, GORDON");
   });
 
-  it("draws each candidate's total as a bar in their party's colour", async () => {
+  it("stacks each candidate's total, in their party's colour, and the independent expenditures for and against them", async () => {
     renderApp("/race/2024/senate/MD");
     await screen.findByRole("region", { name: "Candidates" });
 
@@ -146,16 +212,35 @@ describe("RacePage", () => {
     expect(option.series).toMatchObject([
       {
         type: "bar",
+        name: "Raised",
+        stack: "spending",
         data: [{ value: 1786850 }, { value: 79200 }, { value: 7175 }, { value: 3250 }],
       },
+      {
+        type: "bar",
+        name: "Independent expenditures for",
+        stack: "spending",
+        data: [0, 150000, 0, 0],
+      },
+      {
+        type: "bar",
+        name: "Independent expenditures against",
+        stack: "spending",
+        data: [80000, 45000, 0, 0],
+      },
     ]);
+    expect(option.legend).toMatchObject({
+      show: true,
+      data: ["Independent expenditures for", "Independent expenditures against"],
+    });
   });
 
-  it("charts the candidates by their Total, whatever order the API gives them in", async () => {
-    // BRANNIGAN, out-raised by OKAFOR in individual gifts, out-totals her via joint fundraising.
+  it("charts the candidates by their bars' length, whatever order the API gives them in", async () => {
+    // BRANNIGAN, out-raised by OKAFOR in individual gifts and with no independent expenditures,
+    // out-totals her bar via joint fundraising.
     const candidates = RACE_SENATE_MD.candidates.map((candidate) =>
       candidate.candidate_id === "S4MD00111"
-        ? { ...candidate, total_jfc_transfers: 100000 }
+        ? { ...candidate, total_jfc_transfers: 300000 }
         : candidate,
     );
     renderApp("/race/2024/senate/MD", {
@@ -184,6 +269,8 @@ describe("RacePage", () => {
       total_committee: 0,
       total_jfc_transfers: 0,
       self_funding: 0,
+      ie_support: 0,
+      ie_oppose: 0,
     }));
     renderApp("/race/2024/senate/MD", {
       handlers: [
@@ -211,6 +298,8 @@ describe("RacePage", () => {
       total_committee: 0,
       total_jfc_transfers: 0,
       self_funding: 0,
+      ie_support: 0,
+      ie_oppose: 0,
     }));
     renderApp("/race/2024/senate/MD", {
       handlers: [

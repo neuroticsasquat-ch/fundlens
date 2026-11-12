@@ -8,7 +8,18 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
     "containLabel": true,
     "left": 8,
     "right": 24,
-    "top": 8,
+    "top": 40,
+  },
+  "legend": {
+    "data": [
+      "Independent expenditures for",
+      "Independent expenditures against",
+    ],
+    "show": true,
+    "textStyle": {
+      "color": "#C9C9C9",
+    },
+    "top": 0,
   },
   "series": [
     {
@@ -38,7 +49,36 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
           "value": 3250,
         },
       ],
-      "name": "Total",
+      "name": "Raised",
+      "stack": "spending",
+      "type": "bar",
+    },
+    {
+      "data": [
+        0,
+        150000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#38d9a9",
+      },
+      "name": "Independent expenditures for",
+      "stack": "spending",
+      "type": "bar",
+    },
+    {
+      "data": [
+        80000,
+        45000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#ffa94d",
+      },
+      "name": "Independent expenditures against",
+      "stack": "spending",
       "type": "bar",
     },
   ],
@@ -93,7 +133,18 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
     "containLabel": true,
     "left": 8,
     "right": 24,
-    "top": 8,
+    "top": 40,
+  },
+  "legend": {
+    "data": [
+      "Independent expenditures for",
+      "Independent expenditures against",
+    ],
+    "show": true,
+    "textStyle": {
+      "color": "#000",
+    },
+    "top": 0,
   },
   "series": [
     {
@@ -123,7 +174,36 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
           "value": 3250,
         },
       ],
-      "name": "Total",
+      "name": "Raised",
+      "stack": "spending",
+      "type": "bar",
+    },
+    {
+      "data": [
+        0,
+        150000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#12b886",
+      },
+      "name": "Independent expenditures for",
+      "stack": "spending",
+      "type": "bar",
+    },
+    {
+      "data": [
+        80000,
+        45000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#fd7e14",
+      },
+      "name": "Independent expenditures against",
+      "stack": "spending",
       "type": "bar",
     },
   ],

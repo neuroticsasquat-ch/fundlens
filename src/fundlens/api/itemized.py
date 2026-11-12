@@ -1,10 +1,13 @@
-"""Itemized contributions, read from silver Parquet by in-process DuckDB (ADR-0006, spec §7.2).
+"""Itemized contributions and independent expenditures, read from silver Parquet by in-process
+DuckDB (ADR-0006, spec §7.2).
 
 Postgres holds only aggregates; "what did this committee or candidate actually receive" is a row
 list scanned out of one silver partition, `silver/contribution/cycle=<c>/build=<b>/`, where
 `<b>` is the cycle's live build in `gold.meta.cycles`. "What did this donor give" is scanned out of
 one `bucket=<donor_id % 256>` directory of that partition, in one cycle or, one bucket per cycle,
-in all of them. Every request is a filtered, ordered, limited scan: never an aggregate.
+in all of them. "What did this committee spend for and against candidates" is a row list scanned
+out of `silver/independent_expenditure/cycle=<c>/build=<b>/` the same way. Every request is a
+filtered, ordered, limited scan: never an aggregate.
 
 Rows come newest cycle first, then newest first, ties broken by `source_record_id`, and are paged
 by an opaque cursor holding the last row's `(cycle, date, source_record_id)` and the build it was
@@ -36,6 +39,7 @@ import duckdb
 
 from fundlens import paths
 from fundlens.load.db import Pool
+from fundlens.paths import SilverTable
 
 PAGE_SIZE = 100
 
@@ -68,6 +72,21 @@ COLUMNS: tuple[str, ...] = (
     "conduit_committee_id",
     "is_self_funding",
     "image_num",
+)
+
+# A committee's independent expenditures: `kind = 'ie'` rows of silver `independent_expenditure`
+# (spec §4), the rows its `ie_total` sums. Its coordinated expenditures and communication costs are
+# the outside-spending tickets'.
+EXPENDITURE_COLUMNS: tuple[str, ...] = (
+    "cycle",
+    "source_record_id",
+    "date",
+    "amount",
+    "committee_id",
+    "candidate_id",
+    "race_id",
+    "support_oppose",
+    "transaction_type",
 )
 
 
@@ -144,6 +163,8 @@ class Scan:
     limit: int
     # False for a build loaded before donors were resolved, whose files have no `donor_id`.
     donor_id: bool = True
+    table: SilverTable = "contribution"
+    columns: tuple[str, ...] = COLUMNS
 
     def query(self) -> tuple[str, dict[str, object]]:
         """The SQL and its parameters."""
@@ -168,7 +189,7 @@ class Scan:
             where.append(f"(cycle < $after_cycle OR (cycle = $after_cycle AND {within}))")
         columns = (
             "NULL AS donor_id" if column == "donor_id" and not self.donor_id else column
-            for column in COLUMNS
+            for column in self.columns
         )
         query = (
             f"SELECT {', '.join(columns)}"
@@ -215,10 +236,8 @@ class ItemizedReader:
     def close(self) -> None:
         self._db.close()
 
-    def partition(self, cycle: int, build_id: str) -> Path:
-        return paths.local_path(
-            self._data_dir, paths.silver_partition("contribution", cycle, build_id)
-        )
+    def partition(self, cycle: int, build_id: str, table: SilverTable = "contribution") -> Path:
+        return paths.local_path(self._data_dir, paths.silver_partition(table, cycle, build_id))
 
     def contributions(
         self,
@@ -233,6 +252,49 @@ class ItemizedReader:
 
         Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
         """
+        scan = self._cycle_scan(
+            "contribution",
+            cycle,
+            where=f"{recipient} = $value",
+            value=recipient_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        donor_id = self._has_donor_id(cycle, scan.builds[cycle], scan.files, scan.after)
+        return self.read(replace(scan, donor_id=donor_id))
+
+    def expenditures(
+        self, cycle: int, committee_id: str, *, cursor: str | None, limit: int = PAGE_SIZE
+    ) -> Page:
+        """One page of the committee's independent expenditures in `cycle`, after `cursor` if
+        given, in `EXPENDITURE_COLUMNS`.
+
+        Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
+        """
+        return self.read(
+            self._cycle_scan(
+                "independent_expenditure",
+                cycle,
+                where="committee_id = $value AND kind = 'ie'",
+                value=committee_id,
+                cursor=cursor,
+                limit=limit,
+                columns=EXPENDITURE_COLUMNS,
+            )
+        )
+
+    def _cycle_scan(
+        self,
+        table: SilverTable,
+        cycle: int,
+        *,
+        where: str,
+        value: object,
+        cursor: str | None,
+        limit: int,
+        columns: tuple[str, ...] = COLUMNS,
+    ) -> Scan:
+        """The scan for one page of `table`'s rows in `cycle`'s partition matching `where`."""
         after = None if cursor is None else Cursor.decode(cursor)
         if after is not None:
             if after.cycle is None:
@@ -240,18 +302,16 @@ class ItemizedReader:
             elif after.cycle != cycle:
                 raise BadCursor(cursor)
         builds = self._builds([cycle], after)
-        partition = self._partition(cycle, builds[cycle], after)
-        files = [str(partition / "**" / "*.parquet")]
-        return self.read(
-            Scan(
-                files=files,
-                where=f"{recipient} = $value",
-                value=recipient_id,
-                after=after,
-                builds=builds,
-                limit=limit,
-                donor_id=self._has_donor_id(cycle, builds[cycle], files, after),
-            )
+        partition = self._partition(cycle, builds[cycle], after, table)
+        return Scan(
+            files=[str(partition / "**" / "*.parquet")],
+            where=where,
+            value=value,
+            after=after,
+            builds=builds,
+            limit=limit,
+            table=table,
+            columns=columns,
         )
 
     def donor_scan(
@@ -317,12 +377,18 @@ class ItemizedReader:
             builds[cycle] = live[cycle]
         return builds
 
-    def _partition(self, cycle: int, build_id: str, after: Cursor | None) -> Path:
-        """The partition of `cycle`'s `build_id`, which must be on the volume.
+    def _partition(
+        self,
+        cycle: int,
+        build_id: str,
+        after: Cursor | None,
+        table: SilverTable = "contribution",
+    ) -> Path:
+        """The partition of `table` in `cycle`'s `build_id`, which must be on the volume.
 
         Raises `BuildGone` when it is the cursor's and has been pruned.
         """
-        partition = self.partition(cycle, build_id)
+        partition = self.partition(cycle, build_id, table)
         if not partition.is_dir():
             if after is not None and (after.cycle, after.build_id) == (cycle, build_id):
                 raise BuildGone(build_id)
@@ -347,14 +413,16 @@ class ItemizedReader:
         return True
 
     @contextmanager
-    def _pruned_is_gone(self, after: Cursor | None) -> Generator[None]:
+    def _pruned_is_gone(
+        self, after: Cursor | None, table: SilverTable = "contribution"
+    ) -> Generator[None]:
         """A read that fails because the cursor's build was pruned since it was checked raises
         `BuildGone`."""
         try:
             yield
         except duckdb.IOException:
             if after is not None and after.cycle is not None:
-                if not self.partition(after.cycle, after.build_id).is_dir():
+                if not self.partition(after.cycle, after.build_id, table).is_dir():
                     raise BuildGone(after.build_id) from None
             raise
 
@@ -363,9 +431,9 @@ class ItemizedReader:
         if not scan.files:
             return Page([], None)
         query, params = scan.query()
-        with self._pruned_is_gone(scan.after), self._db.cursor() as con:
+        with self._pruned_is_gone(scan.after, scan.table), self._db.cursor() as con:
             result = con.execute(query, params)
-            rows = [dict(zip(COLUMNS, row, strict=True)) for row in result.fetchall()]
+            rows = [dict(zip(scan.columns, row, strict=True)) for row in result.fetchall()]
         more = len(rows) > scan.limit
         rows = rows[: scan.limit]
         next_cursor = None

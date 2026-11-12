@@ -72,8 +72,24 @@ describe("CandidatePage", () => {
     expect(document.title).toBe("OKAFOR, DIANA · fundlens");
 
     expect(rows("Totals by cycle").map(cells)).toEqual([
-      ["2024", "Senate · Maryland", "$49,700", "$5,000", "$19,500", "$5,000", "$79,200"],
+      [
+        "2024",
+        "Senate · Maryland",
+        "$49,700",
+        "$5,000",
+        "$19,500",
+        "$5,000",
+        "$79,200",
+        "$150,000",
+        "$45,000",
+      ],
     ]);
+    expect(
+      within(section("Totals by cycle"))
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        .slice(-2),
+    ).toEqual(["Independent expenditures for", "Independent expenditures against"]);
     expect(rows("Totals by cycle")[0]).toHaveAttribute("id", "cycle-2024");
     expect(
       within(section("Totals by cycle")).getByRole("link", { name: "Senate · Maryland" }),
