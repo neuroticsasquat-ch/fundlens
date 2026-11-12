@@ -84,6 +84,16 @@ const NON_CONTRIBUTION_ACCOUNT_COLUMN: Column<CommitteeCycle> = {
   sortValue: (row) => row.total_non_contribution_account,
 };
 
+// Already netted into "From individuals" and "From organizations", so shown as a column but in no bar
+// of the chart, which would count them twice (NEU-2265).
+const REFUNDS_COLUMN: Column<CommitteeCycle> = {
+  key: "refunds",
+  header: "Refunds",
+  align: "right",
+  render: (row) => money(row.total_refunds),
+  sortValue: (row) => row.total_refunds,
+};
+
 const NON_CONTRIBUTION_ACCOUNT_SERIES: CycleSeries<CommitteeCycle> = {
   name: "Non-contribution account",
   value: (row) => row.total_non_contribution_account,
@@ -100,17 +110,19 @@ const INDEPENDENT_EXPENDITURES_COLUMN: Column<CommitteeCycle> = {
 };
 
 /**
- * The table's columns and the chart's series, with organizations' money and a hybrid PAC's
- * non-contribution account after "From committees" when the committee has any, and its
- * independent expenditures last when it made any.
+ * The table's columns and the chart's series: after "From committees", organizations' money, the
+ * refunds netted into individuals' and organizations' money, and a hybrid PAC's non-contribution
+ * account, each when the committee has any; its independent expenditures last when it made any.
  */
 function cycleTotals(
   fromOrganizations: boolean,
+  refunds: boolean,
   nonContributionAccount: boolean,
   independentExpenditures: boolean,
 ) {
   const columns = [
     ...(fromOrganizations ? [ORGANIZATIONS_COLUMN] : []),
+    ...(refunds ? [REFUNDS_COLUMN] : []),
     ...(nonContributionAccount ? [NON_CONTRIBUTION_ACCOUNT_COLUMN] : []),
   ];
   const series = [
@@ -146,6 +158,14 @@ const ORGANIZATION_COLUMNS: Column<TopOrganization>[] = [
     sortValue: (organization) => organization.amount,
   },
 ];
+
+/**
+ * A cycle's receipts from individuals and organizations before refunds, FEC's basis for its
+ * itemized figure (NEU-2265). Refunds are 0 or less, so this is never below the net figures' sum.
+ */
+function gross(row: CommitteeCycle): number {
+  return row.total_individual + row.total_from_organizations - row.total_refunds;
+}
 
 /** `/committee/:id`: a committee's money in every cycle; whom it gave to and got from in one. */
 function CommitteePage() {
@@ -187,6 +207,8 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
   const kind = [committeeType(committee.type), committeeDesignation(committee.designation)];
   // Most committees take nothing from organizations; theirs is a column of zeros left out.
   const fromOrganizations = committee.cycles.some((row) => row.total_from_organizations !== 0);
+  // A committee that returned nothing has totals equal to FEC's gross figure; nothing to explain.
+  const refunds = committee.cycles.some((row) => row.total_refunds !== 0);
   // Only a hybrid PAC has a non-contribution account; every other committee's is 0.
   const nonContributionAccount = committee.cycles.some(
     (row) => row.total_non_contribution_account !== 0,
@@ -195,8 +217,8 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
   const independentExpenditures = committee.cycles.some((row) => row.ie_total !== 0);
   // Memoized, so the chart's option is not rebuilt on every render.
   const totals = useMemo(
-    () => cycleTotals(fromOrganizations, nonContributionAccount, independentExpenditures),
-    [fromOrganizations, nonContributionAccount, independentExpenditures],
+    () => cycleTotals(fromOrganizations, refunds, nonContributionAccount, independentExpenditures),
+    [fromOrganizations, refunds, nonContributionAccount, independentExpenditures],
   );
 
   return (
@@ -240,6 +262,25 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
               rowKey={(row) => String(row.cycle)}
               rowProps={(row) => ({ id: `cycle-${row.cycle}` })}
             />
+            {refunds && (
+              <Text c="dimmed" size="sm">
+                Refunds: what the committee refunded to givers, already taken out of{" "}
+                {fromOrganizations
+                  ? "“From individuals” and “From organizations”"
+                  : "“From individuals”"}
+                .
+                {/* The cycle picked below; one whose refunds are 0 has a gross figure equal to
+                    its net one, so nothing to add. */}
+                {shown && shown.total_refunds !== 0 && (
+                  <>
+                    {" "}
+                    FEC&apos;s itemized figure counts receipts before refunds: on that basis the
+                    committee received {money(gross(shown))} from individuals and organizations in{" "}
+                    {shown.cycle}.
+                  </>
+                )}
+              </Text>
+            )}
             {nonContributionAccount && (
               <Text c="dimmed" size="sm">
                 Non-contribution account: what individuals and organizations give a hybrid PAC

@@ -169,12 +169,13 @@ describe("CommitteePage", () => {
       "From individuals",
       "From committees",
       "From organizations",
+      "Refunds",
       "Self-funding",
       "To candidates",
       "Independent expenditures",
     ]);
     expect(rows("Totals by cycle").map(cells)).toEqual([
-      ["2024", "$395,875", "$65,000", "$72,500", "$0", "$0", "$670,000"],
+      ["2024", "$395,875", "$65,000", "$72,500", "−$3,200", "$0", "$0", "$670,000"],
     ]);
     expect(rows("Top organizations").map(cells)).toEqual([
       ["1", "CHESAPEAKE STEEL, INC.", "$72,500"],
@@ -264,6 +265,31 @@ describe("CommitteePage", () => {
         name: "From organizations",
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows a committee's refunds and its receipts before them, FEC's basis", async () => {
+    renderApp("/committee/C00800201");
+    await screen.findByRole("heading", { level: 1, name: "MARYLAND FORWARD PAC" });
+
+    const totals = section("Totals by cycle");
+    expect(within(totals).getByRole("columnheader", { name: "Refunds" })).toBeInTheDocument();
+    // $395,875 from individuals and $72,500 from organizations, net of −$3,200 of refunds.
+    expect(
+      within(totals).getByText(
+        "Refunds: what the committee refunded to givers, already taken out of “From individuals” and “From organizations”. FEC's itemized figure counts receipts before refunds: on that basis the committee received $471,575 from individuals and organizations in 2024.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no refunds for a committee that made none", async () => {
+    renderApp("/committee/C00800105");
+    await screen.findByRole("heading", { level: 1, name: "PELL FOR LIBERTY" });
+
+    const totals = section("Totals by cycle");
+    expect(
+      within(totals).queryByRole("columnheader", { name: "Refunds" }),
+    ).not.toBeInTheDocument();
+    expect(within(totals).queryByText(/Refunds:/)).not.toBeInTheDocument();
   });
 
   it("shows a hybrid PAC's non-contribution account beside its other receipts", async () => {

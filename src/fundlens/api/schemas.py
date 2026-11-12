@@ -250,6 +250,10 @@ class CommitteeCycle(BaseModel):
     # of refunds, in neither total_individual nor total_from_organizations (NEU-2192). 0 at every
     # committee with no such account.
     total_non_contribution_account: float
+    # The refunds already netted into total_individual and total_from_organizations, so 0 or
+    # less (NEU-2265). FEC's itemized figure is gross of them: total_individual +
+    # total_from_organizations - total_refunds.
+    total_refunds: float
     ie_total: float
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.
