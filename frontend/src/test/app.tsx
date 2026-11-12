@@ -70,7 +70,7 @@ export const fixtureApi = (): HttpHandler[] => [
       next_cursor: null,
     }),
   ),
-  http.get("/v1/committees/{committee_id}/expenditures", ({ params, response }) =>
+  http.get("/v1/committees/{committee_id}/independent-expenditures", ({ params, response }) =>
     response(200).json({
       expenditures: EXPENDITURES.filter((row) => row.committee_id === params.committee_id),
       next_cursor: null,

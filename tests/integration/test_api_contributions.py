@@ -168,13 +168,15 @@ def test_an_earmark_is_listed_once_with_its_conduit(
     ) == [("CONTRIBUTION TO ACTBLUE", None), ("REFUND OF CONTRIBUTION TO ACTBLUE", None)]
 
 
-def walk_expenditures(client: TestClient, committee_id: str) -> list[dict[str, Any]]:
+def walk_independent_expenditures(client: TestClient, committee_id: str) -> list[dict[str, Any]]:
     """Every independent expenditure the committee's pages hold, following `next_cursor`."""
     rows: list[dict[str, Any]] = []
     cursor: str | None = None
     while True:
         params = {"cycle": CYCLE} | ({"cursor": cursor} if cursor else {})
-        body = ok(client.get(f"/v1/committees/{committee_id}/expenditures", params=params))
+        body = ok(
+            client.get(f"/v1/committees/{committee_id}/independent-expenditures", params=params)
+        )
         rows += body["expenditures"]
         cursor = body["next_cursor"]
         if cursor is None:
@@ -186,7 +188,7 @@ def test_a_super_pacs_independent_expenditures_page_newest_first(
 ) -> None:
     small_pages(app, 4)
 
-    rows = walk_expenditures(client, SUPER_PAC)
+    rows = walk_independent_expenditures(client, SUPER_PAC)
 
     assert [
         (row["date"], row["amount"], row["support_oppose"], row["candidate_id"]) for row in rows
@@ -216,7 +218,9 @@ def test_a_super_pacs_independent_expenditures_page_newest_first(
 
 
 def test_a_coordinated_expenditure_is_no_independent_expenditure(client: TestClient) -> None:
-    body = ok(client.get(f"/v1/committees/{PARTY}/expenditures", params={"cycle": CYCLE}))
+    body = ok(
+        client.get(f"/v1/committees/{PARTY}/independent-expenditures", params={"cycle": CYCLE})
+    )
 
     # Its 24A against OKAFOR, not its 24C for WHITLOCK.
     assert [(row["transaction_type"], row["candidate_name"]) for row in body["expenditures"]] == [
@@ -225,8 +229,10 @@ def test_a_coordinated_expenditure_is_no_independent_expenditure(client: TestCli
     assert body["next_cursor"] is None
 
 
-def test_a_committee_that_spent_nothing_has_no_expenditures(client: TestClient) -> None:
-    body = ok(client.get(f"/v1/committees/{COMMITTEE}/expenditures", params={"cycle": CYCLE}))
+def test_a_committee_that_spent_nothing_has_no_independent_expenditures(client: TestClient) -> None:
+    body = ok(
+        client.get(f"/v1/committees/{COMMITTEE}/independent-expenditures", params={"cycle": CYCLE})
+    )
 
     assert body == {"expenditures": [], "next_cursor": None}
 
@@ -234,10 +240,14 @@ def test_a_committee_that_spent_nothing_has_no_expenditures(client: TestClient) 
 @pytest.mark.parametrize(
     ("url", "params", "status"),
     [
-        ("/v1/committees/C99999999/expenditures", {"cycle": CYCLE}, 404),
-        (f"/v1/committees/{SUPER_PAC}/expenditures", {"cycle": 2022}, 404),
-        (f"/v1/committees/{SUPER_PAC}/expenditures", {}, 422),
-        (f"/v1/committees/{SUPER_PAC}/expenditures", {"cycle": CYCLE, "cursor": "nope"}, 400),
+        ("/v1/committees/C99999999/independent-expenditures", {"cycle": CYCLE}, 404),
+        (f"/v1/committees/{SUPER_PAC}/independent-expenditures", {"cycle": 2022}, 404),
+        (f"/v1/committees/{SUPER_PAC}/independent-expenditures", {}, 422),
+        (
+            f"/v1/committees/{SUPER_PAC}/independent-expenditures",
+            {"cycle": CYCLE, "cursor": "nope"},
+            400,
+        ),
         ("/v1/committees/C99999999/contributions", {"cycle": CYCLE}, 404),
         ("/v1/candidates/H9XX99999/contributions", {"cycle": CYCLE}, 404),
         (f"/v1/committees/{COMMITTEE}/contributions", {"cycle": 2022}, 404),

@@ -96,7 +96,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/committees/{committee_id}/expenditures": {
+    "/v1/committees/{committee_id}/independent-expenditures": {
         parameters: {
             query?: never;
             header?: never;
@@ -104,11 +104,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Committee Expenditures
+         * Get Committee Independent Expenditures
          * @description The independent expenditures the committee made in `cycle`, for and against candidates,
          *     newest first: the rows its `ie_total` sums.
          */
-        get: operations["get_committee_expenditures_v1_committees__committee_id__expenditures_get"];
+        get: operations["get_committee_independent_expenditures_v1_committees__committee_id__independent_expenditures_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1173,7 +1173,7 @@ export interface operations {
             };
         };
     };
-    get_committee_expenditures_v1_committees__committee_id__expenditures_get: {
+    get_committee_independent_expenditures_v1_committees__committee_id__independent_expenditures_get: {
         parameters: {
             query: {
                 cycle: number;

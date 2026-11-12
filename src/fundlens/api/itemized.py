@@ -77,7 +77,7 @@ COLUMNS: tuple[str, ...] = (
 # A committee's independent expenditures: `kind = 'ie'` rows of silver `independent_expenditure`
 # (spec §4), the rows its `ie_total` sums. Its coordinated expenditures and communication costs are
 # the outside-spending tickets'.
-EXPENDITURE_COLUMNS: tuple[str, ...] = (
+INDEPENDENT_EXPENDITURE_COLUMNS: tuple[str, ...] = (
     "cycle",
     "source_record_id",
     "date",
@@ -263,11 +263,11 @@ class ItemizedReader:
         donor_id = self._has_donor_id(cycle, scan.builds[cycle], scan.files, scan.after)
         return self.read(replace(scan, donor_id=donor_id))
 
-    def expenditures(
+    def independent_expenditures(
         self, cycle: int, committee_id: str, *, cursor: str | None, limit: int = PAGE_SIZE
     ) -> Page:
         """One page of the committee's independent expenditures in `cycle`, after `cursor` if
-        given, in `EXPENDITURE_COLUMNS`.
+        given, in `INDEPENDENT_EXPENDITURE_COLUMNS`.
 
         Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
         """
@@ -279,7 +279,7 @@ class ItemizedReader:
                 value=committee_id,
                 cursor=cursor,
                 limit=limit,
-                columns=EXPENDITURE_COLUMNS,
+                columns=INDEPENDENT_EXPENDITURE_COLUMNS,
             )
         )
 

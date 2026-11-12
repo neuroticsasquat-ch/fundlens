@@ -3,10 +3,10 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
 import type { Committee, CommitteeCycle, TopOrganization } from "../api/client";
-import { CONTRIBUTION_PAGES, EXPENDITURE_PAGES } from "../api/contributions";
+import { CONTRIBUTION_PAGES, INDEPENDENT_EXPENDITURE_PAGES } from "../api/contributions";
 import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
-import ExpendituresTable from "../components/ExpendituresTable";
+import IndependentExpendituresTable from "../components/IndependentExpendituresTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
 import TopDonorsTable from "../components/TopDonorsTable";
@@ -326,7 +326,7 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
                     <CommitteeContributions id={committee.committee_id} cycle={shown.cycle} />
                   </Tabs.Panel>
                   <Tabs.Panel value="expenditures" pt="md">
-                    <CommitteeExpenditures id={committee.committee_id} cycle={shown.cycle} />
+                    <CommitteeIndependentExpenditures id={committee.committee_id} cycle={shown.cycle} />
                   </Tabs.Panel>
                 </Tabs>
               </section>
@@ -353,15 +353,15 @@ function CommitteeContributions({ id, cycle }: { id: string; cycle: number }) {
   );
 }
 
-function CommitteeExpenditures({ id, cycle }: { id: string; cycle: number }) {
+function CommitteeIndependentExpenditures({ id, cycle }: { id: string; cycle: number }) {
   const expenditures = $api.useInfiniteQuery(
     "get",
-    "/v1/committees/{committee_id}/expenditures",
+    "/v1/committees/{committee_id}/independent-expenditures",
     { params: { path: { committee_id: id }, query: { cycle } } },
-    EXPENDITURE_PAGES,
+    INDEPENDENT_EXPENDITURE_PAGES,
   );
   return (
-    <ExpendituresTable
+    <IndependentExpendituresTable
       query={expenditures}
       emptyMessage={`No independent expenditures by this committee in ${cycle}.`}
     />

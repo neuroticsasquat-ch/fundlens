@@ -17,11 +17,11 @@ export const CONTRIBUTION_PAGES = {
 /** A `/contributions` query's pages so far. */
 export type ContributionsQuery = UseInfiniteQueryResult<InfiniteData<ContributionPage>, unknown>;
 
-/** The same paging, for a committee's `/expenditures`. */
-export const EXPENDITURE_PAGES = {
+/** The same paging, for a committee's `/independent-expenditures`. */
+export const INDEPENDENT_EXPENDITURE_PAGES = {
   initialPageParam: null,
   getNextPageParam: (page: IndependentExpenditurePage) => page.next_cursor,
 };
 
-/** An `/expenditures` query's pages so far. */
-export type ExpendituresQuery = UseInfiniteQueryResult<InfiniteData<IndependentExpenditurePage>, unknown>;
+/** An `/independent-expenditures` query's pages so far. */
+export type IndependentExpendituresQuery = UseInfiniteQueryResult<InfiniteData<IndependentExpenditurePage>, unknown>;

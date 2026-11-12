@@ -1,5 +1,5 @@
-"""What the `/contributions` and `/expenditures` routes share: their parameters, and the itemized
-reader's answers and failures as HTTP (spec §7.2)."""
+"""What the `/contributions` and `/independent-expenditures` routes share: their parameters, and
+the itemized reader's answers and failures as HTTP (spec §7.2)."""
 
 from collections.abc import Callable
 from typing import Annotated

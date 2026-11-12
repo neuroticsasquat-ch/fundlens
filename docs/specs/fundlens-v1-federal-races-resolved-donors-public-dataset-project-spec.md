@@ -319,7 +319,7 @@ Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation":
 | `GET /v1/cycles` · `GET /v1/cycles/{cycle}/races?office=&state=` | `gold.cycle`, `gold.race` |
 | `GET /v1/races/{cycle}/{office}/{state}` · `…/{state}-{district}` · `…?special=1` | `race`, `race_candidate`, `race_top_donor`, `race_top_committee` |
 | `GET /v1/candidates/{id}` · `GET /v1/candidates/{id}/contributions?cycle=&cursor=` | gold (301 via `candidate_redirect`) · DuckDB scan of `contribution` for `candidate_id` (cycle partition) |
-| `GET /v1/committees/{id}` · `…/contributions?cycle=&cursor=` · `…/expenditures?cycle=&cursor=` | gold · DuckDB · DuckDB scan of `independent_expenditure` for `committee_id`, `kind = 'ie'` only (cycle partition), the rows `committee_cycle.ie_total` sums, each candidate's name from `gold.candidate` (NEU-2058) |
+| `GET /v1/committees/{id}` · `…/contributions?cycle=&cursor=` · `…/independent-expenditures?cycle=&cursor=` | gold · DuckDB · DuckDB scan of `independent_expenditure` for `committee_id`, `kind = 'ie'` only (cycle partition), the rows `committee_cycle.ie_total` sums, each candidate's name from `gold.candidate` (NEU-2058) |
 | `GET /v1/donors/{id}` · `…/contributions?cycle=&cursor=` | gold (301 via `donor_redirect`) · DuckDB scan of `bucket=donor_id % 256` |
 | `GET /v1/search?q=&kind=` | `search_entity` trigram, top 20 |
 | `GET /v1/dataset` | list of snapshots from the public bucket manifest |

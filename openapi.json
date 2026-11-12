@@ -2208,10 +2208,10 @@
         "summary": "Get Committee Contributions"
       }
     },
-    "/v1/committees/{committee_id}/expenditures": {
+    "/v1/committees/{committee_id}/independent-expenditures": {
       "get": {
         "description": "The independent expenditures the committee made in `cycle`, for and against candidates,\nnewest first: the rows its `ie_total` sums.",
-        "operationId": "get_committee_expenditures_v1_committees__committee_id__expenditures_get",
+        "operationId": "get_committee_independent_expenditures_v1_committees__committee_id__independent_expenditures_get",
         "parameters": [
           {
             "in": "path",
@@ -2339,7 +2339,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Get Committee Expenditures"
+        "summary": "Get Committee Independent Expenditures"
       }
     },
     "/v1/cycles": {
