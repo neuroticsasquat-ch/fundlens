@@ -27,7 +27,10 @@
 -- whatever its line (a loan's is line 13). total_refunds is the part of total_individual and
 -- total_from_organizations FEC files on line 20 (NEU-2265): the counted refunds, by the same
 -- filters, so 0 or less and never NULL. Both totals stay net of it (spec §7.1); FEC's gross basis
--- is total_individual + total_from_organizations - total_refunds. ie_total is 0 until NEU-2057.
+-- is total_individual + total_from_organizations - total_refunds. ie_total is the independent
+-- expenditures it made, for and against candidates alike (silver's kind 'ie': 24E and 24A,
+-- NEU-2057), net of corrections: those naming no candidate of the cycle too, which are in no
+-- candidate's or race's figure. Its coordinated expenditures and communication costs are not.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -96,6 +99,12 @@ to_candidates AS (
         coalesce(sum(amount) FILTER (WHERE amount < 0), 0) AS total_returned_by_candidates
     FROM given
     GROUP BY committee_id
+),
+independent AS (
+    SELECT committee_id, sum(amount) AS ie_total
+    FROM silver.independent_expenditure
+    WHERE kind = 'ie'
+    GROUP BY committee_id
 )
 SELECT
     committee.committee_id,
@@ -120,9 +129,10 @@ SELECT
     CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
     CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
         AS total_returned_by_candidates,
-    CAST(0 AS DECIMAL(16, 2)) AS ie_total
+    CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total
 FROM silver.committee AS committee
 LEFT JOIN received USING (committee_id)
 LEFT JOIN from_committees USING (committee_id)
 LEFT JOIN from_organizations USING (committee_id)
-LEFT JOIN to_candidates USING (committee_id);
+LEFT JOIN to_candidates USING (committee_id)
+LEFT JOIN independent USING (committee_id);

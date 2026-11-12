@@ -34,6 +34,7 @@ TABLES: tuple[SilverTable, ...] = (
     "organization_receipt",
     "jfc_attribution",
     "contributor",
+    "independent_expenditure",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -376,6 +377,47 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "transaction_type",
         "side",
     ]
+
+    # Spending for or against a candidate (NEU-2057): the super PAC's 24E for OKAFOR and 24A
+    # against WHITLOCK, and the party's 24C, kept with its kind but no independent expenditure.
+    spending = {
+        row["source_record_id"]: row
+        for row in read_silver(store, "independent_expenditure", tmp_path)
+    }
+    assert list(next(iter(spending.values()))) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "committee_id",
+        "candidate_id",
+        "race_id",
+        "support_oppose",
+        "amount",
+        "date",
+        "transaction_type",
+        "kind",
+    ]
+    assert {
+        sub_id: (
+            row["committee_id"],
+            row["candidate_id"],
+            row["race_id"],
+            row["support_oppose"],
+            row["kind"],
+        )
+        for sub_id, row in spending.items()
+        if sub_id in (4240200000000000001, 4240200000000000003, 4240200000000000009)
+    } == {
+        4240200000000000001: ("C00800201", "S4MD00103", "2024-S-MD-00", "S", "ie"),
+        4240200000000000003: ("C00800201", "S4MD00104", "2024-S-MD-00", "O", "ie"),
+        4240200000000000009: ("C00800203", "S4MD00104", "2024-S-MD-00", "S", "coordinated"),
+    }
+    # Spending is never money given: no 24K is here, and no expenditure is a contribution or a
+    # committee transfer.
+    assert {row["transaction_type"] for row in spending.values()} == {"24A", "24E", "24C"}
+    assert not set(spending) & {row["source_record_id"] for row in transfers}
+    assert not set(spending) & {row["source_record_id"] for row in contributions}
 
     contributors = read_silver(store, "contributor", tmp_path)
     assert list(contributors[0]) == [
@@ -1091,7 +1133,14 @@ def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
     ]
     fields = line.split("|")
     fields[16], fields[21] = DRISCOLL_ALIAS, "4240200000000000099"
-    put_bronze(store, texts={"pas2": fec_fixture.bulk_text("pas2") + "|".join(fields) + "\n"})
+    # And an independent expenditure against him naming the alias (NEU-2057), with a memo line
+    # restating it, which is no expenditure.
+    spending = [*fields]
+    spending[5], spending[21] = "24A", "4240200000000000098"
+    memo = [*spending]
+    memo[19], memo[21] = "X", "4240200000000000097"
+    rows = "".join("|".join(row) + "\n" for row in (fields, spending, memo))
+    put_bronze(store, texts={"pas2": fec_fixture.bulk_text("pas2") + rows})
     seats_report()
 
     assert transform().exit_code == 0
@@ -1100,6 +1149,12 @@ def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
         for row in read_silver(store, "committee_transfer", tmp_path)
     }
     assert gifts[4240200000000000099] == DRISCOLL
+    expenditures = {
+        row["source_record_id"]: (row["candidate_id"], row["race_id"], row["support_oppose"])
+        for row in read_silver(store, "independent_expenditure", tmp_path)
+    }
+    assert expenditures[4240200000000000098] == (DRISCOLL, "2024-H-MD-05", "O")
+    assert 4240200000000000097 not in expenditures
 
 
 def failing_rows(con: duckdb.DuckDBPyConnection, check: str) -> list[tuple[object, ...]]:
@@ -1133,6 +1188,44 @@ def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alia
         ]
         assert failing_rows(con, "silver_candidate_alias_canonical.sql") == [
             ("H8MD05116", DRISCOLL_ALIAS)
+        ]
+
+
+def test_the_expenditure_checks_fail_on_a_misattached_row_or_one_counted_as_money() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE candidate AS SELECT * FROM (VALUES"
+            f" ('{DRISCOLL}', CAST(NULL AS VARCHAR), '2024-H-MD-05'),"
+            f" ('{DRISCOLL_ALIAS}', '{DRISCOLL}', '2024-H-MD-05')"
+            ") AS t(candidate_id, alias_of, race_id)"
+        )
+        # Right: 1 attached, 2 attached to no one. Wrong: 3 an alias, 4 a race not its
+        # candidate's, 5 a race and no candidate, 6 a 24C called an ie, 7 a 24A called support.
+        con.execute(
+            "CREATE TABLE independent_expenditure AS SELECT * FROM (VALUES"
+            f" (1, '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'O'),"
+            " (2, NULL, NULL, '24E', 'ie', 'S'),"
+            f" (3, '{DRISCOLL_ALIAS}', '2024-H-MD-05', '24E', 'ie', 'S'),"
+            f" (4, '{DRISCOLL}', '2024-S-MD-00', '24E', 'ie', 'S'),"
+            " (5, NULL, '2024-H-MD-05', '24E', 'ie', 'S'),"
+            f" (6, '{DRISCOLL}', '2024-H-MD-05', '24C', 'ie', 'S'),"
+            f" (7, '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'S')"
+            ") AS t(source_record_id, candidate_id, race_id, transaction_type, kind,"
+            " support_oppose)"
+        )
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES (1, '15'), (8, '24E'))"
+            " AS t(source_record_id, transaction_type)"
+        )
+        con.execute("CREATE TABLE committee_transfer AS SELECT 2 AS source_record_id")
+        con.execute("CREATE TABLE organization_receipt AS SELECT 9 AS source_record_id")
+
+        failed = failing_rows(con, "silver_independent_expenditure_candidate.sql")
+        assert sorted(str(row[0]) for row in failed) == ["3", "4", "5", "6", "7"]
+        assert sorted(failing_rows(con, "silver_independent_expenditure_not_money.sql")) == [
+            (1, "contribution"),
+            (2, "committee_transfer"),
+            (8, "contribution typed 24E"),
         ]
 
 

@@ -100,14 +100,6 @@ def assert_not_found(response: Response) -> None:
     assert response.json()["status"] == 404
 
 
-IE_FIELDS = frozenset({"ie_support", "ie_oppose", "ie_total"})
-
-
-def without_ies(expected: Mapping[str, object]) -> dict[str, object]:
-    """`expected` as gold has it today: independent expenditures arrive with NEU-2057."""
-    return {key: 0 if key in IE_FIELDS else value for key, value in expected.items()}
-
-
 def totals(body: dict[str, Any], expected: Mapping[str, object]) -> dict[str, object]:
     """`body`'s figures for the keys `expected` names."""
     return {key: body[key] for key in expected}
@@ -131,8 +123,7 @@ def test_a_cycles_races_carry_their_totals_president_first(client: TestClient) -
 
     by_id = {race["race_id"]: race for race in races}
     for race_id, expected in EXPECTED["races"].items():
-        want = without_ies(expected)
-        assert totals(by_id[race_id], want) == want, race_id
+        assert totals(by_id[race_id], expected) == expected, race_id
     assert races[0]["race_id"] == "2024-P-US-00"
     offices = [race["office"] for race in races]
     assert offices == sorted(offices, key="PSH".index)
@@ -162,7 +153,7 @@ def test_a_race_page_has_its_candidates_and_top_committees(
 ) -> None:
     race = ok(client.get(race_url(race_id)))
 
-    expected = without_ies(EXPECTED["races"][race_id])
+    expected = EXPECTED["races"][race_id]
     assert race["race_id"] == race_id
     assert totals(race, expected) == expected
     candidates = {
@@ -172,17 +163,20 @@ def test_a_race_page_has_its_candidates_and_top_committees(
     }
     assert {c["candidate_id"] for c in race["candidates"]} == set(candidates)
     for candidate in race["candidates"]:
-        want = without_ies(candidates[candidate["candidate_id"]])
-        del want["race_id"]
+        want = {k: v for k, v in candidates[candidate["candidate_id"]].items() if k != "race_id"}
         assert totals(candidate, want) == want, candidate["candidate_id"]
     raised = [
         c["total_individual"] + c["total_committee"] + c["total_jfc_transfers"] + c["self_funding"]
         for c in race["candidates"]
     ]
     assert raised == sorted(raised, reverse=True)
+    # Givers and spenders ranked together (NEU-2057).
     top = race["top_committees"]
     assert [c["rank"] for c in top] == list(range(1, len(top) + 1))
-    assert sum(c["amount"] for c in top) == race["total_committee"]
+    assert [[c["kind"], c["committee_id"], c["amount"]] for c in top] == EXPECTED[
+        "race_top_committees"
+    ].get(race_id, [])
+    assert sum(c["amount"] for c in top if c["kind"] == "contribution") == race["total_committee"]
 
 
 def test_a_race_page_counts_jfc_transfers_apart_from_its_other_money(client: TestClient) -> None:
@@ -205,15 +199,25 @@ def test_a_race_page_names_its_committees(client: TestClient) -> None:
     race = ok(client.get(race_url("2024-H-MD-05")))
 
     assert race["slug"] == "2024/house/MD-05"
+    # The super PAC's independent expenditures for CALLOWAY and against DRISCOLL (NEU-2057), then
     # BRICKLAYERS' gifts to CALLOWAY, DRISCOLL and YANG, the last net of its refund. OLD LINE
     # REPUBLICAN COMMITTEE's void of a 2022 gift to CALLOWAY is no gift here (NEU-2204).
-    assert race["top_committees"][0] == {
-        "rank": 1,
-        "committee_id": "C00800202",
-        "name": "BRICKLAYERS UNITED PAC",
-        "amount": 9500.0,
-        "kind": "contribution",
-    }
+    assert race["top_committees"][:2] == [
+        {
+            "rank": 1,
+            "committee_id": "C00800201",
+            "name": "MARYLAND FORWARD PAC",
+            "amount": 40000.0,
+            "kind": "ie",
+        },
+        {
+            "rank": 2,
+            "committee_id": "C00800202",
+            "name": "BRICKLAYERS UNITED PAC",
+            "amount": 9500.0,
+            "kind": "contribution",
+        },
+    ]
     assert "C00800203" not in {c["committee_id"] for c in race["top_committees"]}
 
 
@@ -230,7 +234,7 @@ def test_a_candidate_page_has_its_cycle(client: TestClient, candidate_id: str) -
 
     assert candidate["candidate_id"] == candidate_id
     [cycle] = candidate["cycles"]
-    expected = without_ies(EXPECTED["candidates"][candidate_id])
+    expected = EXPECTED["candidates"][candidate_id]
     assert cycle["cycle"] == CYCLE
     assert totals(cycle, expected) == expected
     race_id = EXPECTED["candidates"][candidate_id]["race_id"]
@@ -260,12 +264,18 @@ def test_a_committee_page_has_its_cycle_and_top_recipients(
 
     assert committee["committee_id"] == committee_id
     [cycle] = committee["cycles"]
-    expected = without_ies(EXPECTED["committees"][committee_id])
+    expected = EXPECTED["committees"][committee_id]
     assert cycle["cycle"] == CYCLE
     assert totals(cycle, expected) == expected
     recipients = cycle["top_recipients"]
     assert [r["rank"] for r in recipients] == list(range(1, len(recipients) + 1))
-    assert sum(r["amount"] for r in recipients) == cycle["total_to_candidates"]
+    assert [[r["recipient_kind"], r["recipient_id"], r["amount"]] for r in recipients] == EXPECTED[
+        "top_recipients"
+    ].get(committee_id, [])
+    assert (
+        sum(r["amount"] for r in recipients if r["recipient_kind"] == "candidate")
+        == cycle["total_to_candidates"]
+    )
     assert cycle["total_returned_by_candidates"] == EXPECTED["returned_by_candidates"][
         "by_committee"
     ].get(committee_id, 0)

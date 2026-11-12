@@ -10,7 +10,7 @@ import functools
 import io
 import re
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
@@ -1030,6 +1030,73 @@ def test_the_expected_returns_are_the_24ks_of_pairs_netting_below_0() -> None:
     # A same-cycle refund nets inside its pair: BRICKLAYERS' to YANG is no return.
     assert pairs["C00800202", "H4MD05108"] == 2000
     assert any(amount(r) < 0 for r in committee_contributions() if r not in returned)
+
+
+def test_the_expected_recipients_count_a_gift_its_giver_and_recipient_both_filed_once() -> None:
+    # Each giver's 24Ks, by recipient and amount: a receipt mirroring one of them is its twin, and
+    # each 24K stands for one receipt at most (NEU-2057).
+    gifts = Counter((r["CMTE_ID"], r["OTHER_ID"], amount(r)) for r in committee_contributions())
+    matched = name_matched()
+    receipts = [
+        (giver(r), r["CMTE_ID"], amount(r), candidate_of(r["CMTE_ID"], r))
+        for r in committee_receipts()
+    ] + [
+        (matched[r["SUB_ID"]], r["CMTE_ID"], amount(r), candidate_of(r["CMTE_ID"], r))
+        for r in name_matched_gifts()
+    ]
+    # A receipt credited to a candidate the giver credited a 24K to is a twin, whatever its amount.
+    credited = {(r["CMTE_ID"], c) for r in committee_contributions() if (c := gift_candidate(r))}
+    to_committees: dict[tuple[str, str], int] = defaultdict(int)
+    for from_id, to_id, given, candidate in receipts:
+        assert from_id is not None
+        if (from_id, candidate) in credited:
+            continue
+        if gifts[from_id, to_id, given]:
+            gifts[from_id, to_id, given] -= 1
+        else:
+            to_committees[from_id, to_id] += given
+    for r in committee_contributions():
+        if gift_candidate(r) is None and r["OTHER_ID"]:
+            to_committees[r["CMTE_ID"], r["OTHER_ID"]] += amount(r)
+    entries = [
+        (from_id, "candidate", candidate, net)
+        for (from_id, candidate), net in gift_pairs().items()
+        if net >= 0
+    ] + [
+        (from_id, "committee", to_id, net)
+        for (from_id, to_id), net in to_committees.items()
+        if net >= 0 and to_id in committee_ids()
+    ]
+    # Ranked by amount, then kind, then id.
+    lists: dict[str, list[list[str | int]]] = defaultdict(list)
+    for from_id, kind, recipient_id, net in sorted(entries, key=lambda e: (-e[3], e[1], e[2])):
+        lists[from_id].append([kind, recipient_id, net])
+    assert EXPECTED["top_recipients"] == lists
+    # BRICKLAYERS' 18K to OKAFOR naming no committee id mirrors no 24K, but is her row's.
+    assert ("C00800202", "C00800103") not in to_committees
+
+
+def test_the_expected_race_committees_are_the_givers_and_the_spenders_on_its_candidates() -> None:
+    races = race_ids()
+    given = sum_by(
+        ((race, from_id), net)
+        for (from_id, candidate), net in gift_pairs().items()
+        if net >= 0 and (race := races.get(candidate)) is not None
+    )
+    spent = sum_by(
+        ((race, r["CMTE_ID"]), amount(r))
+        for r in rows("pas2")
+        if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+        and (race := races.get(ie_candidate(r) or "")) is not None
+    )
+    entries = [(race, "contribution", c, net) for (race, c), net in given.items()] + [
+        (race, "ie", c, net) for (race, c), net in spent.items() if net >= 0
+    ]
+    # Ranked by amount, then committee id, then kind.
+    lists: dict[str, list[list[str | int]]] = defaultdict(list)
+    for race, kind, committee_id, net in sorted(entries, key=lambda e: (-e[3], e[2], e[1])):
+        lists[race].append([kind, committee_id, net])
+    assert EXPECTED["race_top_committees"] == lists
 
 
 def test_the_expected_refunds_are_the_counted_refunds_on_line_20() -> None:

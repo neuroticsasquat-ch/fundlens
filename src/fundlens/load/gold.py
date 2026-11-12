@@ -80,6 +80,7 @@ INPUTS: dict[SilverTable, str] = {
     "jfc_attribution": "transform",
     "contributor": "transform",
     "organization_receipt": "transform",
+    "independent_expenditure": "transform",
     "race": "seats",
 }
 

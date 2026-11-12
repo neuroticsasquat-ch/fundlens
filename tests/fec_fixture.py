@@ -183,6 +183,10 @@ class Expected(TypedDict):
     returned_by_candidates: ReturnedByCandidates
     refunds: Refunds
     name_matched: dict[int, str | None]
+    # Ranked rows: [recipient_kind, recipient_id, amount] per giver, [kind, committee_id, amount]
+    # per race.
+    top_recipients: dict[str, list[list[str | int]]]
+    race_top_committees: dict[str, list[list[str | int]]]
     unmatched_filings: list[str]
     aliases: dict[str, str]
     races: dict[str, RaceTotals]
