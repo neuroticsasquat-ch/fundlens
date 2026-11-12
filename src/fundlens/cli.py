@@ -2,14 +2,15 @@
 
 Each step arrives with its own ticket as a subcommand on `app`, wrapped in `step`. This module
 owns the shared callback, which handles `--version` and sets up logging and crash reporting
-before any subcommand runs, the `step` wrapper itself, `health`, `api` and the hidden
-`crash-test` the Coolify runbook fires.
+before any subcommand runs, the `step` wrapper itself, `run` (every step, in order), `health`,
+`api` and the hidden `crash-test` the Coolify runbook fires.
 """
 
 import functools
 import logging
-from collections.abc import Callable
-from datetime import UTC, datetime
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -22,10 +23,10 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from opentelemetry import trace
 
-from fundlens import __version__, paths
+from fundlens import __version__, paths, pipeline
 from fundlens.api.app import openapi_json
 from fundlens.fec import extract as fec_extract
-from fundlens.fec.files import CATALOGUE
+from fundlens.fec.files import CATALOGUE, current_cycle
 from fundlens.heartbeat import JobFamily, heartbeat_for
 from fundlens.load import gold as gold_load
 from fundlens.logging import configure_logging
@@ -88,53 +89,66 @@ def _exception_summary(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {lines[0]}" if lines else type(exc).__name__
 
 
+@contextmanager
+def reporting(name: str, family: JobFamily | None) -> Generator[None]:
+    """Report the crash of the block, and only its crash (spec §5.1): what `step` wraps a
+    command in, and what `run` wraps itself in, its family known only once its flags are read.
+
+    Starts the job family's heartbeat, runs the block in an OTel span, and pushes `ok` when it
+    finishes. On an exception it pushes `fail`, reports the exception once to Bugsink tagged
+    `pipeline_mode=<name>`, and re-raises, so the scheduled task still fails and Coolify hears
+    it too. A block that ends with `typer.Exit` is not a crash: it pushes by its exit code and
+    reports nothing. With no `family` there is no push monitor, and nothing is pushed.
+
+    Nested, the inner block reports a crash and the outer one does not report it again: the
+    SDK's default dedupe integration drops an exception it has just sent, so Bugsink hears it
+    once, tagged with the inner name, the step that crashed.
+    """
+    heartbeat = heartbeat_for(family, get_settings())
+    heartbeat.start()
+    with sentry_sdk.isolation_scope() as scope:
+        scope.set_tag("pipeline_mode", name)
+        try:
+            # The span records the exception and marks itself failed on the way out.
+            # A no-op unless the command runs under `opentelemetry-instrument`.
+            with tracer.start_as_current_span(f"fundlens {name}"):
+                yield
+        except typer.Exit as exc:
+            # A deliberate exit (a step skipping work its marker says is done, say), not
+            # a crash: the exit code decides the push, and Bugsink hears nothing. Caught
+            # ahead of `Exception`, which `typer.Exit` and `typer.Abort` both subclass.
+            if exc.exit_code == 0:
+                heartbeat.ok(f"{name}: ok")
+            else:
+                heartbeat.fail(f"{name}: exited {exc.exit_code}")
+            raise
+        except typer.Abort:
+            heartbeat.fail(f"{name}: aborted")
+            raise
+        except Exception as exc:
+            log.exception("step %s failed", name)
+            heartbeat.fail(f"{name}: {_exception_summary(exc)}")
+            sentry_sdk.capture_exception(exc)
+            raise
+        finally:
+            # The process exits straight after a step; an unflushed event is a lost one.
+            sentry_sdk.flush()
+    heartbeat.ok(f"{name}: ok")
+
+
 def step[**P, R](
     name: str, *, family: JobFamily | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Wrap a pipeline command so it reports its crash, and only its crash (spec §5.1).
+    """Wrap a pipeline command in `reporting(name, family)`.
 
-    Starts the job family's heartbeat, runs the step in an OTel span, and pushes `ok` when it
-    returns. On an exception it pushes `fail`, reports the exception once to Bugsink tagged
-    `pipeline_mode=<name>`, and re-raises, so the scheduled task still fails and Coolify hears
-    it too. A step that ends with `typer.Exit` is not a crash: it pushes by its exit code and
-    reports nothing. A step with no `family` has no push monitor of its own and pushes nothing.
     Put it under `@app.command()`, so typer reads the step's own signature.
     """
 
     def decorate(fn: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            heartbeat = heartbeat_for(family, get_settings())
-            heartbeat.start()
-            with sentry_sdk.isolation_scope() as scope:
-                scope.set_tag("pipeline_mode", name)
-                try:
-                    # The span records the exception and marks itself failed on the way out.
-                    # A no-op unless the command runs under `opentelemetry-instrument`.
-                    with tracer.start_as_current_span(f"fundlens {name}"):
-                        result = fn(*args, **kwargs)
-                except typer.Exit as exc:
-                    # A deliberate exit (a step skipping work its marker says is done, say), not
-                    # a crash: the exit code decides the push, and Bugsink hears nothing. Caught
-                    # ahead of `Exception`, which `typer.Exit` and `typer.Abort` both subclass.
-                    if exc.exit_code == 0:
-                        heartbeat.ok(f"{name}: ok")
-                    else:
-                        heartbeat.fail(f"{name}: exited {exc.exit_code}")
-                    raise
-                except typer.Abort:
-                    heartbeat.fail(f"{name}: aborted")
-                    raise
-                except Exception as exc:
-                    log.exception("step %s failed", name)
-                    heartbeat.fail(f"{name}: {_exception_summary(exc)}")
-                    sentry_sdk.capture_exception(exc)
-                    raise
-                finally:
-                    # The process exits straight after a step; an unflushed event is a lost one.
-                    sentry_sdk.flush()
-            heartbeat.ok(f"{name}: ok")
-            return result
+            with reporting(name, family):
+                return fn(*args, **kwargs)
 
         return wrapper
 
@@ -795,12 +809,16 @@ def publish(
         bool,
         typer.Option("--rollback", help="Swap the previous build back in instead (no --cycle)."),
     ] = False,
+    build_id: Annotated[
+        str | None,
+        typer.Option(help="Publish only this build: refuse if the loaded one is another."),
+    ] = None,
 ) -> None:
     """Swap the loaded gold build in atomically, purge the Cloudflare zone, write the
     `published` marker and prune old silver builds (spec §5.5). `--rollback` swaps the previous
     build back and purges again."""
-    if rollback and cycle is not None:
-        raise typer.BadParameter("--rollback takes no --cycle", param_hint="--cycle")
+    if rollback and (cycle is not None or build_id is not None):
+        raise typer.BadParameter("--rollback takes no --cycle or --build-id", param_hint="--cycle")
     if not rollback and cycle is None:
         raise typer.BadParameter("--cycle is required", param_hint="--cycle")
     settings = get_settings()
@@ -827,6 +845,7 @@ def publish(
                 conn=conn,
                 data_dir=settings.data_dir,
                 purge=purge,
+                build_id=build_id,
             )
         except gold_publish.NothingToPublish as exc:
             typer.echo(str(exc), err=True)
@@ -837,6 +856,107 @@ def publish(
     typer.echo(f"cloudflare purge: {'done' if result.purged else 'skipped (not configured)'}")
     typer.echo(f"wrote {result.crosswalk_key}")
     typer.echo(f"pruned {result.pruned.builds} silver builds ({result.pruned.objects} objects)")
+
+
+def _today() -> date:
+    return datetime.now(UTC).date()
+
+
+def _stages(cycle: int, build_id: str) -> dict[pipeline.Stage, Callable[[], None]]:
+    """Each stage of `run` as the commands it is, each under its own `step` wrapper: a crash
+    reaches Bugsink tagged with the step that crashed, and `publish` pushes its own monitor."""
+
+    def transform_stage() -> None:
+        # The seat calendar first: a transform check reads the unmatched filings it records.
+        seats(cycle=cycle, report=True, build_id=build_id)
+        transform(cycle=cycle, build_id=build_id)
+
+    return {
+        "extract": lambda: extract(cycle=cycle, file=None, build_id=build_id),
+        "transform": transform_stage,
+        # Every cycle's, retraining the model under this build: incremental resolution of the
+        # one cycle (spec §6.10) is not built yet.
+        "resolve": lambda: resolve(full=True, build_id=build_id),
+        "load": lambda: load(cycle=cycle, build_id=build_id),
+        # Told the build, so it refuses to swap in one another hand loaded since.
+        "publish": lambda: publish(cycle=cycle, rollback=False, build_id=build_id),
+    }
+
+
+@app.command()
+def run(
+    cycle: Annotated[
+        int | None,
+        typer.Option(
+            help="The cycle, by its even year. Default: the current cycle, the next even year"
+            " from today's."
+        ),
+    ] = None,
+    dataset: Annotated[
+        bool,
+        typer.Option("--dataset", help="Also publish a dataset snapshot (not built yet)."),
+    ] = False,
+    build_id: Annotated[
+        str | None,
+        typer.Option(
+            help="Resume this build: its steps with a marker are skipped. Default: a new build"
+            " starting now."
+        ),
+    ] = None,
+    from_stage: Annotated[
+        pipeline.Stage | None,
+        typer.Option("--from", help="Run this step and every one after it, markers or not."),
+    ] = None,
+    scheduled: Annotated[
+        bool,
+        typer.Option(
+            "--scheduled",
+            help="Push the `fundlens/weekly` monitor. The Coolify scheduled task's flag only.",
+        ),
+    ] = False,
+) -> None:
+    """Run extract, transform, resolve, load and publish for one build of one cycle, skipping
+    each step whose marker exists for the build (spec §5.1, §5.6).
+
+    Exit codes: 0 when every step finished, now or in an earlier run of the build; 1 when a step
+    crashed (reported to Bugsink, tagged with the step) or stopped on an input it names as
+    missing or a build a newer one has superseded; 2 on a usage error (a cycle with no seat
+    calendar, a malformed --build-id), which runs nothing and reports nothing.
+    """
+    # Ahead of `reporting`: a usage error is not a crash, so it neither reaches Bugsink nor
+    # pushes the weekly monitor down.
+    if dataset:
+        raise typer.BadParameter("the dataset snapshot is not built yet", param_hint="--dataset")
+    cycle = current_cycle(_today()) if cycle is None else cycle
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    if build_id is None:
+        build_id = _new_build_id()
+    else:
+        try:
+            paths.parse_build_id(build_id)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--build-id") from exc
+    # Only with `--scheduled` does a run push `fundlens/weekly`: the backfill's hand runs,
+    # reruns and resumes must neither reset its deadman nor alert as a failed Sunday.
+    with reporting("run", "weekly" if scheduled else None):
+        typer.echo(f"build {build_id} of {cycle}")
+        try:
+            ran = pipeline.run(
+                cycle,
+                R2.from_settings(get_settings()),
+                build_id=build_id,
+                steps=_stages(cycle, build_id),
+                from_stage=from_stage,
+            )
+        except pipeline.SupersededBuild as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        for stage in ran.skipped:
+            typer.echo(f"{stage}: skipped, done already")
+        typer.echo(f"finished build {build_id} of {cycle}: ran {', '.join(ran.ran) or 'nothing'}")
 
 
 @app.command("crash-test", hidden=True)

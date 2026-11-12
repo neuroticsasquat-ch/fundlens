@@ -221,8 +221,9 @@ fundlens extract   --cycle 2026 [--file indiv]
 fundlens transform --cycle 2026
 fundlens resolve   [--cycle 2026 | --full]          # incremental by default; --full re-resolves all cycles
 fundlens load      --cycle 2026
-fundlens publish   --cycle 2026 [--dataset]          # dataset snapshot only on the weekly run
-fundlens run       --cycle 2026 [--dataset]          # extract → transform → resolve → load → publish
+fundlens publish   --cycle 2026 [--build-id ID] [--dataset]   # dataset snapshot only on the weekly run
+fundlens run       [--cycle 2026] [--dataset] [--build-id ID] [--from STEP] [--scheduled]
+                                                    # extract → transform → resolve → load → publish
 fundlens seats     --cycle 2026                      # regenerate the seat calendar
 fundlens dataset   --snapshot                        # publish a dataset snapshot from the live build
 fundlens dime      --cycle 2024 --import PATH        # archive a DIME file and slim it for the validator (NEU-2054)
@@ -230,7 +231,7 @@ fundlens validate  --cycle 2024 [--top 10000]        # precision/recall of the r
 fundlens health                                      # exit 0 iff Postgres + R2 reachable
 ```
 
-Every step writes a completion marker to R2 (`markers/...`) with `build_id`, row counts and timing. `run` skips a step whose marker exists for this `build_id`; a crashed run is resumed by re-running `run` with `--build-id`. The idempotency check for extract is "does the silver partition for this cycle exist and is the bronze download date unchanged", never "is the zip on disk". Each step is also a Python function so tests call it without the CLI.
+Every step writes a completion marker to R2 (`markers/...`) with `build_id`, row counts and timing. `run` skips a step whose marker exists for this `build_id`; a crashed run is resumed by re-running `run` with `--build-id`. Amended by NEU-2061: `--cycle` defaults to the current cycle (§5.6); `--from <step>` re-runs that step and every one after it whatever their markers say; `run` runs `seats --report` ahead of `transform`, whose check reads its unmatched filings; a step that returns without its marker stops the run; and `run` refuses a build older than its cycle's newest transformed build (exit 1), since `resolve --full` marks the newest one and `publish` swaps in whatever was last loaded. `run` passes `publish` its build (`publish --build-id`), which refuses, before swapping, to publish any other. `run` pushes the `fundlens/weekly` heartbeat only with `--scheduled`, which only the Coolify task passes, so hand runs, reruns and resumes neither reset the deadman nor alert as a failed Sunday; a crash reaches Bugsink either way, once, tagged with the step that crashed, and `publish` pushes its own monitor either way. Exit codes: 0 every step finished (now or in an earlier run of the build), 1 a step crashed or stopped on an input it names as missing, or the build is superseded, 2 a usage error (which reaches neither Bugsink nor the weekly monitor). The idempotency check for extract is "does the silver partition for this cycle exist and is the bronze download date unchanged", never "is the zip on disk". Each step is also a Python function so tests call it without the CLI.
 
 Every CLI entry is wrapped: Kuma push `status=up` on success, `status=down` on exception (Kuma has no start signal, so a run that hangs or never starts is caught by the monitor's interval expiring); the exception is reported to Bugsink with `pipeline_mode=<step>` and re-raised (crash, not items).
 
@@ -250,7 +251,7 @@ For a cycle: all House districts under the apportionment in force (a vendored `a
 
 ### 5.6 Schedule
 
-One Coolify scheduled task on the `pipeline` service: Sunday 03:00 box time, `fundlens run --cycle <current> --dataset`. The current cycle = the next even year ≥ today's year (2026 until 2027-01-01, then 2028). Historical cycles are built once by `fundlens run --cycle <c>` by hand (the backfill milestone) and never rebuilt unless `--full` resolution changes `donor_id`s, in which case every cycle's gold is reloaded.
+One Coolify scheduled task on the `pipeline` service: Sunday 03:00 box time, `fundlens run --dataset --scheduled` (no `--cycle`: `run` picks the current cycle itself, NEU-2061). Until the dataset snapshot exists (NEU-2064), `run` rejects `--dataset` as a usage error, so the task runs `fundlens run --scheduled` until then. The current cycle = the next even year ≥ today's year (2026 until 2027-01-01, then 2028). Historical cycles are built once by `fundlens run --cycle <c>` by hand (the backfill milestone) and never rebuilt unless `--full` resolution changes `donor_id`s, in which case every cycle's gold is reloaded.
 
 ## 6. Entity resolution
 

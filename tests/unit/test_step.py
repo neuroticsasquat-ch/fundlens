@@ -8,46 +8,22 @@ from typing import Annotated
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-import sentry_sdk
 import typer
-from sentry_sdk.envelope import Envelope
-from sentry_sdk.transport import Transport
 from typer.testing import CliRunner
 
 from fundlens import cli
 from fundlens.cli import step
 from fundlens.heartbeat import Heartbeat, JobFamily
 from fundlens.settings import Settings
-from fundlens.telemetry import pipeline_integrations
+from tests.fake_bugsink import FakeTransport, fake_bugsink
 
 PUSH = "https://kuma.example/api/push/weekly"
 
 
-class FakeTransport(Transport):
-    """Keeps every event the SDK would have sent to Bugsink."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.events: list[dict[str, object]] = []
-
-    def capture_envelope(self, envelope: Envelope) -> None:
-        event = envelope.get_event()
-        if event is not None:
-            self.events.append(dict(event))
-
-
 @pytest.fixture
 def bugsink() -> Iterator[FakeTransport]:
-    """A live SDK with the pipeline's own integrations, delivering to a fake transport."""
-    transport = FakeTransport()
-    sentry_sdk.init(
-        dsn="https://key@bugsink.example/1",
-        transport=transport,
-        integrations=pipeline_integrations(),
-    )
-    yield transport
-    sentry_sdk.get_client().close()
-    sentry_sdk.get_global_scope().set_client(None)
+    with fake_bugsink() as transport:
+        yield transport
 
 
 @pytest.fixture

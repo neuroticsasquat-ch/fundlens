@@ -1,6 +1,7 @@
 """`fundlens publish` and `--rollback` against MinIO and a Postgres database of their own
 (spec §5.5, NEU-2039 §4.2–§4.6, §6)."""
 
+import json
 import logging
 import threading
 from functools import partial
@@ -331,6 +332,27 @@ def test_publish_with_nothing_loaded_says_to_load(store: R2, cli_env: Path, conn
 
     assert result.exit_code == 1
     assert f"fundlens load --cycle {CYCLE}" in result.output
+    assert not markers.exists("published", store, cycle=CYCLE, build_id=B1)
+
+
+@pytest.mark.parametrize("schema", ["gold_build", "gold"])
+def test_publish_told_a_build_refuses_another_before_swapping_it_in(
+    store: R2, cli_env: Path, migrated_db: str, conn: Any, schema: str
+) -> None:
+    # Only the meta row publish reads: B1 loaded (`gold_build`), or swapped in but not yet
+    # marked published (`gold`), when `run` resuming B2 reaches its publish.
+    conn.execute(f"CREATE SCHEMA {schema}")
+    conn.execute(f"CREATE TABLE {schema}.meta (build_id text, cycles jsonb)")
+    conn.execute(
+        f"INSERT INTO {schema}.meta VALUES (%s, %s)",
+        (B1, json.dumps({str(CYCLE): {"build_id": B1}})),
+    )
+
+    result = run("publish", "--cycle", str(CYCLE), "--build-id", B2)
+
+    assert result.exit_code == 1
+    assert f"fundlens load --cycle {CYCLE} --build-id {B2}" in result.output
+    assert schema in schemas(migrated_db)
     assert not markers.exists("published", store, cycle=CYCLE, build_id=B1)
 
 

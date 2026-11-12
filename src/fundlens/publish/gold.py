@@ -195,6 +195,7 @@ def publish(
     conn: Connection[TupleRow],
     data_dir: Path,
     purge: Purge | None,
+    build_id: str | None = None,
     sleep: Sleep = time.sleep,
 ) -> Published:
     """Swap the loaded build of `cycle` in, purge the edge, snapshot the crosswalk, write
@@ -203,10 +204,18 @@ def publish(
     Resumes a publish that swapped but did not finish (a `PurgeFailed`, a crash): with no
     `gold_build`, `gold` naming a build for `cycle` and no `published` marker for it, only the
     purge, the marker and the prune are done. Raises `NothingToPublish` when neither applies,
-    and `PurgeFailed` after the swap, in which case re-running finishes the publish.
+    or when `build_id` is given and the build either would publish is another, before
+    anything is swapped; and `PurgeFailed` after the swap, in which case re-running finishes
+    the publish.
     """
+    expected = build_id
     started_at = datetime.now(UTC)
     staged = _live_build(conn, "gold_build", cycle)
+    if expected is not None and staged is not None and staged != expected:
+        raise NothingToPublish(
+            f"gold_build holds build {staged} of {cycle}, not {expected}:"
+            f" run `fundlens load --cycle {cycle} --build-id {expected}`"
+        )
     if staged is not None:
         previous = _live_build(conn, "gold", cycle)
         swap(conn, sleep=sleep)
@@ -217,6 +226,11 @@ def publish(
         if live is None or markers.exists("published", store, cycle=cycle, build_id=live):
             raise NothingToPublish(
                 f"no loaded build for {cycle}: run `fundlens load --cycle {cycle}`"
+            )
+        if expected is not None and live != expected:
+            raise NothingToPublish(
+                f"no loaded build {expected} of {cycle}:"
+                f" run `fundlens load --cycle {cycle} --build-id {expected}`"
             )
         previous = _live_build(conn, "gold_prev", cycle)
         build_id, swapped = live, False
