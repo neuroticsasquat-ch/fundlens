@@ -1,7 +1,7 @@
 import { Anchor, Badge } from "@mantine/core";
 import { Link } from "react-router";
 import type { IndependentExpenditure, IndependentExpenditurePage } from "../api/client";
-import type { ExpendituresQuery } from "../api/contributions";
+import type { IndependentExpendituresQuery } from "../api/contributions";
 import type { Column } from "./DataTable";
 import PagedTable from "./PagedTable";
 import { DASH, isoDate, money } from "./format";
@@ -43,11 +43,11 @@ const NOUN = ["independent expenditure", "independent expenditures"] as const;
 const expendituresOf = (page: IndependentExpenditurePage) => page.expenditures;
 
 /** A committee's independent expenditures, as filed, a page at a time (`PagedTable`). */
-function ExpendituresTable({
+function IndependentExpendituresTable({
   query,
   emptyMessage,
 }: {
-  query: ExpendituresQuery;
+  query: IndependentExpendituresQuery;
   emptyMessage: string;
 }) {
   return (
@@ -62,4 +62,4 @@ function ExpendituresTable({
   );
 }
 
-export default ExpendituresTable;
+export default IndependentExpendituresTable;

@@ -113,9 +113,10 @@ def get_committee_contributions(
 
 
 @router.get(
-    "/committees/{committee_id}/expenditures", responses=problem_responses(400, 404, 410, 422, 503)
+    "/committees/{committee_id}/independent-expenditures",
+    responses=problem_responses(400, 404, 410, 422, 503),
 )
-def get_committee_expenditures(
+def get_committee_independent_expenditures(
     conn: Conn,
     itemized: Itemized,
     page_size: PageSize,
@@ -131,7 +132,9 @@ def get_committee_expenditures(
     if found is None:
         raise HTTPException(404, f"No committee {committee_id}.")
     page = read_page(
-        lambda: itemized.expenditures(cycle, committee_id, cursor=cursor, limit=page_size)
+        lambda: itemized.independent_expenditures(
+            cycle, committee_id, cursor=cursor, limit=page_size
+        )
     )
     # A page's candidates' names: one primary-key lookup of at most a page of ids.
     names: dict[str, str | None] = dict(
