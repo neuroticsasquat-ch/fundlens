@@ -318,6 +318,7 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   total_to_candidates: 0,
   total_returned_by_candidates: 0,
   total_non_contribution_account: 0,
+  total_refunds: 0,
   ie_total: 0,
   top_recipients: [],
   top_donors: [],
@@ -394,7 +395,10 @@ const organizations = (rows: [string, string, number][]): TopOrganization[] =>
     amount,
   }));
 
-/** The super PAC: one organization's gifts less a refund, under its most-money spelling. */
+/**
+ * The super PAC: one organization's gifts less a refund, under its most-money spelling, and its
+ * individuals' net of theirs.
+ */
 export const COMMITTEE_MARYLAND_FORWARD: Committee = {
   committee_id: "C00800201",
   name: "MARYLAND FORWARD PAC",
@@ -408,6 +412,7 @@ export const COMMITTEE_MARYLAND_FORWARD: Committee = {
       total_individual: 395875,
       total_from_committees: 65000,
       total_from_organizations: 72500,
+      total_refunds: -3200,
       ie_total: 670000,
       top_organizations: organizations([["CHESAPEAKE STEEL", "CHESAPEAKE STEEL, INC.", 72500]]),
     }),

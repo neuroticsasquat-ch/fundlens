@@ -345,6 +345,8 @@ export interface components {
             total_individual: number;
             /** Total Non Contribution Account */
             total_non_contribution_account: number;
+            /** Total Refunds */
+            total_refunds: number;
             /** Total Returned By Candidates */
             total_returned_by_candidates: number;
             /** Total To Candidates */

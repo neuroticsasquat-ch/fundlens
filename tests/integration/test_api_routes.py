@@ -334,6 +334,15 @@ def test_a_committee_page_has_its_non_contribution_account(
     ].get(committee_id, 0)
 
 
+@pytest.mark.parametrize("committee_id", list(EXPECTED["committees"]))
+def test_a_committee_page_has_its_refunds(client: TestClient, committee_id: str) -> None:
+    # The refunds netted into total_individual and total_from_organizations, so 0 or less; 0 at
+    # every committee that made none (NEU-2265).
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+
+    assert cycle["total_refunds"] == EXPECTED["refunds"]["by_committee"].get(committee_id, 0)
+
+
 def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestClient) -> None:
     committee = ok(client.get("/v1/committees/C00800201"))
 
