@@ -2,7 +2,10 @@
 
 Every response is cacheable for an hour in a browser and a week at the edge, and carries the
 live gold build as its `ETag`: the data changes only when a publish swaps a new build in, and
-publish purges the zone. `/healthz` and server errors say `no-store` instead.
+publish purges the zone. `/healthz`, server errors and 404s say `no-store` instead. A 404 can
+mean a path the running image does not serve yet: routes change on deploy, and a deploy purges
+nothing, so a cached 404 would outlive the deploy that adds the route (NEU-2278). Other client
+errors depend only on the request and the build, so they stay cacheable.
 
 The build id is read from `gold.meta` at most once a minute per process, not once a request.
 So for up to `BUILD_ID_TTL_SECONDS` after a swap a response can carry the new build's body under
@@ -95,7 +98,8 @@ class CacheHeaders:
         async def send_with_cache_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                if scope["path"] in UNCACHED_PATHS or message["status"] >= 500:
+                status = message["status"]
+                if scope["path"] in UNCACHED_PATHS or status == 404 or status >= 500:
                     headers["Cache-Control"] = NO_STORE
                 elif "cache-control" not in headers:
                     headers["Cache-Control"] = CACHE_CONTROL

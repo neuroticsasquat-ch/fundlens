@@ -209,8 +209,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://fundlens.org/race/2024/senate/
      DYNAMIC` (first run, 2026-10-30). *Edit expression* must show `(http.host eq "api.fundlens.org")`.
    - *Cache eligibility*: **Eligible for cache**.
    - *Edge TTL*: **Use cache-control header if present, bypass cache if not**. Every API response
-     sets `Cache-Control` (`public, max-age=3600, s-maxage=604800`; `no-store` on `/healthz` and server
-     errors; `fundlens.api.cache`), so the origin decides and publish's zone purge clears it (spec §7.2).
+     sets `Cache-Control` (`public, max-age=3600, s-maxage=604800`; `no-store` on `/healthz`, 404s and
+     server errors; `fundlens.api.cache`), so the origin decides and publish's zone purge clears it (spec §7.2).
    - *Browser TTL*: **Respect origin**.
    - *Deploy*.
 2. Zone → *Security* → *Security rules* → *Create rule* → **Rate limiting rules**:
@@ -309,19 +309,19 @@ authentication error (code `10000`).
 ### 12. The API is cached at the edge
 
 Use `GET`, not `curl -I`: the API's routes answer a `HEAD` with 405. Until the first gold build
-(NEU-2046), `/v1/meta` answers 503 with `no-store` and is never cached, so prove the rule on a path that
-404s, which the API sends with the ordinary public `Cache-Control`. NEU-2046's runbook checks the real
-`/v1/meta` HIT after its first purge.
+(NEU-2046), `/v1/meta` answers 503 with `no-store` and is never cached, and a 404 is `no-store` too
+(NEU-2278). So prove the rule on a request that fails validation: a 422, which the API sends with the
+ordinary public `Cache-Control`. NEU-2046's runbook checks the real `/v1/meta` HIT after its first purge.
 
 ```bash
 # laptop
-for i in 1 2; do curl -sS -D - -o /dev/null https://api.fundlens.org/v1/cache-check | grep -iE '^HTTP|^cache-control|^cf-cache-status'; done
+for i in 1 2; do curl -sS -D - -o /dev/null https://api.fundlens.org/v1/cycles/cache-check/races | grep -iE '^HTTP|^cache-control|^cf-cache-status'; done
 curl -sS -D - -o /dev/null https://api.fundlens.org/healthz | grep -i '^cf-cache-status'
 ```
 
-**Expected:** `HTTP/2 404` with `cache-control: public, max-age=3600, s-maxage=604800` twice, the first
+**Expected:** `HTTP/2 422` with `cache-control: public, max-age=3600, s-maxage=604800` twice, the first
 `cf-cache-status: MISS` (or `EXPIRED`) and the second **`HIT`**; then `DYNAMIC` for `/healthz`, which
-must never be cached. `DYNAMIC` on the 404 means the cache rule does not match (step 8).
+must never be cached. `DYNAMIC` on the 422 means the cache rule does not match (step 8).
 
 Append a Log entry with the date, the values filled in, and any step that deviated.
 

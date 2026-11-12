@@ -329,7 +329,7 @@ Donor routes, built by NEU-2052 (`api/routers/donors.py`): a `donor_id` in `gold
 
 A candidate alias in `gold.candidate_redirect` (NEU-2127) answers `GET /v1/candidates/{id}` and `…/contributions` the same way: a cacheable 301 to the id it is an alias of, the rest of the path and the query kept.
 
-Responses carry `Cache-Control: public, max-age=3600, s-maxage=604800` and `ETag: <build_id>`; Cloudflare caches everything under `api.fundlens.org` and `publish` purges the zone. Cursor pagination on row lists (page size 100). Errors are RFC 9457 problem details. CORS allows `https://fundlens.org`. A Cloudflare rate-limiting rule (ops setting, not code) caps `/v1/*` per IP. The OpenAPI document is the contract: `frontend/src/api/` is generated from it in CI and a drift check fails the build.
+Responses carry `Cache-Control: public, max-age=3600, s-maxage=604800` and `ETag: <build_id>`; Cloudflare caches everything under `api.fundlens.org` and `publish` purges the zone. `/healthz`, 5xx and 404 responses carry `Cache-Control: no-store` and no `ETag` instead: a 404 may be for a route the running image does not serve yet, and a deploy purges nothing (NEU-2278). Other 4xx (400, 410, 422) and the 301 redirects stay cacheable. Cursor pagination on row lists (page size 100). Errors are RFC 9457 problem details. CORS allows `https://fundlens.org`. A Cloudflare rate-limiting rule (ops setting, not code) caps `/v1/*` per IP. The OpenAPI document is the contract: `frontend/src/api/` is generated from it in CI and a drift check fails the build.
 
 ### 7.3 Postgres access
 
