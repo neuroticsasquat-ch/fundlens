@@ -11,7 +11,7 @@ One itemized transfer of money from a contributor to a committee, as reported to
 _Avoid_: donation, transaction, record
 
 **Independent expenditure**:
-Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, and is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
+Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, unless that candidate is a **Handoff**'s first and the spending is dated on or after the handoff, or undated: then it is the second candidate's. It is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
 _Avoid_: IE spend, outside money, super PAC money
 
 **Earmark**:
@@ -101,7 +101,7 @@ _Avoid_: race list, ballot
 A committee (ActBlue, WinRed) that forwards earmarked contributions to their final recipient. Flagged on the contribution. A recipient in fundlens only of gifts to itself (tips), net of the tips it refunds: its own side of an earmark, and its refund of one, are dropped (ADR-0004).
 
 **Handoff**:
-A candidate committee passed from one candidate to another mid-cycle (Biden's 2024 campaign, Harris's from 2024-07-21). Listed by hand in `fec/handoffs.csv`, never inferred; the committee's money is the first candidate's before the handoff date and the second's from it on.
+A candidate committee passed from one candidate to another mid-cycle (Biden's 2024 campaign, Harris's from 2024-07-21). Listed by hand in `fec/handoffs.csv`, never inferred; the committee's money, and spending that names the first candidate, is the first candidate's before the handoff date and the second's from it on.
 _Avoid_: transfer (a committee's money moving), takeover
 
 **Candidate alias**:

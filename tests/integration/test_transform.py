@@ -168,6 +168,14 @@ BEFORE_HANDOFF = (4240100000000000312, 4240100000000000313)
 FROM_HANDOFF = (4240100000000000314, 4240100000000000315)
 UNDATED = 4240100000000000316
 HANDOFF_GIFT, HANDOFF_RECEIPT = 4240200000000000021, 4240300000000000023
+# BRICKLAYERS' spending for BIDEN, his id as filed (NEU-2277): before the handoff, on it, undated
+# and after it.
+SPENT_BEFORE_HANDOFF, SPENT_ON_HANDOFF, SPENT_UNDATED, SPENT_AFTER_HANDOFF = (
+    4240200000000000025,
+    4240200000000000026,
+    4240200000000000027,
+    4240200000000000028,
+)
 # Rows whose TRAN_ID names their line (NEU-2276): DONNELLY's 15 to the party on line 15 (SA15) and
 # SEVERN STATE LEADERSHIP FUND's 10 to the super PAC on 11(c) (SA11C), both off line 11(a)(i);
 # the presidential committee's gifts on Form 3P line 17(a) (SA17A), individuals' money.
@@ -1042,6 +1050,53 @@ def test_a_handed_off_committees_money_is_split_between_its_candidates_by_date(
         BIDEN,
         BIDEN,
     )
+
+
+def test_spending_naming_a_handed_off_candidate_is_split_between_its_candidates_by_date(
+    fixture_silver: Path,
+) -> None:
+    spending = {
+        row["source_record_id"]: (row["candidate_id"], row["race_id"], row["support_oppose"])
+        for row in local_silver(fixture_silver, "independent_expenditure")
+    }
+
+    # Filed for BIDEN all four: his before the handoff, HARRIS's on its date, after it and undated,
+    # as the committee's own money is. Its side stays as filed.
+    assert [
+        spending[s]
+        for s in (SPENT_BEFORE_HANDOFF, SPENT_ON_HANDOFF, SPENT_AFTER_HANDOFF, SPENT_UNDATED)
+    ] == [
+        (BIDEN, "2024-P-US-00", "S"),
+        (HARRIS, "2024-P-US-00", "S"),
+        (HARRIS, "2024-P-US-00", "S"),
+        (HARRIS, "2024-P-US-00", "S"),
+    ]
+
+
+def test_the_handoff_expenditure_check_fails_on_spending_left_with_the_candidate_handed_from() -> (
+    None
+):
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE handoff AS SELECT"
+            f" '{HANDED_OFF}' AS committee_id, '{BIDEN}' AS from_candidate_id,"
+            f" '{HARRIS}' AS to_candidate_id, DATE '2024-07-21' AS handoff_date"
+        )
+        # Right: 1 BIDEN's before the date, 2 and 3 HARRIS's on it and undated. Wrong: 4 BIDEN's on
+        # the date, 5 after it, 6 undated.
+        con.execute(
+            "CREATE TABLE independent_expenditure AS SELECT * FROM (VALUES"
+            f" (1, '{BIDEN}', DATE '2024-07-20'),"
+            f" (2, '{HARRIS}', DATE '2024-07-21'),"
+            f" (3, '{HARRIS}', CAST(NULL AS DATE)),"
+            f" (4, '{BIDEN}', DATE '2024-07-21'),"
+            f" (5, '{BIDEN}', DATE '2024-10-01'),"
+            f" (6, '{BIDEN}', CAST(NULL AS DATE))"
+            ") AS t(source_record_id, candidate_id, date)"
+        )
+
+        failed = failing_rows(con, "silver_independent_expenditure_handoff.sql")
+        assert sorted(str(row[0]) for row in failed) == ["4", "5", "6"]
 
 
 def test_a_handoff_whose_committee_is_not_linked_to_both_candidates_aborts_the_run(
