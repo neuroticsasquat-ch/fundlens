@@ -341,7 +341,8 @@ def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestCl
     # ORG, is a committee and no organization (NEU-2195). TIDEWATER MARINE SUPPLY's gift is on a Q2
     # filing and on the amendment that supersedes it, and counts once (NEU-2196). MAGOTHY HOLDINGS's
     # gift is only a memo line, which counts; SEVERN CAPITAL's is a row its partners' memo lines
-    # attribute, which count nowhere (NEU-2198).
+    # attribute, which count nowhere (NEU-2198). SEVERN STATE LEADERSHIP FUND's gift is on line
+    # 11(c) by its TRAN_ID: listed, since it gave, but in total_other_lines (NEU-2276).
     assert committee["cycles"][0]["total_from_organizations"] == 122500.0
     assert committee["cycles"][0]["top_organizations"] == [
         {
@@ -353,18 +354,24 @@ def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestCl
         {"rank": 2, "name": "ONE NATION", "organization_key": "ONE NATION", "amount": 40000.0},
         {
             "rank": 3,
+            "name": "SEVERN STATE LEADERSHIP FUND",
+            "organization_key": "SEVERN STATE LEADERSHIP FUND",
+            "amount": 20000.0,
+        },
+        {
+            "rank": 4,
             "name": "TIDEWATER MARINE SUPPLY LLC",
             "organization_key": "TIDEWATER MARINE SUPPLY",
             "amount": 5000.0,
         },
         {
-            "rank": 4,
+            "rank": 5,
             "name": "MAGOTHY HOLDINGS LLC",
             "organization_key": "MAGOTHY HOLDINGS",
             "amount": 3000.0,
         },
         {
-            "rank": 5,
+            "rank": 6,
             "name": "SEVERN CAPITAL LLC",
             "organization_key": "SEVERN CAPITAL",
             "amount": 2000.0,

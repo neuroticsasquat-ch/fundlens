@@ -655,7 +655,7 @@ SELECT
     -- too. At any other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its
     -- 10s on line 11(a)(i) and refunds them as 20Ys.
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             = 'non-contribution account',
         false
     ) AS is_non_contribution_account,
@@ -663,13 +663,14 @@ SELECT
     -- line no total_individual counts: neither 11(a)(i), a candidate's 15C, a refund of either nor
     -- the non-contribution account, which has its own figure. A national party's convention,
     -- headquarters and recount accounts (30, 31, 32 and their variants, refunded as 40Y, 41Y,
-    -- 42Y), a gift from an unregistered committee (18U) and a transfer (18G) are among them:
-    -- kept, since donors gave them, and marked, so committee
-    -- and candidate totals compare with FEC's itemized figure (INDV_ITEM_CONTB). A type the rule
-    -- does not place counts, as every type did before it: `indiv` is individuals' contributions.
-    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT) AS fec_line,
+    -- 42Y), a gift from an unregistered committee (18U), a transfer (18G) and a row whose TRAN_ID
+    -- names another line (SA11C, SA17, not SA17A; NEU-2276) are among them: kept, since donors
+    -- gave them, and marked, so committee and candidate totals compare with FEC's itemized figure
+    -- (INDV_ITEM_CONTB). A type the rule does not place counts, as every type did before it:
+    -- `indiv` is individuals' contributions.
+    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID) AS fec_line,
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
         false
     ) AS is_other_line,

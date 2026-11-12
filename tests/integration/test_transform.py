@@ -168,6 +168,10 @@ BEFORE_HANDOFF = (4240100000000000312, 4240100000000000313)
 FROM_HANDOFF = (4240100000000000314, 4240100000000000315)
 UNDATED = 4240100000000000316
 HANDOFF_GIFT, HANDOFF_RECEIPT = 4240200000000000021, 4240300000000000023
+# Rows whose TRAN_ID names their line (NEU-2276): DONNELLY's 15 to the party on line 15 (SA15) and
+# SEVERN STATE LEADERSHIP FUND's 10 to the super PAC on 11(c) (SA11C), both off line 11(a)(i);
+# the presidential committee's gifts on Form 3P line 17(a) (SA17A), individuals' money.
+PARTY_OFFSET, OTHER_COMMITTEE_GIFT = 4240100000000000121, 4240100000000000378
 # DRISCOLL's second id for MD-05, an alias of the one holding his money (NEU-2127).
 DRISCOLL, DRISCOLL_ALIAS = "H4MD05107", "H6MD05113"
 CHECKS = Path(__file__).resolve().parents[2] / "sql" / "checks"
@@ -1686,6 +1690,23 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(fixture_silver: 
         "non-contribution account",
         False,
     )
+
+    # A line the filer's TRAN_ID names (NEU-2276), in either table; Form 3P's 17(a) is not one.
+    assert (
+        contributions[PARTY_OFFSET]["transaction_type"],
+        contributions[PARTY_OFFSET]["fec_line"],
+        contributions[PARTY_OFFSET]["is_other_line"],
+    ) == ("15", "15 other receipts", True)
+    assert (
+        receipts[OTHER_COMMITTEE_GIFT]["recipient_committee_id"],
+        receipts[OTHER_COMMITTEE_GIFT]["transaction_type"],
+        receipts[OTHER_COMMITTEE_GIFT]["fec_line"],
+        receipts[OTHER_COMMITTEE_GIFT]["is_other_line"],
+    ) == (SUPER_PAC, "10", "11(c) other committees", True)
+    assert {
+        (contributions[s]["fec_line"], contributions[s]["is_other_line"])
+        for s in (*BEFORE_HANDOFF, *FROM_HANDOFF, UNDATED)
+    } == {("11(a)(i)", False)}
 
 
 def test_an_intermediarys_24i_its_recipient_itemized_is_dropped_and_any_other_24i_counts(
