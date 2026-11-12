@@ -1,5 +1,6 @@
 """Cache headers and the build-id cache behind the `ETag` (spec §7.2)."""
 
+import pytest
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.testclient import TestClient
 
@@ -35,6 +36,22 @@ def make_client(build_id: str | None = BUILD_ID) -> TestClient:
     def down() -> None:  # pyright: ignore[reportUnusedFunction]
         raise HTTPException(503, "down")
 
+    @app.get("/v1/missing")
+    def missing() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise HTTPException(404, "no such committee")
+
+    @app.get("/v1/bad-cursor")
+    def bad_cursor() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise HTTPException(400, "bad cursor")
+
+    @app.get("/v1/gone")
+    def gone() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise HTTPException(410, "gone")
+
+    @app.get("/v1/number/{n}")
+    def number(n: int) -> int:  # pyright: ignore[reportUnusedFunction]
+        return n
+
     @app.get("/v1/own")
     def own(response: Response) -> None:  # pyright: ignore[reportUnusedFunction]
         response.headers["Cache-Control"] = "private"
@@ -56,10 +73,24 @@ def test_no_etag_before_any_build_is_published() -> None:
     assert "etag" not in response.headers
 
 
-def test_a_client_error_is_cacheable_too() -> None:
-    response = make_client().get("/v1/nothing-here")
+@pytest.mark.parametrize("path", ["/v1/nothing-here", "/v1/missing"])
+def test_a_not_found_is_never_cached(path: str) -> None:
+    # Routes change on deploy and a deploy purges nothing, so a cached 404 for a path the old
+    # image did not serve would outlive the deploy that adds it.
+    response = make_client().get(path)
 
     assert response.status_code == 404
+    assert response.headers["cache-control"] == NO_STORE
+    assert "etag" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("path", "status"), [("/v1/bad-cursor", 400), ("/v1/gone", 410), ("/v1/number/x", 422)]
+)
+def test_other_client_errors_stay_cacheable(path: str, status: int) -> None:
+    response = make_client().get(path)
+
+    assert response.status_code == status
     assert response.headers["cache-control"] == CACHE_CONTROL
 
 
