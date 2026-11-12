@@ -43,7 +43,8 @@ CREATE TABLE organization_receipt AS
 WITH individual AS (
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
-        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, OTHER_ID
+        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, OTHER_ID,
+        TRAN_ID
     FROM indiv
     WHERE (
             trim(ENTITY_TP) = 'ORG'
@@ -109,7 +110,7 @@ classified_kept AS (
 other AS (
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
-        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM,
+        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, TRAN_ID,
         regexp_replace(upper(NAME), '[^A-Z0-9]', '', 'g') AS name_key
     FROM oth
     WHERE trim(ENTITY_TP) = 'ORG'
@@ -150,12 +151,12 @@ kept AS (
     -- materialize it.
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
-        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM
+        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, TRAN_ID
     FROM classified_kept
     UNION ALL
     SELECT
         SUB_ID, CMTE_ID, NAME, CITY, STATE, ZIP_CODE, TRANSACTION_AMT, TRANSACTION_DT,
-        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM
+        TRANSACTION_TP, ENTITY_TP, RPT_TP, AMNDT_IND, MEMO_TEXT, IMAGE_NUM, FILE_NUM, TRAN_ID
     FROM other
     WHERE SUB_ID NOT IN (SELECT SUB_ID FROM mirrored)
 ),
@@ -217,19 +218,20 @@ SELECT
     -- "* NON-CONTRIBUTION ACCOUNT" (NEU-2207), kept out of
     -- committee_cycle.total_from_organizations.
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             = 'non-contribution account',
         false
     ) AS is_non_contribution_account,
     -- The Form 3/3X line FEC files the row's type on, and whether no total counts that line, as in
     -- contribution (NEU-2193, NEU-2205): a national party's convention, headquarters and recount
     -- accounts' 30, 31 and 32 and their variants (a tribe's 31T, a 32J) and their refunds, an
-    -- 18U, a transfer. Kept, the organization's gift, and marked, so committee_cycle puts it in
-    -- total_other_lines, not total_from_organizations: FEC files a party's accounts on line 17, and
-    -- its itemized figure leaves them out.
-    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT) AS fec_line,
+    -- 18U, a transfer, or a gift whose TRAN_ID names another line, as a super PAC's 10 on 11(c)
+    -- from a political organization often does (NEU-2276). Kept, the organization's gift, and
+    -- marked, so committee_cycle puts it in total_other_lines, not total_from_organizations: FEC
+    -- files a party's accounts on line 17, and its itemized figure leaves them out.
+    fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID) AS fec_line,
     coalesce(
-        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT)
+        fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
         false
     ) AS is_other_line

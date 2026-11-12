@@ -94,7 +94,7 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00093,15,50,2023-06-05,100000030,"santoro, uma",santoro,uma,I,arlington,VA,22203,teacher,county public schools,okafor for maryland,comm100001,SA11AI.00118,C00800103
 2024,dime00094,15,500,2023-06-05,100000051,"zimmermann, daniel",zimmermann,daniel,I,towson,MD,21286,contractor,self-employed,old line republican committee,comm100005,SA11AI.00119,C00800203
 2024,dime00095,15,1000,2023-06-08,100000063,"adeyemi, jamal",adeyemi,jamal,I,silver spring,MD,20901,retired,retired,okafor for maryland,comm100001,SA11AI.00120,C00800103
-2024,dime00096,15,1000,2023-06-08,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,old line republican committee,comm100005,SA11AI.00121,C00800203
+2024,dime00096,15,1000,2023-06-08,100000057,"donnelly, iris",donnelly,iris,I,annapolis,MD,21403,nurse,chesapeake health,old line republican committee,comm100005,SA15.00121,C00800203
 2024,dime00097,15,100,2023-06-09,100000064,"lindgren, chloe",lindgren,chloe,I,houston,TX,77005,developer,northfield software,whitlock for senate,comm100002,SA11AI.00122,C00800104
 2024,dime00098,15,250,2023-06-11,100000054,"huang, yvonne",huang,yvonne,I,chicago,IL,60614,not employed,not employed,yang for maryland,comm100011,SA11AI.00123,C00800108
 2024,dime00099,15,100,2023-06-13,100000065,"baldwin, tomas",baldwin,tomas,I,bowie,MD,20716,attorney,bayview law group,stratton 2024,comm100003,SA11AI.00124,C00800102
@@ -283,11 +283,11 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00282,15,400,2024-04-09,100000104,"quinlan, beatrice",quinlan,beatrice,I,hagerstown,MD,21740,farmer,antietam orchards,yang for maryland,comm100011,SA11AI.00309,C00800108
 2024,dime00283,15,300,2024-05-14,100000104,"quinlan, mrs",quinlan,,I,hagerstown,MD,21740,farmer,antietam orchards,yang for maryland,comm100011,SA11AI.00310,C00800108
 2024,dime00284,15,250,2024-06-18,100000105,"quinlan, desmond",quinlan,desmond,I,hagerstown,MD,21740,mechanic,antietam orchards,yang for maryland,comm100011,SA11AI.00311,C00800108
-2024,dime00285,15,500,2024-05-15,100000106,"ashford, miriam",ashford,miriam,I,wilmington,DE,19806,retired,retired,harris for president,comm100017,SA11AI.00312,C00703975
-2024,dime00286,15,1000,2024-07-20,100000107,"oyelaran, felix",oyelaran,felix,I,philadelphia,PA,19103,roofer,liberty bell roofing,harris for president,comm100017,SA11AI.00313,C00703975
-2024,dime00287,15,250,2024-07-21,100000107,"oyelaran, felix",oyelaran,felix,I,philadelphia,PA,19103,roofer,liberty bell roofing,harris for president,comm100017,SA11AI.00314,C00703975
-2024,dime00288,15,2000,2024-08-01,100000108,"tremblay, nadia",tremblay,nadia,I,atlanta,GA,30307,physician,piedmont clinic,harris for president,comm100017,SA11AI.00315,C00703975
-2024,dime00289,15,100,,100000109,"voss, henrik",voss,henrik,I,oakland,CA,94610,architect,self-employed,harris for president,comm100017,SA11AI.00316,C00703975
+2024,dime00285,15,500,2024-05-15,100000106,"ashford, miriam",ashford,miriam,I,wilmington,DE,19806,retired,retired,harris for president,comm100017,SA17A.00312,C00703975
+2024,dime00286,15,1000,2024-07-20,100000107,"oyelaran, felix",oyelaran,felix,I,philadelphia,PA,19103,roofer,liberty bell roofing,harris for president,comm100017,SA17A.00313,C00703975
+2024,dime00287,15,250,2024-07-21,100000107,"oyelaran, felix",oyelaran,felix,I,philadelphia,PA,19103,roofer,liberty bell roofing,harris for president,comm100017,SA17A.00314,C00703975
+2024,dime00288,15,2000,2024-08-01,100000108,"tremblay, nadia",tremblay,nadia,I,atlanta,GA,30307,physician,piedmont clinic,harris for president,comm100017,SA17A.00315,C00703975
+2024,dime00289,15,100,,100000109,"voss, henrik",voss,henrik,I,oakland,CA,94610,architect,self-employed,harris for president,comm100017,SA17A.00316,C00703975
 2024,dime00290,15,40000,2024-08-05,100000110,"halvorsen, katherine",halvorsen,katherine,I,annapolis,MD,21401,professor,naval academy,maryland forward pac,comm100007,SA11AI.00317,C00800201
 2024,dime00291,15,25000,2024-09-03,100000110,"halvorsen, kathryn",halvorsen,kathryn,I,arnold,MD,21409,consultant,halvorsen consulting,maryland forward pac,comm100007,SA11AI.00318,C00800201
 2024,dime00292,15,50000,2024-07-10,100000111,"thorsby, oscar",thorsby,oscar,I,bethesda,MD,20814,investor,thorsby capital,maryland forward pac,comm100007,SA11AI.00319,C00800201

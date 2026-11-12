@@ -43,7 +43,7 @@ One of a national party committee's three accounts outside its main one, a conve
 _Avoid_: building fund, soft money, special account
 
 **Other-lines money**:
-An individual's counted money, or an organization's, that the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H) or a Form 9 donation. Kept, as contributions or organization receipts, in the donor's figures (an individual's), the committee's own figure and no individual or organizations' total; a candidate's own money is self-funding whatever its line.
+An individual's counted money, or an organization's, that the regulator files on a line other than 11(a)(i) and outside a non-contribution account: a party account's, a loan, a transfer or other receipt (18G, 18U, 18H) or a Form 9 donation, or a row whose filer's transaction id (`TRAN_ID`) names line 11(b), 11(c), 12 to 17 or Schedule L, as a super PAC's gift from another political organization on 11(c) often does whatever its type. Not one naming 17(a): that is a presidential committee's individuals' line. Kept, as contributions or organization receipts, in the donor's figures (an individual's), the committee's own figure and no individual or organizations' total; a candidate's own money is self-funding whatever its line.
 _Avoid_: off-book money, non-itemized money
 
 **Self-funding**:

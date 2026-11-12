@@ -65,6 +65,10 @@ NON_CONTRIBUTION_MEMO = "* NON-CONTRIBUTION ACCOUNT"
 # and other non-contribution receipts, Form 9 donations, and a national party's convention,
 # headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
 OTHER_LINES = r"16[CFGHJKLR]|18[GHJKLU]|19J?|3[012][A-Z]?|4[012]Y"
+# The Schedule A line a filer's TRAN_ID names (NEU-2276), and the ones no total counts: 11(b),
+# 11(c), 12 to 17 and Schedule L, not 11(a)(i), 11(d) or Form 3P's individuals' line 17(a).
+NAMED_LINE = r"SA(11AI|11A1|11B|11C|11D|12|13|14|15|16|17A|17|SL)"
+OTHER_NAMED_LINES = frozenset({"11B", "11C", "12", "13", "14", "15", "16", "17", "SL"})
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
@@ -374,9 +378,17 @@ def non_contribution_account(table: Iterable[Row]) -> list[Row]:
 
 def is_other_line(row: Row) -> bool:
     """A counted row or organization receipt whose type FEC files on a line no total_individual
-    or total_from_organizations counts (NEU-2193, NEU-2205); a candidate's own money is
-    self-funding whatever its line."""
-    return re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None
+    or total_from_organizations counts (NEU-2193, NEU-2205), or whose TRAN_ID names one, outside a
+    hybrid PAC's non-contribution account (NEU-2276); a candidate's own money is self-funding
+    whatever its line."""
+    if re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None:
+        return True
+    named = re.match(NAMED_LINE, row["TRAN_ID"])
+    return (
+        named is not None
+        and named.group(1) in OTHER_NAMED_LINES
+        and not non_contribution_account([row])
+    )
 
 
 def is_classified(row: Row) -> bool:
