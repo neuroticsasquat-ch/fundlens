@@ -1,4 +1,4 @@
--- donor (spec §6.7, §6.11, §7.1): one row per donor_id among the cycle's contributions and JFC
+-- donor (spec §6.7, §6.11, §7.1): one row per donor_id among every cycle's contributions and JFC
 -- attributions. A donor known only from attributions (spec §6.11) is a donor all the same, with no
 -- money: an attribution is evidence, never money, so it adds to no total here or anywhere.
 --
@@ -6,14 +6,24 @@
 -- out), then the one the most contributions report, then the one the most attributions report
 -- (which decides alone for a donor with no money), then the first in order. A column chosen alone:
 -- the name may come from one spelling and the employer from another. zip5 is the variant's key's
--- (every variant of a key shares its ZIP5, 07_contributor.sql). The totals, first_cycle and
--- last_cycle are this build's one cycle until NEU-2059 merges builds.
+-- (every variant of a key shares its ZIP5, 07_contributor.sql). total_all_cycles is the donor's
+-- counted money in every cycle; first_cycle and last_cycle the first and last cycle of any of
+-- their lines, an attribution's too (NEU-2059).
 --
 -- donor_line and donor_variant outlive this file: the donor files after it and search_entity's
 -- donor rows read them. A build loaded before `resolve` has no donor ids (the loader gives its
 -- partitions a NULL donor_id), so no donors.
+--
+-- `contributor` holds a key once per cycle it is seen in, each with the key's ZIP5: key_zip5 is
+-- the one row per key the lines join.
 CREATE TEMP TABLE donor_line AS
+WITH key_zip5 AS (
+    SELECT contributor_key, any_value(zip5) AS zip5
+    FROM silver.contributor
+    GROUP BY contributor_key
+)
 SELECT
+    contribution.cycle,
     contribution.donor_id,
     contribution.contributor_key,
     contribution.contributor_name AS name,
@@ -25,10 +35,11 @@ SELECT
     contribution.amount,
     true AS counted
 FROM silver.contribution AS contribution
-LEFT JOIN silver.contributor AS contributor USING (contributor_key)
+LEFT JOIN key_zip5 AS contributor USING (contributor_key)
 WHERE contribution.donor_id IS NOT NULL
 UNION ALL
 SELECT
+    attribution.cycle,
     attribution.donor_id,
     attribution.contributor_key,
     attribution.contributor_name,
@@ -40,7 +51,7 @@ SELECT
     NULL,
     false
 FROM silver.jfc_attribution AS attribution
-LEFT JOIN silver.contributor AS contributor USING (contributor_key)
+LEFT JOIN key_zip5 AS contributor USING (contributor_key)
 WHERE attribution.donor_id IS NOT NULL;
 
 -- Every value a donor's lines report for each display column, with its money and its lines.
@@ -82,7 +93,9 @@ totals AS (
     SELECT
         donor_id,
         coalesce(sum(amount), 0) AS total,
-        count(DISTINCT contributor_key) AS contributor_key_count
+        count(DISTINCT contributor_key) AS contributor_key_count,
+        min(cycle) AS first_cycle,
+        max(cycle) AS last_cycle
     FROM donor_line
     GROUP BY donor_id
 )
@@ -95,8 +108,8 @@ SELECT
     display.state,
     display.zip5,
     CAST(totals.total AS DECIMAL(16, 2)) AS total_all_cycles,
-    CAST({cycle} AS INTEGER) AS first_cycle,
-    CAST({cycle} AS INTEGER) AS last_cycle,
+    CAST(totals.first_cycle AS INTEGER) AS first_cycle,
+    CAST(totals.last_cycle AS INTEGER) AS last_cycle,
     CAST(totals.contributor_key_count AS INTEGER) AS contributor_key_count
 FROM totals
 LEFT JOIN display USING (donor_id);

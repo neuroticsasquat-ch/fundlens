@@ -1,9 +1,9 @@
--- donor_top_recipient (spec §7.1): the 100 recipients a donor gave most to, over every cycle (this
--- build's one until NEU-2059). A gift to a committee raising for a candidate (silver's candidate_id)
--- is to the candidate; any other is to the committee. Self-funding is in: a candidate's own money
--- is a gift to their campaign, kept off the campaign's top donors only. A recipient the donor's
--- refunds net to nothing or less is left out. Ranked by amount, then id (a candidate's and a
--- committee's never coincide).
+-- donor_top_recipient (spec §7.1): the 100 recipients a donor gave most to, over every cycle
+-- (NEU-2059), each named as gold's candidate and committee tables name it, by its newest cycle. A
+-- gift to a committee raising for a candidate (silver's candidate_id) is to the candidate; any
+-- other is to the committee. Self-funding is in: a candidate's own money is a gift to their
+-- campaign, kept off the campaign's top donors only. A recipient the donor's refunds net to nothing
+-- or less is left out. Ranked by amount, then id (a candidate's and a committee's never coincide).
 CREATE TABLE donor_top_recipient AS
 WITH given AS (
     SELECT
@@ -30,8 +30,8 @@ SELECT
     coalesce(candidate.name, committee.name) AS name,
     CAST(ranked.amount AS DECIMAL(16, 2)) AS amount
 FROM ranked
-LEFT JOIN silver.candidate AS candidate
+LEFT JOIN candidate
     ON ranked.recipient_kind = 'candidate' AND candidate.candidate_id = ranked.recipient_id
-LEFT JOIN silver.committee AS committee
+LEFT JOIN committee
     ON ranked.recipient_kind = 'committee' AND committee.committee_id = ranked.recipient_id
 WHERE ranked.rank <= 100;

@@ -1,28 +1,47 @@
 -- search_entity (spec §7.1): what `GET /v1/search` matches by trigram. One row per candidate,
--- committee, race and donor; not per candidate alias (NEU-2127), which candidate_cycle leaves
--- out. weight orders ties in the search results; aliases is a second string
+-- committee, race and donor, across every cycle (NEU-2059): a candidate or committee by its newest
+-- name, weighed by its money in every cycle; not per candidate alias (NEU-2127), which
+-- candidate_cycle leaves out. weight orders ties in the search results; aliases is a second string
 -- to match on (the race's slug, the candidate's principal committee, the committee's connected
 -- organisation, the donor's other spellings of their name, most money first). A donor's weight is
 -- their total; one known only from JFC attributions weighs 0 and is still found.
 CREATE TABLE search_entity AS
 SELECT
     'candidate' AS kind,
-    candidate_cycle.candidate_id AS id,
+    candidate.candidate_id AS id,
     candidate.name,
     principal.name AS aliases,
-    CAST(candidate_cycle.total_individual + candidate_cycle.total_committee AS DECIMAL(16, 2)) AS weight
-FROM candidate_cycle
-JOIN silver.candidate AS candidate USING (candidate_id)
-LEFT JOIN silver.committee AS principal ON principal.committee_id = candidate.principal_committee_id
+    money.weight
+FROM candidate
+JOIN (
+    SELECT
+        candidate_id,
+        CAST(sum(total_individual + total_committee) AS DECIMAL(16, 2)) AS weight
+    FROM candidate_cycle
+    GROUP BY candidate_id
+) AS money USING (candidate_id)
+LEFT JOIN (
+    SELECT candidate_id, principal_committee_id
+    FROM silver.candidate
+    WHERE alias_of IS NULL
+    QUALIFY row_number() OVER (PARTITION BY candidate_id ORDER BY cycle DESC) = 1
+) AS newest USING (candidate_id)
+LEFT JOIN committee AS principal ON principal.committee_id = newest.principal_committee_id
 UNION ALL
 SELECT
     'committee' AS kind,
-    committee_cycle.committee_id AS id,
+    committee.committee_id AS id,
     committee.name,
     committee.connected_org AS aliases,
-    CAST(committee_cycle.total_individual + committee_cycle.total_from_committees AS DECIMAL(16, 2)) AS weight
-FROM committee_cycle
-JOIN silver.committee AS committee USING (committee_id)
+    money.weight
+FROM committee
+JOIN (
+    SELECT
+        committee_id,
+        CAST(sum(total_individual + total_from_committees) AS DECIMAL(16, 2)) AS weight
+    FROM committee_cycle
+    GROUP BY committee_id
+) AS money USING (committee_id)
 UNION ALL
 SELECT
     'race' AS kind,

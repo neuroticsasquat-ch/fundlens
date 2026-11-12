@@ -1,0 +1,11 @@
+# cm: committee master for the fixture's second cycle, 1998 (NEU-2059). FEC publishes no `ccl` before
+# 2000 (spec §4), so candidates link to committees through `cn.CAND_PCC` and `cm.CAND_ID` alone.
+# CALDER FOR CONGRESS names no candidate here: CALDER's `cn` row names it principal (CAND_PCC).
+# PARRISH FOR CONGRESS names PARRISH (CAND_ID), whose `cn` row names no principal committee. OLD LINE
+# REPUBLICAN COMMITTEE is the 2024 fixture's C00800203, under the shorter name it filed under then:
+# gold names it as 2024 does, and lists it in both cycles.
+CMTE_ID,CMTE_NM,TRES_NM,CMTE_ST1,CMTE_ST2,CMTE_CITY,CMTE_ST,CMTE_ZIP,CMTE_DSGN,CMTE_TP,CMTE_PTY_AFFILIATION,CMTE_FILING_FREQ,ORG_TP,CONNECTED_ORG_NM,CAND_ID
+C00298001,CALDER FOR CONGRESS,"TOWNE, EDNA",10 MAIN ST,,ROCKVILLE,MD,20850,P,H,DEM,Q,,,
+C00298002,PARRISH FOR CONGRESS,"BELL, ARTHUR",20 MAIN ST,,BETHESDA,MD,20814,P,H,REP,Q,,,H8MD05202
+C00298003,MARYLAND BUILDERS PAC,"KNOX, IRA",30 MAIN ST,,BALTIMORE,MD,21202,U,Q,,M,T,MARYLAND BUILDERS ASSOCIATION,
+C00800203,OLD LINE REPUBLICAN CMTE,"GRANT, WALTER",1300 WEST ST,,ANNAPOLIS,MD,21401,U,Y,REP,M,,,

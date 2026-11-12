@@ -1,10 +1,12 @@
 """`fundlens publish`: make a loaded gold build live (spec §5.5, NEU-2039 §4.2–§4.6).
 
 One transaction renames `gold_build` to `gold` and the old `gold` to `gold_prev`, so a reader
-sees the old build or the new one and never a half-loaded state. Then, once the API's build-id
-cache has surely expired, the Cloudflare zone is purged, `app.crosswalk` snapshotted to R2, the
-`published` marker written and silver builds older than the previous live one pruned.
-`--rollback` swaps `gold_prev` back.
+sees the old build or the new one and never a half-loaded state. Then the manifest of each
+cycle's live build (`markers/live.json`, which the next `load` reads) is rewritten from the new
+`gold.meta.cycles`, and, once the API's build-id cache has surely expired, the Cloudflare zone is
+purged, `app.crosswalk` snapshotted to R2, the `published` marker written and silver builds of
+the cycle older than its previous live one pruned. `--rollback` swaps `gold_prev` back and
+rewrites the manifest the same way.
 
 Every Postgres statement here is DDL or a fixed `UPDATE` with nothing to parameterise; the
 connection is autocommit so that `conn.transaction()` is one real transaction, not a savepoint
@@ -104,13 +106,44 @@ def _meta(conn: Connection[TupleRow], schema: str) -> tuple[str, dict[str, dict[
     return str(build_id), cycles
 
 
-def _live_build(conn: Connection[TupleRow], schema: str, cycle: int) -> str | None:
-    """The build `<schema>.meta.cycles` names for `cycle`, or None."""
+def _live_builds(conn: Connection[TupleRow], schema: str) -> dict[int, str]:
+    """Each cycle's build in `<schema>.meta.cycles`; empty when there is no such row."""
     meta = _meta(conn, schema)
     if meta is None:
+        return {}
+    return {int(cycle): entry["build_id"] for cycle, entry in meta[1].items()}
+
+
+def _live_build(conn: Connection[TupleRow], schema: str, cycle: int) -> str | None:
+    """The build `<schema>.meta.cycles` names for `cycle`, or None."""
+    return _live_builds(conn, schema).get(cycle)
+
+
+def _staged_build(conn: Connection[TupleRow], cycle: int) -> str | None:
+    """The build of `cycle` that `gold_build` was loaded from, or None when there is no
+    `gold_build`.
+
+    Every `gold_build` names every cycle in `meta.cycles` (NEU-2059), so the cycle a load was for
+    is the one whose build is `meta.build_id`. Raises `NothingToPublish` when `gold_build` holds
+    a load of another cycle, before anything is swapped.
+    """
+    meta = _meta(conn, "gold_build")
+    if meta is None:
         return None
-    entry = meta[1].get(str(cycle))
-    return entry["build_id"] if entry else None
+    build_id, cycles = meta
+    entry = cycles.get(str(cycle))
+    if entry is None or entry["build_id"] != build_id:
+        raise NothingToPublish(
+            f"gold_build holds build {build_id}, loaded for another cycle than {cycle}:"
+            f" publish that cycle, or run `fundlens load --cycle {cycle}`"
+        )
+    return build_id
+
+
+def _record_live(conn: Connection[TupleRow], store: R2) -> None:
+    """Rewrite `markers/live.json` from the live `gold.meta.cycles`, so the next `load` rebuilds
+    each other cycle from the build that is live now."""
+    markers.write_live(store, _live_builds(conn, "gold"))
 
 
 def _with_lock_timeout(conn: Connection[TupleRow], statements: list[str], *, sleep: Sleep) -> None:
@@ -205,12 +238,13 @@ def publish(
     `gold_build`, `gold` naming a build for `cycle` and no `published` marker for it, only the
     purge, the marker and the prune are done. Raises `NothingToPublish` when neither applies,
     or when `build_id` is given and the build either would publish is another, before
-    anything is swapped; and `PurgeFailed` after the swap, in which case re-running finishes
+    anything is swapped, as it does when `gold_build` holds a load of another cycle; and
+    `PurgeFailed` after the swap, in which case re-running finishes
     the publish.
     """
     expected = build_id
     started_at = datetime.now(UTC)
-    staged = _live_build(conn, "gold_build", cycle)
+    staged = _staged_build(conn, cycle)
     if expected is not None and staged is not None and staged != expected:
         raise NothingToPublish(
             f"gold_build holds build {staged} of {cycle}, not {expected}:"
@@ -235,6 +269,8 @@ def publish(
         previous = _live_build(conn, "gold_prev", cycle)
         build_id, swapped = live, False
         log.info("resuming the publish of build %s of %d after its swap", build_id, cycle)
+    # Before anything that can fail after the swap: a resumed publish writes it again.
+    _record_live(conn, store)
     purged = _purge(purge, sleep=sleep)
     # Before the marker: a publish resumed after a failed snapshot must take it again.
     crosswalk_key = crosswalk.snapshot(
@@ -255,9 +291,10 @@ def publish(
 
 
 def rollback(
-    conn: Connection[TupleRow], *, purge: Purge | None, sleep: Sleep = time.sleep
+    conn: Connection[TupleRow], store: R2, *, purge: Purge | None, sleep: Sleep = time.sleep
 ) -> RolledBack:
-    """Swap `gold_prev` back in as `gold` and purge again; a second rollback swaps forward.
+    """Swap `gold_prev` back in as `gold`, rewrite the live-build manifest and purge again; a
+    second rollback swaps forward.
 
     No marker and no prune: the build was published, and its marker stands. Raises
     `NothingToRollBack` when `gold_prev` holds no build.
@@ -278,5 +315,6 @@ def rollback(
         sleep=sleep,
     )
     log.info("rolled back to build %s; build %s is now gold_prev", previous[0], live[0])
+    _record_live(conn, store)
     _purge(purge, sleep=sleep)
     return RolledBack(previous[0], live[0])

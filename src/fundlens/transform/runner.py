@@ -5,7 +5,9 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - one view per FEC bulk file published for the cycle, named for it (`cm`, `cn`, `ccl`, …): the
   newest bronze zip's text file read with the vendored column names, as VARCHAR and then cast to
   the catalogue's types (`fec.files`). DuckDB cannot read a zip, so the text is unpacked under
-  `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it;
+  `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it.
+  A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
+  table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
 - `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
@@ -51,7 +53,7 @@ from psycopg.rows import TupleRow
 
 from fundlens import markers, paths
 from fundlens.fec import lines
-from fundlens.fec.files import VARCHAR, BulkFile, files_for
+from fundlens.fec.files import CATALOGUE, VARCHAR, BulkFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
@@ -215,6 +217,13 @@ def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) ->
     )
 
 
+def register_unpublished(con: duckdb.DuckDBPyConnection, file: BulkFile) -> None:
+    """The table `<file>`, empty, with the bulk file's columns and types: a file FEC does not
+    publish for the cycle reads as one with no rows (`ccl` before 2000, spec §4)."""
+    columns = ", ".join(f'"{name}" {kind}' for name, kind in file.columns.items())
+    con.execute(f"CREATE TABLE {file.name} ({columns})")
+
+
 def _register_conduits(con: duckdb.DuckDBPyConnection) -> None:
     text = package_files("fundlens.fec").joinpath("conduits.csv").read_text()
     rows = [(row["committee_id"], row["name"]) for row in csv.DictReader(io.StringIO(text))]
@@ -358,10 +367,14 @@ def transform(
     }
     try:
         with connect(limits, scratch) as con:
-            for file in files_for(cycle):
+            published = files_for(cycle)
+            for file in published:
                 register_bulk(
                     con, file, unzip_bulk(store, cycle, file, data_dir=data_dir, work=work)
                 )
+            for file in CATALOGUE.values():
+                if file not in published:
+                    register_unpublished(con, file)
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
             _register_handoffs(con, cycle)

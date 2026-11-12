@@ -1,14 +1,19 @@
-"""`fundlens load`: one cycle's silver partitions into the Postgres schema `gold_build`
-(spec §5.5, NEU-2039 §4.1, ADR-0007).
+"""`fundlens load`: every cycle's silver partitions into the Postgres schema `gold_build`
+(spec §5.5, NEU-2039 §4.1, NEU-2059, ADR-0007).
 
-DuckDB computes every gold table from the build's silver partitions (`sql/gold/NN_<table>.sql`,
-in filename order, reading the views `silver.<table>`), runs `sql/checks/gold_*.sql` (each a
-query that must return no rows), and writes each table as a CSV file under `scratch/`. Then, in
-one Postgres transaction, `gold_build` is dropped and recreated, each table gets its hand-written
-DDL (`sql/gold/ddl/`), its CSV streamed in with `COPY … FROM STDIN`, its indexes
+Gold holds every cycle, so a load of one cycle's build rebuilds all of gold: the loaded cycle
+from that build, every other cycle from the build it is live from (`markers/live.json`, which
+`publish` rewrites, or, before any publish has written it, the live `gold.meta.cycles`). DuckDB
+computes every gold table from those silver partitions (`sql/gold/NN_<table>.sql`, in filename
+order, reading the views `silver.<table>`, each over every cycle's partition), runs
+`sql/checks/gold_*.sql` (each a query that must return no rows), and writes each table as a CSV
+file under `scratch/`. Then, in one Postgres transaction, `gold_build` is dropped and
+recreated, each table gets its hand-written DDL (`sql/gold/ddl/`), its CSV streamed in with
+`COPY … FROM STDIN`, its indexes
 (`sql/gold/index/`) and an `ANALYZE`, `donor_redirect` a copy of `app.donor_redirect`, and `meta`
 its one row, with the live model's version, its run's record (`resolve.runner.RunRecord`) and
-its DIME figures for the cycle from `app.resolution_quality`. A
+its DIME figures for the newest cycle validated under it from `app.resolution_quality`, and
+`cycles` the build and source download dates of each cycle. A
 failed load leaves no `gold_build` at all, never a partial one; a successful one writes the
 `loaded` marker.
 `fundlens publish` swaps the schema in.
@@ -17,12 +22,12 @@ failed load leaves no `gold_build` at all, never a partial one; a successful one
 import logging
 import shutil
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 import duckdb
 from psycopg import Connection
@@ -185,14 +190,18 @@ def _require_inputs(
 
 
 def _register_silver(
-    con: duckdb.DuckDBPyConnection, local_dirs: Mapping[SilverTable, Path]
+    con: duckdb.DuckDBPyConnection, local_dirs: Mapping[SilverTable, list[Path]]
 ) -> None:
-    """The views `silver.<table>` over each partition's Parquet parts."""
+    """The views `silver.<table>` over the Parquet parts of each cycle's partition."""
     con.execute("CREATE SCHEMA silver")
-    for table, local in local_dirs.items():
-        # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path.
-        # `**` reaches into a resolved `contribution`'s `bucket=` directories too (spec §3.4).
-        source = f"read_parquet({literal(local / '**' / '*.parquet')}, hive_partitioning = false)"
+    for table, partitions in local_dirs.items():
+        # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path;
+        # every silver row carries its cycle. `**` reaches into a resolved `contribution`'s
+        # `bucket=` directories too (spec §3.4). By name, so a cycle built before a column was
+        # added reads it as NULL, and a resolved cycle beside an unresolved one gives the
+        # unresolved one's rows a NULL donor_id.
+        globs = ", ".join(literal(local / "**" / "*.parquet") for local in partitions)
+        source = f"read_parquet([{globs}], hive_partitioning = false, union_by_name = true)"
         con.execute(f"CREATE VIEW silver.{table} AS SELECT * FROM {source}")
         if (
             table in RESOLVED
@@ -218,6 +227,16 @@ def _source_dates(store: R2, cycle: int) -> dict[str, str | None]:
     return dates
 
 
+def _live_cycles(conn: Connection[TupleRow]) -> dict[int, dict[str, Any]]:
+    """The live `gold.meta.cycles` by cycle: each one's build and source download dates; empty
+    before the first publish."""
+    [(meta,)] = conn.execute("SELECT to_regclass('gold.meta')").fetchall()
+    if meta is None:
+        return {}
+    row = conn.execute("SELECT cycles FROM gold.meta").fetchone()
+    return {} if row is None else {int(cycle): entry for cycle, entry in row[0].items()}
+
+
 def _sql(path: Path) -> Query:
     # psycopg types a query as a literal string or bytes, so a formatted `str` cannot be sent by
     # accident. The DDL and index files are the repo's own SQL, read whole: bytes is the honest
@@ -238,9 +257,11 @@ def _copy_in(conn: Connection[TupleRow], table: GoldTable, csv: Path) -> None:
 
 
 def _quality(
-    conn: Connection[TupleRow], store: R2, cycle: int, model_version: str | None
+    conn: Connection[TupleRow], store: R2, cycles: Iterable[int], model_version: str | None
 ) -> Quality:
-    """`model_version`'s run record, and its figures for `cycle` from `app.resolution_quality`."""
+    """`model_version`'s run record, and its figures from `app.resolution_quality` for the
+    newest of `cycles` validated under it: loading an older cycle keeps the figures a newer one
+    has."""
     if model_version is None:
         return Quality(None)
     record = run_record(store, model_version)
@@ -253,8 +274,11 @@ def _quality(
         scope: rest
         for scope, *rest in conn.execute(
             "SELECT scope, precision, recall, matched_rows, dime_version"
-            " FROM app.resolution_quality WHERE model_version = %s AND cycle = %s",
-            (model_version, cycle),
+            " FROM app.resolution_quality"
+            " WHERE model_version = %s AND cycle = ("
+            "  SELECT max(cycle) FROM app.resolution_quality"
+            "  WHERE model_version = %s AND scope = 'overall' AND cycle = ANY(%s))",
+            (model_version, model_version, list(cycles)),
         ).fetchall()
     }
     overall, top = scopes.get("overall"), scopes.get("top")
@@ -339,9 +363,10 @@ def load(
     conn: Connection[TupleRow],
 ) -> Loaded:
     """Build `gold_build` from build `build_id` of `cycle` (the newest transformed one when
-    None); write the `loaded` marker.
+    None) and every other cycle's live build; write the `loaded` marker for `build_id`.
 
-    Raises `FileNotFoundError` when the build or one of its silver partitions is missing, and
+    Raises `FileNotFoundError` when the build, another cycle's live build, or one of their
+    silver partitions is missing; and
     `ChecksFailed` when a gold check returns rows; in both cases Postgres is untouched and no
     marker is written. Re-running for the same build rebuilds `gold_build` from scratch.
     """
@@ -353,7 +378,17 @@ def load(
                 f"no transformed build for {cycle}: run `fundlens transform --cycle {cycle}`"
             )
     models = _models(sql_dir)
-    local_dirs = _require_inputs(store, cycle, build_id, data_dir=data_dir)
+    live = _live_cycles(conn)
+    # Gold published before the manifest existed has none: its own record of each cycle stands in,
+    # so the first load after this change keeps every cycle already live.
+    live_builds = markers.read_live(store) or {
+        each: entry["build_id"] for each, entry in live.items()
+    }
+    builds = live_builds | {cycle: build_id}
+    local_dirs: dict[SilverTable, list[Path]] = {table: [] for table in INPUTS}
+    for each, each_build in sorted(builds.items()):
+        for table, local in _require_inputs(store, each, each_build, data_dir=data_dir).items():
+            local_dirs[table].append(local)
     scratch = paths.scratch_dir(data_dir)
     work = scratch / f"load-{cycle}-{build_id}"
     work.mkdir(parents=True, exist_ok=True)
@@ -364,7 +399,7 @@ def load(
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
             _register_silver(con, local_dirs)
             for table, path in models:
-                log.info("gold %s %d: %s", table, cycle, path.name)
+                log.info("gold %s (%s): %s", table, ", ".join(map(str, sorted(builds))), path.name)
                 con.execute(render(path, params))
             check(con, sql_dir, params, tier="gold", consequence="nothing loaded")
             for table, _ in models:
@@ -374,8 +409,18 @@ def load(
                 [(rows,)] = con.execute(f"SELECT count(*) FROM {table}").fetchall()
                 row_counts[table] = rows
         aggregate_s = time.monotonic() - aggregate_started
-        cycles = {str(cycle): {"build_id": build_id, "source_dates": _source_dates(store, cycle)}}
-        quality = _quality(conn, store, cycle, model.latest_version(store))
+        # A cycle carried over keeps the download dates its live build was transformed from: a
+        # newer zip, downloaded since and not yet transformed, is not what it serves.
+        cycles = {
+            str(each): {
+                "build_id": each_build,
+                "source_dates": live[each]["source_dates"]
+                if each != cycle and live.get(each, {}).get("build_id") == each_build
+                else _source_dates(store, each),
+            }
+            for each, each_build in sorted(builds.items())
+        }
+        quality = _quality(conn, store, builds.keys(), model.latest_version(store))
         copy_started = time.monotonic()
         row_counts["donor_redirect"] = _load_postgres(
             conn,

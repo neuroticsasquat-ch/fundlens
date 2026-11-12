@@ -826,7 +826,7 @@ def publish(
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         if rollback:
             try:
-                rolled = gold_publish.rollback(conn, purge=purge)
+                rolled = gold_publish.rollback(conn, R2.from_settings(settings), purge=purge)
             except gold_publish.NothingToRollBack as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1) from exc

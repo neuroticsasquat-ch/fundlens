@@ -1,7 +1,8 @@
 -- race_top_committee (spec §7.1): the 100 committees that put most into a race, as gifts to its
 -- candidates (kind 'contribution') or as independent expenditures for or against them (kind 'ie',
 -- NEU-2057), one row per committee and kind, ranked together by amount, then committee id, then
--- kind, so the order is stable.
+-- kind, so the order is stable. A race is one cycle's: its candidates are that cycle's, and each
+-- committee is named as that cycle's `cm` names it.
 --
 -- A contribution row is the disbursement side of committee_transfer summed by giver, less a
 -- giver's 24Ks to a candidate netting below 0 for the cycle: returned gifts, voids of an earlier
@@ -13,27 +14,29 @@
 -- spender. A committee both giving to a race's candidates and spending on it has a row of each.
 CREATE TABLE race_top_committee AS
 WITH pair AS (
-    SELECT from_committee_id, candidate_id, sum(amount) AS amount
+    SELECT cycle, from_committee_id, candidate_id, sum(amount) AS amount
     FROM silver.committee_transfer
     WHERE side = 'disbursement' AND from_committee_id IS NOT NULL
-    GROUP BY from_committee_id, candidate_id
+    GROUP BY cycle, from_committee_id, candidate_id
     HAVING sum(amount) >= 0
 ),
 given AS (
     SELECT
-        race_candidate.race_id,
+        candidate_cycle.race_id,
+        pair.cycle,
         pair.from_committee_id AS committee_id,
         sum(pair.amount) AS amount,
         'contribution' AS kind
     FROM pair
-    JOIN race_candidate USING (candidate_id)
-    GROUP BY race_candidate.race_id, pair.from_committee_id
+    JOIN candidate_cycle USING (cycle, candidate_id)
+    WHERE candidate_cycle.race_id IS NOT NULL
+    GROUP BY candidate_cycle.race_id, pair.cycle, pair.from_committee_id
 ),
 spent AS (
-    SELECT race_id, committee_id, sum(amount) AS amount, 'ie' AS kind
+    SELECT race_id, cycle, committee_id, sum(amount) AS amount, 'ie' AS kind
     FROM silver.independent_expenditure
     WHERE kind = 'ie' AND race_id IS NOT NULL
-    GROUP BY race_id, committee_id
+    GROUP BY race_id, cycle, committee_id
     HAVING sum(amount) >= 0
 ),
 ranked AS (
@@ -54,5 +57,5 @@ SELECT
     CAST(ranked.amount AS DECIMAL(16, 2)) AS amount,
     ranked.kind
 FROM ranked
-LEFT JOIN silver.committee AS committee USING (committee_id)
+LEFT JOIN silver.committee AS committee USING (cycle, committee_id)
 WHERE ranked.rank <= 100;

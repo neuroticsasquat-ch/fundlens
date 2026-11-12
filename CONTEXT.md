@@ -194,7 +194,7 @@ One run of the pipeline for one cycle, named by its `build_id` (`YYYYMMDDTHHMMSS
 _Avoid_: run id, version
 
 **Live build**:
-The build `gold.meta.cycles` names for a cycle: the one gold was built from and the one the API resolves silver partitions from. The build it replaced sits in `gold_prev` and is the rollback target.
+The build `gold.meta.cycles` names for a cycle: the one gold was built from and the one the API resolves silver partitions from. Every publish and rollback copies them to `markers/live.json` in R2, and a load of one cycle rebuilds gold from its new build and every other cycle's live build. The build it replaced sits in `gold_prev` and is the rollback target.
 _Avoid_: current build, latest build (the newest build in R2 need not be live)
 
 **Rollback**:
