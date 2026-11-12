@@ -55,8 +55,19 @@ only.
   explain 548 of them; 58 have no FEC itemized figure to exceed. 119 remain unexplained ($34.4M).
   The causes are filed as NEU-2192 to NEU-2197. Hybrid PACs' non-contribution account (type 10) is
   $1.70B of the excess, and party special accounts $84.2M (Q6).
+- **The unexplained committees' money is on other Schedule A lines** (NEU-2197, Q15). By the raw
+  filings, $38.5M of their counted rows are on lines 11(c), 12, 13, 15 or 17, or a party's Levin
+  account. `indiv` types them as contributions (10 at a super PAC, whatever the line), so B counts
+  them. 112 committees were left unexplained on the 2026-11-12 build (119 on the first run). With
+  these rows out, their remainder falls from $34.4M to $595,328 at 47. RSLC PAC's $19.1M is the
+  Republican State Leadership Committee's gifts on line 11(c). This is other-lines money that
+  `fec_line` cannot place by type (NEU-2276). A `TRAN_ID` that names the line tells $24.6M of it.
+  A rule on that leaves Form 3P's 17(a), the presidential campaigns' individuals' line, alone, and
+  it moves 71 committees toward FEC's figure against 39 away. The rest needs the raw filings
+  (NEU-2181).
 - **The three named gaps.** Senate Leadership Fund's $34.6M excess and MAGA Inc.'s $5.1M are
-  organization money each filer put on line 15, other receipts, not line 11(a)(i). Fairshake's $43.4M
+  organization money each filer put on line 15, other receipts (line 17 on their Form 3X, by
+  `TRAN_ID`, Q15), not line 11(a)(i). Fairshake's $43.4M
   shortfall comes from $69.4M of LLC gifts (a16z, USV, Paradigm, others) that it itemized only as
   memo attributions to the partners, which silver drops (NEU-2198) (Q7).
 - Two more fundlens bugs surfaced on the way: WinRed's `total_individual` is −$48.2M because
@@ -2094,7 +2105,10 @@ counted twice. D8 is per committee and comes last. The spec's list changed in th
   measured**: it reads the summary, not the rows, so it explains whatever the other diagnostics
   leave, up to those two caps. A D8 "explained" verdict means the excess fits organization money on
   line 15, not that the rows were traced there. NEU-2197's line-number check on Schedule A is how to
-  confirm it.
+  confirm it. Q15 made that check at the committees Q6 left unexplained (D9). At SLF and MAGA Inc.
+  a `TRAN_ID` naming line 17 holds the money, and without those rows each is within 1% of FEC's
+  figure (Q15e2). At Form 3X filers the line is 17, other federal receipts. 15 is its number on
+  Form 3.
 - **"No FEC figure"** is the verdict for committees whose `INDV_ITEM_CONTB` is blank: 52 Form 5
   filers (type I), 2 Form 4 host committees (X) and 4 candidate committees (H, S; Q6d3). There is
   no figure to exceed, so they are not a fundlens excess. The 44 of them with no diagnosed cause
@@ -6750,6 +6764,803 @@ employer's memo lines was rejected: it removes 101 lines, $1,503,000 of them und
 left out against $5,000 under one it holds. A guard against JFC attributions was not added: one
 line, $41, in the rule's take names a JFC.
 
+## Q15: the line each unexplained committee's money is filed on (NEU-2197)
+
+Measured for [NEU-2197](https://linear.app/neuroticsasquatch/issue/NEU-2197) on 2026-11-12. Q6 left
+119 committees over FEC's itemized figure by more than 1% with no diagnosed cause, $34,449,580. The
+ticket asked where FEC puts that money, by comparing each committee's counted rows with its filings'
+Schedule A line numbers, until the remainder is under $5M.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-12 01:19–01:33 UTC, over SSH on `music-box-dancer`: Q6 re-run 01:19–01:20, Q15a 01:21 (re-run 01:31 for its dollar column), filings 01:21–01:25, Q15b–f 01:26–01:33 |
+| Code | `main` at `b287b5d50cd4e6af6dc5ea6763daf89d4cd32c49` (the `pipeline` container's `service.version`) |
+| Container | `pipeline-lvch8zyndujjzkz16ksys8im-20261112T000121` |
+| DuckDB | 2.0.0, `Limits.from_settings` as for Q6 |
+| Live gold | build `20261112T001753Z` (model `20261112T004841Z`), published 2026-11-12 01:12:29 UTC; 2024 source dates `cm`, `cn`, `ccl`, `indiv`, `oth`, `pas2` all 2026-10-31. Silver read is the same build's |
+| `committee_summary_2024.csv` | `…/2024/committee_summary_2024.csv`, `Last-Modified: Wed, 11 Nov 2026 10:13:15 GMT`, downloaded 2026-11-12T01:19:07Z (`weball24.zip`, `webl24.zip`, `webk24.zip` and `candidate_summary_2024.csv` 01:19:01–01:19:09Z) |
+| Raw filings | The 579 filings the unexplained committees' counted rows come from. 467 from `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec`, 01:21:39–01:22:49Z. The other 112 are paper filings, which `dcdev/posted` does not hold, read from `https://docquery.fec.gov/paper/posted/<FILE_NUM>.fec` 01:23–01:25Z (7 of them have no Schedule A) |
+
+**The list first.** Setup, `q6core.py` and `q6.py` re-ran unchanged against this build. Q6d2 is as it was
+after NEU-2198: total excess $150,906,728, and **112 committees unexplained, $34,444,474**. The
+ticket's 119 were the 2026-11-05 build's, and the fixes since (Q6 D4, D2 and the NEU-2198 re-run above) changed the list.
+
+**Method.** A raw filing's Schedule A record names the line it is on (`SA11AI`, `SA11C`, `SA17`; .fec
+field 1), which the bulk files drop. `indiv` keeps the filing (`FILE_NUM`) and the filer's `TRAN_ID`
+(.fec field 3). So each counted row of an unexplained committee is matched to its record by filing
+and `TRAN_ID`. Paper filings' records carry no `TRAN_ID`, so a paper row is matched by filing and
+image number, the page, since a Schedule A page holds one line. A new diagnostic, **D9**, takes the rows
+no earlier diagnostic took that their filing puts on a line other than 11(a)(i). It is measured row
+by row, so it comes before D8, which is fitted. D8 is then refitted to what D9 leaves, capped by the
+organization money D9 did not take and by `OTHER_RECEIPTS`, as before. A committee is explained when
+what is left is at most 1% of FEC's figure, Q6's test. Line numbers are each form's own. On Form 3X
+(PACs and parties), 11(c) is other political committees, 12 transfers from affiliated committees, 13
+loans received, 15 offsets to operating expenditures and 17 other federal receipts. On Form 3
+(House and Senate campaigns) 15 is other receipts, and on Form 3P (presidential) 17(a) is
+individuals' contributions. Every D9 row is on a Form 3 or 3X filing, so `SA11AI` is the
+individuals' line throughout: `form.sh` read each D9 filing's form from its second record, and the
+132 filings are 121 Form 3X and 11 Form 3. Q15d, Q15e and Q15g then ask whether the bulk file alone
+could tell these rows, by a `TRAN_ID` that names its line (`SA17.4313`, `SA11C001`). Q15f lists the
+ten largest committees' D9 rows by giver, and Q15g5 the committees where D9 takes more than the
+excess. The ticket named OpenFEC's Schedule A `line_number`. The raw filings carry the same line,
+need no API key and have no call limit, where the API served `DEMO_KEY` at 10 calls an hour (Q9).
+
+```bash
+# VM, in tmux, in a directory holding setup.py, q6core.py, run.sh and the scripts below.
+# About 600 small downloads; ~15 minutes in all.
+./run.sh q15a q6core.py
+P=$(docker ps --format "{{.Names}}" | grep "^pipeline-lvch8zyndujjzkz16ksys8im" | head -1)
+W=/data/fundlens/scratch/measure-summary-files-2024
+docker cp $P:$W/q15_counted.csv .
+mkdir -p sa sap
+tail -n +2 q15_counted.csv | cut -d, -f4 | sort -u > files.txt
+xargs -P 4 -n 1 ./grab.sh < files.txt
+# dcdev/posted holds no paper filing: its file comes back empty, and grabp.sh reads it from paper/posted.
+find sa -name "*.txt" -size 0 -exec basename {} .txt \; > paper.txt
+xargs -P 4 -n 1 ./grabp.sh < paper.txt
+docker cp sa $P:$W/ && docker cp sap $P:$W/
+./run.sh q15e q6core.py q15b.py q15c.py q15d.py
+./run.sh q15f q6core.py q15b.py q15c.py
+./run.sh q15g q6core.py q15b.py q15c.py q15d.py q15e.py
+docker cp $P:$W/q15_d9_files.csv .
+tail -n +2 q15_d9_files.csv | cut -d, -f2 | sort -u | xargs -P 4 -n 1 ./form.sh > d9_forms.txt
+cut -d"|" -f2 d9_forms.txt | sed "s/[NAT]$//" | sort | uniq -c
+```
+
+```sh
+#!/bin/sh
+# grab.sh <FILE_NUM>: sa/<FILE_NUM>.txt, the raw filing's Schedule A records as
+# line|TRAN_ID|BACK_REF_TRAN_ID|entity|org name|last|first|date|amount|memo code (.fec 8.x fields 1, 3, 4,
+# 6, 7, 8, 9, 20, 21, 43). A record whose name holds a | is dropped.
+n=$1
+[ -s sa/$n.txt ] && exit 0
+curl -s --retry 3 https://docquery.fec.gov/dcdev/posted/$n.fec | LC_ALL=C awk -F"\034" "BEGIN {OFS = \"|\"}
+  \$1 ~ /^SA/ {print \$1, \$3, \$4, \$6, \$7, \$8, \$9, \$20, \$21, \$43}" | awk -F"|" "NF == 10" > sa/$n.tmp \
+  && mv sa/$n.tmp sa/$n.txt
+```
+
+```sh
+#!/bin/sh
+# grabp.sh <FILE_NUM>: sap/<FILE_NUM>.txt, a paper filing's Schedule A records as
+# line|image number|amount (P3.x fields 1, the last and 20); paper records carry no TRAN_ID.
+n=$1
+[ -s sap/$n.txt ] && exit 0
+curl -s --retry 3 https://docquery.fec.gov/paper/posted/$n.fec | LC_ALL=C awk -F"\034" "BEGIN {OFS = \"|\"}
+  \$1 ~ /^SA/ {print \$1, \$NF, \$20}" > sap/$n.tmp && mv sap/$n.tmp sap/$n.txt
+```
+
+```sh
+#!/bin/sh
+# form.sh <FILE_NUM>: the filing's form (its second record's type, F3XN, F3A, F3PN ...), electronic or paper.
+n=$1
+for d in dcdev paper; do
+  f=$(curl -s --retry 3 https://docquery.fec.gov/$d/posted/$n.fec | LC_ALL=C awk -F"\034" "NR == 2 {print \$1; exit}")
+  case "$f" in F*) echo "$n|$f|$d"; exit 0;; esac
+done
+echo "$n||none"
+```
+
+```python
+# NEU-2197: every counted row of the committees Q6 leaves unexplained, with its filing and TRAN_ID,
+# for the Schedule A line join (q15b.py). setup.py and q6core.py first.
+con.execute(f"""
+COPY (
+    SELECT rd.committee_id, rd.src, rd.source_record_id AS sub_id, rd.file_num, i.TRAN_ID AS tran_id, rd.tt,
+        i.ENTITY_TP AS entity, rd.amount, rd.diag, i.MEMO_CD AS memo_cd, i.IMAGE_NUM AS image_num, rd.name
+    FROM rd JOIN verdict AS v USING (committee_id) JOIN indiv AS i ON i.SUB_ID = rd.source_record_id
+    WHERE v.verdict = 'unexplained'
+) TO {literal(work / "q15_counted.csv")} (HEADER)
+""")
+show("Q15a: the unexplained committees' counted rows, exported (q15_counted.csv)", f"""
+SELECT count(*) AS rows, count(DISTINCT committee_id) AS committees, count(DISTINCT file_num) AS filings, sum(CAST(amount AS DECIMAL(16, 2))) AS dollars
+FROM read_csv({literal(work / "q15_counted.csv")}, header = true)
+""")
+```
+
+```python
+# NEU-2197: the Schedule A line each counted row of an unexplained committee is filed on. setup.py and
+# q6core.py first; q15a.py wrote q15_counted.csv, grab.sh and grabp.sh the filings into sa/ and sap/.
+con.execute(f"""
+CREATE TABLE counted AS
+SELECT * REPLACE (CAST(amount AS DECIMAL(16, 2)) AS amount)
+FROM read_csv({literal(work / "q15_counted.csv")}, header = true, all_varchar = true);
+-- Electronic filings: one row per (filing, TRAN_ID). Paper: one per (filing, image number), since a
+-- Schedule A page holds one line.
+CREATE TABLE sa_line AS
+SELECT regexp_extract(filename, '(\\d+)\\.txt$', 1) AS file_num, trim(column1, '"') AS tran_id,
+    string_agg(DISTINCT trim(column0, '"'), '/') AS line, count(*) AS records
+FROM read_csv({literal(work / "sa" / "*.txt")}, delim = '|', quote = '', escape = '', header = false,
+    all_varchar = true, filename = true, encoding = 'latin-1', null_padding = true)
+GROUP BY ALL;
+CREATE TABLE sap_line AS
+SELECT regexp_extract(filename, '(\\d+)\\.txt$', 1) AS file_num, trim(column1) AS image_num,
+    string_agg(DISTINCT trim(column0), '/') AS line
+FROM read_csv({literal(work / "sap" / "*.txt")}, delim = '|', quote = '', escape = '', header = false,
+    all_varchar = true, filename = true, encoding = 'latin-1')
+GROUP BY ALL;
+CREATE TABLE traced AS
+SELECT c.*, coalesce(e.line, p.line) AS sa_line,
+    CASE WHEN e.line IS NOT NULL THEN 'electronic' WHEN p.line IS NOT NULL THEN 'paper' END AS matched_by
+FROM counted AS c
+LEFT JOIN sa_line AS e ON e.file_num = c.file_num AND e.tran_id = c.tran_id AND c.tran_id <> ''
+LEFT JOIN sap_line AS p ON p.file_num = c.file_num AND p.image_num = c.image_num AND e.line IS NULL;
+""")
+show("Q15b0: rows matched to a Schedule A record", """
+SELECT matched_by, count(*) AS rows, sum(amount) AS dollars, count(DISTINCT committee_id) AS committees
+FROM traced GROUP BY ALL ORDER BY 3 DESC
+""")
+show("Q15b1: counted dollars by Schedule A line and committee type", """
+SELECT t.sa_line, o.type, count(*) AS rows, sum(t.amount) AS dollars, count(DISTINCT committee_id) AS committees
+FROM traced AS t JOIN ol AS o USING (committee_id) GROUP BY ALL ORDER BY 4 DESC
+""")
+```
+
+```python
+# NEU-2197, after q15b.py: D9, a counted row its filing puts on a Schedule A line other than 11(a)(i)
+# (measured, row by row), ahead of D8 (fitted), at the committees Q6 left unexplained.
+con.execute("""
+CREATE MACRO on_11ai(line) AS upper(line) IN ('SA11AI', 'SA11A1', 'SA11A');
+CREATE TABLE d9 AS
+SELECT committee_id,
+    coalesce(sum(amount) FILTER (WHERE diag IS NULL AND sa_line IS NOT NULL AND NOT on_11ai(sa_line)), 0) AS d9_off_line,
+    coalesce(sum(amount) FILTER (WHERE diag IS NULL AND sa_line IS NOT NULL AND NOT on_11ai(sa_line) AND src = 'organization'), 0)
+        AS d9_orgs,
+    coalesce(sum(amount) FILTER (WHERE sa_line IS NULL), 0) AS untraced,
+    string_agg(DISTINCT sa_line, ', ') FILTER (WHERE diag IS NULL AND sa_line IS NOT NULL AND NOT on_11ai(sa_line)) AS d9_lines
+FROM traced GROUP BY 1;
+CREATE TABLE verdict9 AS
+WITH v AS (
+    SELECT v.*, coalesce(d9.d9_off_line, 0) AS d9_off_line, coalesce(d9.d9_lines, '') AS d9_lines,
+        coalesce(d9.untraced, 0) AS untraced,
+        v.excess - (v.d2_duplicates + v.d3_other_line + v.d4_names_committee + v.d5_memo + v.d6_after_cvg_end
+            + v.d7_own_money) AS left_by_rows,
+        greatest(ol.orgs - coalesce(d9.d9_orgs, 0), 0) AS orgs_left
+    FROM verdict AS v JOIN ol USING (committee_id) LEFT JOIN d9 USING (committee_id)
+    WHERE v.verdict = 'unexplained'
+)
+SELECT *, CASE WHEN on_b THEN greatest(least(left_by_rows - d9_off_line, orgs_left, coalesce(other_receipts, 0)), 0)
+        ELSE 0 END AS d8_after_d9,
+    left_by_rows - d9_off_line - CASE WHEN on_b THEN greatest(least(left_by_rows - d9_off_line, orgs_left,
+        coalesce(other_receipts, 0)), 0) ELSE 0 END AS unexplained_after
+FROM v;
+""")
+show("Q15c1: D9 by Schedule A line, transaction type and entity type (rows no earlier diagnostic took)", """
+SELECT sa_line, tt, entity, src, count(*) AS rows, sum(amount) AS dollars, count(DISTINCT committee_id) AS committees,
+    sum(amount) FILTER (WHERE starts_with(upper(tran_id), upper(sa_line))) AS tran_id_names_line
+FROM traced WHERE diag IS NULL AND sa_line IS NOT NULL AND NOT on_11ai(sa_line)
+GROUP BY ALL ORDER BY dollars DESC
+""")
+show("Q15c2: the unexplained committees before and after D9", """
+SELECT count(*) AS committees, sum(unexplained_dollars) AS before, sum(d9_off_line) AS d9, sum(d8_after_d9 - d8_orgs_on_line_15) AS d8_change,
+    sum(unexplained_after) AS after, count(*) FILTER (WHERE unexplained_after > greatest(0.01 * abs(item), 1)) AS still_unexplained,
+    sum(unexplained_after) FILTER (WHERE unexplained_after > greatest(0.01 * abs(item), 1)) AS still_unexplained_dollars,
+    sum(untraced) AS untraced
+FROM verdict9
+""")
+show("Q15c3: every committee Q6 left unexplained, by its remainder before D9", """
+SELECT committee_id, name, type, item AS fec_itemized, b, excess, unexplained_dollars AS before, d9_off_line AS d9, d9_lines,
+    d8_after_d9 AS d8, untraced, unexplained_after AS after,
+    CASE WHEN unexplained_after > greatest(0.01 * abs(item), 1) THEN 'unexplained' ELSE 'explained' END AS verdict
+FROM verdict9 ORDER BY unexplained_dollars DESC
+""")
+```
+
+```python
+# NEU-2197, after q15b.py and q15c.py: could the bulk file alone tell these lines? A TRAN_ID that names a
+# Schedule A line (SA17.4313, SA11C001), against the line its filing puts the row on; and every counted
+# row in the build whose TRAN_ID names a line no total counts.
+con.execute("""
+CREATE MACRO named_line(tran_id) AS upper(regexp_extract(tran_id, '^(SA(11AI|11A1|11B|11C|11D|12|13|14|15|16|17|SL))', 1));
+""")
+show("Q15d1: at the unexplained committees, TRAN_ID's named line against the filing's line", """
+SELECT CASE WHEN named_line(tran_id) = '' THEN '(names none)' WHEN named_line(tran_id) IN ('SA11AI', 'SA11A1') THEN 'names 11(a)(i)'
+        ELSE 'names another line' END AS tran_id,
+    CASE WHEN sa_line IS NULL THEN '(untraced)' WHEN on_11ai(sa_line) THEN 'on 11(a)(i)' ELSE 'on another line' END AS filed,
+    count(*) AS rows, sum(amount) AS dollars, count(DISTINCT committee_id) AS committees
+FROM traced WHERE diag IS NULL GROUP BY ALL ORDER BY 1, 2
+""")
+con.execute("""
+CREATE TABLE counted_all AS
+SELECT 'contribution' AS src, recipient_committee_id AS committee_id, source_record_id, amount, fec_line
+FROM silver.contribution WHERE NOT is_self_funding AND NOT is_non_contribution_account AND NOT is_other_line
+UNION ALL
+SELECT 'organization', recipient_committee_id, source_record_id, amount, fec_line
+FROM silver.organization_receipt WHERE NOT is_non_contribution_account AND NOT is_other_line;
+""")
+show("Q15d2: every counted row in the build whose TRAN_ID names a Schedule A line other than 11(a)(i)", """
+SELECT named_line(i.TRAN_ID) AS named_line, c.src, i.TRANSACTION_TP AS tt, count(*) AS rows, sum(c.amount) AS dollars,
+    count(DISTINCT c.committee_id) AS committees
+FROM counted_all AS c JOIN indiv AS i ON i.SUB_ID = c.source_record_id
+WHERE named_line(i.TRAN_ID) NOT IN ('', 'SA11AI', 'SA11A1')
+GROUP BY ALL ORDER BY dollars DESC
+""")
+```
+
+```python
+# NEU-2197, after q15d.py: would leaving out the rows whose TRAN_ID names another line move each committee
+# toward FEC's itemized figure or away from it? Measure B, as Q14x2 measured NEU-2198's rule.
+con.execute("""
+CREATE TABLE named_off AS
+SELECT c.committee_id, sum(c.amount) AS named, count(*) AS rows,
+    string_agg(DISTINCT named_line(i.TRAN_ID), ', ') AS lines
+FROM counted_all AS c JOIN indiv AS i ON i.SUB_ID = c.source_record_id
+WHERE named_line(i.TRAN_ID) NOT IN ('', 'SA11AI', 'SA11A1')
+GROUP BY 1;
+""")
+show("Q15e1: committees with counted rows whose TRAN_ID names another line, toward or away from FEC's itemized figure without them", """
+SELECT CASE WHEN cov.item IS NULL OR cov.item = 0 THEN 'no FEC figure or 0'
+        WHEN abs((cov.b - n.named) / cov.item - 1) < abs(cov.b / cov.item - 1) THEN 'toward'
+        WHEN abs((cov.b - n.named) / cov.item - 1) > abs(cov.b / cov.item - 1) THEN 'away' ELSE 'no change' END AS move,
+    count(*) AS committees, sum(n.rows) AS rows, sum(n.named) AS dollars,
+    count(*) FILTER (WHERE cov.item > 0 AND abs(cov.b / cov.item - 1) <= 0.01) AS within_1pct_now,
+    count(*) FILTER (WHERE cov.item > 0 AND abs((cov.b - n.named) / cov.item - 1) <= 0.01) AS within_1pct_without
+FROM named_off AS n JOIN cov USING (committee_id) GROUP BY ALL ORDER BY dollars DESC
+""")
+show("Q15e2: the committees with the most such dollars", """
+SELECT cov.committee_id, cov.name, cov.type, cov.item AS fec_itemized, cov.b, n.named, n.rows, n.lines,
+    round(cov.b / nullif(cov.item, 0), 4) AS ratio_now, round((cov.b - n.named) / nullif(cov.item, 0), 4) AS ratio_without
+FROM named_off AS n JOIN cov USING (committee_id) ORDER BY n.named DESC LIMIT 20
+""")
+```
+
+```python
+# NEU-2197, after q15c.py: the ten largest unexplained committees' D9 rows, by line and giver.
+show("Q15f: the ten largest remainders, D9 by Schedule A line and giver", """
+WITH top AS (SELECT committee_id, name AS committee FROM verdict9 ORDER BY unexplained_dollars DESC LIMIT 10)
+SELECT t.committee_id, top.committee, t.sa_line, t.tt, t.entity,
+    string_agg(DISTINCT t.name, '; ' ORDER BY t.name) FILTER (WHERE t.amount >= 50000) AS givers_of_50000_or_more,
+    count(*) AS rows, sum(t.amount) AS dollars
+FROM traced AS t JOIN top USING (committee_id)
+WHERE t.diag IS NULL AND t.sa_line IS NOT NULL AND NOT on_11ai(t.sa_line)
+GROUP BY ALL ORDER BY t.committee_id, dollars DESC
+""")
+```
+
+```python
+# NEU-2197, after q15e.py: a rule over the lines whose meaning no form changes. Lines 11(b), 11(c), 12 to 16
+# are other committees', transfers, loans and other receipts on Form 3 and 3X alike, and Form 3P files its
+# receipts on 16 to 21 with individuals on 17(a). So a TRAN_ID naming 11(b), 11(c), 12 to 16, or 17 but not
+# 17(a), names a line no total counts on any form, and 17(a) is the presidential individuals' line.
+con.execute("""
+CREATE MACRO named_line2(tran_id) AS upper(regexp_extract(tran_id, '^(SA(11AI|11A1|11B|11C|11D|12|13|14|15|16|17A|17|SL))', 1));
+CREATE TABLE named_rule AS
+SELECT c.committee_id, c.src, c.amount, named_line2(i.TRAN_ID) AS named
+FROM counted_all AS c JOIN indiv AS i ON i.SUB_ID = c.source_record_id
+WHERE named_line2(i.TRAN_ID) IN ('SA11B', 'SA11C', 'SA12', 'SA13', 'SA14', 'SA15', 'SA16', 'SA17', 'SASL');
+""")
+show("Q15g1: what TRAN_ID names line 17 or 17(a) as, across the build's counted rows", """
+SELECT named_line2(i.TRAN_ID) AS named_line, count(*) AS rows, sum(c.amount) AS dollars, count(DISTINCT c.committee_id) AS committees,
+    count(DISTINCT c.committee_id) FILTER (WHERE cov.type = 'P') AS p_committees
+FROM counted_all AS c JOIN indiv AS i ON i.SUB_ID = c.source_record_id LEFT JOIN cov USING (committee_id)
+WHERE named_line2(i.TRAN_ID) IN ('SA17', 'SA17A') GROUP BY 1 ORDER BY 1
+""")
+show("Q15g2: the narrower rule, toward or away from FEC's itemized figure without its rows (measure B)", """
+WITH n AS (SELECT committee_id, sum(amount) AS named, count(*) AS rows FROM named_rule GROUP BY 1)
+SELECT CASE WHEN cov.item IS NULL OR cov.item = 0 THEN 'no FEC figure or 0'
+        WHEN abs((cov.b - n.named) / cov.item - 1) < abs(cov.b / cov.item - 1) THEN 'toward'
+        WHEN abs((cov.b - n.named) / cov.item - 1) > abs(cov.b / cov.item - 1) THEN 'away' ELSE 'no change' END AS move,
+    count(*) AS committees, sum(n.rows) AS rows, sum(n.named) AS dollars,
+    count(*) FILTER (WHERE cov.item > 0 AND abs(cov.b / cov.item - 1) <= 0.01) AS within_1pct_now,
+    count(*) FILTER (WHERE cov.item > 0 AND abs((cov.b - n.named) / cov.item - 1) <= 0.01) AS within_1pct_without,
+    count(*) FILTER (WHERE cov.item > 0 AND (cov.b - n.named) / cov.item < 0.99 AND cov.b / cov.item >= 0.99) AS pushed_under_1pct
+FROM n JOIN cov USING (committee_id) GROUP BY ALL ORDER BY dollars DESC
+""")
+show("Q15g3: the narrower rule, committees it moves away from FEC's figure", """
+WITH n AS (SELECT committee_id, sum(amount) AS named, count(*) AS rows, string_agg(DISTINCT named, ', ') AS lines
+    FROM named_rule GROUP BY 1)
+SELECT cov.committee_id, cov.name, cov.type, cov.item AS fec_itemized, cov.b, n.named, n.rows, n.lines,
+    round(cov.b / cov.item, 4) AS ratio_now, round((cov.b - n.named) / cov.item, 4) AS ratio_without
+FROM n JOIN cov USING (committee_id)
+WHERE cov.item > 0 AND abs((cov.b - n.named) / cov.item - 1) > abs(cov.b / cov.item - 1)
+ORDER BY n.named DESC LIMIT 15
+""")
+show("Q15g4: at the unexplained committees, the narrower rule against D9", """
+SELECT count(*) FILTER (WHERE named_line2(tran_id) IN ('SA11B', 'SA11C', 'SA12', 'SA13', 'SA14', 'SA15', 'SA16', 'SA17', 'SASL')) AS rows_named,
+    sum(amount) FILTER (WHERE named_line2(tran_id) IN ('SA11B', 'SA11C', 'SA12', 'SA13', 'SA14', 'SA15', 'SA16', 'SA17', 'SASL')) AS dollars_named,
+    sum(amount) FILTER (WHERE named_line2(tran_id) IN ('SA11B', 'SA11C', 'SA12', 'SA13', 'SA14', 'SA15', 'SA16', 'SA17', 'SASL')
+        AND sa_line IS NOT NULL AND on_11ai(sa_line)) AS named_but_on_11ai,
+    sum(amount) FILTER (WHERE sa_line IS NOT NULL AND NOT on_11ai(sa_line)) AS d9_dollars
+FROM traced WHERE diag IS NULL
+""")
+show("Q15g5: committees D9 takes past FEC's figure (what is left below -1% of it), with their refunds and untraced rows", """
+SELECT count(*) AS committees, sum(unexplained_after) AS below, sum(d1_refunds) AS d1_refunds, sum(untraced) AS untraced
+FROM verdict9 WHERE unexplained_after < -greatest(0.01 * abs(item), 1)
+""")
+show("Q15g6: the largest of them", """
+SELECT committee_id, name, type, item AS fec_itemized, b, excess, d9_off_line AS d9, d9_lines, d1_refunds, untraced, unexplained_after AS after
+FROM verdict9 WHERE unexplained_after < -greatest(0.01 * abs(item), 1) ORDER BY unexplained_after LIMIT 10
+""")
+show("Q15g7: cm rows naming the Republican State Leadership Committee or Gun Owners of America", """
+SELECT CMTE_ID, CMTE_NM, CMTE_TP FROM cm
+WHERE CMTE_NM ILIKE '%STATE LEADERSHIP%' OR CMTE_NM ILIKE '%GUN OWNERS OF AMERICA%' ORDER BY 1
+""")
+con.execute(f"""
+COPY (SELECT DISTINCT committee_id, file_num FROM traced WHERE diag IS NULL AND sa_line IS NOT NULL AND NOT on_11ai(sa_line))
+TO {literal(work / "q15_d9_files.csv")} (HEADER)
+""")
+```
+
+### Results
+
+**Q15a: the unexplained committees' counted rows, exported (q15_counted.csv)  (0 s)**
+
+| rows | committees | filings | dollars |
+|---|---|---|---|
+| 79,407 | 112 | 579 | 64,511,071 |
+
+**Q15b0: rows matched to a Schedule A record  (0 s)**
+
+| matched_by | rows | dollars | committees |
+|---|---|---|---|
+| electronic | 65,477 | 62,232,671 | 82 |
+|  | 12,706 | 1,590,404 | 21 |
+| paper | 1,224 | 687,996 | 28 |
+
+**Q15b1: counted dollars by Schedule A line and committee type  (0 s)**
+
+| sa_line | type | rows | dollars | committees |
+|---|---|---|---|---|
+| SA11C | O | 42 | 20,069,800 | 5 |
+| SA11AI | O | 1,910 | 8,287,039 | 32 |
+| SA11AI | Y | 28,235 | 7,926,882 | 6 |
+| SA17 | O | 6,109 | 6,490,101 | 13 |
+| SA11AI | N | 3,218 | 5,499,176 | 20 |
+| SA12 | O | 3 | 4,000,000 | 1 |
+| SA13 | O | 44 | 3,957,522 | 27 |
+| SA17 | Q | 32 | 2,120,771 | 2 |
+| SA11AI | Q | 25,507 | 1,888,170 | 16 |
+|  | Y | 12,629 | 1,611,162 | 6 |
+| SA15 | Y | 84 | 1,003,329 | 1 |
+| SASL1A | Y | 179 | 921,526 | 3 |
+| SA11AI | X | 345 | 284,318 | 1 |
+| SA11AI | H | 396 | 198,335 | 12 |
+| SA11ai | Q | 206 | 66,945 | 1 |
+| SA17 | N | 342 | 58,707 | 1 |
+| SASL1A | X | 6 | 50,325 | 1 |
+| SA13B | H | 1 | 50,000 | 1 |
+|  | O | 22 | 18,100 | 6 |
+| SA11AI | P | 10 | 17,674 | 1 |
+| SA11C | H | 14 | 10,831 | 3 |
+| SA15 | Q | 2 | 9,080 | 2 |
+| SA15 | H | 3 | 7,701 | 2 |
+|  | Q | 35 | 5,937 | 5 |
+| SA11B | N | 3 | 1,750 | 1 |
+| SA11C | N | 1 | 1,500 | 1 |
+| SA11B | H | 5 | 575 | 1 |
+| SA15 | S | 1 | 500 | 1 |
+| SA17 | Y | 1 | 360 | 1 |
+| SA11D | H | 1 | 250 | 1 |
+|  | H | 2 | -100 | 1 |
+| SA16 | Q | 1 | -2,500 | 1 |
+|  | N | 18 | -44,695 | 3 |
+
+**Q15c1: D9 by Schedule A line, transaction type and entity type (rows no earlier diagnostic took)  (0 s)**
+
+| sa_line | tt | entity | src | rows | dollars | committees | tran_id_names_line |
+|---|---|---|---|---|---|---|---|
+| SA11C | 10 | ORG | organization | 41 | 19,919,800 | 5 | 19,219,800 |
+| SA17 | 10 | IND | contribution | 5,791 | 6,285,176 | 13 | 2,849,739 |
+| SA12 | 10 | ORG | organization | 3 | 4,000,000 | 1 |  |
+| SA13 | 10 | ORG | organization | 12 | 2,441,749 | 9 | 109,900 |
+| SA17 | 10 | ORG | organization | 47 | 2,335,250 | 11 | 902,861 |
+| SA13 | 10 | IND | contribution | 32 | 1,515,773 | 19 | 1,510,514 |
+| SA15 | 15 | ORG | organization | 4 | 853,654 | 1 |  |
+| SASL1A | 10 | ORG | organization | 150 | 755,577 | 3 |  |
+| SASL1A | 10 | IND | contribution | 31 | 176,274 | 4 |  |
+| SA15 | 15 | IND | contribution | 84 | 161,005 | 5 | 500 |
+| SA13B | 15 | IND | contribution | 1 | 50,000 | 1 |  |
+| SA11C | 15 | IND | contribution | 14 | 10,831 | 3 | 10,831 |
+| SA15 | 15 |  | contribution | 2 | 5,951 | 1 |  |
+| SA17 | 15E | IND | contribution | 7 | 5,250 | 1 | 5,250 |
+| SA17 | 15 | IND | contribution | 9 | 2,885 | 2 | 2,525 |
+| SA11B | 15 | IND | contribution | 8 | 2,325 | 2 | 2,325 |
+| SA11C | 11 | ORG | organization | 1 | 1,500 | 1 | 1,500 |
+| SA11D | 15 | CAN | contribution | 1 | 250 | 1 | 250 |
+
+**Q15c2: the unexplained committees before and after D9  (0 s)**
+
+| committees | before | d9 | d8_change | after | still_unexplained | still_unexplained_dollars | untraced |
+|---|---|---|---|---|---|---|---|
+| 112 | 34,444,474 | 38,523,250 | -4,358,504 | 279,728 | 47 | 595,328 | 1,590,404 |
+
+**Q15c3: every committee Q6 left unexplained, by its remainder before D9  (0 s)**
+
+| committee_id | name | type | fec_itemized | b | excess | before | d9 | d9_lines | d8 | untraced | after | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C00779595 | RSLC PAC | O | 0 | 19,293,000 | 19,293,000 | 19,143,000 | 19,143,000 | SA11C | 0 | 0 | 0 | explained |
+| C00627372 | UNITE HERE PAC | O | 0 | 5,000,000 | 5,000,000 | 3,217,500 | 5,000,000 | SA17, SA12 | 0 | 0 | 0 | explained |
+| C00822932 | PROGRESSIVE ERA PAC | O | 0 | 2,678,800 | 2,678,800 | 2,678,800 | 2,678,800 | SA17 | 0 | 0 | 0 | explained |
+| C00620971 | FOR OUR FUTURE | O | 2,147,548 | 4,228,896 | 2,081,348 | 2,042,557 | 2,081,349 | SA13 | 0 | 0 | -1 | explained |
+| C00808998 | DEMOCRACYFIRST PAC | Q | 25,295 | 2,135,380 | 2,110,085 | 1,902,664 | 2,112,496 | SA17 | 0 | -2,205 | -2,336 | explained |
+| C00865964 | PA CONGRESSIONAL CONSERVATIVES FUND | O | 295,000 | 1,040,000 | 745,000 | 745,000 | 745,000 | SA13 | 0 | 0 | 0 | explained |
+| C00817122 | GOA VICTORY FUND | O | 645,720 | 1,345,621 | 699,901 | 695,356 | 700,000 | SA11C | 0 | 0 | -644 | explained |
+| C00756056 | PROTECT THE VOTE | O | 7,682 | 599,732 | 592,050 | 552,959 | 554,302 | SA17 | 0 | 0 | -1,343 | explained |
+| C00514125 | THE AMERICAN FOUNDATIONS COMMITTEE | O | 1,747,500 | 2,587,500 | 840,000 | 500,000 | 840,000 | SA17, SA13 | 0 | 0 | 0 | explained |
+| C00855379 | AMERICA'S PROMISE | O | 0 | 653,168 | 653,168 | 463,473 | 653,168 | SA17 | 0 | 0 | 0 | explained |
+| C00041269 | GEORGIA FEDERAL ELECTIONS COMMITTEE | Y | 2,681,478 | 3,619,067 | 937,589 | 363,948 | 1,003,329 | SA15 | 0 | -64,980 | -107,818 | explained |
+| C00884130 | ROAD2RIGHTS | O | 0 | 281,162 | 281,162 | 281,162 | 281,162 | SA17 | 0 | 0 | 0 | explained |
+| C00885426 | CARDS AGAINST HUMANITY PAC | O | 102,072 | 352,065 | 249,993 | 249,993 | 250,000 | SA13 | 0 | 0 | -7 | explained |
+| C00488494 | NEW PROSPERITY FOUNDATION; THE | O | 0 | 150,000 | 150,000 | 150,000 | 150,000 | SA17 | 0 | 0 | 0 | explained |
+| C00776526 | TIM SCOTT VICTORY FUND | N | 2,492,048 | 2,611,035 | 118,987 | 112,937 | 0 |  | 0 | 0 | 112,937 | unexplained |
+| C00571398 | BLAKPAC | O | 0 | 100,000 | 100,000 | 100,000 | 100,000 | SA13 | 0 | 0 | 0 | explained |
+| C00762658 | KEEP AMERICA AMERICA ACTION FUND | O | 235,000 | 335,000 | 100,000 | 99,970 | 100,000 | SA13 | 0 | 0 | 0 | explained |
+| C00099267 | TEXAS DEMOCRATIC PARTY | Y | 1,021,498 | 1,164,218 | 142,720 | 88,695 | 0 |  | 47,320 | 1,164,218 | 88,695 | unexplained |
+| C00879973 | DEMOCRACY 2025 | O | 1,050,000 | 1,132,000 | 82,000 | 82,000 | 82,000 | SA13 | 0 | 0 | 0 | explained |
+| C00388181 | CONNELL FOLEY PAC A NEW JERSEY NON-PROFIT CORPORATION | N | 48,000 | 122,885 | 74,885 | 74,885 | 0 |  | 0 | 0 | 74,885 | unexplained |
+| C00630129 | DEMOCRACY LEGACY | O | 5,260 | 454,609 | 449,349 | 73,388 | 452,499 | SA17 | 0 | -3,150 | -3,150 | explained |
+| C00167015 | DEMOCRATIC PARTY OF ILLINOIS | Y | 776,707 | 1,237,748 | 461,041 | 63,060 | 495,506 | SASL1A | 0 | -11,950 | -35,180 | explained |
+| C00169441 | DICKIE, MCCAMEY & CHILCOTE, PC POLITICAL ACTION COMMITTEE | Q | 0 | 63,225 | 63,225 | 55,575 | 0 |  | 0 | 0 | 55,575 | unexplained |
+| C00754754 | RURALVOTE.ORG | O | 214,321 | 264,317 | 49,996 | 49,967 | 50,000 | SA11C | 0 | 0 | -4 | explained |
+| C00025254 | MINNESOTA DEMOCRATIC-FARMER-LABOR PARTY | Y | 2,945,906 | 3,209,082 | 263,176 | 42,145 | 301,020 | SASL1A | 0 | -19,125 | -46,304 | explained |
+| C00527226 | WE VOTE - NOSOTROS VOTAMOS - PPAMM COMMITTEE | O | 365,749 | 454,330 | 88,581 | 40,105 | 90,831 | SA17 | 0 | -1,250 | -9,975 | explained |
+| C00010439 | IDAHO STATE DEMOCRATIC PARTY | Y | 1,298,557 | 1,408,748 | 110,191 | 33,134 | 115,000 | SASL1A | 0 | 547,191 | -35,402 | explained |
+| C00703082 | ARTISTS UNITED FOR CHANGE | O | 679,612 | 709,612 | 30,000 | 30,000 | 30,000 | SA13 | 0 | 0 | 0 | explained |
+| C00826115 | ADVANCE RIGHT SUPER PAC | O | 0 | 144,900 | 144,900 | 30,000 | 144,900 | SA17 | 0 | 0 | 0 | explained |
+| C00167346 | TENNESSEE DEMOCRATIC PARTY | Y | 787,512 | 821,236 | 33,724 | 28,049 | 0 |  | 4,000 | -4,192 | 28,049 | unexplained |
+| C00839126 | MARVIN ABNEY FOR CONGRESS | H | 49,800 | 75,400 | 25,600 | 25,600 | 50,000 | SA13B | 0 | 0 | -24,400 | explained |
+| C00523217 | MASSACHUSETTS BLUE PAC OF BLUE CROSS BLUE SHIELD OF MASSACHUSETTS | N | 38,262 | 76,362 | 38,100 | 25,219 | 0 |  | 0 | 0 | 25,219 | unexplained |
+| C00873679 | TOGETHER FOR PROGRESS 2024 | O | 382,686 | 407,686 | 25,000 | 25,000 | 25,000 | SA11C | 0 | 0 | 0 | explained |
+| C00765982 | STAND FOR AMERICA PAC | Q | 1,277,754 | 1,290,908 | 13,154 | 24,101 | 0 |  | 0 | -1,000 | 24,101 | unexplained |
+| C00839308 | PROTECT THE HOUSE CALIFORNIA 2024 | N | 2,015,915 | 2,046,389 | 30,474 | 21,974 | 0 |  | 0 | 0 | 21,974 | unexplained |
+| C00829549 | TEAMSTERS LOCAL 79 PAC FOR BETTER GOVERNMENT | N | 0 | 18,950 | 18,950 | 18,950 | 0 |  | 0 | 0 | 18,950 | unexplained |
+| C00768101 | MISSION DEMOCRACY PAC | N | 29,545 | 50,590 | 21,045 | 18,508 | 56,170 | SA17 | 0 | -37,512 | -37,662 | explained |
+| C00801910 | FOOD AND WATER ACTION PAC | O | 1,000 | 20,697 | 19,697 | 18,000 | 19,697 | SA17 | 0 | 0 | 0 | explained |
+| C00888131 | DALLAS COUNTY DEMOCRATIC PARTY (FEDERAL) | X | 284,342 | 334,643 | 50,301 | 17,701 | 20,325 | SASL1A | 0 | 0 | -2,624 | explained |
+| C00867291 | ARIZONANS FOR A SECURE AMERICA | O | 25,000 | 41,000 | 16,000 | 16,000 | 0 |  | 0 | 16,000 | 16,000 | unexplained |
+| C00301358 | BLUE CROSS AND BLUE SHIELD OF KANSAS CITY FEDERAL PAC | Q | 23,500 | 39,350 | 15,850 | 15,850 | 0 |  | 0 | 0 | 15,850 | unexplained |
+| C00780965 | MEET IN THE MIDDLE FOR AMERICA | O | 0 | 12,922 | 12,922 | 12,922 | 12,922 | SA13 | 0 | 0 | 0 | explained |
+| C00389601 | ASSOCIATION OF MARYLAND PILOTS PAC | Q | 0 | 11,976 | 11,976 | 11,976 | 0 |  | 0 | 0 | 11,976 | unexplained |
+| C00406124 | HANSON PROFESSIONAL SERVICES INC PAC | Q | 14,200 | 29,450 | 15,250 | 10,750 | 0 |  | 0 | 0 | 10,750 | unexplained |
+| C00322362 | RHODE ISLAND BROTHERHOOD OF CORRECTIONAL OFFICERS | Q | 0 | 10,142 | 10,142 | 10,142 | 0 |  | 0 | 10,142 | 10,142 | unexplained |
+| C00822288 | NEW COALITION PAC | O | 2,355 | 12,355 | 10,000 | 10,000 | 10,000 | SA13 | 0 | 0 | 0 | explained |
+| C00866418 | IMPACT 65 | O | 0 | 80,000 | 80,000 | 10,000 | 80,000 | SA17 | 0 | 0 | 0 | explained |
+| C00877928 | FRISCH VICTORY FUND | N | 131,800 | 141,800 | 10,000 | 10,000 | 0 |  | 0 | -10,000 | 10,000 | unexplained |
+| C00880849 | VIRGINIANS AGAINST SEXUAL ASSAULT PAC | O | 2,500 | 12,000 | 9,500 | 9,500 | 9,500 | SA13 | 0 | 0 | 0 | explained |
+| C00717553 | FEMS FOR DEMS PAC | N | 32,897 | 43,477 | 10,580 | 9,355 | 0 |  | 0 | 0 | 9,355 | unexplained |
+| C00827824 | TURNOUT 2022 | O | 9,000 | 17,000 | 8,000 | 8,000 | 0 |  | 0 | 8,000 | 8,000 | unexplained |
+| C00889188 | COMMON SENSE MARYLAND | O | 183,540 | 191,480 | 7,940 | 7,940 | 7,940 | SA11C, SA13 | 0 | 0 | 0 | explained |
+| C00248948 | PEOPLE HELPING PEOPLE | Q | 40,000 | 47,080 | 7,080 | 7,080 | 7,080 | SA15 | 0 | 0 | 0 | explained |
+| C00741041 | END THE OCCUPATION | Q | 21,420 | 28,695 | 7,275 | 6,775 | 8,275 | SA17 | 0 | -1,000 | -1,000 | explained |
+| C00001214 | TEXAS MEDICAL ASSOCIATION POLITICAL ACTION COMMITTEE | Q | 60,250 | 66,945 | 6,695 | 6,695 | 0 |  | 0 | 0 | 6,695 | unexplained |
+| C00215699 | CHRISTOPHER SHAYS FOR CONGRESS COMMITTEE | H | 0 | 5,951 | 5,951 | 5,951 | 5,951 | SA15 | 0 | 0 | 0 | explained |
+| C00853200 | SHIRLEY FOR NEW JERSEY | H | 33,717 | 39,597 | 5,880 | 5,830 | 0 |  | 0 | 0 | 5,830 | unexplained |
+| C00778548 | COMPLETE PARACHUTE SOLUTIONS INC POLITICAL ACTION COMMITTEE 'CPS PAC' | N | 12,294 | 19,080 | 6,786 | 5,226 | 0 |  | 0 | 0 | 5,226 | unexplained |
+| C00508200 | 1911 UNITED | O | 0 | 4,750 | 4,750 | 4,750 | 7,250 | SA13 | 0 | -2,500 | -2,500 | explained |
+| C00867150 | COMMITTEE TO ELECT MICHAEL KRIPCHAK | H | 53,582 | 59,331 | 5,749 | 4,749 | 6,550 | SA11C | 0 | 0 | -1,801 | explained |
+| C00548719 | MCKINNEY TEA PARTY | N | 14,846 | 19,501 | 4,655 | 4,655 | 0 |  | 0 | 0 | 4,655 | unexplained |
+| C00856435 | THE FUTURE - TODAY & TOMORROW | O | 25,917 | 30,395 | 4,478 | 4,478 | 4,480 | SA13 | 0 | 0 | -2 | explained |
+| C00872754 | CHERYL RILEY FOR CONGRESS | H | 2,163 | 6,179 | 4,016 | 4,016 | 4,017 | SA11C | 0 | 0 | -1 | explained |
+| C00873414 | COMMITTEE FOR AMERICAN RESILIENCE PAC | O | 3,118 | 6,817 | 3,699 | 3,699 | 3,700 | SA13 | 0 | 0 | -1 | explained |
+| C00724237 | SHARICE DAVIDS VICTORY FUND 2024 | N | 140,751 | 143,564 | 2,813 | 2,813 | 0 |  | 0 | 2,817 | 2,813 | unexplained |
+| C00879197 | HEITHOLD FOR CONGRESS | H | 4,660 | 16,005 | 11,345 | 2,677 | 0 |  | 0 | 0 | 2,677 | unexplained |
+| C00336131 | INTELLECTUAL PROPERTY OWNERS ASSOCIATION POLITICAL ACTION FUND | N | 4,250 | 7,000 | 2,750 | 2,250 | 0 |  | 0 | 0 | 2,250 | unexplained |
+| C00832238 | DEMOCRACY THROUGH VOTING | O | 85,173 | 94,196 | 9,023 | 2,158 | 0 |  | 0 | 0 | 2,158 | unexplained |
+| C00869040 | BLUEVOTE.ORG | O | 2,000 | 4,100 | 2,100 | 2,100 | 2,100 | SA13 | 0 | 0 | 0 | explained |
+| C00859140 | COMMITTEE TO ELECT MISSI HESKETH FOR CONGRESS | H | 7,335 | 11,035 | 3,700 | 2,050 | 0 |  | 0 | -100 | 2,050 | unexplained |
+| C00871228 | NATIONAL POLITICAL INDEPENDENCE CONVENTION, INC. | O | 0 | 2,022 | 2,022 | 2,022 | 2,022 | SA13 | 0 | 0 | 0 | explained |
+| C00765198 | LEADING PEOPLE FORWARD PAC | Q | 52,500 | 54,500 | 2,000 | 2,000 | 2,000 | SA15 | 0 | 0 | 0 | explained |
+| C00758102 | MOVE AHEAD USA | O | 240 | 2,240 | 2,000 | 2,000 | 2,000 | SA13 | 0 | 0 | -0 | explained |
+| C00517235 | TURQUOISE PAC | Q | 137,616 | 139,615 | 1,999 | 1,999 | 0 |  | 0 | 0 | 1,999 | unexplained |
+| C00650655 | MICHAEL KOTICK FOR CONGRESS | H | 0 | 1,750 | 1,750 | 1,750 | 1,750 | SA15 | 0 | 0 | 0 | explained |
+| C00825471 | MAGAZINER VICTORY FUND | N | 500 | 2,250 | 1,750 | 1,750 | 1,750 | SA11B | 0 | 0 | 0 | explained |
+| C00806323 | DE LA CRUZ FOR CONGRESS | H | -2,250 | -1,000 | 1,250 | 1,750 | 0 |  | 0 | 0 | 1,750 | unexplained |
+| C00836866 | VOTERS DESERVE BETTER | O | 33,891 | 37,597 | 3,706 | 1,675 | 5,000 | SA13 | 0 | 0 | -3,325 | explained |
+| C00494997 | DOWNTOWN FOR DEMOCRACY | O | 275 | 6,176 | 5,901 | 1,626 | 5,901 | SA17 | 0 | 0 | 0 | explained |
+| C00887034 | RACHEL FIORI PRESIDENTIAL CANDIDATE | P | 11,068 | 17,674 | 6,606 | 1,600 | 0 |  | 0 | 0 | 1,600 | unexplained |
+| C00610956 | MEMORIALHEALTHPAC | Q | 132,363 | 134,761 | 2,398 | 1,568 | 0 |  | 0 | 0 | 1,568 | unexplained |
+| C00542902 | AMERICARISINGPAC.ORG | O | -1,810 | -550 | 1,260 | 1,560 | 0 |  | 0 | 0 | 1,560 | unexplained |
+| C00684175 | STAUBER VICTORY FUND | N | 121,800 | 123,300 | 1,500 | 1,500 | 1,500 | SA11C | 0 | 0 | 0 | explained |
+| C00887612 | GOD SUPER PAC | O | 4,171 | 5,671 | 1,500 | 1,500 | 1,500 | SA13 | 0 | 0 | -0 | explained |
+| C00551382 | VOTECLIMATE.US PAC | O | 2,179 | 3,522 | 1,343 | 1,343 | 0 |  | 0 | 0 | 1,343 | unexplained |
+| C00117614 | FARMERS MUTUAL HAIL INS CO OF IOWA POLITICAL ACTION COMMITTEE (FMH PAC) | Q | 22,288 | 23,422 | 1,134 | 1,134 | 0 |  | 0 | 0 | 1,134 | unexplained |
+| C00870170 | LEHIGH VALLEY FOR ALL PAC | N | 9,280 | 13,780 | 4,500 | 1,000 | 0 |  | 0 | 0 | 1,000 | unexplained |
+| C00745182 | IRANIAN AMERICANS FOR PEACE | O | 2,500 | 3,500 | 1,000 | 1,000 | 1,000 | SA13 | 0 | 0 | 0 | explained |
+| C00843318 | SCOTT FOR UTAH | H | 1,300 | -1,549 | 1,000 | 1,000 | 0 |  | 0 | 0 | 1,000 | unexplained |
+| C00794669 | GEORGE WASHINGTON INITIATIVE ACTION FUND | O | 9,150 | 10,150 | 1,000 | 1,000 | 0 |  | 0 | 1,000 | 1,000 | unexplained |
+| C00866137 | JOHN HENRY NEWMAN FOR CONGRESS | H | 750 | 1,750 | 1,000 | 1,000 | 0 |  | 0 | 0 | 1,000 | unexplained |
+| C00803197 | SUMMIT COUNTY PROGRESSIVE DEMOCRATS FEDERAL PAC | N | 14,535 | 20,250 | 5,715 | 965 | 0 |  | 0 | 0 | 965 | unexplained |
+| C00767541 | DEMOCRATIC CLUB AT CEDAR CREST | N | 985 | 3,000 | 2,015 | 765 | 0 |  | 0 | 0 | 765 | unexplained |
+| C00888487 | BLACK MEN VOTING | O | 0 | 759 | 759 | 743 | 759 | SA13 | 0 | 0 | 0 | explained |
+| C00432815 | LOCAL 399 INTERNATIONAL UNION OF OPERATING ENGINEERS FEDERAL PAC (LOCAL 399 IUOE FED PAC) | N | 38,329 | 41,045 | 2,716 | 706 | 0 |  | 0 | 0 | 706 | unexplained |
+| C00834457 | FRIENDS OF BEN | H | 24,540 | 25,115 | 575 | 575 | 575 | SA11B | 0 | 0 | -0 | explained |
+| C00730820 | WESTON FOR UTAH | S | 0 | 500 | 500 | 500 | 500 | SA15 | 0 | 0 | 0 | explained |
+| C00756304 | MARVIN LUCAS SUPERPAC | O | 10,565 | 11,065 | 500 | 500 | 500 | SA13 | 0 | 0 | 0 | explained |
+| C00353037 | NATIONAL FEDERATION OF DEMOCRATIC WOMEN PAC | N | 10,930 | 11,230 | 300 | 300 | 0 |  | 0 | 0 | 300 | unexplained |
+| C00858753 | ELECT PAM GENANT | H | 23,165 | 23,429 | 264 | 264 | 264 | SA11C | 0 | 0 | 0 | explained |
+| C00843193 | COMMITTEE TO ELECT GUY WARNER | H | 0 | 250 | 250 | 250 | 250 | SA11D | 0 | 0 | 0 | explained |
+| C00846808 | J.EMILIO MARTINEZ FOR CONGRESS 2024 | H | 250 | 500 | 250 | 250 | 0 |  | 0 | 0 | 250 | unexplained |
+| C00377754 | FLORIDA MUNICIPAL ELECTRIC ASSOCIATION INC PAC FMEA PAC | Q | 5,150 | 5,400 | 250 | 250 | 0 |  | 0 | 0 | 250 | unexplained |
+| C00455725 | MARIPOSA COUNTY REPUBLICAN CENTRAL COMMITTEE (FEDERAL) | Y | 2,800 | 3,160 | 360 | 240 | 360 | SA17 | 0 | 0 | -120 | explained |
+| C00672204 | MS VOTERS INFORMATION PROVIDERS PAC | N | 800 | 950 | 150 | 150 | 0 |  | 0 | 0 | 150 | unexplained |
+| C00140772 | JOHN H HAAKE BRANCH 343 NATIONAL ASSOCIATION OF LETTER CARRIERS POLITICAL ACTION FUND | Q | 4,900 | 5,675 | 775 | 125 | 0 |  | 0 | 0 | 125 | unexplained |
+| C00846238 | UPLIFT OUR FUTURE | O | 0 | 100 | 100 | 100 | 100 | SA13 | 0 | 0 | 0 | explained |
+| C00866897 | ELEVATE AMERICA PAC | O | 0 | 100 | 100 | 100 | 100 | SA13 | 0 | 0 | 0 | explained |
+| C00839712 | THE VALLEY FORGE PROJECT | O | 0 | 50 | 50 | 50 | 50 | SA13 | 0 | 0 | 0 | explained |
+| C00871350 | MICHIGAN ACTION FEDERAL SUPER PAC | O | 0 | 50 | 50 | 50 | 50 | SA13 | 0 | 0 | 0 | explained |
+| C00437079 | WESTCHESTER-PLAYA DEMOCRATIC CLUB | Q | 1,658 | 1,685 | 27 | 27 | 0 |  | 0 | 0 | 27 | unexplained |
+| C00129627 | PIPEFITTERS LOCAL 636 POLITICAL ACTION COMMITTEE | Q | 170 | 194 | 24 | 24 | 0 |  | 0 | 0 | 24 | unexplained |
+
+**Q15d1: at the unexplained committees, TRAN_ID's named line against the filing's line  (0 s)**
+
+| tran_id | filed | rows | dollars | committees |
+|---|---|---|---|---|
+| (names none) | (untraced) | 12,306 | 1,769,406 | 7 |
+| (names none) | on 11(a)(i) | 54,720 | 16,094,183 | 56 |
+| (names none) | on another line | 6,053 | 13,907,255 | 25 |
+| names 11(a)(i) | on 11(a)(i) | 3,073 | 7,870,771 | 37 |
+| names another line | on 11(a)(i) | 23 | 47,638 | 2 |
+| names another line | on another line | 185 | 24,615,995 | 41 |
+
+**Q15d2: every counted row in the build whose TRAN_ID names a Schedule A line other than 11(a)(i)  (11 s)**
+
+| named_line | src | tt | rows | dollars | committees |
+|---|---|---|---|---|---|
+| SA17 | contribution | 15 | 300,846 | 88,296,433 | 51 |
+| SA17 | organization | 10 | 344 | 62,616,124 | 64 |
+| SA17 | contribution | 15E | 472,919 | 41,618,756 | 16 |
+| SA11C | organization | 10 | 50 | 19,933,618 | 9 |
+| SA14 | contribution | 15 | 65 | 4,164,052 | 3 |
+| SA17 | contribution | 10 | 40 | 3,027,681 | 8 |
+| SA13 | contribution | 10 | 35 | 1,510,839 | 19 |
+| SA14 | organization | 11 | 4 | 1,075,000 | 1 |
+| SA15 | contribution | 15 | 381 | 254,931 | 6 |
+| SA14 | organization | 15 | 1 | 154,000 | 1 |
+| SA13 | organization | 10 | 9 | 114,900 | 7 |
+| SA16 | contribution | 15 | 114 | 98,300 | 2 |
+| SA11B | organization | 10 | 4 | 62,613 | 2 |
+| SA12 | contribution | 15 | 19 | 61,252 | 3 |
+| SA17 | organization | 15 | 12 | 41,400 | 7 |
+| SA16 | contribution | 15E | 46 | 33,569 | 1 |
+| SA12 | contribution | 10 | 15 | 33,103 | 3 |
+| SA11C | organization | 11 | 11 | 27,950 | 5 |
+| SA15 | contribution | 15E | 16 | 15,206 | 2 |
+| SA11C | contribution | 15 | 18 | 14,380 | 7 |
+| SA11B | contribution | 15 | 18 | 9,875 | 4 |
+| SA11C | contribution | 15E | 10 | 8,490 | 3 |
+| SA13 | contribution | 15 | 7 | 7,550 | 1 |
+| SA11C | organization | 15E | 1 | 5,000 | 1 |
+| SA13 | contribution | 15E | 1 | 4,500 | 1 |
+| SA16 | organization | 11 | 1 | 3,300 | 1 |
+| SA11B | organization | 11 | 1 | 3,300 | 1 |
+| SA17 | organization | 11 | 1 | 3,300 | 1 |
+| SA15 | organization | 11 | 1 | 2,500 | 1 |
+| SA11D | contribution | 15E | 3 | 2,329 | 3 |
+| SA11D | contribution | 15 | 1 | 250 | 1 |
+| SASL | organization | 10 | 1 | 250 | 1 |
+| SA11D | organization | 15C | 2 | 80 | 1 |
+| SA16 | contribution | 22Y | 3 | -3,565 | 3 |
+| SA17 | contribution | 22Y | 7 | -3,902 | 1 |
+| SA14 | organization | 22Y | 11 | -5,344 | 1 |
+
+**Q15e1: committees with counted rows whose TRAN_ID names another line, toward or away from FEC's itemized figure without them  (0 s)**
+
+| move | committees | rows | dollars | within_1pct_now | within_1pct_without |
+|---|---|---|---|---|---|
+| away | 83 | 774,439 | 132,358,983 | 31 | 8 |
+| toward | 72 | 292 | 52,103,231 | 15 | 67 |
+| no FEC figure or 0 | 39 | 287 | 38,729,806 | 0 | 0 |
+
+**Q15e2: the committees with the most such dollars  (0 s)**
+
+| committee_id | name | type | fec_itemized | b | named | rows | lines | ratio_now | ratio_without |
+|---|---|---|---|---|---|---|---|---|---|
+| C00828541 | NEVER SURRENDER, INC. | N | 43,943,020 | 43,557,571 | 43,880,244 | 339,663 | SA17 | 99.12% | -0.73% |
+| C00571703 | SENATE LEADERSHIP FUND | O | 220,730,171 | 255,560,171 | 35,580,000 | 5 | SA17 | 115.78% | 99.66% |
+| C00833392 | NIKKI HALEY FOR PRESIDENT INC. | P | 34,132,886 | 27,925,330 | 34,088,045 | 225,615 | SA17 | 81.81% | -18.06% |
+| C00841130 | RESTORE OUR NATION (RON PAC) | V | 26,132,117 | 19,047,544 | 26,025,611 | 71,580 | SA17 | 72.89% | -26.70% |
+| C00779595 | RSLC PAC | O | 0 | 19,293,000 | 19,293,000 | 37 | SA11C |  |  |
+| C00825851 | MAKE AMERICA GREAT AGAIN INC. | O | 383,797,150 | 389,576,242 | 8,247,095 | 4 | SA11C, SA17 | 101.51% | 99.36% |
+| C00540302 | TIM SCOTT FOR AMERICA | S | 9,650,686 | 8,511,679 | 6,628,533 | 42,487 | SA17 | 88.20% | 19.51% |
+| C00833913 | VIVEK 2024 | P | 5,889,065 | 5,767,476 | 5,879,332 | 45,954 | SA17 | 97.94% | -1.90% |
+| C00834978 | 170 FREEDOM MILWAUKEE 2024 HOST COMMITTEE INC | X |  | 5,369,000 | 5,369,000 | 15 | SA14 |  |  |
+| C00842237 | CHRIS CHRISTIE FOR PRESIDENT, INC. | P | 5,219,185 | 4,966,283 | 5,209,318 | 10,398 | SA17 | 95.15% | -4.66% |
+| C00842039 | MIKE PENCE FOR PRESIDENT | P | 3,234,373 | 2,745,333 | 3,220,167 | 19,003 | SA17 | 84.88% | -14.68% |
+| C00822932 | PROGRESSIVE ERA PAC | O | 0 | 2,678,800 | 2,678,800 | 28 | SA17 |  |  |
+| C00890715 | DID THEY VOTE | O | 0 | 2,000,000 | 2,000,000 | 2 | SA17 |  |  |
+| C00809483 | EIGHTEEN FIFTY-FOUR FUND | O | 650,000 | 2,550,000 | 1,900,000 | 4 | SA17 | 392.31% | 100.00% |
+| C00889931 | BADGER VALUES | O | 0 | 1,850,000 | 1,850,000 | 3 | SA17 |  |  |
+| C00856112 | JILL STEIN FOR PRESIDENT 2024 | P | 2,001,571 | 1,971,404 | 1,816,074 | 9,526 | SA17 | 98.49% | 7.76% |
+| C00887414 | BLACK LEADERSHIP FEDERAL PAC | O | 25,000 | 1,155,000 | 1,130,000 | 6 | SA17 | 4620.00% | 100.00% |
+| C00866780 | PA UNITED FEDERAL ACTION COMMITTEE | O | 0 | 1,023,000 | 1,023,000 | 6 | SA17 |  |  |
+| C00868562 | AND JUSTICE FOR ALL PAC | O | 0 | 1,000,000 | 1,000,000 | 1 | SA17 |  |  |
+| C00860148 | WEST MICHIGAN FOR CHANGE | O | 0 | 1,000,000 | 1,000,000 | 1 | SA17 |  |  |
+
+**Q15f: the ten largest remainders, D9 by Schedule A line and giver  (0 s)**
+
+| committee_id | committee | sa_line | tt | entity | givers_of_50000_or_more | rows | dollars |
+|---|---|---|---|---|---|---|---|
+| C00514125 | THE AMERICAN FOUNDATIONS COMMITTEE | SA13 | 10 | IND | KNOTT, THOMAS R | 1 | 500,000 |
+| C00514125 | THE AMERICAN FOUNDATIONS COMMITTEE | SA17 | 10 | ORG | PROSPERITY ALLIANCE INC; REYNOLDS SERVICES COMPANY | 6 | 340,000 |
+| C00620971 | FOR OUR FUTURE | SA13 | 10 | ORG | FOR OUR FUTURE ACTION FUND | 2 | 2,081,349 |
+| C00627372 | UNITE HERE PAC | SA12 | 10 | ORG | UNITE HERE | 3 | 4,000,000 |
+| C00627372 | UNITE HERE PAC | SA17 | 10 | ORG | UNITE HERE | 1 | 1,000,000 |
+| C00756056 | PROTECT THE VOTE | SA17 | 10 | IND |  | 5,314 | 554,302 |
+| C00779595 | RSLC PAC | SA11C | 10 | ORG | REPUBLICAN STATE LEADERSHIP COMMITTEE | 36 | 19,143,000 |
+| C00808998 | DEMOCRACYFIRST PAC | SA17 | 10 | IND | LAWSON, ERICA; LAWSON, JEFF; PIGOTT, GAYE; SCHUSTERMAN, LYNN | 13 | 1,905,000 |
+| C00808998 | DEMOCRACYFIRST PAC | SA17 | 10 | ORG | DEMOCRACYFIRST; GPS IMPACT | 3 | 207,496 |
+| C00817122 | GOA VICTORY FUND | SA11C | 10 | ORG | GUN OWNERS OF AMERICA INC. | 2 | 700,000 |
+| C00822932 | PROGRESSIVE ERA PAC | SA17 | 10 | IND | DELANEY, QUINN; GROVE, EVA; GROVE, KAREN; MILLIKEN, WESTON; QUILLIN, PATTY; SCHUSTERMAN, STACY; THOMAS, ELIZABETH ALLISON | 28 | 2,678,800 |
+| C00855379 | AMERICA'S PROMISE | SA17 | 10 | IND |  | 66 | 463,473 |
+| C00855379 | AMERICA'S PROMISE | SA17 | 10 | ORG | SEVASPACES; SINGH CAPITAL PARTNERS LLC | 8 | 189,695 |
+| C00865964 | PA CONGRESSIONAL CONSERVATIVES FUND | SA13 | 10 | IND | HAWACH, SID | 1 | 745,000 |
+
+**Q15g1: what TRAN_ID names line 17 or 17(a) as, across the build's counted rows  (10 s)**
+
+| named_line | rows | dollars | committees | p_committees |
+|---|---|---|---|---|
+| SA17 | 502 | 65,712,399 | 76 | 1 |
+| SA17A | 773,667 | 129,887,393 | 46 | 39 |
+
+**Q15g2: the narrower rule, toward or away from FEC's itemized figure without its rows (measure B)  (0 s)**
+
+| move | committees | rows | dollars | within_1pct_now | within_1pct_without | pushed_under_1pct |
+|---|---|---|---|---|---|---|
+| toward | 71 | 291 | 52,102,231 | 15 | 66 | 4 |
+| no FEC figure or 0 | 36 | 283 | 38,679,476 | 0 | 0 | 0 |
+| away | 39 | 771 | 2,520,261 | 15 | 9 | 7 |
+
+**Q15g3: the narrower rule, committees it moves away from FEC's figure  (0 s)**
+
+| committee_id | name | type | fec_itemized | b | named | rows | lines | ratio_now | ratio_without |
+|---|---|---|---|---|---|---|---|---|---|
+| C00796045 | TRUTH AND COURAGE PAC | O | 27,840,040 | 27,561,722 | 947,152 | 15 | SA17 | 99.00% | 95.60% |
+| C00867036 | RIGHT FOR AMERICA | O | 69,832,771 | 69,872,769 | 525,000 | 6 | SA11C | 100.06% | 99.31% |
+| C00553859 | DR. BRIAN BABIN FOR CONGRESS | H | 315,760 | 295,960 | 305,460 | 320 | SA17, SA16, SA15 | 93.73% | -3.01% |
+| C00582841 | COALITION FOR PROGRESS | O | 2,646,200 | 2,093,753 | 199,903 | 2 | SA17 | 79.12% | 71.57% |
+| C00851980 | FRIENDS OF DAVE MCCORMICK | S | 14,231,088 | 14,239,233 | 127,229 | 261 | SA15 | 100.06% | 99.16% |
+| C00866368 | CONSERVATIVE VOTERS ALLIANCE | O | 1,650,000 | 1,455,421 | 91,421 | 1 | SA17 | 88.21% | 82.67% |
+| C00825786 | BABIN VICTORY FUND | N | 431,991 | 429,741 | 63,975 | 44 | SA15, SA14, SA12, SA16, SA13, SA17 | 99.48% | 84.67% |
+| C00834077 | NEVER BACK DOWN INC. | O | 144,589,273 | 142,891,271 | 50,613 | 3 | SA11B | 98.83% | 98.79% |
+| C00832238 | DEMOCRACY THROUGH VOTING | O | 85,173 | 94,196 | 45,780 | 21 | SA12 | 110.59% | 56.84% |
+| C00434076 | OPERATING ENGINEERS LOCAL 478 POLITICAL ACTION COMMITTEE (OE478PAC) | Q | 74,567 | 41,497 | 27,867 | 1 | SA12 | 55.65% | 18.28% |
+| C00855064 | CONSERVATIVE VALUES FOR UTAH | O | 4,920,400 | 4,820,400 | 25,000 | 1 | SA11C | 97.97% | 97.46% |
+| C00542431 | JOHN BOLTON PAC | W | 672,567 | 672,555 | 20,000 | 4 | SA17 | 100.00% | 97.02% |
+| C00829721 | EARLY VOTE ACTION PAC | O | 4,704,093 | 4,706,820 | 12,000 | 1 | SA11B | 100.06% | 99.80% |
+| C00770214 | CHAMPION AMERICAN VALUES | W | 2,829,515 | 2,676,289 | 10,635 | 7 | SA17 | 94.58% | 94.21% |
+| C00785790 | PROTECTING AMERICANS PROJECT ACTION FUND | V | 49,570 | 49,570 | 10,000 | 2 | SA17 | 100.00% | 79.83% |
+
+**Q15g4: at the unexplained committees, the narrower rule against D9  (0 s)**
+
+| rows_named | dollars_named | named_but_on_11ai | d9_dollars |
+|---|---|---|---|
+| 206 | 24,613,383 | 47,638 | 38,523,250 |
+
+**Q15g5: committees D9 takes past FEC's figure (what is left below -1% of it), with their refunds and untraced rows  (0 s)**
+
+| committees | below | d1_refunds | untraced |
+|---|---|---|---|
+| 15 | -312,317 | -158,797 | 403,519 |
+
+**Q15g6: the largest of them  (0 s)**
+
+| committee_id | name | type | fec_itemized | b | excess | d9 | d9_lines | d1_refunds | untraced | after |
+|---|---|---|---|---|---|---|---|---|---|---|
+| C00041269 | GEORGIA FEDERAL ELECTIONS COMMITTEE | Y | 2,681,478 | 3,619,067 | 937,589 | 1,003,329 | SA15 | -64,980 | -64,980 | -107,818 |
+| C00025254 | MINNESOTA DEMOCRATIC-FARMER-LABOR PARTY | Y | 2,945,906 | 3,209,082 | 263,176 | 301,020 | SASL1A | -18,525 | -19,125 | -46,304 |
+| C00768101 | MISSION DEMOCRACY PAC | N | 29,545 | 50,590 | 21,045 | 56,170 | SA17 | -37,512 | -37,512 | -37,662 |
+| C00010439 | IDAHO STATE DEMOCRATIC PARTY | Y | 1,298,557 | 1,408,748 | 110,191 | 115,000 | SASL1A | -15,825 | 547,191 | -35,402 |
+| C00167015 | DEMOCRATIC PARTY OF ILLINOIS | Y | 776,707 | 1,237,748 | 461,041 | 495,506 | SASL1A | -11,950 | -11,950 | -35,180 |
+| C00839126 | MARVIN ABNEY FOR CONGRESS | H | 49,800 | 75,400 | 25,600 | 50,000 | SA13B | 0 | 0 | -24,400 |
+| C00527226 | WE VOTE - NOSOTROS VOTAMOS - PPAMM COMMITTEE | O | 365,749 | 454,330 | 88,581 | 90,831 | SA17 | -1,250 | -1,250 | -9,975 |
+| C00836866 | VOTERS DESERVE BETTER | O | 33,891 | 37,597 | 3,706 | 5,000 | SA13 | 0 | 0 | -3,325 |
+| C00630129 | DEMOCRACY LEGACY | O | 5,260 | 454,609 | 449,349 | 452,499 | SA17 | -3,150 | -3,150 | -3,150 |
+| C00508200 | 1911 UNITED | O | 0 | 4,750 | 4,750 | 7,250 | SA13 | -2,500 | -2,500 | -2,500 |
+
+**Q15g7: cm rows naming the Republican State Leadership Committee or Gun Owners of America  (0 s)**
+
+| CMTE_ID | CMTE_NM | CMTE_TP |
+|---|---|---|
+| C00278101 | GUN OWNERS OF AMERICA, INC. POLITICAL VICTORY FUND | Q |
+| C00628008 | GOLDEN STATE LEADERSHIP FUND PAC | O |
+| C00818161 | GRANITE STATE LEADERSHIP FUND | O |
+| C30002067 | REPUBLICAN STATE LEADERSHIP COMMITTEE | E |
+| C30002083 | REPUBLICAN STATE LEADERSHIP COMMITTEE - WASHINGTON PAC | E |
+| C30002992 | REPUBLICAN STATE LEADERSHIP COMMITTEE - JUDICIAL FAIRNESS INITIATIVE | E |
+| C90011693 | GUN OWNERS OF AMERICA, INC. | I |
+
+**d9_forms.txt: the D9 filings by form**
+
+| form | filings |
+|---|---|
+| F3X | 121 |
+| F3 | 11 |
+
+### Findings
+
+- **The unexplained money is money the filer put on another line, which FEC's bulk file types as a
+  contribution.** At the 112 committees, $38,523,250 of counted rows are on a Schedule A line other
+  than 11(a)(i) (Q15c1). By line: 11(c) $19,932,131; 17 $8,628,561; 12 $4,000,000; 13 $3,957,522
+  (and Form 3's 13(b) $50,000); 15 $1,020,610; Schedule L-A, a state or local party's Levin account,
+  $931,851; 11(b) and 11(d) $2,575. `indiv` types nearly all of it 10, a gift to a super PAC, whatever
+  its line. A party's offsets on line 15 it types 15. So `fec_line`, which reads the type, puts them
+  on 11(a)(i), and B counts them. 97.5% of their counted dollars were traced to a record: $62,232,671
+  electronic and $687,996 paper, with $1,590,404 at 21 committees matching none (Q15b0).
+- **The remainder is $595,328, at 47 committees, under the ticket's $5M** (Q15c2, DoD #3). The 65
+  others are explained. Refitted after D9, D8 takes $4,358,504 less: at those committees the
+  organization money it had fitted to line 15 is now traced, to 11(c), 12, 13 and 17. Of the 47 the
+  largest are TIM SCOTT VICTORY FUND ($112,937), TEXAS DEMOCRATIC PARTY ($88,695, whose rows match
+  no Schedule A record by `TRAN_ID`), CONNELL FOLEY PAC ($74,885) and DICKIE, MCCAMEY & CHILCOTE PAC
+  ($55,575). Each is under the $1M at which a follow-up would be filed, and none was traced further.
+  The $595,328 counts only what is left over FEC's figure. Net of the committees D9 takes below it,
+  the 112's remainder is $279,728.
+- **D9 takes more than the excess at 15 committees, by $312,317 in all** (Q15g5, Q15g6). It does not
+  take rows FEC counts: the filings put every one of them on another line. B nets refunds and FEC's
+  figure does not, and that is $158,797 of it (D1). Mission Democracy PAC's −$37,512 of refunds,
+  for one, is nearly all of its −$37,662. The rest was not traced. Q9 found the like at the national
+  parties, where it was 11(a)(i) rows the bulk file omits, and some of these committees' rows
+  matched no record (Idaho State Democratic Party's $547,191). MARVIN ABNEY FOR CONGRESS is $24,400
+  under FEC's figure once its $50,000 loan on line 13(b) is out.
+- **The ten largest remainders, and their cause** (Q15c3, Q15f; DoD #1). Each is a line choice:
+  1. RSLC PAC (C00779595), $19,143,000: the Republican State Leadership Committee's 36 gifts, on line
+     11(c), other political committees. `cm` lists it as C30002067, type E, a Form 9 filer
+     (electioneering), which D4 leaves out by design, as it does GOA's type I (Q15g7). FEC's
+     itemized figure is $0.
+  2. UNITE HERE PAC (C00627372), $3,217,500: UNITE HERE's $4,000,000 on line 12, transfers from
+     affiliated committees, and $1,000,000 on line 17. (D8 had fitted $1,782,500 of it.)
+  3. PROGRESSIVE ERA PAC (C00822932), $2,678,800: 28 individuals' gifts, all on line 17.
+  4. FOR OUR FUTURE (C00620971), $2,042,557: two loans from FOR OUR FUTURE ACTION FUND, $2,081,349,
+     on line 13.
+  5. DEMOCRACYFIRST PAC (C00808998), $1,902,664: $1,905,000 from individuals (Lynn Schusterman,
+     the Lawsons and others) and $207,496 from organizations, on line 17.
+  6. PA CONGRESSIONAL CONSERVATIVES FUND (C00865964), $745,000: Sid Hawach's loan, on line 13.
+  7. GOA VICTORY FUND (C00817122), $695,356: Gun Owners of America Inc.'s $700,000 on line 11(c).
+  8. PROTECT THE VOTE (C00756056), $552,959: 5,314 individuals' gifts on line 17.
+  9. THE AMERICAN FOUNDATIONS COMMITTEE (C00514125), $500,000: Thomas Knott's $500,000 loan on line
+     13, and $340,000 from organizations on line 17.
+  10. AMERICA'S PROMISE (C00855379), $463,473: 66 individuals' gifts and 8 organizations', $653,168,
+      on line 17.
+- **One fundlens-side cause, filed as
+  [NEU-2276](https://linear.app/neuroticsasquatch/issue/NEU-2276) (DoD #2).** The glossary's
+  *other-lines money* is kept but counted in no individual or organizations' total. D9's rows are
+  that money. `fec_line` misses them because it places a row by its type alone, and `indiv` types
+  them as contributions. Q6 filed D8 as "the filer's line choice, not a fundlens bug". But the
+  filer's line is what FEC's figure follows, and fundlens's rule for other-lines money follows it
+  too wherever the type shows it (NEU-2193, NEU-2205). Where the type does not, the gap is
+  fundlens's.
+- **`TRAN_ID` tells most of it, if 17(a) is left alone.** At the unexplained committees, `TRAN_ID`
+  names the line for $24,615,995 of D9's dollars and is silent for $13,907,255. Of the rows it says
+  are on another line, only $47,638 are on 11(a)(i) by the filing (Q15d1, Q15g4). A rule over every
+  `TRAN_ID` naming another line fails, though. Across the build, $223,192,020 of counted rows
+  (775,018) name one, $195,599,792 of them line 17 (Q15d2). Leaving them all out moves 83
+  committees away from FEC's figure ($132,358,983) and 72 toward it ($52,103,231) (Q15e1). Most of
+  the line-17 money is `SA17A`, 773,667 rows and $129,887,393 at 46 committees, 39 of them typed P
+  (Q15g1). 17(a) is Form 3P's individuals' line, and the largest committees that move away are the
+  campaigns that name it: NIKKI HALEY FOR PRESIDENT, VIVEK 2024, CHRIS CHRISTIE FOR PRESIDENT, MIKE
+  PENCE FOR PRESIDENT, JILL STEIN and TIM SCOTT FOR AMERICA, and NEVER SURRENDER (N) and RESTORE OUR
+  NATION (V), so committee type does not tell them apart. Leave 17(a) and 11(d), a candidate's own,
+  alone, and the rule moves 71 committees toward FEC's figure ($52,102,231) against 39 away
+  ($2,520,261). Among them, the count within 1% of FEC's figure goes from 15 to 66 and 7 fall more
+  than 1% under it (Q15g2). The 39 are led by TRUTH AND COURAGE PAC's $947,152 on line 17 and
+  DR. BRIAN BABIN FOR CONGRESS, whose Form 3 `TRAN_ID`s name lines 15 to 17 (Q15g3). NEU-2276
+  takes this rule. The $13.9M whose `TRAN_ID` names no line needs the raw filings, which is
+  NEU-2181's question.
+- **By `TRAN_ID`, D8's two named gaps are line 17.** SENATE LEADERSHIP FUND's $35,580,000 is 5
+  rows that `TRAN_ID` places on line 17. Without them its B is 99.66% of FEC's figure. MAKE
+  AMERICA GREAT AGAIN INC.'s $8,247,095 is on 11(c) and 17, and without it B goes from 101.51% to
+  99.36% (Q15e2). Q7 called both "line 15, other receipts", which is Form 3's number for it. On
+  Form 3X it is line 17. This is NEU-2276's rule at work, not a new measure of D8, which this
+  ticket left alone.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to
@@ -6779,13 +7590,16 @@ line, $41, in the rule's take names a JFC.
      elsewhere.
    - It is not defined where `INDV_ITEM_CONTB` is blank (Form 4 and Form 5 filers).
    - It can exceed 100% where the filer put organization money on line 15 (90 committees, $75.1M
-     by D8's fit). NEU-2141 decides how to show a figure above 100%. Comparing against itemized
-     plus line 15 instead matches fewer committees (Q5k).
+     by D8's fit), or any money on lines 11(c), 12, 13, 15 or 17 or a Levin account that `indiv`
+     types as a contribution ($38.5M at the 112 committees Q6 left unexplained, Q15), until NEU-2276
+     marks it. NEU-2141 decides how to show a figure above 100%. Comparing against itemized plus line
+     15 instead matches fewer committees (Q5k).
 5. **Over-1% causes and tickets**: NEU-2192 (hybrid non-contribution account), NEU-2193 (party
    accounts and other off-11(a)(i) types), NEU-2194 (15C self-funding), NEU-2195 (ORG-typed
-   committee gifts), NEU-2196 (repeated rows), NEU-2197 (the 119 unexplained committees). Found on
-   the way: NEU-2198 (memo-only LLC attributions, under-count; Q14) and NEU-2199 (conduit refunds
-   of earmarks).
+   committee gifts), NEU-2196 (repeated rows), NEU-2197 (the unexplained committees, 119 on the
+   first run and 112 on 2026-11-12's: other-lines money `fec_line` cannot place by type, filed as
+   NEU-2276; Q15). Found on the way: NEU-2198 (memo-only LLC attributions, under-count; Q14) and
+   NEU-2199 (conduit refunds of earmarks).
 6. **For NEU-2142: do not catalogue `candidate_summary` or `webl`.** `candidate_summary` is the sum
    of `committee_summary`'s own P/A rows (2,315 of 2,321). Decision 1 does not read it, and it adds
    no column a candidate page needs that `committee_summary` lacks. `webl` repeats `weball`.
@@ -6801,6 +7615,12 @@ line, $41, in the rule's take names a JFC.
    Q11)**, kept in silver and summed in `committee_cycle.total_returned_by_candidates`, in no gift
    figure. FEC's line 23 cannot check `total_to_candidates`: it reconciles with neither the gross nor
    the net 24Ks.
+9. **Other-lines money that `indiv` types as a contribution is a fundlens gap (NEU-2276, Q15).**
+   The glossary keeps it out of every individual and organizations' total, and `fec_line` misses it
+   only because it reads the type: $38.5M at the 112 committees Q6 left unexplained, mostly typed 10
+   at super PACs on lines 11(c), 12, 13 and 17. A `TRAN_ID` naming 11(b), 11(c), 12–17 or Schedule
+   L, but not 17(a), tells most of it (Q15g2). Every row's line and form are in the raw filings
+   (NEU-2181).
 
 ## For NEU-2141, NEU-2142 and NEU-2143
 
@@ -6815,6 +7635,13 @@ line, $41, in the rule's take names a JFC.
     after converting (Trump $495.9M, Kunce $23.2M).
   - Q6's `fec_line` CASE, for any rule on which lines `total_individual` counts.
   - The coverage caveats in decision 4.
+  - The line choices behind the 112 committees Q6 left unexplained (decision 9, Q15). FEC's
+    itemized figure follows the filer's line, and `indiv`'s transaction type does not: a super
+    PAC's receipts are typed 10 on every line (11(c), 12, 13, 17), and a party's offsets 15.
+    NEU-2276 takes the line from `TRAN_ID` where it names one. Where none does ($13.9M at these
+    committees), coverage stays above 100% until the raw filings are a source (NEU-2181). Line
+    numbers are each form's own: Q6's "line 15, other receipts" is Form 3's number, on Form 3X it
+    is line 17, and on Form 3P 17(a) is individuals' contributions.
 - **NEU-2142 (catalogue and extract).**
   - Catalogue `weball` (1980–), `webk` (1996–) and `committee_summary` (2008–). Skip `webl` and
     `candidate_summary`.
