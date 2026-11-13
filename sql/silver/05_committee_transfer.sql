@@ -157,6 +157,12 @@ receipt AS (
         -- would be one (every 16C names a candidate id or, typed CAN or IND, none), so this
         -- only keeps a SUB_ID in one table should a filer name a committee.
         AND oth.TRANSACTION_TP <> '16C'
+        -- The filer is the recipient, so it must be a committee of the cycle, as in
+        -- 04_contribution.sql: a committee `cm` lacks has no name, type or designation, and
+        -- contribution drops what it files. 1980's `oth` holds an 18K filed by C00109298, absent
+        -- from its `cm` (NEU-2281). `named_gift` keeps the same rule, and `twin` drops only rows
+        -- of these two, so every receipt path agrees.
+        AND oth.CMTE_ID IN (SELECT committee_id FROM committee)
 ),
 named_gift AS (
     -- A counted `indiv` row typed PAC, COM, CCM or PTY, or blank and classified an organization's,

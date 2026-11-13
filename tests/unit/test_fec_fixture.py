@@ -546,8 +546,13 @@ def giver(row: Row) -> str | None:
 
 def committee_receipts() -> list[Row]:
     """The `oth` rows that are receipts from another committee: a receipt type (1x, or 3x for a
-    party's accounts), not a memo line, from a giver."""
-    return [row for row in rows("oth") if is_receipt_line(row) and giver(row) is not None]
+    party's accounts), not a memo line, from a giver, filed by a committee in `cm`: the filer is
+    the recipient (NEU-2281)."""
+    return [
+        row
+        for row in rows("oth")
+        if is_receipt_line(row) and giver(row) is not None and row["CMTE_ID"] in committee_ids()
+    ]
 
 
 @functools.cache
