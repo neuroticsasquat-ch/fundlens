@@ -1,9 +1,15 @@
 import { BarChart, LineChart } from "echarts/charts";
 import type { BarSeriesOption, LineSeriesOption } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import {
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent,
+} from "echarts/components";
 import type {
   GridComponentOption,
   LegendComponentOption,
+  TitleComponentOption,
   TooltipComponentOption,
 } from "echarts/components";
 import { init, use as register } from "echarts/core";
@@ -16,13 +22,22 @@ import { CanvasRenderer } from "echarts/renderers";
 // component registers it here.
 
 // `use` renamed, as the linter takes a top-level `use()` for React's hook.
-register([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+register([
+  BarChart,
+  LineChart,
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 export type ChartOption = ComposeOption<
   | BarSeriesOption
   | LineSeriesOption
   | GridComponentOption
   | LegendComponentOption
+  | TitleComponentOption
   | TooltipComponentOption
 >;
 
