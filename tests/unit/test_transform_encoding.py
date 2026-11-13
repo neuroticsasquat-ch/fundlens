@@ -1,5 +1,5 @@
-"""FEC bulk text rewritten as UTF-8 before DuckDB reads it (`transform.runner.copy_as_utf8`,
-NEU-2069)."""
+"""FEC bulk text rewritten as UTF-8, NUL bytes dropped, before DuckDB reads it
+(`transform.runner.copy_as_utf8`, NEU-2069, NEU-2282)."""
 
 import io
 from pathlib import Path
@@ -18,6 +18,14 @@ LINES: list[tuple[bytes, str]] = [
     (b"C003|O\x92BRIEN, PAT|x\n", "O’BRIEN, PAT"),
     # A byte Windows-1252 leaves undefined: read as latin-1.
     (b"C004|X\x81Y|x\n", "X\x81Y"),
+    # A NUL in a UTF-8 line, as in `C00080291`'s `CONNECTED_ORG_NM` in 1994's `cm` (in a block
+    # MIXED's other lines keep from being UTF-8; the next test has a block that is).
+    (
+        b"C005|MARSHALL POLITICAL ACTION COMM (AFFL)\x00|x\n",
+        "MARSHALL POLITICAL ACTION COMM (AFFL)",
+    ),
+    # A NUL in a Windows-1252 line.
+    (b"C006|O\x92BRIEN\x00 PAC|x\n", "O’BRIEN PAC"),
 ]
 MIXED = b"".join(raw for raw, _ in LINES)
 
@@ -38,6 +46,12 @@ def test_utf8_text_is_copied_byte_for_byte_with_or_without_a_final_newline() -> 
     text = "C001|SOLAGES, CARRIÉ|x\nC002|ÅSE|y".encode()
 
     assert utf8(text) == text
+
+
+def test_a_nul_is_dropped_from_a_block_that_is_utf8_already() -> None:
+    text = "C001|MARSHALL POLITICAL ACTION COMM (AFFL)\x00|x\nC002|\x00ÅSE|y\n".encode()
+
+    assert utf8(text) == "C001|MARSHALL POLITICAL ACTION COMM (AFFL)|x\nC002|ÅSE|y\n".encode()
 
 
 @pytest.mark.parametrize("chunk_bytes", [1, 2, 3, 5, 7, 16])
