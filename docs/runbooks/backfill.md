@@ -780,3 +780,27 @@ Merging it redeploys `pipeline`, which is safe now that nothing is running.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-13 — 1980 rerun after NEU-2281
+
+1980's build `20261113T010657Z` (from `2aa1466`) failed `silver_committee_transfer_recipient.sql` on an 18K
+filed by `C00109298`, absent from 1980's `cm`. NEU-2281 (PR #149) fixed it. Every cycle from here on is built
+from `ad1447bb7230c7672ff3ef08ae1333434909d0d7`; 1980 reruns under a new build.
+
+### 2026-11-13 — 1994 rerun after NEU-2282
+
+1994's build `20261113T023353Z` (from `ad1447b`) stopped at `load`: `COPY committee, line 16224` refused a NUL
+byte (`CharacterNotInRepertoire … 0x00`), the last character of `C00080291`'s `CONNECTED_ORG_NM` in 1994's `cm`.
+NEU-2282 (PR #150) drops NUL bytes from FEC bulk text in `copy_as_utf8`. 1980–1992's silver holds no NUL, so they
+are not rebuilt. 1994 onward is built from `da1b6f4235ddeb39c89ef12f16f57d41f021e6e7`; 1994 reruns under a new build.
+
+### 2026-11-13 — 1980–1998 rebuilt after NEU-2283
+
+1998's build `20261113T035643Z` (from `da1b6f4`) passed every check, but 11 of its 473 races totalled $0, against
+none in 1994 and 1996. `TN-09`, `OR-03` and `NY-18` were missing their incumbents (`H6TN09043`, `H6OR03064`,
+`H8NY20056`). FEC's 1998 `cn` lists them with `CAND_ELECTION_YR` 2000, their latest registration, and
+`02_candidate.sql` only gave a race to filings for 1997–1998. 25 House incumbents and $14.30M were left out of
+1998's races; Senate filings for a later year (about 60 incumbents a cycle) are senators whose seat isn't up, and
+correctly have no race. NEU-2283 stands a House filing for the next election marked `I` in this cycle's race. The
+fix is in silver, so 1980–1998 are rebuilt from its merge before 2000; each first build's directory is kept as
+`<C>-superseded-<B>`.
