@@ -5,7 +5,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - one view per FEC bulk file published for the cycle, named for it (`cm`, `cn`, `ccl`, …): the
   newest bronze zip's text file read with the vendored column names, as VARCHAR and then cast to
   the catalogue's types (`fec.files`). DuckDB cannot read a zip, so the text is unpacked under
-  `scratch/` for the run, rewritten as UTF-8 on the way (`copy_as_utf8`), and deleted after it.
+  `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
+  deleted after it.
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
@@ -158,11 +159,12 @@ def _write_utf8(block: bytes, out: IO[bytes]) -> None:
         block = b"".join(
             _decode_line(line).encode("utf-8") for line in block.splitlines(keepends=True)
         )
-    out.write(block)
+    # Postgres refuses a NUL in `text`, and a NUL is never data in FEC's pipe-delimited text.
+    out.write(block.replace(b"\x00", b""))
 
 
 def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYTES) -> None:
-    """Copy FEC bulk text from `src` to `out`, rewritten as UTF-8 where it is not already.
+    """Copy FEC bulk text from `src` to `out` as UTF-8, without its NUL bytes.
 
     FEC's bulk text is not in one encoding: a newer filing writes UTF-8 and an older or
     Windows-made one latin-1 or Windows-1252, side by side in one file. DuckDB reads one
@@ -170,6 +172,11 @@ def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYT
     file (NEU-2069). Each line is decoded as UTF-8, else Windows-1252, else latin-1, so no line
     can fail and no row is dropped. The copy runs in blocks cut after a newline, so a character
     is never split; a block that is valid UTF-8 already, nearly every one, is written as it is.
+
+    Every NUL byte (0x00) is dropped, from every block. A NUL is never data in FEC's
+    pipe-delimited text, and Postgres refuses one in a `text` value, so one that reached silver
+    failed gold's `COPY` (1994's `cm`, `C00080291`'s `CONNECTED_ORG_NM`; NEU-2282). Dropping it
+    here keeps it out of silver, the published dataset, as well as out of gold.
     """
     tail = b""
     while chunk := src.read(chunk_bytes):
