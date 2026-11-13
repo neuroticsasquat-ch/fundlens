@@ -921,14 +921,18 @@ def test_contributions_reduce_to_contributor_keys_spelled_as_the_normalizers_spe
 def test_the_race_check_fails_until_the_bad_district_is_an_unmatched_filing(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
-    put_bronze(store)
+    # A House incumbent's filing for the next election stands this cycle too (NEU-2283), so one
+    # for a district that isn't drawn is checked as BAD is.
+    later = "H6MD09110|HALE, ROY|DEM|2026|MD|H|09|I|C||9 ELM ST||ROCKVILLE|MD|20850\n"
+    put_bronze(store, texts={"cn": fec_fixture.bulk_text("cn") + later})
 
-    # No `seats --report` yet: app.unmatched_filing does not hold the filing.
+    # No `seats --report` yet: app.unmatched_filing does not hold the filings.
     failed = transform()
 
     assert isinstance(failed.exception, ChecksFailed)
     assert "silver_candidate_race.sql" in str(failed.exception)
     assert BAD in str(failed.exception)
+    assert "H6MD09110" in str(failed.exception)
     assert uploaded_silver(store) == []
     assert not markers.exists("transformed", store, cycle=2024, build_id=BUILD)
 
@@ -1013,6 +1017,58 @@ def test_a_filing_for_a_lone_special_joins_it_and_a_later_cycles_filing_joins_no
         "S6OH00130": "2026-S-OH-00-special",
         "S8MD00140": None,
     }
+
+
+def test_a_house_incumbent_registered_for_the_next_election_stands_in_this_cycles_race(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # 1998's `cn` gives each candidate their latest election year (NEU-2283): a member who won
+    # in 1998 and has registered for 2000 is listed with 2000.
+    later = (
+        "H8MD03301|HOLT, ADA|DEM|2000|MD|H|03|I|C||1 ELM ST||TOWSON|MD|21204\n"
+        # A challenger registered early for 2000, and a senator whose class 3 seat, up in 1998,
+        # she doesn't hold: neither stands in a 1998 race.
+        "H8MD04302|IRBY, CAL|REP|2000|MD|H|04|C|C||2 ELM ST||LAUREL|MD|20707\n"
+        "S8MD00303|JUNG, DEE|DEM|2000|MD|S|00|I|C||3 ELM ST||ANNAPOLIS|MD|21401\n"
+    )
+    put_bronze(
+        store,
+        1998,
+        texts={"cn": fec_fixture.bulk_text("cn", fec_fixture.fixture_dir(1998)) + later},
+    )
+    seats_report(1998)
+
+    result = transform(1998)
+
+    assert result.exit_code == 0, result.output
+    races = {
+        row["candidate_id"]: row["race_id"]
+        for row in read_silver(store, "candidate", tmp_path, cycle=1998)
+    }
+    assert races == {
+        "H8MD05201": "1998-H-MD-05",
+        "H8MD05202": "1998-H-MD-05",
+        "H8MD03301": "1998-H-MD-03",
+        "H8MD04302": None,
+        "S8MD00303": None,
+    }
+
+
+def test_a_house_incumbent_registered_for_an_election_on_a_new_map_stands_in_no_race(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # 1992 numbers its districts from the 1990 census's map, so a 1990 member's 1992 district
+    # may be another seat's in 1990. The race check leaves the filing alone.
+    later = "H0MD03401|KANE, ELI|DEM|1992|MD|H|03|I|C||4 ELM ST||TOWSON|MD|21204\n"
+    texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(1990)}
+    texts["cn"] = later
+    put_bronze(store, 1990, texts=texts)
+
+    result = transform(1990)
+
+    assert result.exit_code == 0, result.output
+    candidates = read_silver(store, "candidate", tmp_path, cycle=1990)
+    assert [(row["candidate_id"], row["race_id"]) for row in candidates] == [("H0MD03401", None)]
 
 
 def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(

@@ -171,6 +171,29 @@ def test_read_filings_keeps_the_cycles_candidates_only() -> None:
     assert filings[1] == Filing("H6MD09102", "H", "MD", "09")
 
 
+@pytest.mark.parametrize(
+    ("cycle", "year", "office", "ici", "standing"),
+    [
+        (1998, "1998", "H", "C", True),
+        (1998, "1997", "S", "C", True),
+        # `cn` lists a House member who won in 1998 under their 2000 registration (NEU-2283).
+        (1998, "2000", "H", "I", True),
+        (1998, " 2000 ", "H", "I", True),
+        (1998, "2000", "H", "C", False),
+        (1998, "2000", "H", "O", False),
+        # A senator whose seat isn't up.
+        (1998, "2000", "S", "I", False),
+        (1998, "2002", "H", "I", False),
+        # 1992 numbers its districts from the 1990 census's map, not 1990's.
+        (1990, "1992", "H", "I", False),
+    ],
+)
+def test_a_filing_stands_for_its_cycle_or_as_the_house_incumbent_for_the_next(
+    cycle: int, year: str, office: str, ici: str, standing: bool
+) -> None:
+    assert seats.stands(cycle, year=year, office=office, incumbent_challenger_open=ici) is standing
+
+
 def test_only_a_filing_for_no_seat_is_unmatched() -> None:
     races = seats.races_for(2026)
     filings = [
