@@ -24,7 +24,21 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | 2024 | 2026-11-01 | `20261031T202003Z` | `a4c82b8` | — | 6 | — | 169 (73.08 + 93.51) | 91 | — | 2.03 | 2.61 | 24.54 GiB | First resolved build: donor tables live ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Resolved, loaded and published NEU-2078's build; `seats` ran only to add the `race` partition its transform-only run lacked. Silver is after resolution's bucketed rewrite. Peak memory is resolve's; load and publish stayed below it. |
 | 2024 | 2026-11-02 | `20261102T031624Z` | `22e56ce` | — | — | — | 170 (71.34 + 91.29) | 104 | — | — | — | — | Load and publish after re-clustering (NEU-2122, [refreshing-dime.md](runbooks/refreshing-dime.md) §8); both times are `time`'s `real`. 3,822,946 donors, 6,968,328 `donor_top_recipient` rows, 1 `donor_redirect`. |
 
-The backfill (NEU-2060) and the weekly run (M5) add their own figures here.
+The weekly run (M5) adds its own figures here. The backfill's are under [Backfill](#backfill), apart from its last
+load and publish of every cycle together, which gets a row here.
+
+## Backfill
+
+One row per cycle the backfill built ([backfill.md](runbooks/backfill.md) step 3.3, NEU-2060), oldest first, each
+from one build's extract, seats, transform, load and publish, without resolution. `indiv` is the size FEC served
+for the cycle's `indiv` zip, the input the transform's memory follows; 2024's was the reference for raising
+DuckDB's limit. Gold is all of gold after the cycle's publish: every cycle published so far, without donors except
+2024's. The peak is `pipeline`'s from the run's 10 s sampler, with the step whose log line came last before it.
+Load is written as under Per cycle. DuckDB limit is `DUCKDB_MEMORY_LIMIT` during the cycle. Free disk is on `/` after the
+publish, in decimal GB.
+
+| Cycle | Date | Build | SHA | `indiv` GB | Extract s | Seats s | Transform s | Load s | Publish s | Bronze GB | Silver GB | Gold GB | Peak `pipeline` memory | DuckDB limit | Free disk GB | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Resolution
 
@@ -148,3 +162,10 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   correct one lost, and if NEU-2188's sample holds, many of those "wrong" pairs are DIME's own errors, so the trade
   is worse than it looks. The cluster cap bound at no threshold (largest 103 keys at most), and 0.95 is kept by the
   rule's last tier, top-scope recall 0.7988 accepted.
+
+## Triggers
+
+The handover's triggers for moving the pipeline to an ephemeral runner (spec §10.6, §13): a weekly run over 6–8 h,
+or steady-state disk over ~300 GB. Not yet checked. The backfill (NEU-2060) writes the check here from the rows
+above ([backfill.md](runbooks/backfill.md) step 9): the weekly run's estimated time, the steady-state disk, the
+memory peaks against the 40 GiB container, and which triggers fired, each with the ticket filed for it.
