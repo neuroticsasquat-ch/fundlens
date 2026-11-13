@@ -128,9 +128,12 @@ describe("RacePage", () => {
     await screen.findByRole("region", { name: "Candidates" });
 
     expect(screen.queryByText(/^Independent expenditures:/)).not.toBeInTheDocument();
-    // A bar of what each raised, and no legend.
-    expect(lastOption().series).toMatchObject([{ name: "Raised" }]);
-    expect(lastOption().legend).toMatchObject({ show: false });
+    // The "Raised" panel alone: a bar of what each raised, and no legend.
+    const option = lastOption();
+    expect(option.series).toMatchObject([{ name: "Raised" }]);
+    expect(option.legend).toMatchObject({ show: false });
+    expect(option.grid).not.toBeInstanceOf(Array);
+    expect(option.title).toBeUndefined();
   });
 
   it("has a fixture whose candidates' independent expenditures add up to the race's", () => {
@@ -201,63 +204,123 @@ describe("RacePage", () => {
     expect(rows("Top donors").map((row) => cells(row)[1])).not.toContain("WHITLOCK, GORDON");
   });
 
-  it("stacks each candidate's total, in their party's colour, and the independent expenditures for and against them", async () => {
+  it("charts what each candidate raised, and beside it the independent expenditures against them left of zero and for them right of it", async () => {
     renderApp("/race/2024/senate/MD");
     await screen.findByRole("region", { name: "Candidates" });
 
     const option = lastOption();
-    expect(option.yAxis).toMatchObject({
-      data: ["WHITLOCK, GORDON", "OKAFOR, DIANA", "BRANNIGAN, TESS", "PELL, MARCUS"],
-    });
-    expect(option.series).toMatchObject([
-      {
+    const names = ["WHITLOCK, GORDON", "OKAFOR, DIANA", "BRANNIGAN, TESS", "PELL, MARCUS"];
+    // Two panels side by side, the candidates down each one's category axis in one order.
+    expect(option.title).toMatchObject([{ text: "Raised" }, { text: "Independent expenditures" }]);
+    expect(option.grid).toHaveLength(2);
+    expect(option.yAxis).toMatchObject([
+      { gridIndex: 0, data: names },
+      { gridIndex: 1, data: names, axisLabel: { show: false } },
+    ]);
+    expect(option.series).toEqual([
+      expect.objectContaining({
         type: "bar",
         name: "Raised",
-        stack: "spending",
-        data: [{ value: 1786850 }, { value: 79200 }, { value: 7175 }, { value: 3250 }],
-      },
-      {
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: [
+          expect.objectContaining({ value: 1786850 }),
+          expect.objectContaining({ value: 79200 }),
+          expect.objectContaining({ value: 7175 }),
+          expect.objectContaining({ value: 3250 }),
+        ],
+      }),
+      expect.objectContaining({
         type: "bar",
         name: "Independent expenditures for",
-        stack: "spending",
+        xAxisIndex: 1,
+        yAxisIndex: 1,
         data: [0, 150000, 0, 0],
-      },
-      {
+      }),
+      expect.objectContaining({
         type: "bar",
         name: "Independent expenditures against",
-        stack: "spending",
-        data: [80000, 45000, 0, 0],
-      },
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: [-80000, -45000, 0, 0],
+      }),
     ]);
+    // Nothing others spent is stacked onto what a candidate raised.
+    expect((option.series as object[])[0]).not.toHaveProperty("stack");
     expect(option.legend).toMatchObject({
       show: true,
-      data: ["Independent expenditures for", "Independent expenditures against"],
+      data: ["Independent expenditures against", "Independent expenditures for"],
     });
   });
 
-  it("charts the candidates by their bars' length, whatever order the API gives them in", async () => {
-    // BRANNIGAN, out-raised by OKAFOR in individual gifts and with no independent expenditures,
-    // out-totals her bar via joint fundraising.
-    const candidates = RACE_SENATE_MD.candidates.map((candidate) =>
-      candidate.candidate_id === "S4MD00111"
-        ? { ...candidate, total_jfc_transfers: 300000 }
-        : candidate,
-    );
+  it("shows the independent expenditures against a candidate as positive amounts", async () => {
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Candidates" });
+
+    const option = lastOption();
+    // Drawn below zero, "against" is told and labelled as the positive amount spent.
+    const [, , against] = option.series as {
+      tooltip: { valueFormatter: (value: number) => string };
+    }[];
+    expect(against.tooltip.valueFormatter(-80000)).toBe("$80,000");
+    const [, independent] = option.xAxis as {
+      axisLabel: { formatter: (value: number) => string };
+    }[];
+    expect(independent.axisLabel.formatter(-50000)).toBe("$50K");
+    expect(independent.axisLabel.formatter(150000)).toBe("$150K");
+    const legend = option.legend as { formatter: (name: string) => string };
+    expect(legend.formatter("Independent expenditures for")).toBe("For");
+    expect(legend.formatter("Independent expenditures against")).toBe("Against");
+  });
+
+  it("charts the candidates by what they raised, whatever order the API gives them in", async () => {
+    // BRANNIGAN, out-raised by OKAFOR in individual gifts, out-raises her via joint fundraising.
+    // PELL, attacked with more than anyone raised, stays last of those who raised money, and
+    // SAYRE, who raised nothing, is charted below him for what was spent for her.
+    const [model] = RACE_SENATE_MD.candidates;
+    const candidates = [
+      ...RACE_SENATE_MD.candidates.map((candidate) => {
+        if (candidate.candidate_id === "S4MD00111")
+          return { ...candidate, total_jfc_transfers: 300000 };
+        if (candidate.candidate_id === "S4MD00105") return { ...candidate, ie_oppose: 5000000 };
+        return candidate;
+      }),
+      {
+        ...model,
+        candidate_id: "S4MD00199",
+        name: "SAYRE, JUNE",
+        total_individual: 0,
+        total_committee: 0,
+        total_jfc_transfers: 0,
+        self_funding: 0,
+        ie_support: 10000,
+        ie_oppose: 0,
+      },
+    ].reverse();
     renderApp("/race/2024/senate/MD", {
       handlers: [
         http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
-          response(200).json({ ...RACE_SENATE_MD, candidates }),
+          response(200).json({ ...RACE_SENATE_MD, candidate_count: 5, candidates }),
         ),
       ],
     });
     await screen.findByRole("region", { name: "Candidates" });
 
-    expect(lastOption().yAxis).toMatchObject({
-      data: ["WHITLOCK, GORDON", "BRANNIGAN, TESS", "OKAFOR, DIANA", "PELL, MARCUS"],
-    });
+    expect(lastOption().yAxis).toMatchObject([
+      {
+        data: [
+          "WHITLOCK, GORDON",
+          "BRANNIGAN, TESS",
+          "OKAFOR, DIANA",
+          "PELL, MARCUS",
+          "SAYRE, JUNE",
+        ],
+      },
+      {},
+    ]);
   });
 
-  it("charts only the 15 candidates with the most money, and says the table has the rest", async () => {
+  it("charts only the 15 candidates who raised the most, and says the table has the rest", async () => {
     // A presidential race lists every filer: 1,602 in 2024, most with nothing. A bar each would
     // make a canvas taller than the browser will draw.
     const [model] = RACE_SENATE_MD.candidates;
@@ -286,7 +349,7 @@ describe("RacePage", () => {
       data: candidates.slice(0, 15).map((candidate) => candidate.name),
     });
     expect(
-      screen.getByText("The 15 candidates with the most money, of 25. The table lists them all."),
+      screen.getByText("The 15 candidates who raised the most, of 25. The table lists them all."),
     ).toBeInTheDocument();
     expect(rows("Candidates")).toHaveLength(25);
   });

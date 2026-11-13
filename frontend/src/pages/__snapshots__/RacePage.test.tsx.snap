@@ -2,24 +2,42 @@
 
 exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = `
 {
-  "backgroundColor": "transparent",
-  "grid": {
-    "bottom": 8,
-    "containLabel": true,
-    "left": 8,
-    "right": 24,
-    "top": 40,
+  "axisPointer": {
+    "link": [
+      {
+        "yAxisIndex": "all",
+      },
+    ],
   },
+  "backgroundColor": "transparent",
+  "grid": [
+    {
+      "bottom": 8,
+      "containLabel": true,
+      "left": 8,
+      "right": "44%",
+      "top": 56,
+    },
+    {
+      "bottom": 8,
+      "containLabel": true,
+      "left": "60%",
+      "right": 24,
+      "top": 56,
+    },
+  ],
   "legend": {
     "data": [
-      "Independent expenditures for",
       "Independent expenditures against",
+      "Independent expenditures for",
     ],
+    "formatter": [Function],
+    "left": "60%",
     "show": true,
     "textStyle": {
       "color": "#C9C9C9",
     },
-    "top": 0,
+    "top": 26,
   },
   "series": [
     {
@@ -50,8 +68,9 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         },
       ],
       "name": "Raised",
-      "stack": "spending",
       "type": "bar",
+      "xAxisIndex": 0,
+      "yAxisIndex": 0,
     },
     {
       "data": [
@@ -64,13 +83,15 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         "color": "#38d9a9",
       },
       "name": "Independent expenditures for",
-      "stack": "spending",
+      "stack": "independent",
       "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
     },
     {
       "data": [
-        80000,
-        45000,
+        -80000,
+        -45000,
         0,
         0,
       ],
@@ -78,13 +99,40 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         "color": "#ffa94d",
       },
       "name": "Independent expenditures against",
-      "stack": "spending",
+      "stack": "independent",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
       "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
     },
   ],
   "textStyle": {
     "color": "#C9C9C9",
   },
+  "title": [
+    {
+      "left": 8,
+      "text": "Raised",
+      "textStyle": {
+        "color": "#C9C9C9",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+    {
+      "left": "60%",
+      "text": "Independent expenditures",
+      "textStyle": {
+        "color": "#C9C9C9",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+  ],
   "tooltip": {
     "axisPointer": {
       "type": "shadow",
@@ -92,59 +140,121 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
     "trigger": "axis",
     "valueFormatter": [Function],
   },
-  "xAxis": {
-    "axisLabel": {
-      "color": "#828282",
-      "formatter": [Function],
-    },
-    "splitLine": {
-      "lineStyle": {
-        "color": "#3b3b3b",
+  "xAxis": [
+    {
+      "axisLabel": {
+        "color": "#828282",
+        "formatter": [Function],
       },
-    },
-    "type": "value",
-  },
-  "yAxis": {
-    "axisLine": {
-      "lineStyle": {
-        "color": "#696969",
+      "gridIndex": 0,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#3b3b3b",
+        },
       },
+      "type": "value",
     },
-    "axisTick": {
-      "show": false,
+    {
+      "axisLabel": {
+        "color": "#828282",
+        "formatter": [Function],
+      },
+      "gridIndex": 1,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#3b3b3b",
+        },
+      },
+      "type": "value",
     },
-    "data": [
-      "WHITLOCK, GORDON",
-      "OKAFOR, DIANA",
-      "BRANNIGAN, TESS",
-      "PELL, MARCUS",
-    ],
-    "inverse": true,
-    "type": "category",
-  },
+  ],
+  "yAxis": [
+    {
+      "axisLabel": {
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#696969",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 0,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": false,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#696969",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 1,
+      "inverse": true,
+      "type": "category",
+    },
+  ],
 }
 `;
 
 exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] = `
 {
-  "backgroundColor": "transparent",
-  "grid": {
-    "bottom": 8,
-    "containLabel": true,
-    "left": 8,
-    "right": 24,
-    "top": 40,
+  "axisPointer": {
+    "link": [
+      {
+        "yAxisIndex": "all",
+      },
+    ],
   },
+  "backgroundColor": "transparent",
+  "grid": [
+    {
+      "bottom": 8,
+      "containLabel": true,
+      "left": 8,
+      "right": "44%",
+      "top": 56,
+    },
+    {
+      "bottom": 8,
+      "containLabel": true,
+      "left": "60%",
+      "right": 24,
+      "top": 56,
+    },
+  ],
   "legend": {
     "data": [
-      "Independent expenditures for",
       "Independent expenditures against",
+      "Independent expenditures for",
     ],
+    "formatter": [Function],
+    "left": "60%",
     "show": true,
     "textStyle": {
       "color": "#000",
     },
-    "top": 0,
+    "top": 26,
   },
   "series": [
     {
@@ -175,8 +285,9 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         },
       ],
       "name": "Raised",
-      "stack": "spending",
       "type": "bar",
+      "xAxisIndex": 0,
+      "yAxisIndex": 0,
     },
     {
       "data": [
@@ -189,13 +300,15 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         "color": "#12b886",
       },
       "name": "Independent expenditures for",
-      "stack": "spending",
+      "stack": "independent",
       "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
     },
     {
       "data": [
-        80000,
-        45000,
+        -80000,
+        -45000,
         0,
         0,
       ],
@@ -203,13 +316,40 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         "color": "#fd7e14",
       },
       "name": "Independent expenditures against",
-      "stack": "spending",
+      "stack": "independent",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
       "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
     },
   ],
   "textStyle": {
     "color": "#000",
   },
+  "title": [
+    {
+      "left": 8,
+      "text": "Raised",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+    {
+      "left": "60%",
+      "text": "Independent expenditures",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+  ],
   "tooltip": {
     "axisPointer": {
       "type": "shadow",
@@ -217,35 +357,79 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
     "trigger": "axis",
     "valueFormatter": [Function],
   },
-  "xAxis": {
-    "axisLabel": {
-      "color": "#868e96",
-      "formatter": [Function],
-    },
-    "splitLine": {
-      "lineStyle": {
-        "color": "#e9ecef",
+  "xAxis": [
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
       },
-    },
-    "type": "value",
-  },
-  "yAxis": {
-    "axisLine": {
-      "lineStyle": {
-        "color": "#adb5bd",
+      "gridIndex": 0,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
       },
+      "type": "value",
     },
-    "axisTick": {
-      "show": false,
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
+      },
+      "gridIndex": 1,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
+      },
+      "type": "value",
     },
-    "data": [
-      "WHITLOCK, GORDON",
-      "OKAFOR, DIANA",
-      "BRANNIGAN, TESS",
-      "PELL, MARCUS",
-    ],
-    "inverse": true,
-    "type": "category",
-  },
+  ],
+  "yAxis": [
+    {
+      "axisLabel": {
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 0,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": false,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 1,
+      "inverse": true,
+      "type": "category",
+    },
+  ],
 }
 `;
