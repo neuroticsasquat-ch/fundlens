@@ -68,3 +68,7 @@ C00800203,N,Q3,G2024,202400002992107202,32J,ORG,CHESAPEAKE ELECTION LAW GROUP,AN
 # and his, not the giver's: OTHER_ID names his old House id, which `cn` lacks, and the candidate is
 # the one `ccl` links the recipient to.
 C00800104,N,Q3,G2024,202400002992107203,20C,CAN,"WHITLOCK, GORDON",POTOMAC,MD,20854,WHITLOCK HOLDINGS,EXECUTIVE,09162024,100000,H8MD06001,SB19A.00001,1900104,,,4240300000000000029
+# An 18K naming its giver, filed by a committee missing from `cm` (NEU-2281, 1980's C00109298): the
+# filer is the recipient, a committee the cycle cannot name, so no receipt, as `contribution` drops
+# what such a committee files.
+C00899999,N,Q3,G2024,202400004300000012,18K,PAC,BRICKLAYERS UNITED PAC,WASHINGTON,DC,20005,,,09202024,500,C00800202,SA12.00413,1900999,,,4240300000000000030

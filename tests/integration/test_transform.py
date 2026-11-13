@@ -52,6 +52,8 @@ FAIRBANKS_EARMARK_REFUND, PARK_TIP_REFUND, PARK_EARMARK_REFUND = (
     4240100000000000349,
     4240100000000000350,
 )
+# An 18K naming its giver, filed by a committee `cm` lacks (NEU-2281): no receipt.
+UNKNOWN_FILER_RECEIPT = 4240300000000000030
 OTH_NOT_RECEIPTS = {
     4240200000000000010,  # pas2's 24K, repeated in oth
     4240200000000000003,  # pas2's 24A, repeated in oth
@@ -65,6 +67,7 @@ OTH_NOT_RECEIPTS = {
     4240300000000000025,
     4240300000000000026,  # a union's gift to the party's building account: an organization's
     4240300000000000028,  # an organization's 32J to the party's recount account (NEU-2205)
+    UNKNOWN_FILER_RECEIPT,
 }
 OTH_PARTY_ACCOUNT_RECEIPT = 4240300000000000013
 # Organization money (NEU-2131, ADR-0011): ACME's gift to PELL; CHESAPEAKE STEEL's two gifts to the
@@ -1537,6 +1540,16 @@ def test_committee_transfers_hold_each_side_once_and_add_up_to_the_expected_tota
     receipt_ids = {row["source_record_id"] for row in receipts}
     assert receipt_ids & OTH_NOT_RECEIPTS == set()
     assert OTH_PARTY_ACCOUNT_RECEIPT in receipt_ids
+    # A receipt filed by a committee `cm` lacks is dropped, so every recipient is one of the
+    # cycle's committees (NEU-2281).
+    assert UNKNOWN_FILER_RECEIPT not in receipt_ids
+    with duckdb.connect() as con:
+        tables: tuple[SilverTable, ...] = ("committee_transfer", "committee")
+        for table in tables:
+            key = f"{paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
+            source = paths.local_path(fixture_silver, key)
+            con.execute(f"CREATE TABLE {table} AS SELECT * FROM read_parquet('{source}')")
+        assert failing_rows(con, "silver_committee_transfer_recipient.sql") == []
     assert len(receipts) == expected["rows"]["oth"] - len(OTH_NOT_RECEIPTS) + 2
     assert len(disbursements) == len(rows) - len(receipts)
     assert len(rows) == expected["silver"]["committee_transfer"]

@@ -89,14 +89,15 @@ rows:
   ccl: 15
   indiv: 378
   pas2: 30
-  oth: 31
+  oth: 32
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
-# every `oth` receipt from a committee (recorded by the receiving committee), every `indiv` row a
-# committee's by the name rule (`name_matched` below), plus every `pas2` 24K row not filed by a
-# conduit (a disbursement, recorded by the giver): the one gift on both sides, each side its own
-# row. organization_receipt is one row per `organization_receipts` receipt below.
+# every `oth` receipt from a committee (recorded by the receiving committee, so filed by one in
+# `cm`, NEU-2281), every `indiv` row a committee's by the name rule (`name_matched` below), plus
+# every `pas2` 24K row not filed by a conduit (a disbursement, recorded by the giver): the one gift
+# on both sides, each side its own row. organization_receipt is one row per
+# `organization_receipts` receipt below.
 silver:
   committee: 23
   candidate: 15
