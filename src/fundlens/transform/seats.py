@@ -240,9 +240,9 @@ def read_filings(cn_zip: bytes, cycle: int) -> list[Filing]:
     The file for a cycle also lists candidates registered for later cycles (a senator up in four
     years) and earlier ones; only a `CAND_ELECTION_YR` of the cycle's even year, or of the odd year
     before it for a special held then, is a filing for one of its seats. `cn` gives each candidate
-    only their latest year, so a House incumbent's filing for the next election stands too, when
-    that election keeps this cycle's map (NEU-2283): the rule `sql/silver/02_candidate.sql` joins
-    a filing to its race by.
+    only their latest year, so a House incumbent's filing for the next election, or the odd year
+    after this cycle's, stands too (NEU-2283, NEU-2287): the rule `sql/silver/02_candidate.sql`
+    joins a filing to its race by.
     """
     columns = CATALOGUE["cn"].header()
     at = {name: columns.index(name) for name in columns}
@@ -275,18 +275,17 @@ def stands(cycle: int, *, year: str, office: str, incumbent_challenger_open: str
     """Whether a `cn` filing for election `year` stands in one of `cycle`'s races.
 
     A filing for the cycle's even year, or the odd year before it, does. So does a House filing
-    for the next election marked incumbent, since the member held the seat after this cycle's
-    election, unless the next election is the first under a new apportionment (`cycle` divisible
-    by 10) and so numbers its districts from another map.
+    marked incumbent for the next election, or for the odd year after this cycle's, since the
+    member held the seat after this cycle's election. A census-year cycle is no exception: its
+    `cn` still numbers those filings from this cycle's map (NEU-2287).
     """
     year = year.strip()
     if year in {str(cycle - 1), str(cycle)}:
         return True
     return (
         office == "H"
-        and year == str(cycle + 2)
+        and year in {str(cycle + 1), str(cycle + 2)}
         and incumbent_challenger_open == "I"
-        and cycle % 10 != 0
     )
 
 

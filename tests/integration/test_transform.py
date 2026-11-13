@@ -1054,12 +1054,17 @@ def test_a_house_incumbent_registered_for_the_next_election_stands_in_this_cycle
     }
 
 
-def test_a_house_incumbent_registered_for_an_election_on_a_new_map_stands_in_no_race(
+def test_a_census_year_house_incumbent_registered_for_the_next_election_stands_in_its_race(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
-    # 1992 numbers its districts from the 1990 census's map, so a 1990 member's 1992 district
-    # may be another seat's in 1990. The race check leaves the filing alone.
-    later = "H0MD03401|KANE, ELI|DEM|1992|MD|H|03|I|C||4 ELM ST||TOWSON|MD|21204\n"
+    # A census-year cycle's `cn` numbers a member's next-election filing from this cycle's map
+    # (NEU-2287), whether for the next cycle or the odd year after this one's election.
+    later = (
+        "H0MD03401|KANE, ELI|DEM|1992|MD|H|03|I|C||4 ELM ST||TOWSON|MD|21204\n"
+        "H0MD04402|LUND, FAY|REP|1991|MD|H|04|I|C||5 ELM ST||LAUREL|MD|20707\n"
+        # A challenger registered early for 1991 stands in no 1990 race.
+        "H0MD05403|MOSS, GUS|REP|1991|MD|H|05|C|C||6 ELM ST||BOWIE|MD|20715\n"
+    )
     texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(1990)}
     texts["cn"] = later
     put_bronze(store, 1990, texts=texts)
@@ -1068,7 +1073,11 @@ def test_a_house_incumbent_registered_for_an_election_on_a_new_map_stands_in_no_
 
     assert result.exit_code == 0, result.output
     candidates = read_silver(store, "candidate", tmp_path, cycle=1990)
-    assert [(row["candidate_id"], row["race_id"]) for row in candidates] == [("H0MD03401", None)]
+    assert {row["candidate_id"]: row["race_id"] for row in candidates} == {
+        "H0MD03401": "1990-H-MD-03",
+        "H0MD04402": "1990-H-MD-04",
+        "H0MD05403": None,
+    }
 
 
 def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(
