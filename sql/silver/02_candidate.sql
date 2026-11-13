@@ -8,12 +8,16 @@
 -- stands in one of its races: `cn` also lists candidates registered for later cycles. But `cn`
 -- gives each candidate only their latest election year, so a House member who won this cycle and
 -- has already registered for the next election is listed with next cycle's year (NEU-2283: 25 of
--- 1998's incumbents, $14.30M). A House filing for the next election marked incumbent (`I`) held
--- the seat after this cycle's election, so it stands in this cycle's race for that seat too:
--- except when the next election is the first under a new apportionment (a cycle divisible by 10),
--- whose district numbers come from the new map. A later filing marked `C` or `O`, and a Senate
--- one (a senator whose seat isn't up), stands in no race. `transform.seats.read_filings` applies
--- the same rule, and `sql/checks/silver_candidate_race.sql` checks every filing it covers.
+-- 1998's incumbents, $14.30M), or now and then with the odd year after it (NEU-2287: Gene Taylor,
+-- MS-05, 2001 in 2000's `cn`). A House filing for either year marked incumbent (`I`) held the
+-- seat after this cycle's election, so it stands in this cycle's race for that seat too. That
+-- holds in a census-year cycle as well, though the next election is the first on a new map:
+-- NEU-2287 compared each of 1990–2020's 15 such filings with the same member's filing in the
+-- previous cycle's `cn`, and none had moved district, so the census year's file still numbers
+-- them from this cycle's map (1980's 10, with no 1978 file to compare, are taken to do the
+-- same). A later filing marked `C` or `O`, and a Senate one (a senator whose seat isn't up),
+-- stands in no race. `transform.seats.read_filings` applies the same rule, and
+-- `sql/checks/silver_candidate_race.sql` checks every filing it covers.
 -- A filing whose (office, state, district) is no seat in the calendar gets no race (spec §5.2).
 --
 -- principal_committee_id is the committee `cn` names principal (CAND_PCC). In a cycle with no `ccl`
@@ -70,9 +74,8 @@ LEFT JOIN race_for_seat
         filed.CAND_ELECTION_YR IN ({cycle} - 1, {cycle})
         OR (
             filed.CAND_OFFICE = 'H'
-            AND filed.CAND_ELECTION_YR = {cycle} + 2
+            AND filed.CAND_ELECTION_YR IN ({cycle} + 1, {cycle} + 2)
             AND filed.CAND_ICI = 'I'
-            AND {cycle} % 10 <> 0
         )
     )
     AND race_for_seat.office = filed.CAND_OFFICE

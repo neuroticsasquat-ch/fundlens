@@ -184,8 +184,15 @@ def test_read_filings_keeps_the_cycles_candidates_only() -> None:
         # A senator whose seat isn't up.
         (1998, "2000", "S", "I", False),
         (1998, "2002", "H", "I", False),
-        # 1992 numbers its districts from the 1990 census's map, not 1990's.
-        (1990, "1992", "H", "I", False),
+        # A census-year cycle's `cn` still numbers next-election filings from its own map
+        # (NEU-2287: none of 1990–2020's 15 moved district from the previous cycle's).
+        (1990, "1992", "H", "I", True),
+        (2000, "2002", "H", "I", True),
+        # A member registered for the odd year after this cycle's election (2000 MS-05, 2001).
+        (2000, "2001", "H", "I", True),
+        (1982, "1983", "H", "I", True),
+        (2000, "2001", "H", "C", False),
+        (2000, "2001", "S", "I", False),
     ],
 )
 def test_a_filing_stands_for_its_cycle_or_as_the_house_incumbent_for_the_next(
