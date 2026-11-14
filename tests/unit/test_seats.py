@@ -222,14 +222,17 @@ def test_only_a_filing_for_no_seat_is_unmatched() -> None:
     ]
 
 
-# FEC's election results for the first cycle on each of the 2000, 2010 and 2020 censuses' maps,
-# which `house_districts.csv` cites (NEU-2293; 1982's and 1992's are PDF only, NEU-2294).
+# FEC's election results for the first cycle on each map since the 1980 census's, which
+# `house_districts.csv` cites by spreadsheet row (NEU-2293) or, for 1982's and 1992's, which are
+# PDF only, by page (NEU-2294).
 RESULTS_FILES = {
+    1982: "federalelections82.pdf",
+    1992: "federalelections92.pdf",
     2002: "2002fedresults.xls",
     2012: "2012congresults.xls",
     2022: "federalelections2022.xlsx",
 }
-SOURCE = re.compile(r"(?P<file>\S+) row (?P<row>\d+)")
+SOURCE = re.compile(r"(?P<file>\S+) (?P<unit>row|page) (?P<at>\d+)")
 
 
 def test_each_house_district_correction_moves_a_filing_to_a_seat_up_that_cycle() -> None:
@@ -244,6 +247,7 @@ def test_each_house_district_correction_moves_a_filing_to_a_seat_up_that_cycle()
         cycle = int(row["cycle"])
         source = SOURCE.fullmatch(row["source"])
         assert source is not None and source["file"] == RESULTS_FILES.get(cycle), row
+        assert source["unit"] == ("page" if source["file"].endswith(".pdf") else "row"), row
         assert row["candidate_id"].startswith("H"), row
         assert row["district"] != row["cn_district"], row
         assert ("H", row["state"], row["district"]) in house[cycle], row

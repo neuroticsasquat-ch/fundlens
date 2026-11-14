@@ -10,8 +10,8 @@
 -- old map's number: 2012's `cn` files Michael Grimm and Mark Murphy, who ran in NY-11, under
 -- NY-13, and Linda Sánchez, who won CA-38, under CA-39, so their money counted in the wrong race.
 -- FEC's per-cycle candidate history and DIME carry the same stale number; FEC's election results
--- list each candidate under the district they ran in, and the file holds the 2002, 2012 and 2022
--- filings where the two differ (1982's and 1992's results are PDF only: NEU-2294). The corrected
+-- list each candidate under the district they ran in, and the file holds the 1992, 2002, 2012 and
+-- 2022 filings where the two differ (1982's `cn` agrees with its results: NEU-2294). The corrected
 -- district is the one this table keeps.
 --
 -- Only a filing for this cycle's election (or the odd year before it, for a special held then)
