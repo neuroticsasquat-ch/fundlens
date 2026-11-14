@@ -1,5 +1,6 @@
 """The seat calendar (spec §5.2): seat counts, Senate classes, specials, `race_id` and `slug`."""
 
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -218,4 +219,46 @@ def test_only_a_filing_for_no_seat_is_unmatched() -> None:
         "H6MD09102",
         "S6MD00110",
         "P60000111",
+    ]
+
+
+# FEC's election results for the first cycle on each of the 2000, 2010 and 2020 censuses' maps,
+# which `house_districts.csv` cites (NEU-2293; 1982's and 1992's are PDF only, NEU-2294).
+RESULTS_FILES = {
+    2002: "2002fedresults.xls",
+    2012: "2012congresults.xls",
+    2022: "federalelections2022.xlsx",
+}
+SOURCE = re.compile(r"(?P<file>\S+) row (?P<row>\d+)")
+
+
+def test_each_house_district_correction_moves_a_filing_to_a_seat_up_that_cycle() -> None:
+    rows = seats._read("house_districts.csv")  # pyright: ignore[reportPrivateUsage]
+    house = {
+        cycle: {race.seat for race in seats.races_for(cycle) if race.office == "H"}
+        for cycle in RESULTS_FILES
+    }
+
+    assert len({(row["cycle"], row["candidate_id"]) for row in rows}) == len(rows)
+    for row in rows:
+        cycle = int(row["cycle"])
+        source = SOURCE.fullmatch(row["source"])
+        assert source is not None and source["file"] == RESULTS_FILES.get(cycle), row
+        assert row["candidate_id"].startswith("H"), row
+        assert row["district"] != row["cn_district"], row
+        assert ("H", row["state"], row["district"]) in house[cycle], row
+
+
+def test_read_filings_gives_a_corrected_house_filing_the_district_it_ran_in() -> None:
+    # 2012's `cn` files Michael Grimm, who ran in NY-11 that year, under the old map's NY-13.
+    cn = (
+        "H0NY13074|GRIMM, MICHAEL|REP|2012|NY|H|13|I|C|C00470807|1 MAIN ST||SI|NY|10301\n"
+        "H2NY13990|ROE, ANN|DEM|2012|NY|H|13|C|C|C00900009|2 MAIN ST||NEW YORK|NY|10027\n"
+    )
+
+    filings = seats.read_filings(zipped("cn.txt", cn), 2012)
+
+    assert filings == [
+        Filing("H0NY13074", "H", "NY", "11"),
+        Filing("H2NY13990", "H", "NY", "13"),
     ]

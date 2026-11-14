@@ -1080,6 +1080,34 @@ def test_a_census_year_house_incumbent_registered_for_the_next_election_stands_i
     }
 
 
+def test_a_house_filing_cn_files_under_the_old_maps_district_stands_in_the_one_it_ran_in(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # 2012's `cn` files Michael Grimm and Mark Murphy, who ran in NY-11, and Linda Sánchez, who
+    # won CA-38, under their districts on the old map (NEU-2293). `house_districts.csv` gives
+    # the ones they ran in; a filing it doesn't name keeps `cn`'s.
+    cn = (
+        "H0NY13074|GRIMM, MICHAEL|REP|2012|NY|H|13|I|C||1 ELM ST||STATEN ISLAND|NY|10301\n"
+        "H2NY13088|MURPHY, MARK|DEM|2012|NY|H|13|C|C||2 ELM ST||STATEN ISLAND|NY|10301\n"
+        "H2CA39078|SANCHEZ, LINDA|DEM|2012|CA|H|39|I|C||3 ELM ST||LAKEWOOD|CA|90712\n"
+        "H2NY13990|ROE, ANN|DEM|2012|NY|H|13|C|C||4 ELM ST||NEW YORK|NY|10027\n"
+    )
+    texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(2012)}
+    texts["cn"] = cn
+    put_bronze(store, 2012, texts=texts)
+
+    result = transform(2012)
+
+    assert result.exit_code == 0, result.output
+    candidates = read_silver(store, "candidate", tmp_path, cycle=2012)
+    assert {row["candidate_id"]: (row["district"], row["race_id"]) for row in candidates} == {
+        "H0NY13074": ("11", "2012-H-NY-11"),
+        "H2NY13088": ("11", "2012-H-NY-11"),
+        "H2CA39078": ("38", "2012-H-CA-38"),
+        "H2NY13990": ("13", "2012-H-NY-13"),
+    }
+
+
 def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
