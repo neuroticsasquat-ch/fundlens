@@ -19,7 +19,7 @@ from fundlens.load.gold import GoldTable
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
-from fundlens.transform.runner import ChecksFailed
+from fundlens.transform.runner import ChecksFailed, render
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT
 from tests.integration.test_resolve import BEYOND_LINKAGE
@@ -650,6 +650,71 @@ def test_the_refunds_check_fails_on_a_positive_refunds_figure() -> None:
 
         # C3's refunds add to its totals rather than subtracting.
         assert failing_rows(con, "gold_committee_cycle_refunds.sql") == [("C3", Decimal("0.01"))]
+
+
+def test_a_committee_cm_lists_as_a_skeleton_keeps_the_name_an_earlier_cycle_gave_it() -> None:
+    # `cm` lists a committee as a skeleton row now and then: its id and filing frequency `T`, every
+    # other column blank (NEU-2296: 2018's C00575308, named in 2016; 2016's C00603068, named in no
+    # cycle).
+    gold = REPO_ROOT / "sql" / "gold"
+    with duckdb.connect() as con:
+        con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            "CREATE TABLE silver.committee AS SELECT * FROM (VALUES"
+            " (2016, 'C1', 'FRIENDS OF ROE', 'H', 'P', 'DEM', NULL, false),"
+            " (2018, 'C1', NULL, NULL, NULL, NULL, NULL, false),"
+            " (2016, 'C2', NULL, NULL, NULL, NULL, NULL, false),"
+            " (2016, 'C3', 'ROE PAC', 'Q', 'U', NULL, 'ROE INC', false),"
+            " (2018, 'C3', 'ROE FOR AMERICA PAC', 'Q', 'U', NULL, 'ROE INC', false)"
+            ") AS t(cycle, committee_id, name, type, designation, party, connected_org, is_conduit)"
+        )
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', 100.00, 0.00), ('C2', 50.00, 0.00), ('C3', 0.00, 25.00)"
+            ") AS t(committee_id, total_individual, total_from_committees)"
+        )
+        # Every other kind search_entity lists, empty.
+        con.execute("CREATE TABLE candidate (candidate_id VARCHAR, name VARCHAR)")
+        con.execute(
+            "CREATE TABLE candidate_cycle (candidate_id VARCHAR,"
+            " total_individual DECIMAL(16, 2), total_committee DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE silver.candidate (cycle INTEGER, candidate_id VARCHAR,"
+            " principal_committee_id VARCHAR, alias_of VARCHAR)"
+        )
+        con.execute(
+            "CREATE TABLE race (race_id VARCHAR, cycle INTEGER, office VARCHAR, state VARCHAR,"
+            " district VARCHAR, is_special BOOLEAN, slug VARCHAR, total_individual DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE donor"
+            " (donor_id BIGINT, display_name VARCHAR, total_all_cycles DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE donor_variant (donor_id BIGINT, field VARCHAR, value VARCHAR,"
+            " amount DECIMAL(16, 2), contributions INTEGER)"
+        )
+
+        con.execute(render(gold / "06_committee.sql", {}))
+        con.execute(render(gold / "16_search_entity.sql", {}))
+
+        committees = con.execute(
+            "SELECT committee_id, name, type, designation, party, cycles FROM committee"
+            " ORDER BY committee_id"
+        ).fetchall()
+        searched = con.execute("SELECT id, name FROM search_entity ORDER BY id").fetchall()
+        failures = failing_rows(con, "gold_search_entity_name.sql")
+
+    assert committees == [
+        ("C1", "FRIENDS OF ROE", "H", "P", "DEM", "{2016,2018}"),
+        ("C2", None, None, None, None, "{2016}"),
+        # A committee named in both cycles takes the newest name, as before.
+        ("C3", "ROE FOR AMERICA PAC", "Q", "U", None, "{2016,2018}"),
+    ]
+    assert searched == [("C1", "FRIENDS OF ROE"), ("C3", "ROE FOR AMERICA PAC")]
+    assert failures == []
 
 
 def test_the_conduit_floor_check_fails_on_a_conduit_below_minus_1m() -> None:
