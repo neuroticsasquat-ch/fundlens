@@ -10,6 +10,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
+- `house_district`, the cycle's House filings whose `cn` district is not the one they ran in,
+  with the one they did (`fec/seats/house_districts.csv`, NEU-2293);
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
 - `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
   handed from one candidate to another, whose money is the first's before the date and the
@@ -254,6 +256,14 @@ def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
         con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?)", rows)
 
 
+def _register_house_districts(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    rows = list(seats.house_districts(cycle).items())
+    con.execute("CREATE TABLE house_district (candidate_id VARCHAR, district VARCHAR)")
+    # DuckDB's executemany refuses an empty list, and most cycles correct no district.
+    if rows:
+        con.executemany("INSERT INTO house_district VALUES (?, ?)", rows)
+
+
 def _register_ie_candidate_corrections(con: duckdb.DuckDBPyConnection) -> None:
     # Keyed by SUB_ID, unique across FEC's files, so every cycle can load the whole list: a row of
     # another cycle matches nothing.
@@ -385,6 +395,7 @@ def transform(
             seats.load_races(con, seats.races_for(cycle))
             _register_conduits(con)
             _register_handoffs(con, cycle)
+            _register_house_districts(con, cycle)
             _register_ie_candidate_corrections(con)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)

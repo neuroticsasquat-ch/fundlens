@@ -14,6 +14,14 @@ no seat is reported (`--report`) and recorded in `app.unmatched_filing`; it neve
   specials of 2018 to 2026. `cn` does not mark a filing as for a special, so `--report` catches
   a missing one only when it is a Senate special in a state with no regular race that cycle; a
   House special, or one beside a regular race, matches the regular seat and must be added by hand.
+- `house_districts.csv` (cycle, candidate_id, state, cn_district, district, source): the House
+  filings of a cycle on a new map that `cn` files under a district they did not run in, with the
+  district FEC's election results list them in (NEU-2293). A candidate's `cn` row keeps the
+  district of their statement of candidacy, which in the first cycle on a new map is often the
+  old map's number (Michael Grimm, NY-11 in 2012, is NY-13 in `cn`, in FEC's per-cycle candidate
+  history and in DIME), so only the results tell. `source` is the results file and row;
+  `docs/measurements/house-districts-redistricting.md` says how the rows were chosen and which
+  were not.
 
 `race_id` and `slug` are the M2 shared contract: `{cycle}-{office}-{state}-{district}[-special]`
 and `{cycle}/{house|senate|president}/{STATE}[-{DD}][-special]`.
@@ -135,6 +143,16 @@ def _specials() -> list[dict[str, str]]:
     return _read("specials.csv")
 
 
+@cache
+def house_districts(cycle: int) -> dict[str, str]:
+    """The district each House filing `house_districts.csv` corrects in `cycle` ran in, by id."""
+    return {
+        row["candidate_id"]: row["district"]
+        for row in _read("house_districts.csv")
+        if int(row["cycle"]) == cycle
+    }
+
+
 def check_cycle(cycle: int) -> None:
     """Raise `ValueError` unless the vendored tables cover `cycle`."""
     if cycle % 2:
@@ -242,7 +260,8 @@ def read_filings(cn_zip: bytes, cycle: int) -> list[Filing]:
     before it for a special held then, is a filing for one of its seats. `cn` gives each candidate
     only their latest year, so a House incumbent's filing for the next election, or the odd year
     after this cycle's, stands too (NEU-2283, NEU-2287): the rule `sql/silver/02_candidate.sql`
-    joins a filing to its race by.
+    joins a filing to its race by. A House filing `house_districts.csv` corrects takes the
+    district it ran in (NEU-2293), as that file does too.
     """
     columns = CATALOGUE["cn"].header()
     at = {name: columns.index(name) for name in columns}
@@ -253,12 +272,17 @@ def read_filings(cn_zip: bytes, cycle: int) -> list[Filing]:
             text = io.TextIOWrapper(raw, encoding="latin-1", newline="")
             # Pipe-delimited and unquoted: a quote in a name is just a character.
             rows = list(csv.reader(text, delimiter="|", quoting=csv.QUOTE_NONE))
+    corrected = house_districts(cycle)
     return [
         Filing(
             candidate_id=row[at["CAND_ID"]],
             office=row[at["CAND_OFFICE"]],
             state=row[at["CAND_OFFICE_ST"]],
-            district=row[at["CAND_OFFICE_DISTRICT"]],
+            district=(
+                corrected.get(row[at["CAND_ID"]], row[at["CAND_OFFICE_DISTRICT"]])
+                if row[at["CAND_OFFICE"]] == "H"
+                else row[at["CAND_OFFICE_DISTRICT"]]
+            ),
         )
         for row in rows
         if row

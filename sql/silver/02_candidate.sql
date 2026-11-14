@@ -4,6 +4,16 @@
 -- blank or one-digit one is padded the same way (as `transform.seats.Filing.seat` reads it, so a
 -- filing left without a race here is one `fundlens seats --report` recorded as unmatched).
 --
+-- A House filing's district is `cn`'s CAND_OFFICE_DISTRICT, unless `house_district`
+-- (`fec/seats/house_districts.csv`, NEU-2293) gives the one it ran in. `cn` keeps the district of
+-- the candidate's statement of candidacy, and in the first cycle on a new map that is often the
+-- old map's number: 2012's `cn` files Michael Grimm and Mark Murphy, who ran in NY-11, under
+-- NY-13, and Linda Sánchez, who won CA-38, under CA-39, so their money counted in the wrong race.
+-- FEC's per-cycle candidate history and DIME carry the same stale number; FEC's election results
+-- list each candidate under the district they ran in, and the file holds the 2002, 2012 and 2022
+-- filings where the two differ (1982's and 1992's results are PDF only: NEU-2294). The corrected
+-- district is the one this table keeps.
+--
 -- Only a filing for this cycle's election (or the odd year before it, for a special held then)
 -- stands in one of its races: `cn` also lists candidates registered for later cycles. But `cn`
 -- gives each candidate only their latest election year, so a House member who won this cycle and
@@ -37,13 +47,16 @@ WITH race_for_seat AS (
 ),
 filed AS (
     SELECT
-        *,
+        cn.*,
         CASE
-            WHEN length(trim(coalesce(CAND_OFFICE_DISTRICT, ''))) < 2
-                THEN lpad(trim(coalesce(CAND_OFFICE_DISTRICT, '')), 2, '0')
-            ELSE trim(CAND_OFFICE_DISTRICT)
+            WHEN cn.CAND_OFFICE = 'H' AND house_district.district IS NOT NULL
+                THEN house_district.district
+            WHEN length(trim(coalesce(cn.CAND_OFFICE_DISTRICT, ''))) < 2
+                THEN lpad(trim(coalesce(cn.CAND_OFFICE_DISTRICT, '')), 2, '0')
+            ELSE trim(cn.CAND_OFFICE_DISTRICT)
         END AS district
     FROM cn
+    LEFT JOIN house_district ON house_district.candidate_id = cn.CAND_ID
 ),
 named_principal AS (
     SELECT CAND_ID, min(CMTE_ID) AS committee_id
