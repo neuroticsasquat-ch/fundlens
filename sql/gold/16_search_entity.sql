@@ -5,6 +5,9 @@
 -- to match on (the race's slug, the candidate's principal committee, the committee's connected
 -- organisation, the donor's other spellings of their name, most money first). A donor's weight is
 -- their total; one known only from JFC attributions weighs 0 and is still found.
+-- A committee `cm` names in no cycle, only ever a skeleton row (its id and a filing frequency of
+-- `T`, every other column blank: 06_committee.sql, NEU-2296), has no name to match on, so it is
+-- left out, as a donor with no display_name is; its page is still there under its id.
 CREATE TABLE search_entity AS
 SELECT
     'candidate' AS kind,
@@ -42,6 +45,7 @@ JOIN (
     FROM committee_cycle
     GROUP BY committee_id
 ) AS money USING (committee_id)
+WHERE committee.name IS NOT NULL
 UNION ALL
 SELECT
     'race' AS kind,
