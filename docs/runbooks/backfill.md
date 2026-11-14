@@ -804,3 +804,26 @@ none in 1994 and 1996. `TN-09`, `OR-03` and `NY-18` were missing their incumbent
 correctly have no race. NEU-2283 stands a House filing for the next election marked `I` in this cycle's race. The
 fix is in silver, so 1980–1998 are rebuilt from its merge before 2000; each first build's directory is kept as
 `<C>-superseded-<B>`.
+
+### 2026-11-13 — 1980, 1982, 1990 and 2000 rebuilt after NEU-2287
+
+After NEU-2283's rebuild, nine races still totalled $0: 1980 AL-05, FL-09, MN-05 and VA-01; 1990 KY-01 and MI-17;
+2000 MA-03, MS-05 and PA-14. 2000 MA-03 (`H4MA03022`) and PA-14 (`H0PA14039`) had no candidates. NEU-2283 skipped
+cycles divisible by 10, on the reasoning that a census year's `cn` numbers next-election filings from the new map. It
+doesn't: none of 1990–2020's 15 such filings moved district from the same member's filing in the previous cycle's `cn`.
+Two filings were also for the odd year after the cycle, which no rule covered: Gene Taylor (`H8MS05047`, 2001 in
+2000's `cn`) and Phil Gramm (`H8TX06027`, 1983 in 1982's). NEU-2287 (PR #153) stands a House `I` filing for
+`cycle + 1` or `cycle + 2` in every cycle. 1980, 1982, 1990 and 2000 were rebuilt from
+`1aed2839b77d91d32a1219d94ce48ea204a43e0d`, each first build's directory kept as `<C>-superseded-<B>`. 2002 onward
+is built from it too.
+
+| Cycle | Superseded | Live | Peak |
+| --- | --- | --- | --- |
+| 1980 | `20261113T150717Z` | `20261113T232917Z` | 17.14 GiB, gold donor |
+| 1982 | `20261113T154003Z` | `20261113T233554Z` | 14.23 GiB, gold donor |
+| 1990 | `20261113T160644Z` | `20261113T234150Z` | 13.45 GiB, gold donor |
+| 2000 | `20261113T170201Z` | `20261113T235513Z` | 15.56 GiB, gold donor |
+
+The four incumbents NEU-2287 names stand in their races on `api.fundlens.org`. Races at $0 across every live cycle:
+1986 and 1992 KY-02 (Natcher, who accepted no contributions), and 2024's CA and NE Senate specials (0 candidates;
+`cn` can't tell a special's filing from the regular race for the same seat, so the regular race takes it).
