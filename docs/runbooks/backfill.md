@@ -827,3 +827,24 @@ is built from it too.
 The four incumbents NEU-2287 names stand in their races on `api.fundlens.org`. Races at $0 across every live cycle:
 1986 and 1992 KY-02 (Natcher, who accepted no contributions), and 2024's CA and NE Senate specials (0 candidates;
 `cn` can't tell a special's filing from the regular race for the same seat, so the regular race takes it).
+
+### 2026-11-14 — 2002, 2012 and 1992 rebuilt after NEU-2293 and NEU-2294
+
+In the first cycle on a new map, `cn` files some House candidates under their statement-of-candidacy district, the
+old map's number: 2012's has Grimm and Murphy (NY-11) under NY-13 and Sánchez (CA-38) under CA-39. NEU-2293 (PR #155)
+adds `fec/seats/house_districts.csv`, the district FEC's election results list each such filing under, for 2002, 2012
+and 2022. 2002 and 2012 were live from older code and were rebuilt from `507d381`. 2022 had not been built and picks
+the rows up in order. NEU-2294 (PR #162) adds 1992's 3 rows, matched by name in FEC's PDF results (Hemmerle FL-00 to
+FL-19, Stockhausen MO-02 to MO-03, LaLuz NY-08 to NY-17, all $0). 1982 needs none. 1992 was rebuilt from
+`8b503a55827ece9ea57f7dde1d296221627f79d0`, between 2016 and 2018. Each first build's directory is kept as
+`<C>-superseded-<B>`.
+
+| Cycle | Superseded | Live | Peak |
+| --- | --- | --- | --- |
+| 2002 | `20261114T003232Z` | `20261114T174026Z` | 12.43 GiB, gold check |
+| 2012 | `20261114T033613Z` | `20261114T180514Z` | 13.06 GiB, gold donor |
+| 1992 | `20261113T161410Z` | `20261114T201011Z` | 13.25 GiB, gold donor |
+
+On `api.fundlens.org`, 2012 NY-11 lists `H0NY13074` and `H2NY13088`, and CA-38 lists `H2CA39078`; neither NY-13 nor
+CA-39 lists them. 1992 FL-19 lists `H2FL00110`, MO-03 `H2MO03084` and NY-17 `H2NY17089`; neither MO-02 nor NY-08
+lists theirs.
