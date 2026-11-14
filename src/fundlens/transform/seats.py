@@ -16,10 +16,11 @@ no seat is reported (`--report`) and recorded in `app.unmatched_filing`; it neve
   House special, or one beside a regular race, matches the regular seat and must be added by hand.
 - `house_districts.csv` (cycle, candidate_id, state, cn_district, district, source): the House
   filings of a cycle on a new map that `cn` files under a district they did not run in, with the
-  district FEC's election results list them in (NEU-2293). A candidate's `cn` row keeps the
-  district of their statement of candidacy, which in the first cycle on a new map is often the
-  old map's number (Michael Grimm, NY-11 in 2012, is NY-13 in `cn`, in FEC's per-cycle candidate
-  history and in DIME), so only the results tell. `source` is the results file and row;
+  district FEC's election results list them in (NEU-2293, NEU-2294). A candidate's `cn` row
+  keeps the district of their statement of candidacy, which in the first cycle on a new map is
+  often the old map's number (Michael Grimm, NY-11 in 2012, is NY-13 in `cn`, in FEC's per-cycle
+  candidate history and in DIME), so only the results tell. `source` is the results file and its
+  row, or its page for 1982's and 1992's, which are PDF only;
   `docs/measurements/house-districts-redistricting.md` says how the rows were chosen and which
   were not.
 

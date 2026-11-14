@@ -7,7 +7,9 @@ Mark Murphy (`H2NY13088`) under NY-13, the old Staten Island number, and CA-38 m
 Sánchez (`H2CA39078`), who won it, because `cn` files her under CA-39. This document finds a
 source for the district each House candidate ran in, counts the filings where `cn` disagrees
 in the first cycle on each of the last three maps, and fixes the correction NEU-2293 ships:
-`src/fundlens/fec/seats/house_districts.csv`.
+`src/fundlens/fec/seats/house_districts.csv`. [NEU-2294](https://linear.app/neuroticsasquatch/issue/NEU-2294)
+extends it to 1982 and 1992, the first cycles on the two maps before, whose results are PDF only:
+see [1982 and 1992](#1982-and-1992).
 
 | What | Value |
 | --- | --- |
@@ -30,7 +32,8 @@ in the first cycle on each of the last three maps, and fixes the correction NEU-
 - **FEC's election results list each candidate under the district they ran in, with their FEC
   id.** Grimm and Murphy are NY-11 (rows 2911 and 2914 of `2012congresults.xls`), Sánchez CA-38
   (row 485). They are spreadsheets for 2002, 2012 and 2022. 1982's and 1992's
-  (`federalelections82.pdf`, `federalelections92.pdf`) are PDF only, and are left to [NEU-2294](https://linear.app/neuroticsasquatch/issue/NEU-2294).
+  (`federalelections82.pdf`, `federalelections92.pdf`) are PDF only, and are measured under
+  [1982 and 1992](#1982-and-1992): 3 filings change district in 1992, none in 1982.
 - **68 filings change district: 10 in 2002, 11 in 2012, 47 in 2022.** By FEC's total receipts
   they hold $476,509, $5,969,717 and $24,917,356, which moves from the race `cn` names to the one
   they ran in (Q2).
@@ -220,11 +223,123 @@ with none still move: a candidate on the ballot belongs to the race they ran in.
 | 2022 | WASSERMAN SCHULTZ, DEBBIE | `H4FL20023` | FL-25 | 971 | $2,087,129 | results list it under two districts FL-25 FL-26 |
 | 2022 | DOYLE, MICHAEL | `H4PA18131` | PA-18 | 3404 | $202,715 | PA-12 already has H2PA12070 of the same surname in cn |
 
+## 1982 and 1992
+
+Measured for [NEU-2294](https://linear.app/neuroticsasquatch/issue/NEU-2294).
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-14, 19:40–20:30 UTC, in the local `app` container (`uv run --no-project --with pdfplumber`, pdfplumber 0.11.10, pdfminer.six 20260107) |
+| Code | `main` at `a22a808e2c51d75a666fb8bc03a2bf093f0ec592` |
+| `federalelections82.pdf` | `https://www.fec.gov/documents/1547/federalelections82.pdf`, 111 pages, House on pages 13–111, SHA-256 `8ec63985f7d05ef1…` |
+| `federalelections92.pdf` | `https://www.fec.gov/documents/1552/federalelections92.pdf`, 126 pages, House on pages 54–102, SHA-256 `4fb5f46d47043dbf…` |
+| `cn` | `…/1982/cn82.zip`, `…/1992/cn92.zip`, downloaded 2026-11-14T19:43Z (SHA-256 `c29c0270…`, `95624748…`) |
+| `weball` | `…/1982/weball82.zip`, `…/1992/weball92.zip`, downloaded 2026-11-14T19:43Z (`e7b0dd6e…`, `9cc20240…`) |
+
+### Headline
+
+- **Both PDFs are scans with an OCR text layer, and neither prints FEC ids.** 1982's columns
+  are last name, first name and initial, party, votes and percent; 1992's are `Last, First`,
+  party, votes and percent. A row can be matched to a filing only by name, through OCR that
+  reads 1982's F as P and C as E (`Perraro Geraldine`, `Demoeratie`) and 1992's W as V or `~`
+  (`VASHINGTON`, `~rite-In`).
+- **1982's `cn` agrees with its results throughout: no filing changes district.** Of 1,976 standing
+  House filings, 922 ($137.00M of receipts) are found in the results, every one in the district
+  `cn` gives.
+- **3 of 1992's change district, none with receipts:** Kenneth Hemmerle (`H2FL00110`, `cn`
+  FL-00, a write-in in FL-19), Robert Stockhausen (`H2MO03084`, MO-02 to MO-03, Libertarian) and
+  Nana LaLuz (`H2NY17089`, NY-08 to NY-17, Natural Law). The other 1,231 found ($300.25M) are in
+  `cn`'s district.
+- **The ticket's races with two incumbent filings or more are member-against-member races and
+  members who did not run, not stale districts.** There are 17 in 1982 by this script's standing
+  rule, `seats.stands` (the ticket counted 18; the difference was not traced), and 18 in 1992.
+  In each, the results place at least one of the incumbents in the race. Each of the others is
+  placed there too, as a pairing the new map forced (1982: Frank and
+  Heckler, MA-04; Bailey and Skelton, MO-04. 1992: Nussle and Nagle, IA-02; Huckaby and McCrery,
+  LA-05; Holloway and Baker, LA-06; McMillen and Gilchrest, MD-01), or is in no district of the
+  results at all: retired, beaten in the primary, or a row the OCR garbled (Rousselot, CA-30,
+  reads `Rousse1ot`). None of the latter is a close name in another district of the results.
+
+### Method
+
+For each cycle:
+
+1. Read the House pages' text with pdfplumber. A line is a state header when it is capitals
+   without digits and close to a state's name (difflib ratio 0.6; two headers past that are
+   listed by hand: 1982's `MEW BAMPSBillB` and 1992's `!OVA`). A district header is one whose
+   text before its first colon or digit is capitals and close to `DISTRICT` (ratio 0.6:
+   `DIR'f'IU CT: 7`, `D1STRICT: 2`, `DIST1UCT 4`). The lines up to the next header are its
+   block. `- Unexpired Term` blocks are specials, held on the old map, and skipped, as for 2002.
+2. Number each block from its header where the number follows the block before, and as the
+   block before plus one where the OCR misreads it (1982's CA-07 reads `DISTRICT: 1`). Every
+   state with two seats or more then has one block per seat, except 1982's LA-03 and LA-04:
+   Louisiana prints no general-election row for a district its primary decided unopposed. A
+   state with one seat, or a territory, has only district `00`, so its 38 (1982) and 65 (1992)
+   filings are not compared. `cn` files every one of them under `00`, among them South Dakota's
+   in 1982 and Montana's in 1992, the two states cut to one seat.
+3. Read the cycle's `cn` and keep the House filings that stand, as for 2002 (step 2 above).
+4. Look for each filing in every block of its state. It is in a block when the block has a line
+   holding its surname, folded for the OCR's confusions on both sides, as a word or a run of up
+   to three words (`La Rocco`, `Won Pat`), and one of its given names, honorifics aside, on that
+   line. A line without a vote count, which the OCR split from the row beside it, counts with
+   that row. A given name matches when it is the same word, a nickname of it (Bill, William; the
+   list is in the script) or one the prefix of the other, three letters at least (Dan, Daniel).
+   This is stricter than Q1's initial, on evidence. A spreadsheet row has a given-name column;
+   a PDF line does not, so an initial check matches whatever word stands beside the surname.
+   Run with Q1's initial (of the word just after the surname, or any given name as above), the
+   script corrects five more filings, and all five are wrong. 1982's Robert Curtis (`H2CA43070`,
+   CA-43) matched `Cross Curtis R. "Sam"` in CA-37, Curtis being Cross's given name; 1992's John
+   Charles Williams (`H2CA42080`) matched James E. Williams; Harley Ross (`H2CA43302`) matched
+   `Crain, Ross`; Roosevelt Thomas (`H2IL01034`) matched `Ewing, Thomas Republican`, on the R of
+   the party; and L.D. Knox (`H8LA05057`) matched `Irvin, Wilma Knox`. It also finds 41 more of
+   1982's filings, and 18 more of 1992's, in their own district: the stricter rule costs recall,
+   which the next section checks.
+5. A filing found only in a district other than `cn`'s is corrected under Q1's remaining checks:
+   it is found in one district only, and no other standing filing with its surname is in that
+   district. 1992's one row turned down is Terrance James Brown (`H2CA01086`, `cn` CA-01), whose
+   given name matched a write-in, James P. Brown, Sr., in CA-38, where Dennis Brown
+   (`H2CA38054`) stands.
+
+### Recall
+
+A filing the script does not find keeps `cn`'s district. That is right for a candidate who
+was not on the general-election ballot, and wrong only for one who ran elsewhere under a name
+the OCR garbled. Two checks look for those:
+
+- **Unmatched results rows near a filing elsewhere.** Of the lines with a vote count, 569 of
+  1,491 in 1982 and 288 of 1,521 in 1992 match no filing: candidates who never registered with
+  the FEC, the extra party lines of New York's fusion ballots, and OCR misses. For each, the
+  script lists the state's unfound filings whose surname is close to the row's first word
+  (ratio 0.75) and whose `cn` district is another. That gives 5 pairs in 1982 and 15 in 1992,
+  and all 20 are different people: Richardson and Richards (CA-03, CA-36), Dave and John Charles
+  Williams (CA-10, CA-42), Traylor and Taylor (TX-01, TX-09), and so on.
+- **District blocks no filing is found in.** Nine in 1982, each because the OCR garbled the
+  winner (AL-07 `Sbelby Riebard`, KS-01 `lloberts Pat`, MA-11 `Doonelly`, MI-05 `Sawyer
+  881'0ld`, NY-07 `Jlosentbal`, NY-10 `Scluner Cbarles`, NC-10 `Broyhill .lamesT.`, TX-01 `aa n
+  Sam B.`, TX-19 `Ranee Kent`). Checked by hand, `cn` has each incumbent in that district:
+  Shelby `H8AL07014`, Roberts `H0KS01016`, Donnelly `H8MA11018`, Sawyer `H6MI05102`, Rosenthal
+  `H6NY08022`, Schumer `H0NY16010`, Broyhill `H6NC10018`, Hall `H6TX01022`, Hance `H8TX19020`.
+  One in 1992, FL-21, where the only line with digits is a footnote: Lincoln Diaz-Balart ran
+  unopposed, his row prints no votes, and he is found there.
+
+The filings not found hold $56.60M of 1982's receipts (1,016 filings) and $103.35M of 1992's
+(1,353), most of it primary losers' money. The general-election results cannot say where a
+primary loser ran. That is a limit 2002's spreadsheets do not share, since they carry primary
+votes by id.
+
+### The filings that change district
+
+| Cycle | Candidate | Id | `cn` | Results | PDF page | Results line | Receipts |
+| --- | --- | --- | --- | --- | ---: | --- | ---: |
+| 1992 | HEMMERLE, KENNETH V SR | `H2FL00110` | FL-00 | FL-19 | 65 | `Hemmerle, Kenneth v,, Sr. Write-In 4 .00` | $0 |
+| 1992 | STOCKHAUSEN, ROBERT | `H2MO03084` | MO-02 | MO-03 | 78 | `Stockhausen, Robert Libertarian 7,828 2.88` | $0 |
+| 1992 | LALUZ, NANA | `H2NY17089` | NY-08 | NY-17 | 85 | `LaLuz, Nana Natural Law 1,592 1.30` | $0 |
+
+`house_districts.csv` cites them as `federalelections92.pdf page <n>`, the PDF's page (printed
+pages −60−, −73− and −80−).
+
 ## Not fixed here
 
-- **1982 and 1992.** Their results are PDFs (`https://www.fec.gov/documents/1547/federalelections82.pdf`,
-  `…/1552/federalelections92.pdf`). Whether they print FEC ids was not checked; without them a
-  row has to be matched to a filing by name. [NEU-2294](https://linear.app/neuroticsasquatch/issue/NEU-2294) covers both.
 - **Results candidates whose `cn` filing stands in no race at all.** 57 House ids in 2002's results
   ($104,788) and 8 in 2022's ($156,022) are in `cn` with an election year that does not stand in
   the cycle: Victor Good (`H0CO03058`, $57,554) is `cn` 2000 in 2002's file, Max Rose
@@ -328,6 +443,296 @@ for cycle in SRC:
         else:
             verdict = "corrected"
         out.writerow([cycle, fid, f["name"], f"{f['state']}-{f['district']}", f"{st}-{d}", n, receipts.get(fid, 0), verdict])
+```
+
+</details>
+
+For 1982 and 1992, download the files of [their table](#1982-and-1992) into the same `/tmp/d/`
+(the PDFs as `fe82.pdf` and `fe92.pdf`), then
+`uv run --no-project --with pdfplumber python pdfgen.py > rows.csv 2> log.txt`. `rows.csv` has
+the same columns, with the matched results line in place of the row number; `log.txt` has the
+header repairs, the blocks missing, the recall checks' lists, the races with two incumbent filings
+or more, and each cycle's counts.
+
+<details><summary><code>pdfgen.py</code></summary>
+
+```python
+"""NEU-2294: 1982 and 1992 House filings whose district in FEC's PDF election results differs from cn's."""
+import collections, csv, difflib, io, re, sys, unicodedata, zipfile
+
+import pdfplumber
+
+D = "/tmp/d/"
+SEATS_DIR = "/app/src/fundlens/fec/seats/"
+# The House pages of each PDF (1-based), and the letters its OCR confuses, folded alike on both
+# sides of a name comparison.
+SRC = {
+    1982: ("federalelections82.pdf", "fe82.pdf", range(13, 112), str.maketrans("FCL", "PEI")),
+    1992: ("federalelections92.pdf", "fe92.pdf", range(54, 103), str.maketrans("W", "V")),
+}
+STATES = {
+    "AL": "ALABAMA", "AK": "ALASKA", "AS": "AMERICAN SAMOA", "AZ": "ARIZONA", "AR": "ARKANSAS",
+    "CA": "CALIFORNIA", "CO": "COLORADO", "CT": "CONNECTICUT", "DE": "DELAWARE",
+    "DC": "DISTRICT OF COLUMBIA", "FL": "FLORIDA", "GA": "GEORGIA", "GU": "GUAM", "HI": "HAWAII",
+    "ID": "IDAHO", "IL": "ILLINOIS", "IN": "INDIANA", "IA": "IOWA", "KS": "KANSAS",
+    "KY": "KENTUCKY", "LA": "LOUISIANA", "ME": "MAINE", "MD": "MARYLAND", "MA": "MASSACHUSETTS",
+    "MI": "MICHIGAN", "MN": "MINNESOTA", "MS": "MISSISSIPPI", "MO": "MISSOURI", "MT": "MONTANA",
+    "NE": "NEBRASKA", "NV": "NEVADA", "NH": "NEW HAMPSHIRE", "NJ": "NEW JERSEY",
+    "NM": "NEW MEXICO", "NY": "NEW YORK", "NC": "NORTH CAROLINA", "ND": "NORTH DAKOTA",
+    "OH": "OHIO", "OK": "OKLAHOMA", "OR": "OREGON", "PA": "PENNSYLVANIA", "PR": "PUERTO RICO",
+    "RI": "RHODE ISLAND", "SC": "SOUTH CAROLINA", "SD": "SOUTH DAKOTA", "TN": "TENNESSEE",
+    "TX": "TEXAS", "UT": "UTAH", "VT": "VERMONT", "VI": "VIRGIN ISLANDS", "VA": "VIRGINIA",
+    "WA": "WASHINGTON", "WV": "WEST VIRGINIA", "WI": "WISCONSIN", "WY": "WYOMING",
+}
+# State headers the OCR mangles past a close match.
+HEADER_OCR = {"MEW BAMPSBillB": "NH", "!OVA": "IA"}
+HONORIFICS = {"MR", "MRS", "MS", "DR", "REV", "JR", "SR", "II", "III", "IV", "HON", "REP"}
+# Names a candidate goes by that are not a prefix of the given name `cn` has.
+NICKNAMES = {
+    "BILL": {"WILLIAM"}, "BILLY": {"WILLIAM"}, "BOB": {"ROBERT"}, "BOBBY": {"ROBERT"},
+    "JIM": {"JAMES"}, "JIMMY": {"JAMES"}, "JAY": {"JAMES"}, "DICK": {"RICHARD"},
+    "RICK": {"RICHARD"}, "RICHIE": {"RICHARD"}, "JACK": {"JOHN"}, "CHUCK": {"CHARLES"},
+    "MIKE": {"MICHAEL"}, "MAC": {"MICHAEL"}, "TOM": {"THOMAS"}, "TOMMY": {"THOMAS"},
+    "TED": {"EDWARD", "THEODORE"}, "ED": {"EDWARD", "EDWIN"}, "TONY": {"ANTHONY"},
+    "HANK": {"HENRY"}, "LARRY": {"LAWRENCE"}, "JERRY": {"GERALD", "JEROME"},
+    "ANDY": {"ANDREW"}, "STEVE": {"STEPHEN", "STEVEN"}, "AL": {"ALFRED", "ALAN", "ALLAN", "ALLEN", "ALBERT", "ALMON"},
+    "PEGGY": {"MARGARET"}, "BETTY": {"ELIZABETH"}, "BETH": {"ELIZABETH"}, "LIZ": {"ELIZABETH"},
+    "NED": {"EDWARD"}, "SANDY": {"SANDRA"}, "MARCY": {"MARCIA"}, "NEIL": {"CORNELIUS"},
+    "GENE": {"EUGENE"}, "CHET": {"CHESTER"}, "JAKE": {"JACOB", "JAMES"}, "DENNY": {"DENNIS"},
+}
+
+
+def letters(s: str) -> str:
+    return re.sub(r"[^A-Z]", "", unicodedata.normalize("NFKD", s).upper())
+
+
+def words(s: str) -> list[str]:
+    return [w for w in (letters(t) for t in re.split(r"[\s,.\-'\"()]+", s.replace("~", "W"))) if w]
+
+
+def capitals(s: str) -> bool:
+    caps = [c for c in s if c.isalpha()]
+    return len(caps) >= 4 and sum(c.isupper() for c in caps) >= 0.6 * len(caps)
+
+
+def state_of(line: str) -> str | None:
+    """The state a header line names, or None: a header is capitals, no digits, close to a name."""
+    text = re.sub(r"\(.*", "", line).strip(" .·•-")
+    if text in HEADER_OCR:
+        return HEADER_OCR[text]
+    if not capitals(text) or any(c.isdigit() for c in text):
+        return None
+    key = letters(text).replace("V", "W")
+    names = {letters(n).replace("V", "W"): st for st, n in STATES.items()}
+    match = difflib.get_close_matches(key, list(names), n=1, cutoff=0.6)
+    return names[match[0]] if match else None
+
+
+def district_of(line: str) -> tuple[str, bool] | None:
+    """(the number a district header prints, whether it is an unexpired term), or None. The OCR
+    mangles the word (DIR'f'IU CT, D1STRICT, DISTRfcT), so it is matched loosely: the text before
+    the first colon or digit, in capitals, close to DISTRICT."""
+    # A 1 inside the word is an I (D1STRICT, DIST1UCT).
+    line = re.sub(r"(?<=[A-Za-z'])1(?=[A-Za-z'])", "I", line)
+    # And an l or I standing alone after it is a 1 (DISTRICT: l).
+    line = re.sub(r"(?<=[:\s])[lI](?=\W*$)", "1", line)
+    m = re.match(r"^\W*([^:\d]+?)\W*(\d.*|)$", line)
+    if not m or not capitals(m.group(1)) or len(letters(m.group(1))) > 10:
+        return None
+    if difflib.SequenceMatcher(None, letters(m.group(1)), "DISTRICT").ratio() < 0.6:
+        return None
+    num = re.match(r"\d+", m.group(2))
+    return (num.group() if num else ""), "UNEXPIRED" in line.upper()
+
+
+def pages(cycle: int) -> list[str]:
+    _, local, wanted, _ = SRC[cycle]
+    with pdfplumber.open(D + local) as pdf:
+        return [pdf.pages[n - 1].extract_text() or "" for n in wanted]
+
+
+def blocks(cycle: int, seats: dict[str, int]) -> list[dict]:
+    """Each district block of a state with two seats or more, in the PDF's order. It takes the
+    number it prints where that follows the one before (Louisiana skips the districts its primary
+    decided unopposed), and the one before plus one where the OCR misreads it."""
+    state, out = None, []
+    for text in pages(cycle):
+        for raw in text.splitlines():
+            line = raw.strip()
+            header = district_of(line)
+            if header and state:
+                out.append(dict(state=state, header=line, printed=header[0], unexpired=header[1], lines=[]))
+                continue
+            st = state_of(line)
+            if st:
+                if st != state:
+                    print(f"# {cycle} state {st} from {line!r}", file=sys.stderr)
+                state = st
+            elif out and line:
+                out[-1]["lines"].append(line)
+    previous: dict[str, int] = collections.Counter()
+    kept = []
+    for b in out:
+        st = b["state"]
+        if b["unexpired"] or seats.get(st, 0) < 2:
+            continue
+        printed = int(b["printed"]) if b["printed"] else 0
+        number = printed if previous[st] < printed <= seats[st] else previous[st] + 1
+        if number != printed:
+            print(f"# {cycle} {st} header {b['header']!r} read as district {number}", file=sys.stderr)
+        previous[st] = number
+        b["district"] = f"{number:02d}"
+        kept.append(b)
+    for st, n in sorted(seats.items()):
+        got = {b["district"] for b in kept if b["state"] == st}
+        want = {f"{d:02d}" for d in range(1, n + 1)}
+        if n >= 2 and got != want:
+            print(f"# {cycle} {st}: missing {sorted(want - got)}, extra {sorted(got - want)}", file=sys.stderr)
+    return kept
+
+
+def house_seats(cycle: int) -> dict[str, int]:
+    """Voting seats per state under the apportionment in force; one for each delegate up."""
+    in_force: dict[str, tuple[int, int]] = {}
+    for row in csv.DictReader(open(SEATS_DIR + "apportionment.csv")):
+        st, n, first = row["state"], int(row["seats"]), int(row["first_cycle"])
+        if first <= cycle and (st not in in_force or first > in_force[st][1]):
+            in_force[st] = (n, first)
+    seats = {st: n for st, (n, _) in in_force.items()}
+    for row in csv.DictReader(open(SEATS_DIR + "delegates.csv")):
+        if int(row["first_cycle"]) <= cycle and cycle % int(row["term_years"]) == 0:
+            seats[row["state"]] = 1
+    return seats
+
+
+def bulk(name: str, cycle: int) -> list[list[str]]:
+    z = zipfile.ZipFile(f"{D}{name}{str(cycle)[2:]}.zip")
+    return [r for r in csv.reader(io.StringIO(z.read(z.namelist()[0]).decode("latin-1")), delimiter="|", quoting=csv.QUOTE_NONE) if r]
+
+
+def stands(cycle: int, year: str, office: str, ici: str) -> bool:
+    year = year.strip()
+    return year in {str(cycle - 1), str(cycle)} or (office == "H" and year in {str(cycle + 1), str(cycle + 2)} and ici == "I")
+
+
+def given_matches(fold, given: list[str], seen: list[str]) -> bool:
+    """A given name of the filing's is a word near the results' surname: the same, a nickname
+    of it, or one the prefix of the other (Dan, Daniel), three letters at least."""
+    nick = {k.translate(fold): {v.translate(fold) for v in vs} for k, vs in NICKNAMES.items()}
+    for g in given:
+        for w in seen:
+            if len(w) < 2 or len(g) < 2:
+                continue
+            if w == g or g in nick.get(w, ()) or w in nick.get(g, ()):
+                return True
+            if min(len(w), len(g)) >= 3 and (w.startswith(g) or g.startswith(w)):
+                return True
+    return False
+
+
+def find(fold, surname: str, given: list[str], lines: list[str]) -> str | None:
+    """The results line naming a filing in a district block: its surname a word, or a run of up
+    to three, and a given name on that line or the line either side (the OCR splits rows)."""
+    folded = [[w.translate(fold) for w in words(line)] for line in lines]
+    # Only a fragment, a line without a vote count, is part of the row beside it.
+    fragment = [not re.search(r"\d", line) for line in lines]
+    for i, ws in enumerate(folded):
+        for a in range(len(ws)):
+            for b in range(a + 1, min(a + 3, len(ws)) + 1):
+                if "".join(ws[a:b]) == surname:
+                    near = ws[:a] + ws[b:]
+                    for j in (i - 1, i + 1):
+                        if 0 <= j < len(lines) and (fragment[j] or fragment[i]):
+                            near += folded[j]
+                    if given_matches(fold, given, near):
+                        return lines[i]
+    return None
+
+
+def main() -> None:
+    out = csv.writer(sys.stdout, lineterminator="\n")
+    out.writerow(["cycle", "candidate_id", "name", "cn_district", "district", "results_line", "receipts", "verdict"])
+    for cycle, (_, _, _, fold) in SRC.items():
+        seats = house_seats(cycle)
+        by_state = collections.defaultdict(list)
+        for b in blocks(cycle, seats):
+            by_state[b["state"]].append(b)
+        cn = {r[0]: dict(name=r[1], year=r[3], state=r[4], office=r[5], district=r[6].strip().zfill(2), ici=r[7]) for r in bulk("cn", cycle)}
+        receipts = {r[0]: float(r[5] or 0) for r in bulk("weball", cycle)}
+        standing = {cid: f for cid, f in cn.items() if f["office"] == "H" and stands(cycle, f["year"], f["office"], f["ici"])}
+        surname = {cid: "".join(words(f["name"].partition(",")[0])).translate(fold) for cid, f in standing.items()}
+        tally = collections.Counter()
+        matched: set = set()
+        found: set = set()
+        same: set = set()
+        money = collections.Counter()
+        for cid in sorted(standing):
+            f = standing[cid]
+            if seats.get(f["state"], 0) < 2:
+                tally["one seat, cn not 00" if f["district"] != "00" else "one seat"] += 1
+                continue
+            given = [w.translate(fold) for w in words(f["name"].partition(",")[2]) if w not in HONORIFICS]
+            hits: dict[str, str] = {}
+            for b in by_state.get(f["state"], []):
+                line = find(fold, surname[cid], given, b["lines"])
+                if line:
+                    hits.setdefault(b["district"], line)
+                    matched.add((id(b), line))
+                    found.add(cid)
+            if not hits:
+                tally["not in results"] += 1
+                money["not in results"] += receipts.get(cid, 0)
+                continue
+            if f["district"] in hits:
+                tally["same district"] += 1
+                money["same district"] += receipts.get(cid, 0)
+                same.add(cid)
+                continue
+            row = [cycle, cid, f["name"], f"{f['state']}-{f['district']}"]
+            if len(hits) > 1:
+                tally["two districts"] += 1
+                out.writerow(row + ["", " | ".join(hits.values()), receipts.get(cid, 0), "rejected: results name it in two districts " + " ".join(f"{f['state']}-{d}" for d in sorted(hits))])
+                continue
+            [(d, line)] = hits.items()
+            twin = [c for c, o in standing.items() if c != cid and o["state"] == f["state"] and o["district"] == d and surname[c] == surname[cid]]
+            verdict = f"rejected: {f['state']}-{d} already has {','.join(twin)} of the same surname in cn" if twin else "corrected"
+            tally[verdict.partition(":")[0]] += 1
+            out.writerow(row + [f"{f['state']}-{d}", line, receipts.get(cid, 0), verdict])
+        # Recall. A results row with a vote count that no filing matched may be a filing the OCR
+        # garbled: compare its first word with the surname of every filing of the state matched
+        # nowhere, and list those close to it (difflib ratio 0.75 or more) that `cn` files in
+        # another district. A district block no filing matched at all is listed too.
+        unfound = {cid for cid in standing if seats.get(standing[cid]["state"], 0) >= 2 and cid not in found}
+        for st, bs in by_state.items():
+            for b in bs:
+                rows = [line for line in b["lines"] if re.search(r"\d", line) and not re.match(r"\W*(T\S*l\s+V|Write|Combined|Total)", line, re.I)]
+                if rows and not any((id(b), line) in matched for line in rows):
+                    print(f"# {cycle} no filing in {st}-{b['district']}: {rows[0]!r}", file=sys.stderr)
+                for line in rows:
+                    if (id(b), line) in matched:
+                        continue
+                    tally["results rows unmatched"] += 1
+                    head = words(line.split(",")[0] if "," in line else line.split()[0])
+                    key = "".join(head).translate(fold)
+                    for c in unfound:
+                        o = standing[c]
+                        if o["state"] == st and o["district"] != b["district"] and difflib.SequenceMatcher(None, surname[c], key).ratio() >= 0.75:
+                            tally["review"] += 1
+                            print(f"# {cycle} review {st}-{b['district']} {line!r}: {c} {o['name']!r} cn {st}-{o['district']} receipts {receipts.get(c, 0):.0f}", file=sys.stderr)
+                tally["results rows"] += len(rows)
+        # The races `cn` gives two incumbent filings or more, and where the results put each.
+        incumbents = collections.defaultdict(list)
+        for cid, f in standing.items():
+            if f["ici"] == "I" and seats.get(f["state"], 0) >= 2:
+                incumbents[(f["state"], f["district"])].append(cid)
+        for (st, d), cids in sorted(incumbents.items()):
+            if len(cids) > 1:
+                where = ", ".join(f"{standing[c]['name']} {c} {'results ' + st + '-' + d if c in same else 'results elsewhere' if c in found else 'not in results'}" for c in sorted(cids))
+                print(f"# {cycle} incumbents {st}-{d}: {where}", file=sys.stderr)
+        print(f"# {cycle}: {len(standing)} standing House filings: {dict(tally)}; receipts {dict((k, round(v)) for k, v in money.items())}", file=sys.stderr)
+
+
+main()
 ```
 
 </details>

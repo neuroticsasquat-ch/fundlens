@@ -1,4 +1,7 @@
 cycle,candidate_id,state,cn_district,district,source
+1992,H2FL00110,FL,00,19,federalelections92.pdf page 65
+1992,H2MO03084,MO,02,03,federalelections92.pdf page 78
+1992,H2NY17089,NY,08,17,federalelections92.pdf page 85
 2002,H0WI05089,WI,00,04,2002fedresults.xls row 3764
 2002,H2IL00051,IL,00,05,2002fedresults.xls row 1080
 2002,H2IN00018,IN,00,09,2002fedresults.xls row 1240
