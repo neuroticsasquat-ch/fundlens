@@ -848,3 +848,57 @@ FL-19, Stockhausen MO-02 to MO-03, LaLuz NY-08 to NY-17, all $0). 1982 needs non
 On `api.fundlens.org`, 2012 NY-11 lists `H0NY13074` and `H2NY13088`, and CA-38 lists `H2CA39078`; neither NY-13 nor
 CA-39 lists them. 1992 FL-19 lists `H2FL00110`, MO-03 `H2MO03084` and NY-17 `H2NY17089`; neither MO-02 nor NY-08
 lists theirs.
+
+### 2026-11-15 — 2018 rebuilt after NEU-2319
+
+2018's build `20261114T210716Z` (from `0bfd091`) passed every check, but `2018-S-MN-00-special` and
+`2018-S-MS-00-special` had 0 candidates and $0. `cn` can't tell a special's filing from the regular race's for the
+same seat, so `02_candidate.sql` sent Smith and Housley (MN) and Hyde-Smith and Espy (MS) to the regular race beside
+Klobuchar and Wicker. NEU-2319 (PR #164) adds `fec/seats/special_candidates.csv`, which places each candidate of the
+seven Senate specials held beside a regular race (2018 MN, MS; 2020 GA; 2022 CA, OK; 2024 CA, NE), and the check
+`silver_candidate_special.sql`. 2018 was rebuilt from `1aa7c497d49f5c942b81cace33977442b32bdde7`. From 2020 on,
+cycles are built with `DUCKDB_MEMORY_LIMIT` at `32GB` (step 2, 2026-11-15T02:06:49Z).
+
+| Cycle | Superseded | Live | Peak |
+| --- | --- | --- | --- |
+| 2018 | `20261114T210716Z` | `20261115T012743Z` | 14.57 GiB, write contribution |
+
+On `api.fundlens.org`, the MN special lists 11 candidates, including `S8MN00578` and `S8MN00586`, and the MS special
+4, including `S8MS00261`, `S8MS00287` and `S4MS00120`. MN (15, with `S6MN00267`) and MS (11, with `S8MS00196`) keep
+their regular candidates.
+
+### 2026-11-15 — 2020 rebuilt after NEU-2320
+
+2020's build `20261115T020919Z` (from `1aa7c49`) stopped at `load` on `gold_committee_cycle_refunds.sql`:
+`C00603084` had refunds of +11,927.00. Silver's `reversal` paired a `22Y` refund of −12,500 with a `20Y` of +12,500
+(SIMON, DEBORAH, `FILE_NUM 1358403`): moving the refund to the hybrid PAC's non-contribution account counted as its
+void, so it added back on line 20. NEU-2320 (PR #165) pairs a void only within its own refund type, in
+`04_contribution.sql` and `08_organization_receipt.sql`. 1980–2018 passed the check, so a cross-type pair in them nets
+to 0 or less, and they were not rebuilt. 2020 was rebuilt from scratch, not resumed at `load`, from
+`2592ae1`. The rerun didn't move the failed build aside, so `2020/` holds both runs' logs. `window.txt` was trimmed
+to the rebuild, so that `cycle_peak` reads only it, and the whole history is kept in `window-all.txt`.
+
+| Cycle | Failed | Live | Peak |
+| --- | --- | --- | --- |
+| 2020 | `20261115T020919Z` | `20261115T033259Z` | 22.54 GiB, write contribution |
+
+`C00603084`'s 2020 `total_refunds` is −13,073.00. The GA special lists 21 candidates, among them Warnock
+(`S0GA00559`), Loeffler (`S0GA00526`) and Collins (`S0GA00567`). 0 races at $0.
+
+### 2026-11-15 — 2022 rebuilt after NEU-2321
+
+2022's build `20261115T165438Z` (from `2592ae1`) stopped in `transform` with exit 1. The cause was `indiv`'s last line,
+`C00401224|N|M10|P|2`, which has 5 of 21 fields. FEC's `indiv22.zip` (Last-Modified 08 Nov 2026) holds a cut-off
+`itcont.txt` of 4,471,783,424 bytes, against 12,076,605,578 in the same zip's `by_date/` members. No other cycle's
+`itcont.txt` differs from its `by_date/` sum, or else the cycle has no `by_date/`. NEU-2321 (PR #166) reads
+`by_date/` when the two disagree, and logs a warning with both sizes. 2022 was rebuilt from `529517d`. The failed
+build left its logs in `2022/`, and `window.txt` was trimmed as for 2020.
+
+| Cycle | Failed | Live | Peak |
+| --- | --- | --- | --- |
+| 2022 | `20261115T165438Z` | `20261115T173437Z` | 20.38 GiB, write contribution |
+
+The rebuild has 32,870,243 contributions, against 23,747,534 whole rows in the cut-off file. That is below 2020's
+45.1M and 2.1× 2018's 15.5M. The OK special lists 16 candidates, among them Mullin (`S2OK00186`) and Horn
+(`S2OK00228`). Its one race at $0 is the CA special, with 0 candidates. That is by design: every one of its candidates
+also ran in the regular race and stands there.
