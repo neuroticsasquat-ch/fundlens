@@ -717,6 +717,73 @@ def test_a_committee_cm_lists_as_a_skeleton_keeps_the_name_an_earlier_cycle_gave
     assert failures == []
 
 
+def test_a_candidate_cn_lists_as_a_skeleton_keeps_an_earlier_name_or_is_not_searched() -> None:
+    # `cn` lists a candidate as a skeleton row now and then: its id, year, state, office, status
+    # and principal committee, every other column blank (NEU-2323: 2026's H6AZ08210, named in no
+    # cycle, whose principal committee has a name of its own).
+    gold = REPO_ROOT / "sql" / "gold"
+    with duckdb.connect() as con:
+        con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            "CREATE TABLE silver.candidate AS SELECT * FROM (VALUES"
+            " (2024, 'H1', 'ROE, JANE', 'DEM', 'H', 'AZ', '08', 'C1', CAST(NULL AS VARCHAR)),"
+            " (2026, 'H1', NULL, NULL, 'H', 'AZ', NULL, 'C1', NULL),"
+            " (2026, 'H2', NULL, NULL, 'H', 'AZ', NULL, 'C2', NULL),"
+            " (2024, 'H3', 'DOE, JOHN', 'REP', 'H', 'AZ', '01', 'C3', NULL),"
+            " (2026, 'H3', 'DOE, JOHN Q', 'REP', 'H', 'AZ', '02', 'C3', NULL)"
+            ") AS t(cycle, candidate_id, name, party, office, state, district,"
+            " principal_committee_id, alias_of)"
+        )
+        con.execute(
+            "CREATE TABLE candidate_cycle AS SELECT * FROM (VALUES"
+            " ('H1', 100.00, 0.00), ('H2', 50.00, 0.00), ('H3', 0.00, 25.00)"
+            ") AS t(candidate_id, total_individual, total_committee)"
+        )
+        con.execute(
+            "CREATE TABLE committee AS SELECT * FROM (VALUES"
+            " ('C2', 'ROE FOR AZ', CAST(NULL AS VARCHAR))"
+            ") AS t(committee_id, name, connected_org)"
+        )
+        # Every other kind search_entity lists, empty.
+        con.execute(
+            "CREATE TABLE committee_cycle (committee_id VARCHAR,"
+            " total_individual DECIMAL(16, 2), total_from_committees DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE race (race_id VARCHAR, cycle INTEGER, office VARCHAR, state VARCHAR,"
+            " district VARCHAR, is_special BOOLEAN, slug VARCHAR, total_individual DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE donor"
+            " (donor_id BIGINT, display_name VARCHAR, total_all_cycles DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE donor_variant (donor_id BIGINT, field VARCHAR, value VARCHAR,"
+            " amount DECIMAL(16, 2), contributions INTEGER)"
+        )
+
+        con.execute(render(gold / "05_candidate.sql", {}))
+        con.execute(render(gold / "16_search_entity.sql", {}))
+
+        candidates = con.execute(
+            "SELECT candidate_id, name, party, office, state, district, cycles FROM candidate"
+            " ORDER BY candidate_id"
+        ).fetchall()
+        searched = con.execute("SELECT id, name FROM search_entity ORDER BY id").fetchall()
+        failures = failing_rows(con, "gold_search_entity_name.sql")
+
+    assert candidates == [
+        ("H1", "ROE, JANE", "DEM", "H", "AZ", "08", "{2024,2026}"),
+        ("H2", None, None, "H", "AZ", None, "{2026}"),
+        # A candidate named in both cycles takes the newest row, as before.
+        ("H3", "DOE, JOHN Q", "REP", "H", "AZ", "02", "{2024,2026}"),
+    ]
+    # H2 is left out though its principal committee has a name: that is not the candidate's.
+    assert searched == [("H1", "ROE, JANE"), ("H3", "DOE, JOHN Q")]
+    assert failures == []
+
+
 def test_the_conduit_floor_check_fails_on_a_conduit_below_minus_1m() -> None:
     with duckdb.connect() as con:
         con.execute(
