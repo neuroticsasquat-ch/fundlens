@@ -64,6 +64,9 @@ class BulkFile:
     member: str
     # Column name → DuckDB type, in file order; the vendored header must name the same columns.
     columns: dict[str, str]
+    # The folder inside the zip that holds `member`'s rows again, split into several files: read
+    # in its place only when the two disagree in size (`transform.runner.copy_bulk`, NEU-2321).
+    split_dir: str | None = None
 
     @property
     def header_file(self) -> str:
@@ -140,7 +143,11 @@ CATALOGUE: dict[FecFile, BulkFile] = {
                 "LINKAGE_ID": LINKAGE_ID,
             },
         ),
-        BulkFile("indiv", 1980, "itcont.txt", _ITEMIZED_HEAD | _ITEMIZED_TAIL),
+        # FEC's 2022 zip, as published on 2026-11-08, holds an `itcont.txt` cut off mid-row at
+        # 37% of its `by_date/` files' bytes (NEU-2321). `pas2` and `oth` have no such folder.
+        BulkFile(
+            "indiv", 1980, "itcont.txt", _ITEMIZED_HEAD | _ITEMIZED_TAIL, split_dir="by_date/"
+        ),
         BulkFile(
             "pas2", 1980, "itpas2.txt", _ITEMIZED_HEAD | {"CAND_ID": VARCHAR} | _ITEMIZED_TAIL
         ),

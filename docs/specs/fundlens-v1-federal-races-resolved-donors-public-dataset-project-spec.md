@@ -211,7 +211,7 @@ FEC bulk files (`https://www.fec.gov/files/bulk-downloads/<cycle>/<file><yy>.zip
 | `oth` | committee_transfer, jfc_attribution (§6.11), organization_receipt, contribution (candidates' loans, NEU-2071) | 1980 |
 | `oppexp` | not loaded in v1 (operating expenditures) | 2004 |
 
-`fundlens.fec.files` is the single catalogue; the first ticket that touches a file name adds it there with its first cycle.
+`fundlens.fec.files` is the single catalogue; the first ticket that touches a file name adds it there with its first cycle. Each zip is read by its member name (`itcont.txt`, `cm.txt` …), never as its only file: since 2012 the `indiv` zip also holds the same rows split by date under `by_date/`. Amended by NEU-2321: when `itcont.txt`'s size disagrees with the sum of its `by_date/` files', the transform warns with both sizes and reads the `by_date/` files in name order in its place, each ending its last line. FEC's 2022 zip, as published on 2026-11-08, holds an `itcont.txt` cut off mid-row at 4,471,783,424 of the 12,076,605,578 bytes; every other cycle's agree exactly, so they read `itcont.txt` and keep its row order. `pas2` and `oth` have no `by_date/` (2022–2026 checked).
 
 ## 5. Pipeline
 

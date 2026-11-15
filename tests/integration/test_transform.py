@@ -1012,6 +1012,38 @@ def test_a_zip_is_read_by_its_member_name_not_as_its_only_file(store: R2, cli_en
     assert f"committee: {fec_fixture.expected()['silver']['committee']} rows" in result.output
 
 
+def test_a_truncated_itcont_is_read_from_its_by_date_files(
+    store: R2, cli_env: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    put_bronze(store)
+    # FEC's 2022 `itcont.txt` stops mid-row, at 37% of the bytes its `by_date/` files hold
+    # (NEU-2321). Here the first `by_date/` file ends without a newline, so joined as it is, its
+    # last row and the second file's first would be one row of 41 columns.
+    indiv = fec_fixture.bulk_text("indiv").encode()
+    lines = indiv.splitlines(keepends=True)
+    half = len(lines) // 2
+    first, second = b"".join(lines[:half]).removesuffix(b"\n"), b"".join(lines[half:])
+    truncated = indiv[: len(b"".join(lines[: half - 1])) + 20]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("itcont.txt", truncated)
+        archive.writestr("by_date/itcont_2024_20230101_20231231.txt", first)
+        archive.writestr("by_date/itcont_2024_20240101_20241231.txt", second)
+    key = paths.bronze_zip(2024, "indiv", date(2026, 10, 31))
+    store.put(key, buffer.getvalue())
+    seats_report()
+    caplog.set_level(logging.WARNING, logger="fundlens.transform")
+
+    result = transform()
+
+    assert result.exit_code == 0, result.output
+    assert f"contribution: {fec_fixture.expected()['silver']['contribution']} rows" in result.output
+    assert [record.getMessage() for record in caplog.records] == [
+        f"{key}: itcont.txt holds {len(truncated):,} bytes but by_date/"
+        f" {len(indiv) - 1:,}; reading by_date/"
+    ]
+
+
 def test_a_filing_for_a_seat_with_a_special_beside_it_joins_the_regular_race(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
