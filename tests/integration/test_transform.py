@@ -19,7 +19,9 @@ from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
+from fundlens.transform import seats
 from fundlens.transform.runner import ChecksFailed, render
+from fundlens.transform.seats import Race
 from tests import fec_fixture
 from tests.fake_fec import zipped
 from tests.integration.conftest import cli_pointed_at, empty_store, scratch_database
@@ -983,8 +985,13 @@ def test_a_zip_is_read_by_its_member_name_not_as_its_only_file(store: R2, cli_en
 def test_a_filing_for_a_seat_with_a_special_beside_it_joins_the_regular_race(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:
-    # Nebraska elects a regular class 1 senator and fills its class 2 seat in 2024.
-    nebraska = "S4NE00120|DOE, JANE|DEM|2024|NE|S|00|C|C||1 MAIN ST||OMAHA|NE|68102\n"
+    # Nebraska elects a regular class 1 senator and fills its class 2 seat in 2024. Pete
+    # Ricketts, whom `special_candidates.csv` lists, stands in the special (NEU-2319); without
+    # him, `silver_candidate_special.sql` would fail the build for leaving it empty.
+    nebraska = (
+        "S4NE00120|DOE, JANE|DEM|2024|NE|S|00|C|C||1 MAIN ST||OMAHA|NE|68102\n"
+        "S6NE00129|RICKETTS, PETE|REP|2024|NE|S|00|I|C||2 MAIN ST||OMAHA|NE|68102\n"
+    )
     put_bronze(store, texts={"cn": fec_fixture.bulk_text("cn") + nebraska})
     seats_report()
 
@@ -993,6 +1000,7 @@ def test_a_filing_for_a_seat_with_a_special_beside_it_joins_the_regular_race(
         row["candidate_id"]: row["race_id"] for row in read_silver(store, "candidate", tmp_path)
     }
     assert races["S4NE00120"] == "2024-S-NE-00"
+    assert races["S6NE00129"] == "2024-S-NE-00-special"
 
 
 def test_a_filing_for_a_lone_special_joins_it_and_a_later_cycles_filing_joins_nothing(
@@ -1106,6 +1114,74 @@ def test_a_house_filing_cn_files_under_the_old_maps_district_stands_in_the_one_i
         "H2CA39078": ("38", "2012-H-CA-38"),
         "H2NY13990": ("13", "2012-H-NY-13"),
     }
+
+
+def test_a_filing_special_candidates_lists_stands_in_the_special_beside_the_regular_race(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # 2018's Minnesota and Mississippi each held a Senate special beside the regular race, and
+    # `cn` files both races' candidates alike (NEU-2319). `special_candidates.csv` lists Tina
+    # Smith, Karin Housley, Cindy Hyde-Smith, Mike Espy and Chris McDaniel in the specials; Amy
+    # Klobuchar and Roger Wicker, unlisted, stand in the regular races.
+    cn = (
+        "S6MN00267|KLOBUCHAR, AMY|DEM|2018|MN|S|00|I|C||1 ELM ST||MINNEAPOLIS|MN|55401\n"
+        "S8MN00578|SMITH, TINA|DEM|2018|MN|S|00|I|C||2 ELM ST||MINNEAPOLIS|MN|55401\n"
+        "S8MN00586|HOUSLEY, KARIN|REP|2018|MN|S|00|C|C||3 ELM ST||STILLWATER|MN|55082\n"
+        "S8MS00196|WICKER, ROGER F|REP|2018|MS|S|00|I|C||4 ELM ST||TUPELO|MS|38801\n"
+        "S8MS00261|HYDE-SMITH, CINDY|REP|2018|MS|S|00|O|C||5 ELM ST||BROOKHAVEN|MS|39601\n"
+        "S8MS00287|ESPY, MICHAEL|DEM|2018|MS|S|00|O|C||6 ELM ST||JACKSON|MS|39201\n"
+        "S4MS00120|MCDANIEL, CHRIS|REP|2018|MS|S|00|O|C||7 ELM ST||ELLISVILLE|MS|39437\n"
+    )
+    texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(2018)}
+    texts["cn"] = cn
+    put_bronze(store, 2018, texts=texts)
+
+    result = transform(2018)
+
+    assert result.exit_code == 0, result.output
+    candidates = read_silver(store, "candidate", tmp_path, cycle=2018)
+    assert {row["candidate_id"]: row["race_id"] for row in candidates} == {
+        "S6MN00267": "2018-S-MN-00",
+        "S8MN00578": "2018-S-MN-00-special",
+        "S8MN00586": "2018-S-MN-00-special",
+        "S8MS00196": "2018-S-MS-00",
+        "S8MS00261": "2018-S-MS-00-special",
+        "S8MS00287": "2018-S-MS-00-special",
+        "S4MS00120": "2018-S-MS-00-special",
+    }
+
+
+def test_the_special_check_fails_on_a_special_left_empty_beside_a_regular_race_with_filings() -> (
+    None
+):
+    with duckdb.connect() as con:
+        seats.load_races(
+            con,
+            [
+                Race(2022, "S", state, "00", is_special=special)
+                for state in ("CA", "MN", "MS", "NE", "OK")
+                for special in (False, True)
+            ],
+        )
+        # CA's special is empty, but every row lists a candidate of both races: it passes. MN's
+        # listed filing isn't in `cn`, and MS has no rows: both fail. NE's seat has no filing,
+        # and OK's special has its candidate.
+        con.execute(
+            "CREATE TABLE candidate AS SELECT * FROM (VALUES"
+            " ('S2CA00955', '2022-S-CA-00'), ('S6MN00267', '2022-S-MN-00'),"
+            " ('S8MS00196', '2022-S-MS-00'), ('S4OK00232', '2022-S-OK-00'),"
+            " ('S2OK00186', '2022-S-OK-00-special')"
+            ") AS t(candidate_id, race_id)"
+        )
+        con.execute(
+            "CREATE TABLE special_candidate AS SELECT * FROM (VALUES"
+            " ('S2CA00955', 'S', 'CA', 'regular'), ('S8MN00578', 'S', 'MN', 'special'),"
+            " ('S2OK00186', 'S', 'OK', 'special')"
+            ") AS t(candidate_id, office, state, race)"
+        )
+
+        failed = failing_rows(con, "silver_candidate_special.sql")
+        assert sorted(failed) == [("2022-S-MN-00-special",), ("2022-S-MS-00-special",)]
 
 
 def test_a_pair_linked_for_two_elections_keeps_this_cycles_link(

@@ -12,6 +12,9 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
 - `house_district`, the cycle's House filings whose `cn` district is not the one they ran in,
   with the one they did (`fec/seats/house_districts.csv`, NEU-2293);
+- `special_candidate`, the cycle's filings FEC's results list in a Senate special held beside a
+  regular race, and which of the two each stands in (`fec/seats/special_candidates.csv`,
+  NEU-2319);
 - `conduit`, the vendored conduit committees (`fec/conduits.csv`);
 - `handoff`, the vendored handoffs whose date falls in the cycle (`fec/handoffs.csv`): a committee
   handed from one candidate to another, whose money is the first's before the date and the
@@ -264,6 +267,17 @@ def _register_house_districts(con: duckdb.DuckDBPyConnection, cycle: int) -> Non
         con.executemany("INSERT INTO house_district VALUES (?, ?)", rows)
 
 
+def _register_special_candidates(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    rows = [(r.candidate_id, r.office, r.state, r.race) for r in seats.special_candidates(cycle)]
+    con.execute(
+        "CREATE TABLE special_candidate"
+        " (candidate_id VARCHAR, office VARCHAR, state VARCHAR, race VARCHAR)"
+    )
+    # DuckDB's executemany refuses an empty list, and most cycles have no special beside a race.
+    if rows:
+        con.executemany("INSERT INTO special_candidate VALUES (?, ?, ?, ?)", rows)
+
+
 def _register_ie_candidate_corrections(con: duckdb.DuckDBPyConnection) -> None:
     # Keyed by SUB_ID, unique across FEC's files, so every cycle can load the whole list: a row of
     # another cycle matches nothing.
@@ -396,6 +410,7 @@ def transform(
             _register_conduits(con)
             _register_handoffs(con, cycle)
             _register_house_districts(con, cycle)
+            _register_special_candidates(con, cycle)
             _register_ie_candidate_corrections(con)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
