@@ -1178,6 +1178,37 @@ def test_a_house_filing_cn_files_under_the_old_maps_district_stands_in_the_one_i
     }
 
 
+def test_a_house_filing_in_an_at_large_state_stands_in_its_seat_whatever_district_cn_names(
+    store: R2, cli_env: Path, tmp_path: Path
+) -> None:
+    # `cn` files the Northern Mariana Islands' 2026 delegate candidates under `01`, and the
+    # islands' one seat is `00`, so `2026-H-MP-00` had no candidate (NEU-2324). In Maryland, with
+    # eight districts, a `00` filing names no seat: the report records it and it joins no race.
+    cn = (
+        "H6MP01027|DELEON GUERRERO, ANA|DEM|2026|MP|H|01|C|C||1 BEACH RD||SAIPAN|MP|96950\n"
+        "H4MP01022|KING-HINDS, KIMBERLYN|REP|2026|MP|H|01|I|C||2 BEACH RD||SAIPAN|MP|96950\n"
+        "H6MP00030|SABLAN, ROSA|IND|2026|MP|H|00|C|C||3 BEACH RD||SAIPAN|MP|96950\n"
+        "H6MD01031|ROE, ANN|DEM|2026|MD|H|01|C|C||4 ELM ST||SALISBURY|MD|21801\n"
+        "H6MD00032|DOE, JON|REP|2026|MD|H|00|C|C||5 ELM ST||TOWSON|MD|21204\n"
+    )
+    texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(2026)}
+    texts["cn"] = cn
+    put_bronze(store, 2026, texts=texts)
+    seats_report(2026)
+
+    result = transform(2026)
+
+    assert result.exit_code == 0, result.output
+    candidates = read_silver(store, "candidate", tmp_path, cycle=2026)
+    assert {row["candidate_id"]: (row["district"], row["race_id"]) for row in candidates} == {
+        "H6MP01027": ("00", "2026-H-MP-00"),
+        "H4MP01022": ("00", "2026-H-MP-00"),
+        "H6MP00030": ("00", "2026-H-MP-00"),
+        "H6MD01031": ("01", "2026-H-MD-01"),
+        "H6MD00032": ("00", None),
+    }
+
+
 def test_a_filing_special_candidates_lists_stands_in_the_special_beside_the_regular_race(
     store: R2, cli_env: Path, tmp_path: Path
 ) -> None:

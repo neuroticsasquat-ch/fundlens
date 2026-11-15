@@ -222,6 +222,27 @@ def test_only_a_filing_for_no_seat_is_unmatched() -> None:
     ]
 
 
+def test_a_house_filing_in_an_at_large_state_stands_in_its_seat_whatever_district_it_names() -> (
+    None
+):
+    races = seats.races_for(2026)
+    filings = [
+        # `cn` files the Northern Mariana Islands' 2026 delegate candidates under `01` (NEU-2324).
+        Filing("H6MP01027", "H", "MP", "01"),
+        Filing("H4MP00030", "H", "MP", "00"),
+        # Maryland has eight districts: a `01` filing stands in MD-01, and a `00` one in none.
+        Filing("H6MD01031", "H", "MD", "01"),
+        Filing("H6MD00032", "H", "MD", "00"),
+        # Puerto Rico's resident commissioner is up only in presidential cycles.
+        Filing("H6PR01033", "H", "PR", "01"),
+    ]
+
+    assert [f.candidate_id for f in seats.unmatched(filings, races)] == [
+        "H6MD00032",
+        "H6PR01033",
+    ]
+
+
 # FEC's election results for the first cycle on each map since the 1980 census's, which
 # `house_districts.csv` cites by spreadsheet row (NEU-2293) or, for 1982's and 1992's, which are
 # PDF only, by page (NEU-2294).
