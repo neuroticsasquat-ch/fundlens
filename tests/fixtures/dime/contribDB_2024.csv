@@ -321,3 +321,6 @@ cycle,transaction.id,transaction.type,amount,date,bonica.cid,contributor.name,co
 2024,dime00320,10,5000,2024-07-15,100000122,"thorvaldsen, kwame",thorvaldsen,kwame,I,baltimore,MD,21201,partner,patapsco river ventures llc,maryland forward pac,comm100007,SA11AI.00366.0,C00800201
 2024,dime00321,10,5000,2024-07-15,100000123,"ikeda, astrid",ikeda,astrid,I,annapolis,MD,21401,partner,patapsco river ventures llc,maryland forward pac,comm100007,SA11AI.00366.1,C00800201
 2024,dime00322,10,2500,2024-08-01,100000124,"rosenkrantz, beatrix",rosenkrantz,beatrix,I,easton,MD,21601,retired,retired,maryland forward pac,comm100007,SA11AI.00372,C00800201
+2024,dime00323,22Y,-1000,2024-09-10,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SB28A.00379,C00800204
+2024,dime00324,20Y,-1000,2024-09-10,100000114,"hayward, lena",hayward,lena,I,annapolis,MD,21401,boatwright,annapolis yacht works,tidewater action fund,comm100018,SB28A.00380,C00800204
+2024,dime00325,20Y,-200,2024-05-05,100000103,"lindqvist, astrid",lindqvist,astrid,I,frederick,MD,21701,nurse,frederick health,maryland forward pac,comm100007,SB28A.00383,C00800201

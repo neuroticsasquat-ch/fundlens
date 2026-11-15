@@ -241,13 +241,14 @@ def orphaned_attributions() -> frozenset[str]:
 @functools.cache
 def reversals() -> frozenset[str]:
     """The negative refunds that void a positive one, by SUB_ID. Each positive refund is voided
-    once (NEU-2269): among the refunds to one giver at one committee of one size, the negatives in
-    order of date, then SUB_ID, void as many as there are positive ones. A further negative is a
-    refund like any other."""
-    groups: defaultdict[tuple[str, str, int], list[Row]] = defaultdict(list)
+    once (NEU-2269): among the refunds to one giver at one committee of one type and size, the
+    negatives in order of date, then SUB_ID, void as many as there are positive ones. A further
+    negative is a refund like any other, and so is a negative of another type: a void is filed as
+    the type of the refund it voids (NEU-2320)."""
+    groups: defaultdict[tuple[str, str, str, int], list[Row]] = defaultdict(list)
     for row in rows("indiv"):
         if is_refund(row) and row["MEMO_CD"] != "X" and row["NAME"] and not is_superseded(row):
-            groups[row["CMTE_ID"], row["NAME"], abs(amount(row))].append(row)
+            groups[row["CMTE_ID"], row["NAME"], row["TRANSACTION_TP"], abs(amount(row))].append(row)
     voids: set[str] = set()
     for group in groups.values():
         negatives = sorted(
@@ -260,9 +261,9 @@ def reversals() -> frozenset[str]:
 
 def signed(row: Row) -> int:
     """A contribution's amount as it counts. A refund (22Y, or any 2nY or 4nY type) subtracts
-    whichever sign its filer wrote, unless it is negative and voids a positive refund to the same
-    giver at the same committee (`reversals`): then it adds back. A loan repaid to the candidate
-    (20C) subtracts as filed, so a negative one, a correction, adds back (NEU-2071)."""
+    whichever sign its filer wrote, unless it is negative and voids a positive refund of its type to
+    the same giver at the same committee (`reversals`): then it adds back. A loan repaid to the
+    candidate (20C) subtracts as filed, so a negative one, a correction, adds back (NEU-2071)."""
     if row["TRANSACTION_TP"] == LOAN_REPAYMENT:
         return -amount(row)
     if not is_refund(row):

@@ -61,8 +61,9 @@
 # - A hybrid PAC (CMTE_TP V or W) keeps a non-contribution account, outside the contribution limits,
 #   whose receipts `indiv` types 10 (10J a JFC's share, 24I an earmark through a conduit): kept, as
 #   contributions or organization receipts, but in neither total_individual nor
-#   total_from_organizations (NEU-2192). So is a refund there to a giver of such a 10, by NAME. A 10
-#   to any other committee, a super PAC's, is an ordinary contribution.
+#   total_from_organizations (NEU-2192). So is a 20Y there, a refund out of that account, judged by
+#   its type and not by its giver. A 10 to any other committee, a super PAC's, is an ordinary
+#   contribution.
 # - A counted row whose type FEC files on a line other than 11(a)(i) (NEU-2193): a national
 #   party's convention, headquarters or recount account (30, 31, 32 and variants, refunded as 40Y,
 #   41Y, 42Y), a loan (16x), a transfer or other receipt (18G, 18J, 18K, 18L, 18U, 18H) or a Form
@@ -87,7 +88,7 @@ rows:
   cm: 23
   cn: 15
   ccl: 15
-  indiv: 378
+  indiv: 383
   pas2: 30
   oth: 32
 
@@ -102,10 +103,10 @@ silver:
   committee: 23
   candidate: 15
   candidate_committee_link: 15
-  contribution: 324
+  contribution: 327
   independent_expenditure: 15
   committee_transfer: 32
-  organization_receipt: 15
+  organization_receipt: 17
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -139,7 +140,7 @@ contributions:
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
-  dropped_not_individual: 19
+  dropped_not_individual: 21
   self_funding: 5
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
@@ -147,7 +148,7 @@ contributions:
     C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2603775
+  total_amount: 2601575
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -171,6 +172,8 @@ organization_receipts:
     4240100000000000368: SEVERN CAPITAL # its partners' memo lines attribute it (NEU-2198)
     4240100000000000375: MAGOTHY HOLDINGS # a memo line, the only record of its gift (NEU-2198)
     4240100000000000378: SEVERN STATE LEADERSHIP FUND # a 10 its TRAN_ID puts on line 11(c) (NEU-2276)
+    4240100000000000381: PATAPSCO HOLDINGS # a 22Y and a 20Y for one refund moved between the accounts (NEU-2320)
+    4240100000000000382: PATAPSCO HOLDINGS
   # Net amount by organization key, refunds subtracted.
   by_key:
     ACME CONCRETE: 5000
@@ -181,7 +184,7 @@ organization_receipts:
     IRONWORKERS LOCAL 16: 4000
     MAGOTHY HOLDINGS: 3000
     ONE NATION: 40000
-    PATAPSCO HOLDINGS: 250000
+    PATAPSCO HOLDINGS: 248000
     PISCATAWAY CONOY TRIBE: 15000
     SEVERN CAPITAL: 2000
     SEVERN STATE LEADERSHIP FUND: 20000
@@ -191,8 +194,8 @@ organization_receipts:
     C00800105: 8000
     C00800201: 142500
     C00800203: 44000
-    C00800204: 250000
-  total_amount: 444500
+    C00800204: 248000
+  total_amount: 442500
   # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
   # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
   # Ranked by amount, then key; an organization netting to $0 or less is on no list.
@@ -213,25 +216,26 @@ organization_receipts:
       - [BALTIMORE HARBOR PILOTS, BALTIMORE HARBOR PILOTS LLC, 5000]
       - [IRONWORKERS LOCAL 16, IRONWORKERS LOCAL 16, 4000]
     C00800204:
-      - [PATAPSCO HOLDINGS, PATAPSCO HOLDINGS LLC, 250000]
+      - [PATAPSCO HOLDINGS, PATAPSCO HOLDINGS LLC, 248000]
   # The receipts filed with no entity type, which the classifier put here (NEU-2132).
   classified: [4240100000000000327]
 
 # A hybrid PAC's non-contribution account (NEU-2192): the counted `indiv` rows and organization
 # receipts typed 10 or 10J to a committee typed V or W, or 24I there with a memo naming the
 # account (NEU-2203, NEU-2207), and the 20Y refunds there, by SUB_ID, each kept in its table and
-# marked (the 20Y to HAYWARD, not the 22Y to TREVELYAN, nor his 24I with no such memo).
+# marked (the 20Ys to HAYWARD and PATAPSCO HOLDINGS, not the 22Ys to them or TREVELYAN, nor his 24I
+# with no such memo).
 # by_committee is their net amount, individuals' and organizations' alike: gold's
 # total_non_contribution_account, in neither total_individual (`committees` below holds the
 # contribution account alone) nor total_from_organizations, which is `organization_receipts`'
 # by_committee less organizations_by_committee here and in `other_lines`.
 non_contribution_account:
-  contributions: [4240100000000000331, 4240100000000000334, 4240100000000000344]
-  organization_receipts: [4240100000000000332]
+  contributions: [4240100000000000331, 4240100000000000334, 4240100000000000380, 4240100000000000344]
+  organization_receipts: [4240100000000000332, 4240100000000000382]
   by_committee:
-    C00800204: 271000
+    C00800204: 269000
   organizations_by_committee:
-    C00800204: 250000
+    C00800204: 249000
 
 # Money on a line no total_individual counts (NEU-2193), by SUB_ID: GALLAGHER's gift to the party's
 # headquarters account and its refund, and her loan to WHITLOCK FOR SENATE; and organizations' gifts
@@ -266,8 +270,10 @@ returned_by_candidates:
 # The refunds counted in a committee's total_individual or total_from_organizations (NEU-2265), by
 # SUB_ID: the 22Ys to individuals (LINDQVIST's, and its void, net to 0; BRANDVOLD's three, a void
 # of one refund and a second refund, net to -400, NEU-2269) and CHESAPEAKE STEEL's ORG
-# 22Y to the super PAC. Not the hybrid PAC's 20Y to HAYWARD (its non-contribution account) nor
-# OLD LINE REPUBLICAN COMMITTEE's 41Y to GALLAGHER (a party account, in total_other_lines).
+# 22Y to the super PAC; and the hybrid PAC's negative 22Ys to HAYWARD and PATAPSCO HOLDINGS, each
+# filed beside a 20Y of the same size, which they do not reverse (NEU-2320). Not the hybrid PAC's
+# 20Ys (its non-contribution account) nor OLD LINE REPUBLICAN COMMITTEE's 41Y to GALLAGHER (a
+# party account, in total_other_lines).
 # by_committee is gold's total_refunds, their net amount; 0 at every other committee.
 refunds:
   contributions:
@@ -277,16 +283,18 @@ refunds:
     - 4240100000000000307
     - 4240100000000000308
     - 4240100000000000336
+    - 4240100000000000379
+    - 4240100000000000383
     - 4240100000000000349
     - 4240100000000000352
     - 4240100000000000353
     - 4240100000000000354
-  organization_receipts: [4240100000000000323]
+  organization_receipts: [4240100000000000323, 4240100000000000381]
   by_committee:
     C00800106: -1000
     C00800107: -500
-    C00800201: -3200
-    C00800204: -250
+    C00800201: -3400
+    C00800204: -2250
     C00401224: -5
 
 # The `indiv` rows typed PAC, COM, CCM or PTY with a blank OTHER_ID (NEU-2131), and the classified
@@ -626,7 +634,7 @@ committees:
     total_to_candidates: 0
     ie_total: 0
   C00800201: # MARYLAND FORWARD PAC: the super PAC; BRICKLAYERS' and RESTORATION PAC's name-matched `indiv` gifts are receipts
-    total_individual: 419225
+    total_individual: 419025
     self_funding: 0
     total_from_committees: 155000
     total_to_candidates: 0
@@ -644,7 +652,7 @@ committees:
     total_to_candidates: 6000
     ie_total: 45000
   C00800204: # TIDEWATER ACTION FUND: a hybrid PAC, its contribution account only (NEU-2192)
-    total_individual: 3750
+    total_individual: 2750
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -839,7 +847,7 @@ validation:
   # import drops a label with no date and the validator matches on it, so VOSS's undated gift is
   # never matched. DIME labels no `oth` row, so WHITLOCK's loan and repayment there (NEU-2071) are
   # unmatched too; their contributor key is his labelled one.
-  matched_rows: 321
+  matched_rows: 324
   # Contributor keys with a dated counted contribution: 132 less the 15J-only key and VOSS's.
   labelled_keys: 130
   overall: {precision: 1.0, recall: 1.0}

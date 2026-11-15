@@ -786,6 +786,36 @@ def test_a_void_reverses_one_refund_and_a_second_negative_refund_subtracts(
     assert amounts == (1000, -400, 400, -400)
 
 
+def test_a_negative_refund_never_reverses_a_refund_of_another_type(
+    fixture_silver: Path,
+) -> None:
+    # The hybrid PAC's refunds moved between its accounts (NEU-2320): a negative 22Y and a positive
+    # 20Y of one size, to HAYWARD and to PATAPSCO HOLDINGS. A void is filed as the type of the
+    # refund it voids, so the 22Y reverses nothing: each subtracts, the 22Y from the contribution
+    # account and the 20Y from the non-contribution account. Nor does a negative of another type
+    # take a void's place among a type's negatives: the super PAC's 20Y −200 to LINDQVIST, dated
+    # before her 22Y void, subtracts, and the void still reverses her 22Y.
+    contributions = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "contribution")
+    }
+    receipts = {
+        row["source_record_id"]: row for row in local_silver(fixture_silver, "organization_receipt")
+    }
+    moved = [
+        (table[s]["transaction_type"], table[s]["amount"], table[s]["is_non_contribution_account"])
+        for table, pair in (
+            (contributions, (4240100000000000379, 4240100000000000380)),
+            (receipts, (4240100000000000381, 4240100000000000382)),
+        )
+        for s in pair
+    ]
+    assert moved == [("22Y", -1000, False), ("20Y", -1000, True)] * 2
+    assert [contributions[s]["amount"] for s in (4240100000000000383, 4240100000000000308)] == [
+        -200,
+        200,
+    ]
+
+
 def test_a_gift_to_a_committee_missing_from_the_committee_file_is_dropped(
     fixture_silver: Path,
 ) -> None:
