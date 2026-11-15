@@ -23,9 +23,11 @@
 -- (a few fringe filers) is dropped: it would belong to no committee (NEU-2070). A refund (a 2nY or
 -- 4nY type: 22Y to an individual, 20Y, 21Y, 41Y, 42Y) subtracts, so it nets out of every total.
 -- Most filers write a refund positive, some negative, so its sign is not trusted: every refund
--- counts as -abs(amount), except a negative one mirroring a positive refund (`reversal`), which
--- reverses it and adds back (NEU-2073). A positive refund is reversed once, however many
--- negatives mirror it (NEU-2269).
+-- counts as -abs(amount), except a negative one mirroring a positive refund of its own type
+-- (`reversal`), which reverses it and adds back (NEU-2073). A positive refund is reversed once,
+-- however many negatives mirror it (NEU-2269). A void is filed as the type of the refund it voids,
+-- so a negative 22Y never reverses a 20Y: a hybrid PAC moving a refund from its contribution
+-- account to its non-contribution account files both, and each subtracts (NEU-2320).
 --
 -- Names are compared after uppercasing and dropping all but letters and digits, so punctuation
 -- and spacing never decide a match: 'ACT BLUE' is 'ACTBLUE'.
@@ -554,11 +556,13 @@ kept AS (
         ON by_id.committee_id = individual.OTHER_ID AND by_id.is_conduit
 ),
 reversal AS (
-    -- A negative refund that mirrors a positive one (same committee, donor and size) reverses it: a
-    -- voided or uncashed refund check. It adds back, so the pair nets to nothing. Each positive
-    -- refund is reversed once (NEU-2269): within a committee, donor and size, the negatives in
-    -- order of date, then SUB_ID, reverse as many refunds as there are positive ones, and any
-    -- further negative subtracts as every other refund does. Built from its own narrow scan of the
+    -- A negative refund that mirrors a positive one (same committee, donor, refund type and size)
+    -- reverses it: a voided or uncashed refund check. It adds back, so the pair nets to nothing.
+    -- Each positive refund is reversed once (NEU-2269): within a committee, donor, type and size,
+    -- the negatives in order of date, then SUB_ID, reverse as many refunds as there are positive
+    -- ones, and any further negative subtracts as every other refund does. The type is the
+    -- filer's own: a negative 22Y beside a positive 20Y is a refund moved between a hybrid PAC's
+    -- accounts, not a void, and both subtract (NEU-2320). Built from its own narrow scan of the
     -- refunds alone: a second reference to `individual` would make DuckDB materialize every
     -- contribution row, and run out of memory on a real cycle.
     WITH refund AS (
@@ -566,11 +570,13 @@ reversal AS (
             SUB_ID,
             TRANSACTION_AMT,
             row_number() OVER (
-                PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT), TRANSACTION_AMT < 0
+                PARTITION BY CMTE_ID, NAME, TRANSACTION_TP, abs(TRANSACTION_AMT),
+                    TRANSACTION_AMT < 0
                 ORDER BY try_strptime(TRANSACTION_DT, '%m%d%Y') NULLS LAST, SUB_ID
             ) AS nth,
             count(*) FILTER (WHERE TRANSACTION_AMT > 0)
-                OVER (PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT)) AS positives
+                OVER (PARTITION BY CMTE_ID, NAME, TRANSACTION_TP, abs(TRANSACTION_AMT))
+                AS positives
         FROM indiv
         WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND MEMO_CD IS DISTINCT FROM 'X'
             AND NAME IS NOT NULL

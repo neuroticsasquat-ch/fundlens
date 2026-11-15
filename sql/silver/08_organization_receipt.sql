@@ -22,8 +22,9 @@
 -- filing a later amendment supersedes (`superseded_filing`, NEU-2196), to a committee in `cm`
 -- (NEU-2070). The 2024 measurement (NEU-2129) found no ORG row
 -- on a conduit's side; the rule stands for other cycles. A refund (a 2nY or 4nY type) subtracts
--- whichever sign its filer wrote, and a negative refund mirroring a positive one reverses it and
--- adds back, as in contribution (NEU-2073): each positive refund once (NEU-2269).
+-- whichever sign its filer wrote, and a negative refund mirroring a positive one of its own type
+-- reverses it and adds back, as in contribution (NEU-2073): each positive refund once (NEU-2269),
+-- and never across types (NEU-2320).
 --
 -- From `oth`: a receipt (TRANSACTION_TP 1x or 3x, no memo line) from a giver with no committee
 -- id: OTHER_ID blank or not C-prefixed (a C-prefixed id the cycle's `cm` lacks is still a
@@ -161,20 +162,23 @@ kept AS (
     WHERE SUB_ID NOT IN (SELECT SUB_ID FROM mirrored)
 ),
 reversal AS (
-    -- A negative refund that mirrors a positive one (same committee, organization and size)
-    -- reverses it: a voided or uncashed refund check, which adds back (NEU-2073). Each positive
-    -- refund is reversed once, as in 04_contribution.sql (NEU-2269): the negatives in order of
-    -- date, then SUB_ID, reverse as many as there are positive ones, and any further one subtracts.
+    -- A negative refund that mirrors a positive one (same committee, organization, refund type and
+    -- size) reverses it: a voided or uncashed refund check, which adds back (NEU-2073). Each
+    -- positive refund is reversed once, as in 04_contribution.sql (NEU-2269): the negatives in
+    -- order of date, then SUB_ID, reverse as many as there are positive ones, and any further one
+    -- subtracts. A negative of another type is no void of it (NEU-2320).
     WITH refund AS (
         SELECT
             SUB_ID,
             TRANSACTION_AMT,
             row_number() OVER (
-                PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT), TRANSACTION_AMT < 0
+                PARTITION BY CMTE_ID, NAME, TRANSACTION_TP, abs(TRANSACTION_AMT),
+                    TRANSACTION_AMT < 0
                 ORDER BY try_strptime(TRANSACTION_DT, '%m%d%Y') NULLS LAST, SUB_ID
             ) AS nth,
             count(*) FILTER (WHERE TRANSACTION_AMT > 0)
-                OVER (PARTITION BY CMTE_ID, NAME, abs(TRANSACTION_AMT)) AS positives
+                OVER (PARTITION BY CMTE_ID, NAME, TRANSACTION_TP, abs(TRANSACTION_AMT))
+                AS positives
         FROM kept
         WHERE regexp_matches(TRANSACTION_TP, '^[24][0-9]Y$') AND NAME IS NOT NULL
     )
