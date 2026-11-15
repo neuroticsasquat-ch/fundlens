@@ -6,8 +6,10 @@
 -- organisation, the donor's other spellings of their name, most money first). A donor's weight is
 -- their total; one known only from JFC attributions weighs 0 and is still found.
 -- A committee `cm` names in no cycle, only ever a skeleton row (its id and a filing frequency of
--- `T`, every other column blank: 06_committee.sql, NEU-2296), has no name to match on, so it is
--- left out, as a donor with no display_name is; its page is still there under its id.
+-- `T`, every other column blank: 06_committee.sql, NEU-2296), and a candidate `cn` names in no
+-- cycle (05_candidate.sql, NEU-2323), have no name to match on, so they are left out, as a donor
+-- with no display_name is; their pages are still there under their ids. A candidate's principal
+-- committee's name is not the candidate's, so it does not stand in for one.
 CREATE TABLE search_entity AS
 SELECT
     'candidate' AS kind,
@@ -30,6 +32,7 @@ LEFT JOIN (
     QUALIFY row_number() OVER (PARTITION BY candidate_id ORDER BY cycle DESC) = 1
 ) AS newest USING (candidate_id)
 LEFT JOIN committee AS principal ON principal.committee_id = newest.principal_committee_id
+WHERE candidate.name IS NOT NULL
 UNION ALL
 SELECT
     'committee' AS kind,
