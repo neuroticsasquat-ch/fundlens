@@ -30,6 +30,18 @@
 -- `sql/checks/silver_candidate_race.sql` checks every filing it covers.
 -- A filing whose (office, state, district) is no seat in the calendar gets no race (spec §5.2).
 --
+-- A seat with two races this cycle is a Senate special held beside the regular race for the
+-- same seat (2018's Minnesota and Mississippi, 2020's Georgia, …). `cn` doesn't say which race a
+-- filing is for, and both share the cycle's year (Tina Smith, `S8MN00578`, and Amy Klobuchar,
+-- `S6MN00267`, both file for 2018), so `special_candidate` (`fec/seats/special_candidates.csv`,
+-- NEU-2319) lists the filings FEC's election results put in the special. A filing it lists with
+-- `race = 'special'` stands in the special; every other filing for the seat stands in the regular
+-- race, among them the candidates the results list in both, whose one committee's money cannot be
+-- split (`race = 'regular'`: all of 2022's and 2024's California specials, so those specials
+-- have no candidate). A seat with one race, a special in a state with no regular race that cycle
+-- included, takes every filing for it. `sql/checks/silver_candidate_special.sql` fails a build in
+-- which a special beside a regular race is left with no candidate.
+--
 -- principal_committee_id is the committee `cn` names principal (CAND_PCC). In a cycle with no `ccl`
 -- (before 2000, spec §4), a candidate whose CAND_PCC is blank takes the committee `cm` names
 -- principal (designation P) for them instead, the lowest id should there be two; with `ccl`, as
@@ -38,12 +50,17 @@
 -- alias_of is empty here: 03_candidate_committee_link.sql sets it, from the links it builds.
 CREATE TABLE candidate AS
 WITH race_for_seat AS (
-    -- One race per seat. `cn` cannot tell a special's filing from the regular race for the same
-    -- seat, so a filing goes to the regular race where there is one, and to a special only
-    -- where it is the seat's one race this cycle.
-    SELECT race_id, office, state, district
+    SELECT
+        race_id,
+        office,
+        state,
+        district,
+        is_special,
+        count(*) OVER (PARTITION BY office, state, district) = 1 AS only_race
     FROM race
-    QUALIFY row_number() OVER (PARTITION BY office, state, district ORDER BY is_special) = 1
+),
+in_special AS (
+    SELECT candidate_id FROM special_candidate WHERE race = 'special'
 ),
 filed AS (
     SELECT
@@ -82,6 +99,7 @@ SELECT
     race_for_seat.race_id,
     NULL::VARCHAR AS alias_of
 FROM filed
+LEFT JOIN in_special ON in_special.candidate_id = filed.CAND_ID
 LEFT JOIN race_for_seat
     ON (
         filed.CAND_ELECTION_YR IN ({cycle} - 1, {cycle})
@@ -94,4 +112,8 @@ LEFT JOIN race_for_seat
     AND race_for_seat.office = filed.CAND_OFFICE
     AND race_for_seat.state = filed.CAND_OFFICE_ST
     AND race_for_seat.district = filed.district
+    AND (
+        race_for_seat.only_race
+        OR race_for_seat.is_special = (in_special.candidate_id IS NOT NULL)
+    )
 LEFT JOIN named_principal USING (CAND_ID);

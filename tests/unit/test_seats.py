@@ -266,3 +266,58 @@ def test_read_filings_gives_a_corrected_house_filing_the_district_it_ran_in() ->
         Filing("H0NY13074", "H", "NY", "11"),
         Filing("H2NY13990", "H", "NY", "13"),
     ]
+
+
+# FEC's election results each cycle's `special_candidates.csv` rows cite (NEU-2319). 2024 has no
+# compiled results yet, only the general-election ballots.
+SPECIAL_RESULTS_FILES = {
+    2018: "federalelections2018.xlsx",
+    2020: "federalelections2020.xlsx",
+    2022: "federalelections2022.xlsx",
+    2024: "2024congressgecands.xlsx",
+}
+SPECIAL_NOTE = re.compile(r"[^:]+, [^:]+: (?P<file>\S+) (sheet '[^']+' )?row \d+")
+
+
+def specials_beside_a_regular_race() -> set[tuple[int, str, str]]:
+    cycles = {int(row["cycle"]) for row in seats._read("specials.csv")}  # pyright: ignore[reportPrivateUsage]
+    found: set[tuple[int, str, str]] = set()
+    for cycle in cycles:
+        races = seats.races_for(cycle)
+        regular = {race.seat for race in races if not race.is_special}
+        found |= {
+            (cycle, race.office, race.state)
+            for race in races
+            if race.is_special and race.seat in regular
+        }
+    return found
+
+
+def test_each_special_candidate_row_names_a_senate_filing_of_a_special_beside_a_regular_race() -> (
+    None
+):
+    rows = seats._read("special_candidates.csv")  # pyright: ignore[reportPrivateUsage]
+    beside = specials_beside_a_regular_race()
+
+    assert len({(row["cycle"], row["candidate_id"]) for row in rows}) == len(rows)
+    for row in rows:
+        cycle = int(row["cycle"])
+        assert (cycle, row["office"], row["state"]) in beside, row
+        assert row["office"] == "S" and row["candidate_id"].startswith("S"), row
+        assert row["candidate_id"][2:4] == row["state"], row
+        assert row["race"] in {"special", "regular"}, row
+        note = SPECIAL_NOTE.fullmatch(row["note"])
+        assert note is not None and note["file"] == SPECIAL_RESULTS_FILES.get(cycle), row
+    # Every special held beside a regular race has its filings listed: 2018 MN and MS, 2020 GA,
+    # 2022 CA and OK, 2024 CA and NE.
+    assert {(int(row["cycle"]), row["office"], row["state"]) for row in rows} == beside
+    assert len(beside) == 7
+
+
+def test_special_candidates_reads_a_cycles_rows() -> None:
+    by_id = {row.candidate_id: row for row in seats.special_candidates(2018)}
+
+    assert by_id["S8MN00578"] == seats.SpecialCandidate("S8MN00578", "S", "MN", "special")
+    assert "S6MN00267" not in by_id  # Klobuchar, the regular race's
+    assert {row.race for row in seats.special_candidates(2022) if row.state == "CA"} == {"regular"}
+    assert seats.special_candidates(2016) == []

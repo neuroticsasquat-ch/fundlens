@@ -395,8 +395,9 @@ races:
     total_jfc_transfers: 0
     ie_support: 28000
     ie_oppose: 15000
-  # A special in the seat calendar with no one attached: cn cannot tell its filings from the
-  # regular NE race beside it, so the fixture plants none (race attachment is NEU-2037's).
+  # A special in the seat calendar with no one attached: the fixture plants no Nebraska Senate
+  # filing, so neither NE race has anyone (`special_candidates.csv` places 2024's real filings
+  # for it, NEU-2319, and `silver_candidate_special.sql` passes a seat no one filed for).
   2024-S-NE-00-special:
     candidate_count: 0
     total_individual: 0

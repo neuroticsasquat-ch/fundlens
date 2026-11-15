@@ -14,6 +14,12 @@ no seat is reported (`--report`) and recorded in `app.unmatched_filing`; it neve
   specials of 2018 to 2026. `cn` does not mark a filing as for a special, so `--report` catches
   a missing one only when it is a Senate special in a state with no regular race that cycle; a
   House special, or one beside a regular race, matches the regular seat and must be added by hand.
+- `special_candidates.csv` (cycle, office, state, candidate_id, race, note): the filings FEC's
+  election results list in a Senate special held beside a regular race for the same seat
+  (NEU-2319). `race` is `special` for a filing that stands in the special, and `regular` for one
+  the results list in both races, whose money cannot be split, so stands in the regular race:
+  every candidate of 2022's and 2024's California specials. `note` is the results name and row;
+  `docs/measurements/senate-specials-beside-regular-races.md` says how the rows were chosen.
 - `house_districts.csv` (cycle, candidate_id, state, cn_district, district, source): the House
   filings of a cycle on a new map that `cn` files under a district they did not run in, with the
   district FEC's election results list them in (NEU-2293, NEU-2294). A candidate's `cn` row
@@ -152,6 +158,30 @@ def house_districts(cycle: int) -> dict[str, str]:
         for row in _read("house_districts.csv")
         if int(row["cycle"]) == cycle
     }
+
+
+@dataclass(frozen=True)
+class SpecialCandidate:
+    """A filing FEC's results list in a Senate special beside a regular race (NEU-2319)."""
+
+    candidate_id: str
+    office: str
+    state: str
+    race: Literal["special", "regular"]
+
+
+@cache
+def special_candidates(cycle: int) -> list[SpecialCandidate]:
+    """`special_candidates.csv`'s rows for `cycle`."""
+    rows: list[SpecialCandidate] = []
+    for row in _read("special_candidates.csv"):
+        if int(row["cycle"]) != cycle:
+            continue
+        race = row["race"]
+        if race != "special" and race != "regular":
+            raise ValueError(f"special_candidates.csv: {cycle} {row['candidate_id']} race {race}")
+        rows.append(SpecialCandidate(row["candidate_id"], row["office"], row["state"], race))
+    return rows
 
 
 def check_cycle(cycle: int) -> None:
