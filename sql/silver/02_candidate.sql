@@ -14,6 +14,15 @@
 -- 2022 filings where the two differ (1982's `cn` agrees with its results: NEU-2294). The corrected
 -- district is the one this table keeps.
 --
+-- A House filing for a state whose one House seat this cycle is at-large (district '00': a state
+-- with one seat, or a delegate's) stands in that seat whatever district `cn` gives it (NEU-2324).
+-- `cn` files some of them under '01': 2004's Delaware and Montana members, and the Northern
+-- Mariana Islands' delegate candidates of 2018, 2024 and 2026, which left `2026-H-MP-00` with no
+-- candidate and 2024's without its winner, Kimberlyn King-Hinds. The rule reads the seats from
+-- `race`, so it needs no list kept up: a state with several districts keeps the one filed, and a
+-- delegate in a cycle their seat isn't up (Puerto Rico's in a midterm) still stands in no race.
+-- `transform.seats.unmatched` applies the same rule.
+--
 -- Only a filing for this cycle's election (or the odd year before it, for a special held then)
 -- stands in one of its races: `cn` also lists candidates registered for later cycles. But `cn`
 -- gives each candidate only their latest election year, so a House member who won this cycle and
@@ -62,10 +71,15 @@ WITH race_for_seat AS (
 in_special AS (
     SELECT candidate_id FROM special_candidate WHERE race = 'special'
 ),
+at_large AS (
+    SELECT state FROM race WHERE office = 'H' GROUP BY state HAVING bool_and(district = '00')
+),
 filed AS (
     SELECT
         cn.*,
         CASE
+            WHEN cn.CAND_OFFICE = 'H' AND cn.CAND_OFFICE_ST IN (SELECT state FROM at_large)
+                THEN '00'
             WHEN cn.CAND_OFFICE = 'H' AND house_district.district IS NOT NULL
                 THEN house_district.district
             WHEN length(trim(coalesce(cn.CAND_OFFICE_DISTRICT, ''))) < 2

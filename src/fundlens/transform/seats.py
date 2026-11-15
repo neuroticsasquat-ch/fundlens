@@ -354,9 +354,25 @@ def newest_cn(store: R2, cycle: int) -> bytes:
 
 
 def unmatched(filings: Iterable[Filing], races: Iterable[Race]) -> list[Filing]:
-    """The filings whose (office, state, district) is no seat in `races`."""
+    """The filings whose (office, state, district) is no seat in `races`.
+
+    A House filing for a state whose one House seat is at-large stands in it whatever district
+    it names: `cn` files some under `01` (NEU-2324), as `sql/silver/02_candidate.sql` reads them.
+    """
+    races = list(races)
     seats = {race.seat for race in races}
-    return [filing for filing in filings if filing.seat not in seats]
+    districts: dict[str, set[str]] = {}
+    for race in races:
+        if race.office == "H":
+            districts.setdefault(race.state, set()).add(race.district)
+    at_large = {state for state, drawn in districts.items() if drawn == {AT_LARGE}}
+
+    def seat(filing: Filing) -> tuple[str, str, str]:
+        if filing.office == "H" and filing.state in at_large:
+            return ("H", filing.state, AT_LARGE)
+        return filing.seat
+
+    return [filing for filing in filings if seat(filing) not in seats]
 
 
 def record_unmatched(
