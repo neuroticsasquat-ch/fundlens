@@ -6,7 +6,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   newest bronze zip's text file read with the vendored column names, as VARCHAR and then cast to
   the catalogue's types (`fec.files`). DuckDB cannot read a zip, so the text is unpacked under
   `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
-  deleted after it.
+  deleted after it. An `indiv` text file that disagrees in size with the same rows split under
+  `by_date/` is read from those files instead (`copy_bulk`, NEU-2321);
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
@@ -192,20 +193,70 @@ def copy_as_utf8(src: IO[bytes], out: IO[bytes], *, chunk_bytes: int = CHUNK_BYT
     _write_utf8(tail, out)
 
 
+def _end_line(out: IO[bytes]) -> None:
+    """End the last line written to `out` if it is unended, so the next file starts a row."""
+    if out.tell() == 0:
+        return
+    out.seek(-1, io.SEEK_END)
+    if out.read(1) != b"\n":
+        out.write(b"\n")
+
+
+def copy_bulk(archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, source: str) -> None:
+    """Copy `file`'s text out of `archive` into `out` as UTF-8 (`copy_as_utf8`); `out` must be
+    readable as well as writable.
+
+    The text is `file.member`, unless the zip also holds its rows split under `file.split_dir`
+    and the two disagree in size: then the split files are copied in its place, in name order,
+    each ending its last line, with a warning naming `source`. FEC's 2022 `indiv` zip holds an
+    `itcont.txt` cut off mid-row at 37% of its `by_date/` files' bytes (NEU-2321). When the two
+    agree, as every other cycle's do, `member` is read, so a built cycle's rows keep their order;
+    reading both would count every row twice.
+    """
+    whole = archive.getinfo(file.member)
+    split = sorted(
+        (
+            info
+            for info in archive.infolist()
+            if file.split_dir and info.filename.startswith(file.split_dir) and not info.is_dir()
+        ),
+        key=lambda info: info.filename,
+    )
+    split_bytes = sum(info.file_size for info in split)
+    if not split or split_bytes == whole.file_size:
+        with archive.open(whole) as src:
+            copy_as_utf8(src, out)
+        return
+    # The sizes with thousands separators, as FEC's listings and the backfill runbook write them.
+    log.warning(
+        "%s: %s holds %s bytes but %s %s; reading %s",
+        source,
+        file.member,
+        f"{whole.file_size:,}",
+        file.split_dir,
+        f"{split_bytes:,}",
+        file.split_dir,
+    )
+    for info in split:
+        with archive.open(info) as src:
+            copy_as_utf8(src, out)
+        _end_line(out)
+
+
 def unzip_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
     """The newest bronze zip of `file` unpacked under `work` as UTF-8; the text file's path.
 
     The current cycle's zip is on local disk already (`fec.extract` keeps it there); any other is
-    fetched into `work`, so a historical zip never outlives the run (spec §3.4).
+    fetched into `work`, so a historical zip never outlives the run (spec §3.4). The text is the
+    file's member, or its split files when the two disagree (`copy_bulk`).
     """
     key = _newest_bronze(store, cycle, file)
     local = paths.local_path(data_dir, key)
     if not local.exists():
         local = store.download_to(key, work / f"{file.name}.zip")
     text = work / f"{file.name}.txt"
-    with zipfile.ZipFile(local) as archive:
-        with archive.open(file.member) as src, text.open("wb") as out:
-            copy_as_utf8(src, out)
+    with zipfile.ZipFile(local) as archive, text.open("w+b") as out:
+        copy_bulk(archive, file, out, source=key)
     log.info("%s %d read from %s", file.name, cycle, key)
     return text
 
