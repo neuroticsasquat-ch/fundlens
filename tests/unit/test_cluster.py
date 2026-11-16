@@ -7,6 +7,7 @@ from itertools import combinations
 import duckdb
 import pytest
 
+from fundlens.resolve import cluster
 from fundlens.resolve.cluster import components_at, recluster, recluster_component
 from tests.unit.test_resolve_model import NamePair, first_name_levels, nicknames_of
 
@@ -220,6 +221,65 @@ def test_recluster_leaves_a_consistent_component_as_it_was_and_names_pieces_by_l
     ]
     assert result.keys_moved == 2
     assert (result.pieces, result.largest_before, result.largest_after) == (2, 3, 3)
+
+
+@pytest.mark.parametrize("batch_keys", [cluster.BATCH_KEYS, 1])
+def test_offending_components_interleaved_with_a_whole_one_are_each_reclustered_alone(
+    batch_keys: int, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # In key order: `a` oversized with no vetoed pair, `m` whole, `p` vetoed with no joining
+    # edge, `x` vetoed. Read in one batch, or a batch per component (NEU-2325).
+    monkeypatch.setattr(cluster, "BATCH_KEYS", batch_keys)
+    caplog.set_level("INFO", logger="fundlens.resolve")
+    con = duckdb.connect()
+    contributors(
+        con,
+        {
+            "a1": "JOHN", "a2": "JOHN", "a3": "JOHN",
+            "m1": "MARY", "m2": "MARY",
+            "p1": "BEATRICE", "p2": "DESMOND",
+            "x1": "ELIZABETH", "x2": None, "x3": "KIRSTEN",
+        },
+    )  # fmt: skip
+    con.execute(
+        "CREATE TABLE component AS SELECT left(k, 1) AS cluster_id, k AS contributor_key"
+        " FROM (SELECT unnest(['a1', 'a2', 'a3', 'm1', 'm2', 'p1', 'p2', 'x1', 'x2', 'x3']) AS k)"
+    )
+    con.execute(
+        "CREATE TABLE edge (contributor_key_l VARCHAR, contributor_key_r VARCHAR,"
+        " match_probability DOUBLE)"
+    )
+    con.execute(
+        "INSERT INTO edge VALUES ('a1', 'a2', 0.99), ('a2', 'a3', 0.98), ('m1', 'm2', 0.99),"
+        " ('p1', 'p2', 0.90), ('x1', 'x2', 0.99), ('x2', 'x3', 0.97)"
+    )
+    con.execute("UPDATE component SET cluster_id = cluster_id || '1'")
+
+    result = recluster(con, max_keys=2, cluster_threshold=0.95)
+
+    found = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
+    assert found == {
+        "a1": "a1", "a2": "a1", "a3": "a3",
+        "m1": "m1", "m2": "m1",
+        "p1": "p1", "p2": "p2",
+        "x1": "x1", "x2": "x1", "x3": "x3",
+    }  # fmt: skip
+    assert (result.oversized, result.inconsistent, result.components) == (2, 2, 3)
+    assert (result.pieces, result.keys_moved) == (6, 3)
+    # The temp tables it worked in are gone.
+    assert {name for (name,) in con.execute("SHOW TABLES").fetchall()} == {
+        "cluster",
+        "component",
+        "contributor",
+        "edge",
+    }
+    logged = [record.getMessage() for record in caplog.records]
+    assert "resolve recluster: 3 offending components, 8 keys, 4 joining edges" in logged
+    assert (
+        "resolve recluster: largest offending component 3 keys, 1 distinct first names,"
+        " 0 vetoed pairs" in logged
+    )
+    assert any(message.startswith("resolve recluster: peak resident memory ") for message in logged)
 
 
 def edges_table(

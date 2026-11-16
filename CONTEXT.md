@@ -175,6 +175,10 @@ Two labelled keys in one cluster that linkage scored as a pair (an edge between 
 `fundlens validate`: scoring a resolved build's `donor_id`s against the reference labels, as pairwise precision and recall, overall and for the top contributors by dollars. A report, not a pipeline step: it writes `app.resolution_quality`, and `load` copies the live model's figures into `gold.meta`.
 _Avoid_: evaluation, benchmark, accuracy (the figures are precision and recall, not accuracy)
 
+**Live model**:
+The model the current donor_ids were assigned with: the newest saved model whose resolution run finished. A model saved by a run that stopped part way is kept, and can be resolved with again, but is not live until a run with it finishes.
+_Avoid_: latest model, newest model (a newer one may be saved and not live)
+
 ### Data tiers
 
 **Bronze**:

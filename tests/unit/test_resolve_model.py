@@ -215,17 +215,49 @@ def _pairs(groups: dict[str, Any]) -> set[frozenset[str]]:
     return {frozenset(pair) for keys in members.values() for pair in combinations(keys, 2)}
 
 
+def scratch(con: duckdb.DuckDBPyConnection, prefixes: tuple[str, ...]) -> list[str]:
+    """The tables on `con` whose names start with one of `prefixes`."""
+    return [name for (name,) in con.execute("SHOW TABLES").fetchall() if name.startswith(prefixes)]
+
+
+def test_drop_scratch_drops_the_tables_it_names_and_splink_forgets_them() -> None:
+    with duckdb.connect() as con:
+        db_api = DuckDBAPI(con)
+        kept = ["contributor", "__splink__df_concat_with_tf", "__splink__df_predict"]
+        dropped = ["__splink__blocked_id_pairs_1a2b", "__splink__df_comparison_vectors_3c4d"]
+        for name in kept + dropped:
+            con.execute(f"CREATE TABLE {name} AS SELECT 1 AS x")
+            # As Splink caches a table it made: under a templated name, not the physical one.
+            cache = db_api._intermediate_table_cache  # pyright: ignore[reportPrivateUsage]
+            cache[f"templated {name}"] = db_api.table_to_splink_dataframe(name, name)
+
+        first = model.drop_scratch(db_api, model.TRAINING_SCRATCH)
+        again = model.drop_scratch(db_api, model.TRAINING_SCRATCH)
+
+        assert first == sorted(dropped)
+        assert again == []
+        assert sorted(name for (name,) in con.execute("SHOW TABLES").fetchall()) == sorted(kept)
+        cached = {
+            df.physical_name
+            for df in db_api._intermediate_table_cache.values()  # pyright: ignore[reportPrivateUsage]
+        }
+        assert cached == set(kept)
+
+
 def test_training_estimates_u_and_m_and_finds_each_donors_keys(
     population: tuple[duckdb.DuckDBPyConnection, dict[str, int]],
 ) -> None:
     con, donor_of = population
-    linker = model.linker(DuckDBAPI(con), "contributor", model.settings())
+    db_api = DuckDBAPI(con)
+    linker = model.linker(db_api, "contributor", model.settings())
 
-    assert model.train(linker, keys=len(donor_of), min_training_keys=len(donor_of))
+    assert model.train(linker, db_api, keys=len(donor_of), min_training_keys=len(donor_of))
 
     # EM moved m off its prior (`model._employer`).
     trained = linker.misc.save_model_to_json()
     assert _m(trained, "employer_norm", "Exact match on employer_norm") != EMPLOYER_EXACT_PRIOR
+    # Each EM session's pairs went when it ended (NEU-2325), and prediction still finds them all.
+    assert not scratch(con, model.TRAINING_SCRATCH)
     cluster(linker, con, match_threshold=0.9, cluster_threshold=0.95)
     recluster(con, max_keys=200, cluster_threshold=0.95)
     clusters = dict(con.execute("SELECT contributor_key, cluster_id FROM cluster").fetchall())
@@ -238,9 +270,10 @@ def test_too_few_keys_keep_the_priors(
     population: tuple[duckdb.DuckDBPyConnection, dict[str, int]],
 ) -> None:
     con, donor_of = population
-    linker = model.linker(DuckDBAPI(con), "contributor", model.settings())
+    db_api = DuckDBAPI(con)
+    linker = model.linker(db_api, "contributor", model.settings())
 
-    assert not model.train(linker, keys=len(donor_of), min_training_keys=len(donor_of) + 1)
+    assert not model.train(linker, db_api, keys=len(donor_of), min_training_keys=len(donor_of) + 1)
 
     saved = linker.misc.save_model_to_json()
     assert _m(saved, "employer_norm", "Exact match on employer_norm") == EMPLOYER_EXACT_PRIOR

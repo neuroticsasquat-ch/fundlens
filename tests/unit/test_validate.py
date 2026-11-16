@@ -1,5 +1,5 @@
 """Resolution scored against DIME: the pairwise counts, the truth filter on a DIME file, and the
-newest saved model (NEU-2054 §8.2, ADR-0009)."""
+live model (NEU-2054 §8.2, ADR-0009, NEU-2325)."""
 
 from pathlib import Path
 
@@ -194,14 +194,19 @@ class ListingStore:
         return sorted(key for key in self.keys if key.startswith(prefix))
 
 
-def test_the_latest_model_is_the_newest_saved_version() -> None:
-    store = ListingStore(
-        [
-            paths.resolution_model("20261031T040000Z"),
-            paths.resolution_model("20261107T040000Z"),
-            "resolution/model/20261114T040000Z.json.part",
-        ]
-    )
+def test_the_live_model_is_the_newest_saved_version_whose_run_finished() -> None:
+    finished = [
+        paths.resolution_model("20261031T040000Z"),
+        paths.resolution_run("20261031T040000Z"),
+        paths.resolution_model("20261107T040000Z"),
+        paths.resolution_run("20261107T040000Z"),
+        "resolution/model/20261114T040000Z.json.part",
+    ]
+    # A run that stopped after training: its model is saved, and it wrote no record.
+    failed = paths.resolution_model("20261116T022944Z")
 
-    assert model.latest_version(store) == "20261107T040000Z"  # pyright: ignore[reportArgumentType]
-    assert model.latest_version(ListingStore([])) is None  # pyright: ignore[reportArgumentType]
+    assert model.live_version(ListingStore(finished)) == "20261107T040000Z"  # pyright: ignore[reportArgumentType]
+    assert model.live_version(ListingStore([*finished, failed])) == "20261107T040000Z"  # pyright: ignore[reportArgumentType]
+    # A record with no model beside it names nothing to load.
+    assert model.live_version(ListingStore([paths.resolution_run("20261121T040000Z")])) is None  # pyright: ignore[reportArgumentType]
+    assert model.live_version(ListingStore([])) is None  # pyright: ignore[reportArgumentType]

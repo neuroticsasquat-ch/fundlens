@@ -586,7 +586,7 @@ overrides: <o> merges joining <j> clusters into others, <s> splits
 adjudications: <v> verdicts: <a> merges joining <j> clusters into others, <s> splits
 crosswalk: <n> new donors, <r> keys re-pointed, <d> redirects
 model <M>: trained, wrote resolution/model/<M>.json
-load <s> s, train <s> s, cluster <s> s, recluster <s> s, overrides <s> s, adjudications <s> s, save <s> s, crosswalk <s> s, silver <s> s
+load <s> s, train <s> s, model <s> s, cluster <s> s, recluster <s> s, overrides <s> s, adjudications <s> s, save <s> s, crosswalk <s> s, silver <s> s
 DuckDB memory limit: 29.8 GiB
 ```
 
@@ -596,8 +596,36 @@ DuckDB memory limit: 29.8 GiB
   donor ID is kept by the crosswalk's rules. Write all three numbers in the Log.
 - The phase times. `silver` rewrites every cycle's `contribution`, so expect it to be the longest.
 
-Never measured at this scale. If it fails part way, run the same command again with the same `M`, as
-[first-resolved-run.md](first-resolved-run.md) step 3 describes. If it is killed for memory twice, stop. File a
+Then what `recluster` held, and Splink's tables as they were dropped (NEU-2325):
+
+```bash
+# VM, in tmux
+grep -E 'resolve recluster: |resolve: dropped |resolve (train|model|cluster|recluster): ' resolve.log
+```
+
+**Expected:** three `resolve: dropped <n> of Splink's tables (__splink__blocked_id_pairs_, …)` lines during
+training, one per EM session, each `<n>` above 0, and one `(__splink__df_predict_, …)` line after `cluster`. Then
+`<c> offending components, <k> keys, <e> joining edges`, the `largest offending component` line, the summary
+line, and `peak resident memory <g> GiB`. Write the last four in the Log. The peak resident memory is the whole
+process's, Python and DuckDB's buffer pool together, at its highest so far in the run, not only in `recluster`. Well
+under the sampler's peak, the sampler's figure was page cache. Near it, the process held it, and this line cannot
+say whether Python or DuckDB did.
+
+Run once at this scale before, and it failed (`capacity.md`, Resolution). If it fails part way after the
+`resolve model:` line, the model is saved as `$M` in R2: resolve with it rather than training again, which took
+2h20m:
+
+```bash
+# VM, in tmux
+echo "$(date -u +%FT%TZ) start resolve --model" | tee -a resolve-window.txt
+{ time docker exec "$(fl pipeline)" fundlens resolve --full --model "$M"; } 2>&1 | tee resolve.log
+echo "$(date -u +%FT%TZ) end resolve --model" | tee -a resolve-window.txt
+```
+
+**Expected:** the output above, but `model <M>: reused (saved model), read resolution/model/<M>.json`, and no
+`train` or `model` phase in the timing line. A model saved by a run that failed is not live, so `load` and
+`validate` read the previous live model until this run finishes. If the run failed before `resolve model:`,
+nothing was saved: run the first command again with the same `M`. If it is killed for memory twice, stop. File a
 ticket with the peak and the phase it was in (the last `resolve` log line before the peak), and link it from
 NEU-2060. Resolution over every cycle does not fit the box, and that is the ephemeral runner's case (step 9).
 The cycles stay live without donors meanwhile.
