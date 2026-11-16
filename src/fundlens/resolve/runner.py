@@ -272,6 +272,7 @@ def resolve_full(
     thresholds: Thresholds,
     max_keys: int,
     min_training_keys: int,
+    em_max_pairs: float,
     overrides_path: Path,
     adjudication: adjudicate.Version,
     adjudicate_min_amount: int,
@@ -329,7 +330,11 @@ def resolve_full(
             linker = model.linker(db_api, CONTRIBUTOR_TABLE, model.settings())
             with _phase("train", times):
                 trained = model.train(
-                    linker, db_api, keys=keys, min_training_keys=min_training_keys
+                    linker,
+                    db_api,
+                    keys=keys,
+                    min_training_keys=min_training_keys,
+                    em_max_pairs=em_max_pairs,
                 )
             parameters = Parameters.TRAINED if trained else Parameters.PRIORS
             # Now, not after the run: a run that fails later keeps hours of training, and

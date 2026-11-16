@@ -80,6 +80,19 @@ training), and makes `recluster` read the offending components a batch at a time
 memory. The working file still reaches about the largest EM session's size, since DuckDB never shrinks a file. Step
 9's rerun gives the first all-cycle row.
 
+**The rerun stopped in `train` (2026-11-16, NEU-2060 step 9, NEU-2333).** It has no row: it saved no model. From
+`1e274e3` (NEU-2325), DuckDB limit 32 GB, started at about 16:09Z with 264 GB free, a guard set to restart `pipeline`
+under 60 GB free. Blocking the soundex + ZIP3 session's pairs took free disk from 264 to 121 GB in 40 minutes. The
+session's working file was 108 GB, and each EM iteration, about 15 minutes, spilled another 65–80 GB into
+`scratch/`, released when the iteration ended. Free disk bottomed at 65–70 GB in iterations 1–7 and reached 59 GB
+in iteration 8, when the guard restarted `pipeline` at 18:42:51Z, after 2h33m. The largest parameter change was
+0.000332 at iteration 7, so the session was close to converging. One EM session over every cycle's 2.6 billion
+pairs holds about 190 GB at its peak, working file and spill together, and with the run's other tables that took
+free disk from 264 GB to 59 GB, under the 60 GB floor. Splink sampled nothing:
+`[EM sampling] max_pairs is None — no sampling will be applied`. NEU-2333 caps each session at
+`RESOLVE_EM_MAX_PAIRS` (2e8) pairs; scaled from 108 GB for 2.6 billion, about an 8 GB working file and a few GB of
+spill per iteration (an estimate, not a measurement). Step 9's next rerun measures it.
+
 ## Validation
 
 One `fundlens validate` per row ([refreshing-dime.md](runbooks/refreshing-dime.md), NEU-2054): a cycle's resolved

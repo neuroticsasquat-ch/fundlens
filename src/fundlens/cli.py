@@ -412,6 +412,7 @@ def resolve(
                 ),
                 max_keys=settings.resolve_max_cluster_keys,
                 min_training_keys=settings.resolve_min_training_keys,
+                em_max_pairs=settings.resolve_em_max_pairs,
                 overrides_path=settings.overrides_path,
                 adjudication=_adjudication(settings),
                 adjudicate_min_amount=settings.adjudicate_min_amount,

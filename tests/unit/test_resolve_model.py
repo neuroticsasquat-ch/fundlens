@@ -182,9 +182,12 @@ def _population() -> tuple[list[tuple[str | None, ...]], dict[str, int]]:
     return rows, donor_of
 
 
-@pytest.fixture
-def population() -> Iterator[tuple[duckdb.DuckDBPyConnection, dict[str, int]]]:
+@pytest.fixture(scope="module")
+def population_file(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, dict[str, int]]:
+    """The synthetic population written once as Parquet, and the donor behind each key:
+    inserting its rows one by one takes seconds, and every training test needs them."""
     rows, donor_of = _population()
+    path = str(tmp_path_factory.mktemp("population") / "contributor.parquet")
     with duckdb.connect() as con:
         con.execute(
             "CREATE TABLE contributor ("
@@ -192,6 +195,18 @@ def population() -> Iterator[tuple[duckdb.DuckDBPyConnection, dict[str, int]]]:
             + ")"
         )
         con.executemany(f"INSERT INTO contributor VALUES ({', '.join('?' * len(COLUMNS))})", rows)
+        con.execute(f"COPY contributor TO '{path}' (FORMAT parquet)")
+    return path, donor_of
+
+
+@pytest.fixture
+def population(
+    population_file: tuple[str, dict[str, int]],
+) -> Iterator[tuple[duckdb.DuckDBPyConnection, dict[str, int]]]:
+    """A database of its own holding the population: training adds tables to it."""
+    path, donor_of = population_file
+    with duckdb.connect() as con:
+        con.execute(f"CREATE TABLE contributor AS SELECT * FROM read_parquet('{path}')")
         # No synthetic first name is in the nickname table.
         con.execute("ALTER TABLE contributor ADD COLUMN first_name_nicknames VARCHAR[] DEFAULT []")
         yield con, donor_of
@@ -264,6 +279,51 @@ def test_training_estimates_u_and_m_and_finds_each_donors_keys(
     found, truth = _pairs(clusters), _pairs(dict(donor_of))
     assert len(found & truth) / len(truth) >= 0.95
     assert len(found & truth) / len(found) >= 0.9
+
+
+def test_a_capped_em_session_trains_on_a_sample_of_its_pairs(
+    population: tuple[duckdb.DuckDBPyConnection, dict[str, int]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    con, donor_of = population
+    db_api = DuckDBAPI(con)
+    linker = model.linker(db_api, "contributor", model.settings())
+    priors = linker.misc.save_model_to_json()
+    # The population's rules make 4,403, 2,006 and 1,209 pairs, which Splink's 1% probe would see
+    # none of, and leave unsampled: probe every key instead.
+    monkeypatch.setattr(model, "EM_RECORD_SAMPLE_PROPORTION", 1.0)
+    # u is not what this tests, and every one of the population's 15 million pairs is slow.
+    monkeypatch.setattr(model, "U_MAX_PAIRS", 1e5)
+    # Each session's pairs, counted as `train` drops them.
+    session_pairs: list[int] = []
+    drop_scratch = model.drop_scratch
+
+    def counting(db_api: DuckDBAPI, prefixes: tuple[str, ...]) -> list[str]:
+        for name in scratch(con, ("__splink__blocked_id_pairs_",)):
+            [(pairs,)] = con.execute(f"SELECT count(*) FROM {name}").fetchall()
+            session_pairs.append(pairs)
+        return drop_scratch(db_api, prefixes)
+
+    monkeypatch.setattr(model, "drop_scratch", counting)
+
+    assert model.train(
+        linker, db_api, keys=len(donor_of), min_training_keys=len(donor_of), em_max_pairs=500
+    )
+
+    # About the cap, not all of any rule's pairs. Which keys a session keeps follows DuckDB's hash
+    # of their ids, so the counts (500, 489 and 469 on DuckDB 2.0) are fixed until DuckDB's hash
+    # changes; the bound leaves room for that.
+    assert len(session_pairs) == len(model.BLOCKING_RULES)
+    assert all(0 < pairs <= 550 for pairs in session_pairs), session_pairs
+    # Every comparison still had m estimated, by one session or another.
+    trained = linker.misc.save_model_to_json()
+    for comparison, prior in zip(trained["comparisons"], priors["comparisons"], strict=True):
+        assert any(
+            level.get("m_probability") != before.get("m_probability")
+            for level, before in zip(
+                comparison["comparison_levels"], prior["comparison_levels"], strict=True
+            )
+        ), comparison["output_column_name"]
 
 
 def test_too_few_keys_keep_the_priors(

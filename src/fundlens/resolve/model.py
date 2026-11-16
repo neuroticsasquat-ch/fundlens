@@ -52,6 +52,12 @@ DETERMINISTIC_RECALL = 0.6
 U_MAX_PAIRS = 1e8
 U_SEED = 2048
 
+# The share of keys on each side of the pass Splink runs before each EM session to count the
+# session's pairs, when the session's pairs are capped (`train`'s `em_max_pairs`). Splink's own
+# default: 1% of each side is a ten-thousandth of the pairs, 260,000 of the 2.6 billion that the
+# soundex and ZIP3 rule makes over every cycle (NEU-2333).
+EM_RECORD_SAMPLE_PROPORTION = 0.01
+
 # The tables each EM session leaves in the working file: the pairs its blocking rule chose and
 # their comparison vectors. On every cycle since 1980 they were 3.3 billion pairs (NEU-2325).
 TRAINING_SCRATCH = ("__splink__blocked_id_pairs_", "__splink__df_comparison_vectors_")
@@ -286,7 +292,14 @@ def drop_scratch(db_api: DuckDBAPI, prefixes: tuple[str, ...]) -> list[str]:
     return names
 
 
-def train(linker: Linker, db_api: DuckDBAPI, *, keys: int, min_training_keys: int) -> bool:
+def train(
+    linker: Linker,
+    db_api: DuckDBAPI,
+    *,
+    keys: int,
+    min_training_keys: int,
+    em_max_pairs: float | None = None,
+) -> bool:
     """Train `linker`'s model, whose database is `db_api`'s, on its contributors (spec §6.3);
     whether u and m were estimated.
 
@@ -297,7 +310,11 @@ def train(linker: Linker, db_api: DuckDBAPI, *, keys: int, min_training_keys: in
     takes a household for a person. The model then keeps its priors for both.
 
     Each EM session's pairs are dropped as soon as the session ends (`TRAINING_SCRATCH`), so the
-    working file holds one session's at a time, not all three.
+    working file holds one session's at a time, not all three. A session whose blocking rule makes
+    more than `em_max_pairs` pairs runs on about that many (NEU-2333): Splink keeps the keys whose
+    hashed id falls under a threshold, so the same keys give the same sample and the same model.
+    m is how often each level occurs among true matches, which a sample of pairs estimates as
+    closely as u's (`U_MAX_PAIRS`). With no cap, every session runs on all its pairs.
     """
     linker.training.estimate_probability_two_random_records_match(
         list(DETERMINISTIC_RULES), recall=DETERMINISTIC_RECALL
@@ -311,7 +328,9 @@ def train(linker: Linker, db_api: DuckDBAPI, *, keys: int, min_training_keys: in
         return False
     linker.training.estimate_u_using_random_sampling(max_pairs=U_MAX_PAIRS, seed=U_SEED)
     for rule in BLOCKING_RULES:
-        linker.training.estimate_parameters_using_expectation_maximisation(rule)
+        linker.training.estimate_parameters_using_expectation_maximisation(
+            rule, max_pairs=em_max_pairs, record_sample_proportion=EM_RECORD_SAMPLE_PROPORTION
+        )
         drop_scratch(db_api, TRAINING_SCRATCH)
     return True
 
