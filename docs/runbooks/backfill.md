@@ -902,3 +902,46 @@ The rebuild has 32,870,243 contributions, against 23,747,534 whole rows in the c
 45.1M and 2.1× 2018's 15.5M. The OK special lists 16 candidates, among them Mullin (`S2OK00186`) and Horn
 (`S2OK00228`). Its one race at $0 is the CA special, with 0 candidates. That is by design: every one of its candidates
 also ran in the regular race and stands there.
+
+### 2026-11-15 — 2026 resumed at load after NEU-2323
+
+2026's build `20261115T193414Z` (from `bfccd9e`, `DUCKDB_MEMORY_LIMIT` at `32GB`) passed extract, seats and
+transform, then stopped at `load` at 19:57:50Z on `gold_search_entity_name.sql`: `('candidate', 'H6AZ08210', 1)`.
+FEC's `cn26` lists `H6AZ08210` as a skeleton row (`H6AZ08210|||2026|AZ|H|||C|C00894121|||||`), the only blank
+`CAND_NAME` of 8,931. `search_entity` left out nameless committees (NEU-2296), but not nameless candidates. NEU-2323
+(PR #168) keeps a candidate's earlier name over a skeleton `cn` row and leaves a nameless one out of search. It
+changes gold only, so silver stood and the same build resumed at `load` from
+`02163b628b6273013a868a0c385ac2c41262c1ec`. Load passed every gold check in 3m49s; publish took 1m37s and ended at
+23:10:39Z. `window.txt` spans the gap between the two runs, so the peak is taken over the extract–transform run and
+the resumed load only.
+
+`H6AZ08210` is in `gold.candidate` with a NULL name, and absent from `gold.search_entity`. `live` listed 1980–2026,
+with 2024 still at `20261112T211727Z`. The FL special lists 39 candidates and the OH special 15. One race was at $0,
+`2026-H-MP-00`, with 0 candidates; the next entry fixes it and supersedes this build.
+
+### 2026-11-16 — 2004, 2006, 2018, 2024 and 2026 rebuilt after NEU-2324
+
+A state or territory with one House seat has its race at district `00`, but `cn` files some of its candidates under
+`01`. Those filings matched no seat, so they and their money dropped out of the race. `app.unmatched_filing` held 8
+such at-large filings: 2004 (DE, MT), 2006 (DE), 2018, 2024 and 2026 (MP). 2026's MP-00 had no candidates, and 2024's
+MP race left out its winner, King-Hinds (`H4MP01022`). NEU-2324 (PR #169) stands a House filing in its `00` seat
+whenever the seat calendar gives its state only `00` House seats that cycle, in `02_candidate.sql` and in
+`fundlens seats --report`. The fix is in silver, so the five cycles were rebuilt from
+`12504680e9b41a0aec6b318b0a7a798b0632b30e`, each superseded build's directory kept as `<C>-superseded-<B>`. 2024 is
+transform only, as before: it is loaded and published at step 11.
+
+| Cycle | Superseded | Live | Peak |
+| --- | --- | --- | --- |
+| 2004 | `20261114T005709Z` | `20261115T234428Z` | 14.98 GiB, gold check `gold_top_donor_not_self_funding` |
+| 2006 | `20261114T011606Z` | `20261116T000249Z` | 13.38 GiB, gold donor |
+| 2018 | `20261115T012743Z` | `20261116T001733Z` | 15.24 GiB, gold check `gold_top_donor_not_self_funding` |
+| 2024 (transform only) | `20261115T182139Z` | `20261116T005426Z` (not yet live) | 26.48 GiB, write contribution |
+| 2026 | `20261115T193414Z` | `20261116T013416Z` | 20.36 GiB, write contribution |
+
+On `api.fundlens.org`, 2004 DE-00 lists `H2DE00072` and MT-00 `H0MT00033`; 2006 DE-00 lists `H2DE00072`; 2018 MP-00
+lists `H8MP01015`, and the MN special still 11 candidates; 2026 MP-00 lists `H4MP01022` and `H6MP01027`, the FL
+special 39 and the OH special 15. None of the four live cycles has a race at $0. `app.unmatched_filing` has no
+at-large rows. 2024's silver passed every check with no MP filing unmatched; live 2024 is still `20261112T211727Z`.
+Its extract downloaded `indiv`, `pas2` and `oth` fresh (FEC files dated 2026-11-16), so it has 50,104,322
+contributions, 2 fewer than `20261115T182139Z`. That difference is FEC's update, not NEU-2324, which only moves
+candidates between races.
