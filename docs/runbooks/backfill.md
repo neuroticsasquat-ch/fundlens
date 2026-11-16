@@ -600,11 +600,18 @@ Then what `recluster` held, and Splink's tables as they were dropped (NEU-2325):
 
 ```bash
 # VM, in tmux
-grep -E 'resolve recluster: |resolve: dropped |resolve (train|model|cluster|recluster): ' resolve.log
+grep -E 'resolve recluster: |resolve: dropped |resolve (train|model|cluster|recluster): |\[EM sampling\] (Estimated|Chose|max_pairs is None)' resolve.log
 ```
 
-**Expected:** three `resolve: dropped <n> of Splink's tables (__splink__blocked_id_pairs_, …)` lines during
-training, one per EM session, each `<n>` above 0, and one `(__splink__df_predict_, …)` line after `cluster`. Then
+**Expected:** for each of the three EM sessions, Splink's `[EM sampling] Estimated total blocked pairs (no sampling)
+= <p>` line. Where `<p>` is above `RESOLVE_EM_MAX_PAIRS` (2e8), it is followed by `[EM sampling] Chose sampling
+fraction p*=<f> -> … expected blocked pairs after sampling: <about 200,000,000>` (NEU-2333). The soundex + ZIP3
+session's `<p>` is about 2.6 billion and the second's about 620 million, so both are sampled. The third's, about
+56 million, is followed instead by `[EM sampling] Estimated total pairs (<p>) is already <= max_pairs
+(200,000,000); no sampling applied`, and it runs whole. A `[EM sampling] max_pairs is None` line means the deployed code predates NEU-2333: stop.
+Write each session's `<p>` and `p*` in the Log. Then three `resolve: dropped <n> of Splink's tables
+(__splink__blocked_id_pairs_, …)` lines during training, one per EM session, each `<n>` above 0, and one
+`(__splink__df_predict_, …)` line after `cluster`. Then
 `<c> offending components, <k> keys, <e> joining edges`, the `largest offending component` line, the summary
 line, and `peak resident memory <g> GiB`. Write the last four in the Log. The peak resident memory is the whole
 process's, Python and DuckDB's buffer pool together, at its highest so far in the run, not only in `recluster`. Well

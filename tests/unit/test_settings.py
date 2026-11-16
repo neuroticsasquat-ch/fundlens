@@ -25,6 +25,7 @@ OPTIONAL = (
     "RESOLVE_MATCH_THRESHOLD",
     "RESOLVE_CLUSTER_THRESHOLD",
     "RESOLVE_MIN_TRAINING_KEYS",
+    "RESOLVE_EM_MAX_PAIRS",
     "RESOLVE_MAX_CLUSTER_KEYS",
     "DEEPINFRA_API_KEY",
     "ADJUDICATE_MODEL",
@@ -69,6 +70,7 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.resolve_match_threshold == 0.9
     assert settings.resolve_cluster_threshold == 0.95
     assert settings.resolve_min_training_keys == 100_000
+    assert settings.resolve_em_max_pairs == 2e8
     # Spec §6.8's adjudication: no key in dev, so nothing is sent.
     assert settings.deepinfra_api_key is None
     assert settings.adjudicate_model == "deepseek-ai/DeepSeek-V4-Flash"

@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # The fewest contributor keys `resolve --full` estimates u and m from (`resolve.model.train`);
     # below it the model keeps its prior parameters. Real cycles hold millions of keys.
     resolve_min_training_keys: int = Field(default=100_000, alias="RESOLVE_MIN_TRAINING_KEYS")
+    # The most pairs each of training's EM sessions estimates m from (`resolve.model.train`,
+    # NEU-2333); a blocking rule that makes more is sampled down to about this many. Every cycle's
+    # soundex and ZIP3 pairs, 2.6 billion, needed 190 GB of disk at once.
+    resolve_em_max_pairs: float = Field(default=2e8, gt=0, alias="RESOLVE_EM_MAX_PAIRS")
 
     # Adjudication (spec §6.8): which ambiguous clusters a model is asked about, which model, and
     # with which prompt. The prompt's file stem is its version (`adjudicate_v1`), recorded with
