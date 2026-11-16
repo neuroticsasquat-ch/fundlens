@@ -615,10 +615,10 @@ def decided(conn: Connection[TupleRow], version: Version) -> set[str]:
 
 
 def _saved_model(store: R2, data_dir: Path) -> dict[str, Any]:
-    """The newest saved model (`model.latest_version`), downloaded first if not cached."""
-    version = model.latest_version(store)
+    """The live model (`model.live_version`), downloaded first if not cached."""
+    version = model.live_version(store)
     if version is None:
-        raise FileNotFoundError("no saved model: run `fundlens resolve --full`")
+        raise FileNotFoundError("no live model: run `fundlens resolve --full`")
     key = paths.resolution_model(version)
     local = paths.local_path(data_dir, key)
     if not local.exists():

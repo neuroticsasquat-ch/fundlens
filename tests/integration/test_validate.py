@@ -27,6 +27,7 @@ from tests.integration.test_resolve import (
     AGAIN,
     FIXTURE_OVERRIDES,
     MEMORY_LIMIT,
+    MODEL,
     clusters,
     donor_keys,
     keys_by_sub_id,
@@ -293,20 +294,18 @@ def test_meta_serves_the_fixture_builds_figures(resolved: Path, migrated_db: str
     }
 
 
-def test_load_of_a_model_without_a_run_record_leaves_its_fields_null(
+def test_load_reports_the_live_model_not_a_newer_one_whose_run_never_finished(
     resolved: Path, migrated_db: str, store: R2
 ) -> None:
-    # As the model trained before NEU-2056 is: saved, with no record beside it.
+    # As a run that stopped after training leaves it: the model saved, no record beside it
+    # (NEU-2325). The donor_ids in place are still the earlier run's.
     store.delete_keys([paths.resolution_run(AGAIN)])
 
     result = load()
 
     assert result.exit_code == 0, result.output
     [meta] = rows(migrated_db, "meta")
-    assert meta["model_version"] == AGAIN
-    columns = ("resolver_version", "overrides_count", "adjudications_applied")
-    assert [meta[column] for column in columns] == [None] * len(columns)
-    assert "resolution: " not in result.output
+    assert (meta["model_version"], meta["overrides_count"]) == (MODEL, 0)
 
 
 def test_load_before_validation_leaves_the_figures_null(resolved: Path, migrated_db: str) -> None:

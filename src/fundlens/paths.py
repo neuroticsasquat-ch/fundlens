@@ -44,6 +44,8 @@ LIVE_BUILDS = f"{MARKERS_PREFIX}live.json"
 
 # Every saved Splink model (`resolution_model`).
 MODEL_PREFIX = "resolution/model/"
+# Each finished `resolve --full` run's record, under its model's version (`resolution_run`).
+RUN_PREFIX = "resolution/run/"
 
 # The DIME reference files resolution is scored against (ADR-0009).
 DIME_PREFIX = "reference/dime/"
@@ -167,7 +169,7 @@ def resolution_run(version: str) -> str:
     """What the `resolve --full` run that trained model `version` applied, as JSON:
     `resolution/run/<version>.json` (`resolve.runner.RunRecord`, NEU-2056)."""
     _check_build_id(version)
-    return f"resolution/run/{version}.json"
+    return f"{RUN_PREFIX}{version}.json"
 
 
 def model_version_of(key: str) -> str | None:

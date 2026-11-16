@@ -46,13 +46,39 @@ One `fundlens resolve --full` per row (spec §6.3–§6.6): every cycle's contri
 given donor_ids. The phases are the run's own timings, in run order, from its output line `load <s> s, train <s> s, …`; wall time is
 the `resolved` marker's `duration_s`. Peak memory is `pipeline`'s between the run's start and end. The working
 file is `/data/fundlens/resolution/resolve.duckdb` after the run; from NEU-2122 it also keeps the run's `edge` and
-`component` tables, and the Notes give the `recluster` summary line and the cluster cap.
+`component` tables, and the Notes give the `recluster` summary line and the cluster cap. From NEU-2325 a run
+saves its model right after training, in a `model` phase between `train` and `cluster`; the Notes give its seconds,
+and `save` only drops Splink's remaining tables. A run with `--model VERSION` has no `train` or `model` phase.
 
 | Date | Model | Cycles (build) | SHA | Contributor keys | Clusters | Load / train / cluster / recluster / overrides / save / crosswalk / silver s | Wall s | Peak `pipeline` memory | Working file GB | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / — / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | `22e56ce` | 5,620,495 | 3,822,946 | 10.21 / 188.02 / 106.62 / 11.85 / 0.18 / 0.13 / 18.81 / 253.41 | 598 | — | 9.5 | First run with re-clustering ([refreshing-dime.md](runbooks/refreshing-dime.md) §8, NEU-2122), cap 200. `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces; largest 1,400 → 180`. Crosswalk: 6,806 new donors, 31,213 keys re-pointed, 0 redirects; one override merge. Wall time is `time`'s `real`; peak memory not measured. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | `a2ca75f` | 5,620,495 | 4,009,899 | 10.01 / 174.71 / 112.62 / 10.98 / 0.19 / 0.15 / 32.82 / 197.31 | — | — | 9.4 | First run with the first-name levels of NEU-2188 (initial pair, nickname pair, the veto blind to initials), cap 200. `recluster: 7,339 components (3 oversized, 7,339 inconsistent) into 18,975 pieces; largest 263 → 103`. Crosswalk: 197,265 new donors, 284,508 keys re-pointed, 10,312 redirects; one override merge. The phases sum to 539 s; wall time and peak memory not captured. |
+
+**The first all-cycle run failed (2026-11-16, NEU-2060 step 9, NEU-2325).** It has no row: it resolved nothing.
+Model `20261116T022944Z` from `62a47eb`, all 24 cycles (1980–2026), 29,213,828 contributor keys, DuckDB limit 32 GB.
+Load took 54 s, train 8,420 s (EM converged after 8, 7 and 12 iterations) and cluster 2,499 s; the run failed in
+`recluster` after 3h22m with `IOException: Could not write file "/data/fundlens/scratch/duckdb_temp_…tmp": No space
+left on device`. The working file was 254,181,650,432 bytes, nearly all of it Splink scratch the run never read
+again, which `resolve_full` then dropped only in `save`, after `recluster`, `overrides` and `adjudications`:
+
+- the three EM sessions' `__splink__blocked_id_pairs_*` and `__splink__df_comparison_vectors_*` tables, of
+  2,636,580,964 (soundex + ZIP3), 621,859,329 and 55,991,435 pairs;
+- `__splink__df_predict_*`, 112,392,100 rows, a copy of `edge`;
+- `__splink__df_clustered_with_input_data_*`, 29,213,828 rows of 18 columns, a copy of `component`.
+
+Free disk on `/` went 266 → 202 → 78 → 128 → 58 → 14 → 3 → 1 GB, DuckDB's spill under `scratch/` taking the last
+of it. `pipeline` read 40.00 GiB, its `mem_limit`, at 05:35:53Z, three minutes into `recluster`, by `docker stats`;
+it was not killed. **What held that memory is not established**: `docker stats` counts active page cache, and a
+process at the limit and not killed while writing a 254 GB file fits reclaimable cache as well as Python's
+components or DuckDB's buffer pool. The failed run's working file was deleted at 14:45Z.
+
+NEU-2325 drops each EM session's tables when the session ends and the predictions once `edge` and `component` hold
+them, saves the model right after training (so `resolve --full --model 20261116T022944Z` would skip the 2h20m of
+training), and makes `recluster` read the offending components a batch at a time, logging their size and its peak
+memory. The working file still reaches about the largest EM session's size, since DuckDB never shrinks a file. Step
+9's rerun gives the first all-cycle row.
 
 ## Validation
 
@@ -120,6 +146,11 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   256 buckets and uploaded them, and the peak came early in it. The working file is 9.91 GB. `--full` loads every
   cycle's keys into one table (spec §6.10), so the backfill (NEU-2060) resolves the union of every cycle's keys at once,
   and its memory follows that count, not one cycle's. Measure a few cycles together before resolving them all.
+- **Pairs grow much faster than keys (NEU-2325).** 2024's 5.6M keys made a working file of 9.4–9.9 GB; every
+  cycle's 29.2M keys, 5.2 times as many, made 254 GB, 26 times as large, before `recluster` had written anything.
+  Blocking on a soundex and a ZIP3 pairs every key with every other in its block, so the pairs grow with the square
+  of the busiest blocks, and an estimate of the working file, or of training time, scaled by key count is wrong by
+  a wide margin.
 - **Donors are most of gold now (NEU-2079).** With 3.8M donors and 7.0M `donor_top_recipient` rows, gold grew from 0.04 GB
   to 2.61 GB and the database from 49 MB to 3.68 GB (with `app.crosswalk`'s 5.6M rows). Load took 169 s (aggregates
   73 s, `COPY` 94 s), against 4 s without donors. The spec's 10–30 GB gold estimate (§3.4) is for every cycle; one cycle

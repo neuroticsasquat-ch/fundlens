@@ -4,25 +4,31 @@ Resolution reads the newest transformed `contributor` partition of every cycle i
 working file (`paths.resolution_database`) as one table, `contributor`: a key reported in several
 cycles is one row, its attributes the variant of the cycle with the most contributions (for a key
 with none, the most JFC attributions), its counts and totals summed. It trains the Splink model
-on that table (`resolve.model`), saves the model as JSON locally and in R2 under this run's
-`build_id`, writes the `edge`, `component` and re-clustered `cluster` tables beside
-`contributor` (`resolve.cluster`), merges and
+on that table (`resolve.model`) and saves it as JSON, locally and in R2 under this run's
+`build_id`, straight away, so a run that fails later keeps its training; or, with `reuse`, reads
+a saved model back and trains nothing (NEU-2325). It writes the `edge`, `component` and
+re-clustered `cluster` tables beside `contributor` (`resolve.cluster`), merges and
 splits it as `resolution/overrides.yaml` asserts (`resolve.overrides`) and then as the confident
 verdicts of `fundlens adjudicate` say (`resolve.adjudicate`), gives every key its
 persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycle's
 `contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
-marker for each cycle's transformed build and the run's record (`RunRecord`) beside its model.
+marker for each cycle's transformed build and, last, the run's record (`RunRecord`) beside its
+model, which makes that model the live model (`model.live_version`).
+Splink's scratch tables are dropped as soon as the run has used them (`model.drop_scratch`).
 DuckDB runs under the pipeline's memory limit and
 spills under `scratch/`, and each phase's wall time is logged.
 """
 
+import json
 import logging
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
+from typing import Any, cast
 
 import duckdb
 from psycopg import Connection
@@ -57,14 +63,24 @@ class Thresholds:
     cluster: float
 
 
+class Parameters(StrEnum):
+    """Where a run's model parameters came from, as the CLI prints it."""
+
+    # u and m estimated from the contributors (`model.train`).
+    TRAINED = "trained"
+    # Too few keys to estimate u and m: the model keeps its priors.
+    PRIORS = "priors (too few keys to train on)"
+    # A saved model read back (`resolve --full --model`): nothing trained.
+    REUSED = "reused (saved model)"
+
+
 @dataclass(frozen=True)
 class Resolved:
     """What `resolve_full` did."""
 
     model_version: str
     model_key: str
-    # Whether u and m were estimated, rather than left at their priors (`model.train`).
-    trained: bool
+    parameters: Parameters
     contributor_keys: int
     clusters: int
     reclustered: Reclustered
@@ -83,8 +99,9 @@ class RunRecord(BaseModel):
     """What a `resolve --full` run applied, saved under its model version
     (`paths.resolution_run`) for `load` to carry into `gold.meta` (NEU-2056).
 
-    Keyed by the model, so it describes the `--full` run that trained the live model: an
-    incremental run (NEU-2062) that applies overrides without training must write its own.
+    Keyed by the model, so it describes the `--full` run that last resolved with the live
+    model; it is what makes a saved model live (`model.live_version`). An incremental run
+    (NEU-2062) that applies overrides without training must write its own.
     """
 
     # The deployed release (commit) that resolved; None where none is known (dev, CI).
@@ -96,8 +113,8 @@ class RunRecord(BaseModel):
 
 
 def run_record(store: R2, version: str) -> RunRecord | None:
-    """The record of the run that trained model `version`, or None if it wrote none (a run
-    before NEU-2056, or one that failed after saving its model)."""
+    """The record of the run that resolved with model `version`, or None if it wrote none (a
+    run before NEU-2056, or one that stopped part way). The live model always has one."""
     try:
         raw = store.get(paths.resolution_run(version))
     except FileNotFoundError:
@@ -234,10 +251,22 @@ def _fresh_database(data_dir: Path) -> Path:
     return database
 
 
+def _saved_model(store: R2, version: str) -> dict[str, Any]:
+    """Model `version` as `resolve --full` saved it; `FileNotFoundError` naming its key if it
+    was never saved."""
+    key = paths.resolution_model(version)
+    try:
+        raw = store.get(key)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"no saved model at {key}: see `{paths.MODEL_PREFIX}`") from exc
+    return cast(dict[str, Any], json.loads(raw))
+
+
 def resolve_full(
     store: R2,
     *,
     build_id: str,
+    reuse: bool = False,
     data_dir: Path,
     limits: Limits,
     thresholds: Thresholds,
@@ -251,17 +280,24 @@ def resolve_full(
 ) -> Resolved:
     """Train the model on every cycle's contributors, cluster them and re-cluster under the
     cluster cap `max_keys`, then apply the overrides file at `overrides_path` and the confident
-    verdicts of `adjudication` (`adjudicate.apply`); write the model,
-    the `edge`, `component` and `cluster` tables, the crosswalk, each cycle's silver with its
-    donor_ids, each cycle's `resolved` marker and, last, the run's record naming `release`
-    (spec §6.3–§6.6, §5.1, NEU-2122, NEU-2056).
+    verdicts of `adjudication` (`adjudicate.apply`); write the model as version `build_id` right
+    after training, then the `edge`, `component` and `cluster` tables, the crosswalk, each
+    cycle's silver with its donor_ids, each cycle's `resolved` marker and, last, the run's record
+    naming `release`, which makes the model live (spec §6.3–§6.6, §5.1, NEU-2122, NEU-2056,
+    NEU-2325).
 
-    Raises `FileNotFoundError` when no cycle has been transformed, and `OverridesError` when the
-    overrides file is malformed or names a key or donor_id the run does not know, before the run
-    trains anything.
+    With `reuse`, the model saved as version `build_id` is read back from R2 instead: nothing is
+    trained or saved, and the rest of the run is the same, under that version.
+
+    Raises `FileNotFoundError` when no cycle has been transformed, or `reuse` names a model never
+    saved, and `OverridesError` when the overrides file is malformed or names a key or donor_id
+    the run does not know, before the run trains anything.
     """
     # Read first, so a malformed file stops the run before it trains anything.
     asserted = overrides.load(overrides_path)
+    model_key = paths.resolution_model(build_id)
+    # Before the contributors load, so a mistyped version costs seconds.
+    saved = _saved_model(store, build_id) if reuse else None
     started_at = datetime.now(UTC)
     builds = transformed_builds(store)
     if not builds:
@@ -270,7 +306,6 @@ def resolve_full(
     scratch = paths.scratch_dir(data_dir)
     scratch.mkdir(parents=True, exist_ok=True)
     database = _fresh_database(data_dir)
-    model_key = paths.resolution_model(build_id)
     model_path = paths.local_path(data_dir, model_key)
     model_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(database, config=limits.duckdb_config(scratch)) as con:
@@ -286,13 +321,28 @@ def resolve_full(
             # Before training, so an entry naming a key or donor_id the run does not know costs
             # minutes, not a full training run.
             overrides.check(con, conn, asserted)
-        linker = model.linker(DuckDBAPI(con), CONTRIBUTOR_TABLE, model.settings())
-        with _phase("train", times):
-            trained = model.train(linker, keys=keys, min_training_keys=min_training_keys)
+        db_api = DuckDBAPI(con)
+        if saved is not None:
+            linker = model.linker(db_api, CONTRIBUTOR_TABLE, saved)
+            parameters = Parameters.REUSED
+        else:
+            linker = model.linker(db_api, CONTRIBUTOR_TABLE, model.settings())
+            with _phase("train", times):
+                trained = model.train(
+                    linker, db_api, keys=keys, min_training_keys=min_training_keys
+                )
+            parameters = Parameters.TRAINED if trained else Parameters.PRIORS
+            # Now, not after the run: a run that fails later keeps hours of training, and
+            # `--model` resolves with it (NEU-2325). It is not live until the run's record is.
+            with _phase("model", times):
+                linker.misc.save_model_to_json(str(model_path), overwrite=True)
+                store.put(model_key, model_path)
         with _phase("cluster", times):
             cluster(
                 linker, con, match_threshold=thresholds.match, cluster_threshold=thresholds.cluster
             )
+            # `edge` and `component` hold what these did.
+            model.drop_scratch(db_api, model.PREDICTION_SCRATCH)
         with _phase("recluster", times):
             reclustered = recluster(con, max_keys=max_keys, cluster_threshold=thresholds.cluster)
         with _phase("overrides", times):
@@ -308,11 +358,9 @@ def resolve_full(
             f"SELECT count(DISTINCT cluster_id) FROM {CLUSTER_TABLE}"
         ).fetchall()
         with _phase("save", times):
-            linker.misc.save_model_to_json(str(model_path), overwrite=True)
             # Splink's working tables are a run's scratch; the file keeps the input, the edges,
             # the components and the clusters.
             linker.table_management.delete_tables_created_by_splink_from_db()
-        store.put(model_key, model_path)
         with _phase("crosswalk", times):
             assigned = crosswalk.assign(con, conn, build_id=build_id, scratch=scratch)
         with _phase("silver", times):
@@ -347,13 +395,13 @@ def resolve_full(
         clusters,
         len(builds),
         build_id,
-        "trained" if trained else "priors",
+        parameters.name.lower(),
         memory_limit,
     )
     return Resolved(
         build_id,
         model_key,
-        trained,
+        parameters,
         keys,
         clusters,
         reclustered,

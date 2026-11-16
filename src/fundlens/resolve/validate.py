@@ -440,13 +440,13 @@ def validate(
     clusters: Path | None = None,
 ) -> Validated:
     """Score the newest resolved build of `cycle` against DIME and write the overall and top
-    scopes to `app.resolution_quality` under `model_version` (the newest saved model when None)
+    scopes to `app.resolution_quality` under `model_version` (the live model when None)
     (NEU-2054 §5).
 
     With `clusters`, resolution's working file, its `cluster` table's `cluster_id` stands in for
     silver's `donor_id` and nothing is written (NEU-2122 §5.2).
 
-    Raises `FileNotFoundError` when the cycle has no resolved build, no model is saved, R2 has no
+    Raises `FileNotFoundError` when the cycle has no resolved build, no model is live, R2 has no
     DIME file for the cycle, or `clusters` holds no `cluster` table, and `NotResolved` when the
     build's contributions are not all resolved (or, with `clusters`, a labelled key is in no
     cluster); in every case before anything is written. Re-running overwrites the same two rows.
@@ -456,9 +456,9 @@ def validate(
     build_id = newest_resolved(store, cycle)
     if build_id is None:
         raise FileNotFoundError(f"no resolved build for {cycle}: run `fundlens resolve --full`")
-    version = model_version or model.latest_version(store)
+    version = model_version or model.live_version(store)
     if version is None:
-        raise FileNotFoundError("no saved resolution model: run `fundlens resolve --full`")
+        raise FileNotFoundError("no live resolution model: run `fundlens resolve --full`")
     if not store.exists(paths.resolution_model(version)):
         # Figures under a model nobody saved are rows `load` never reads.
         raise FileNotFoundError(f"no saved resolution model {version}: see `resolution/model/`")

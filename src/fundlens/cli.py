@@ -376,21 +376,34 @@ def resolve(
             " marker goes under its newest transformed build. Default: a build starting now."
         ),
     ] = None,
+    model_version: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="Resolve with the model saved as this version instead of training one, as that"
+            " version: after a run that stopped once its model was saved. Excludes --build-id.",
+        ),
+    ] = None,
 ) -> None:
     """Link every cycle's contributor keys into clusters of one person with Splink, save the
     trained model, apply `resolution/overrides.yaml` and the confident adjudications of the
     configured model and prompt, give each cluster its persistent donor_id,
-    write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6)."""
+    write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6).
+    `--model` resolves with a saved model, trained by an earlier run, instead (NEU-2325)."""
     if not full:
         # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
         raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
+    if model_version is not None and build_id is not None:
+        # The run's version is the reused model's: there is no second one to name.
+        raise typer.BadParameter("give --model or --build-id, not both", param_hint="--model")
     settings = get_settings()
     try:
         # Autocommit, so the crosswalk's `conn.transaction()` is a transaction of its own.
         with psycopg.connect(settings.database_url, autocommit=True) as conn:
             result = resolution.resolve_full(
                 R2.from_settings(settings),
-                build_id=build_id or _new_build_id(),
+                build_id=model_version or build_id or _new_build_id(),
+                reuse=model_version is not None,
                 data_dir=settings.data_dir,
                 limits=runner.Limits.from_settings(settings),
                 thresholds=resolution.Thresholds(
@@ -423,8 +436,8 @@ def resolve(
         f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"
         f" {assigned.redirects} redirects"
     )
-    parameters = "trained" if result.trained else "priors (too few keys to train on)"
-    typer.echo(f"model {result.model_version}: {parameters}, wrote {result.model_key}")
+    done = "read" if result.parameters is resolution.Parameters.REUSED else "wrote"
+    typer.echo(f"model {result.model_version}: {result.parameters}, {done} {result.model_key}")
     typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
     typer.echo(f"DuckDB memory limit: {result.memory_limit}")
 
@@ -612,7 +625,7 @@ def validate(
     cycle: Annotated[int, typer.Option(help="The cycle, by its even year.")],
     model_version: Annotated[
         str | None,
-        typer.Option(help="The model the figures are recorded under. Default: the newest saved."),
+        typer.Option(help="The model the figures are recorded under. Default: the live model."),
     ] = None,
     top: Annotated[
         int, typer.Option(help="How many DIME donors, by matched dollars, the top scope scores.")

@@ -420,7 +420,7 @@ def load(
             }
             for each, each_build in sorted(builds.items())
         }
-        quality = _quality(conn, store, builds.keys(), model.latest_version(store))
+        quality = _quality(conn, store, builds.keys(), model.live_version(store))
         copy_started = time.monotonic()
         row_counts["donor_redirect"] = _load_postgres(
             conn,

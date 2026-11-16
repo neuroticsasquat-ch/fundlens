@@ -17,8 +17,8 @@ from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
 from fundlens.r2 import R2
-from fundlens.resolve import crosswalk, model, nicknames
-from fundlens.resolve.cluster import cluster, recluster
+from fundlens.resolve import crosswalk, model, nicknames, runner
+from fundlens.resolve.cluster import Reclustered, cluster, recluster
 from fundlens.settings import get_settings
 from tests import fec_fixture
 from tests.integration.conftest import REPO_ROOT, Snapshot
@@ -155,6 +155,7 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
     phases = (
         "load",
         "train",
+        "model",
         "cluster",
         "recluster",
         "overrides",
@@ -174,6 +175,81 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
     # The run's connection had the limit, and kept to it: DuckDB fails a query that exceeds it.
     assert "DuckDB memory limit: 244.1 MiB" in result.output
     assert "priors (too few keys to train on)" in result.output
+
+
+# The scratch `resolve --full` drops as soon as it has used it (NEU-2325).
+EARLY_SCRATCH = model.TRAINING_SCRATCH + model.PREDICTION_SCRATCH
+
+
+def test_a_run_that_trains_then_fails_drops_splinks_scratch_and_keeps_a_model_that_is_not_live(
+    store: R2,
+    resolved: Path,
+    migrated_db: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="fundlens.resolve")
+    # Low enough that u and m are estimated: the fixture alone would keep the priors.
+    monkeypatch.setenv("RESOLVE_MIN_TRAINING_KEYS", "1")
+    get_settings.cache_clear()
+    tables: list[str] = []
+    components: list[tuple[Any, ...]] = []
+
+    def fails(con: duckdb.DuckDBPyConnection, **_: Any) -> Reclustered:
+        tables.extend(name for (name,) in con.execute("SHOW TABLES").fetchall())
+        components.extend(
+            con.execute("SELECT * FROM component ORDER BY contributor_key").fetchall()
+        )
+        raise RuntimeError("the disk is full")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(runner, "recluster", fails)
+        failed = resolve("--full", "--build-id", AGAIN)
+
+    assert isinstance(failed.exception, RuntimeError), failed.output
+    # EM ran, once per blocking rule, and each session's pairs went when it ended.
+    dropped = [
+        message
+        for record in caplog.records
+        if (message := record.getMessage()).startswith("resolve: dropped ")
+        and model.TRAINING_SCRATCH[0] in message
+    ]
+    assert len(dropped) == len(model.BLOCKING_RULES)
+    assert not any(message.startswith("resolve: dropped 0 ") for message in dropped)
+    assert {"contributor", "edge", "component"} <= set(tables)
+    assert not [name for name in tables if name.startswith(EARLY_SCRATCH)]
+    # The model is in R2, and is not live: the run wrote no record.
+    assert store.exists(paths.resolution_model(AGAIN))
+    assert not store.exists(paths.resolution_run(AGAIN))
+    assert model.live_version(store) == MODEL
+
+    caplog.clear()
+    reused = resolve("--full", "--model", AGAIN)
+
+    assert reused.exit_code == 0, reused.output
+    assert f"model {AGAIN}: reused (saved model), read {paths.resolution_model(AGAIN)}" in (
+        reused.output
+    )
+    logged = [record.getMessage() for record in caplog.records]
+    assert not any(message.startswith(("resolve train: ", "resolve model: ")) for message in logged)
+    # The same model links the same keys.
+    assert component_rows(resolved) == components
+    assert store.exists(paths.resolution_run(AGAIN))
+    assert model.live_version(store) == AGAIN
+
+
+def test_resolve_with_a_model_and_a_build_id_is_a_usage_error(cli_env: Path) -> None:
+    result = resolve("--full", "--model", MODEL, "--build-id", AGAIN)
+
+    assert result.exit_code == 2
+    assert "--model" in result.output
+
+
+def test_resolve_with_a_model_never_saved_names_its_key(cli_env: Path) -> None:
+    result = resolve("--full", "--model", MODEL)
+
+    assert result.exit_code == 1
+    assert f"no saved model at {paths.resolution_model(MODEL)}" in result.output
 
 
 def test_each_key_carries_the_names_the_nickname_table_links_to_its_first_name(

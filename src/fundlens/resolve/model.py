@@ -6,6 +6,11 @@ Every comparison level starts from a prior m and u probability, the model's para
 has seen data and the ones it keeps for any level training cannot estimate. `train` estimates the
 rest from the contributors themselves.
 
+Splink keeps every table it makes in the run's working file until it is told to drop them.
+`drop_scratch` drops the ones a run has finished with as it goes (NEU-2325): each EM session's
+pairs once the session is over (`TRAINING_SCRATCH`), and the predictions and clusters once
+`edge` and `component` hold them (`PREDICTION_SCRATCH`).
+
 The priors encode what the fixture's hard cases assert (spec §6). A name agreeing in full is the
 strongest evidence there is; a different first name is a different person to linkage, and two
 people of one household share a surname, a ZIP and often an employer. So a first name that
@@ -46,6 +51,12 @@ DETERMINISTIC_RECALL = 0.6
 # Pairs sampled to estimate u: Splink's advice is 1e7 to 1e9, more being slower and closer.
 U_MAX_PAIRS = 1e8
 U_SEED = 2048
+
+# The tables each EM session leaves in the working file: the pairs its blocking rule chose and
+# their comparison vectors. On every cycle since 1980 they were 3.3 billion pairs (NEU-2325).
+TRAINING_SCRATCH = ("__splink__blocked_id_pairs_", "__splink__df_comparison_vectors_")
+# The predictions and Splink's clusters: copies of `edge` and `component` once those are written.
+PREDICTION_SCRATCH = ("__splink__df_predict_", "__splink__df_clustered_with_input_data_")
 
 # Under this Jaro-Winkler similarity, two first names that are neither an initial pair nor a
 # nickname pair are the first-name comparison's else level: the veto. Re-clustering
@@ -249,14 +260,44 @@ def linker(db_api: DuckDBAPI, table: str, model: SettingsCreator | dict[str, Any
     return Linker(registered, model, log_level=None)
 
 
-def train(linker: Linker, *, keys: int, min_training_keys: int) -> bool:
-    """Train `linker`'s model on its contributors (spec §6.3); whether u and m were estimated.
+def drop_scratch(db_api: DuckDBAPI, prefixes: tuple[str, ...]) -> list[str]:
+    """Drop every table in `db_api`'s database whose name starts with one of `prefixes`, forget
+    it in Splink's cache so Splink never hands it back, then `CHECKPOINT` so DuckDB reuses the
+    freed blocks (the file never shrinks); the names dropped.
+
+    Splink's own `delete_tables_created_by_splink_from_db` drops what is left later, with `IF
+    EXISTS`, so a table gone already does not trouble it.
+    """
+    con = db_api.duckdb_con
+    names = [
+        name
+        for (name,) in con.execute(
+            "SELECT table_name FROM duckdb_tables()"
+            " WHERE database_name = current_database() ORDER BY table_name"
+        ).fetchall()
+        if name.startswith(prefixes)
+    ]
+    for name in names:
+        db_api.delete_table_from_database(name)
+        # The cache matches by physical name, which is all a dropped table has left.
+        db_api.remove_splinkdataframe_from_cache(db_api.table_to_splink_dataframe(name, name))
+    con.execute("CHECKPOINT")
+    log.info("resolve: dropped %d of Splink's tables (%s)", len(names), ", ".join(prefixes))
+    return names
+
+
+def train(linker: Linker, db_api: DuckDBAPI, *, keys: int, min_training_keys: int) -> bool:
+    """Train `linker`'s model, whose database is `db_api`'s, on its contributors (spec §6.3);
+    whether u and m were estimated.
 
     The probability two random keys match is always estimated, by counting deterministic
     matches. u is estimated by random sampling and m by expectation maximisation on each
     blocking rule only when there are at least `min_training_keys` keys: on fewer, a random
     sample measures how often the sample's few surnames collide, not the population's, and EM
     takes a household for a person. The model then keeps its priors for both.
+
+    Each EM session's pairs are dropped as soon as the session ends (`TRAINING_SCRATCH`), so the
+    working file holds one session's at a time, not all three.
     """
     linker.training.estimate_probability_two_random_records_match(
         list(DETERMINISTIC_RULES), recall=DETERMINISTIC_RECALL
@@ -271,18 +312,26 @@ def train(linker: Linker, *, keys: int, min_training_keys: int) -> bool:
     linker.training.estimate_u_using_random_sampling(max_pairs=U_MAX_PAIRS, seed=U_SEED)
     for rule in BLOCKING_RULES:
         linker.training.estimate_parameters_using_expectation_maximisation(rule)
+        drop_scratch(db_api, TRAINING_SCRATCH)
     return True
 
 
-def latest_version(store: R2) -> str | None:
-    """The newest model saved in R2 (`paths.resolution_model`), or None if none is.
+def live_version(store: R2) -> str | None:
+    """The live model: the newest model saved in R2 (`paths.resolution_model`) whose run
+    finished, so also wrote its record (`paths.resolution_run`); None if there is none.
 
-    Versions are `build_id`s, so the newest is the most recently trained: the model the live
-    crosswalk was built with, and the one `validate` scores and `load` reports.
+    Versions are `build_id`s, so the newest is the most recently trained. A run saves its model
+    right after training and writes its record last (NEU-2325), so a run that stopped part way
+    leaves a model that is not live: the donor_ids in place were not assigned with it. This is
+    the model `validate` scores and `load` reports.
     """
+    finished = {
+        key.removeprefix(paths.RUN_PREFIX).removesuffix(".json")
+        for key in store.list_keys(paths.RUN_PREFIX)
+    }
     versions = [
         version
         for key in store.list_keys(paths.MODEL_PREFIX)
-        if (version := paths.model_version_of(key)) is not None
+        if (version := paths.model_version_of(key)) is not None and version in finished
     ]
     return max(versions) if versions else None

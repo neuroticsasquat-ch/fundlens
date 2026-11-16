@@ -6,13 +6,16 @@ connected component is a component. A connected component ignores every pair it 
 so a path of strong pairs can join people the model would never pair directly: a chain.
 Re-clustering rebuilds each component that holds a vetoed pair, or more keys than the cluster
 cap, from its own joining edges, strongest first, refusing any union that would put a vetoed
-pair in one cluster or exceed the cap. Every other component is a cluster as it stands.
+pair in one cluster or exceed the cap. Every other component is a cluster as it stands. The
+offending components are read from DuckDB a batch of whole components at a time, so Python never
+holds them all (NEU-2325).
 `components_at` rebuilds the components from the kept edges at another cluster threshold, for the
 threshold sweep (NEU-2182), without predicting again.
 """
 
 import hashlib
 import logging
+import resource
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass
@@ -36,6 +39,11 @@ CLUSTER_TABLE = "cluster"
 REBUILT_COMPONENT_TABLE = "component_at"
 
 _CONTRIBUTOR_TABLE = "contributor"
+
+# About how many keys of offending components `recluster` holds in Python at once: a batch is
+# whole components in `cluster_id` order, a new one starting once this many keys came before.
+# One component larger than it is held whole all the same.
+BATCH_KEYS = 100_000
 
 
 @dataclass(frozen=True)
@@ -147,37 +155,29 @@ def recluster_component(
     return {key: lowest[root(key)] for key in members}
 
 
-def _vetoed_pairs(
-    con: duckdb.DuckDBPyConnection, components: str
-) -> dict[str, set[frozenset[str]]]:
-    """Each component holding a vetoed pair, and its vetoed pairs of first names: both present,
-    not equal, Jaro-Winkler under `FIRST_NAME_VETO_JW` and neither an initial pair nor a nickname
-    pair, the model's else level (`model._first_name`) to the letter."""
+def _vetoed_pairs(components: str) -> str:
+    """SQL for each component's vetoed pairs of first names, as `(cluster_id, a, b)`, `a` the
+    lower: both present, not equal, Jaro-Winkler under `FIRST_NAME_VETO_JW` (the parameter
+    `$jw`) and neither an initial pair nor a nickname pair, the model's else level
+    (`model._first_name`) to the letter."""
     initial = initial_pair_sql("a.first_name", "b.first_name")
     nickname = nickname_pair_sql(
         "a.first_name", "a.first_name_nicknames", "b.first_name", "b.first_name_nicknames"
     )
-    rows = con.execute(
-        f"""
+    return f"""
         WITH name AS (
             SELECT DISTINCT c.cluster_id, k.first_name, k.first_name_nicknames
             FROM {components} AS c
             JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
             WHERE k.first_name IS NOT NULL
         )
-        SELECT a.cluster_id, a.first_name, b.first_name
+        SELECT a.cluster_id, a.first_name AS a, b.first_name AS b
         FROM name AS a
         JOIN name AS b ON b.cluster_id = a.cluster_id AND b.first_name > a.first_name
         WHERE jaro_winkler_similarity(a.first_name, b.first_name) < $jw
             AND NOT {initial}
             AND NOT {nickname}
-        """,
-        {"jw": FIRST_NAME_VETO_JW},
-    ).fetchall()
-    vetoed: dict[str, set[frozenset[str]]] = defaultdict(set)
-    for cluster_id, a, b in rows:
-        vetoed[cluster_id].add(frozenset((a, b)))
-    return vetoed
+        """
 
 
 def components_at(con: duckdb.DuckDBPyConnection, *, cluster_threshold: float) -> str:
@@ -245,6 +245,53 @@ def components_at(con: duckdb.DuckDBPyConnection, *, cluster_threshold: float) -
     return REBUILT_COMPONENT_TABLE
 
 
+# The temp tables `recluster` works in, dropped when it is done.
+_RECLUSTER_SCRATCH = ("vetoed", "offending", "offending_member", "offending_edge", "moved")
+
+
+def _by_component[T](rows: Iterable[tuple[str, T]]) -> dict[str, list[T]]:
+    grouped: dict[str, list[T]] = defaultdict(list)
+    for cluster_id, row in rows:
+        grouped[cluster_id].append(row)
+    return grouped
+
+
+def _log_offending(con: duckdb.DuckDBPyConnection) -> None:
+    """Log what re-clustering is about to hold: the offending components, their keys and
+    joining edges, and the largest one's keys, distinct first names and vetoed pairs. For
+    reading `resolve.log` after a large run, with the peak memory `recluster` logs after."""
+    [(components, keys)] = con.execute(
+        "SELECT count(*), coalesce(sum(keys), 0) FROM offending"
+    ).fetchall()
+    [(edges,)] = con.execute("SELECT count(*) FROM offending_edge").fetchall()
+    log.info(
+        "resolve recluster: %d offending components, %d keys, %d joining edges",
+        components,
+        keys,
+        edges,
+    )
+    largest = con.execute(
+        """
+        SELECT
+            o.keys,
+            (SELECT count(DISTINCT first_name) FROM offending_member AS m
+                WHERE m.cluster_id = o.cluster_id),
+            (SELECT count(*) FROM vetoed AS v WHERE v.cluster_id = o.cluster_id)
+        FROM offending AS o
+        ORDER BY o.keys DESC, o.cluster_id
+        LIMIT 1
+        """
+    ).fetchall()
+    for keys, names, vetoed in largest:
+        log.info(
+            "resolve recluster: largest offending component %d keys, %d distinct first names,"
+            " %d vetoed pairs",
+            keys,
+            names,
+            vetoed,
+        )
+
+
 def recluster(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -256,61 +303,113 @@ def recluster(
     its `components` (linkage's `component` unless `components_at` rebuilt them), `edge` and
     `contributor` tables: each component holding a vetoed pair or more than `max_keys` keys
     re-clustered (`recluster_component`) over its edges at or above `cluster_threshold`, every
-    other component as it stands."""
-    vetoed = _vetoed_pairs(con, components)
-    oversized = {
-        cluster_id
-        for (cluster_id,) in con.execute(
-            f"SELECT cluster_id FROM {components} GROUP BY cluster_id HAVING count(*) > $n",
-            {"n": max_keys},
-        ).fetchall()
-    }
-    offending = sorted(oversized | set(vetoed))
+    other component as it stands.
+
+    The offending components, their members, joining edges and vetoed pairs are gathered in
+    DuckDB, then read into Python a batch of about `BATCH_KEYS` keys at a time, and the keys
+    each batch moves are written back before the next is read. All on `con` itself: a cursor
+    sees neither its temp tables (`components_at`'s) nor its open transaction
+    (`runner.recluster_working_file`'s)."""
     con.execute(
-        "CREATE OR REPLACE TEMP TABLE offending AS SELECT unnest($ids::VARCHAR[]) AS cluster_id",
-        {"ids": offending},
+        f"CREATE OR REPLACE TEMP TABLE vetoed AS {_vetoed_pairs(components)}",
+        {"jw": FIRST_NAME_VETO_JW},
     )
-    members: dict[str, dict[str, str | None]] = defaultdict(dict)
-    for cluster_id, key, first_name in con.execute(
+    # Each offending component, and the batch it is read in: the keys of every component before
+    # it in `cluster_id` order, in whole `BATCH_KEYS`.
+    con.execute(
         f"""
-        SELECT c.cluster_id, c.contributor_key, k.first_name
+        CREATE OR REPLACE TEMP TABLE offending AS
+        WITH flagged AS (
+            SELECT
+                cluster_id,
+                count(*) AS keys,
+                count(*) > $n AS oversized,
+                cluster_id IN (SELECT cluster_id FROM vetoed) AS inconsistent
+            FROM {components}
+            GROUP BY cluster_id
+        )
+        SELECT
+            *,
+            (sum(keys) OVER (ORDER BY cluster_id) - keys) // $batch AS batch
+        FROM flagged
+        WHERE oversized OR inconsistent
+        """,
+        {"n": max_keys, "batch": BATCH_KEYS},
+    )
+    # Ordered by batch, so reading one skips the others' row groups.
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE offending_member AS
+        SELECT o.batch, c.cluster_id, c.contributor_key, k.first_name
         FROM {components} AS c
-        JOIN offending USING (cluster_id)
+        JOIN offending AS o USING (cluster_id)
         JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
-        ORDER BY c.cluster_id, c.contributor_key
+        ORDER BY o.batch, c.cluster_id, c.contributor_key
         """
-    ).fetchall():
-        members[cluster_id][key] = first_name
-    edges: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
-    for cluster_id, left, right, probability in con.execute(
+    )
+    con.execute(
         f"""
-        SELECT l.cluster_id, e.contributor_key_l, e.contributor_key_r, e.match_probability
+        CREATE OR REPLACE TEMP TABLE offending_edge AS
+        SELECT o.batch, l.cluster_id, e.contributor_key_l, e.contributor_key_r, e.match_probability
         FROM {EDGE_TABLE} AS e
         JOIN {components} AS l ON l.contributor_key = e.contributor_key_l
         JOIN {components} AS r ON r.contributor_key = e.contributor_key_r
-        JOIN offending ON offending.cluster_id = l.cluster_id
+        JOIN offending AS o ON o.cluster_id = l.cluster_id
         WHERE r.cluster_id = l.cluster_id AND e.match_probability >= $threshold
-        ORDER BY l.cluster_id
+        ORDER BY o.batch, l.cluster_id
         """,
         {"threshold": cluster_threshold},
-    ).fetchall():
-        edges[cluster_id].append((left, right, probability))
-    moved: dict[str, str] = {}
-    pieces = 0
-    for cluster_id in offending:
-        piece_of = recluster_component(
-            members[cluster_id], edges[cluster_id], vetoed.get(cluster_id, set()), max_keys
+    )
+    con.execute("CREATE OR REPLACE TEMP TABLE moved (contributor_key VARCHAR, cluster_id VARCHAR)")
+    _log_offending(con)
+    pieces = keys_moved = 0
+    batches = [
+        batch
+        for (batch,) in con.execute(
+            "SELECT DISTINCT batch FROM offending ORDER BY batch"
+        ).fetchall()
+    ]
+    for batch in batches:
+        members = _by_component(
+            (cluster_id, (key, first_name))
+            for cluster_id, key, first_name in con.execute(
+                "SELECT cluster_id, contributor_key, first_name FROM offending_member"
+                " WHERE batch = $batch ORDER BY cluster_id, contributor_key",
+                {"batch": batch},
+            ).fetchall()
         )
-        pieces += len(set(piece_of.values()))
-        moved |= {key: piece for key, piece in piece_of.items() if piece != cluster_id}
+        edges = _by_component(
+            (cluster_id, (left, right, probability))
+            for cluster_id, left, right, probability in con.execute(
+                "SELECT cluster_id, contributor_key_l, contributor_key_r, match_probability"
+                " FROM offending_edge WHERE batch = $batch",
+                {"batch": batch},
+            ).fetchall()
+        )
+        vetoed = _by_component(
+            (cluster_id, frozenset((a, b)))
+            for cluster_id, a, b in con.execute(
+                "SELECT v.cluster_id, v.a, v.b FROM vetoed AS v"
+                " JOIN offending AS o USING (cluster_id) WHERE o.batch = $batch",
+                {"batch": batch},
+            ).fetchall()
+        )
+        moved: dict[str, str] = {}
+        for cluster_id, named in members.items():
+            piece_of = recluster_component(
+                dict(named), edges.get(cluster_id, []), set(vetoed.get(cluster_id, [])), max_keys
+            )
+            pieces += len(set(piece_of.values()))
+            moved |= {key: piece for key, piece in piece_of.items() if piece != cluster_id}
+        con.execute(
+            "INSERT INTO moved SELECT unnest($keys::VARCHAR[]), unnest($pieces::VARCHAR[])",
+            {"keys": list(moved), "pieces": list(moved.values())},
+        )
+        keys_moved += len(moved)
     con.execute(
         f"""
         CREATE OR REPLACE TABLE {CLUSTER_TABLE} AS
         WITH
-            moved AS (
-                SELECT unnest($keys::VARCHAR[]) AS contributor_key,
-                    unnest($pieces::VARCHAR[]) AS cluster_id
-            ),
             placed AS (
                 SELECT coalesce(moved.cluster_id, c.cluster_id) AS cluster_id, c.contributor_key
                 FROM {components} AS c
@@ -333,9 +432,14 @@ def recluster(
         LEFT JOIN joining AS j USING (contributor_key)
         GROUP BY ALL
         """,
-        {"keys": list(moved), "pieces": list(moved.values()), "threshold": cluster_threshold},
+        {"threshold": cluster_threshold},
     )
-    con.execute("DROP TABLE offending")
+    [(oversized, inconsistent, offending)] = con.execute(
+        "SELECT count(*) FILTER (oversized), count(*) FILTER (inconsistent), count(*)"
+        " FROM offending"
+    ).fetchall()
+    for scratch in _RECLUSTER_SCRATCH:
+        con.execute(f"DROP TABLE {scratch}")
     [(largest_before,)] = con.execute(
         f"SELECT coalesce(max(n), 0) FROM"
         f" (SELECT count(*) AS n FROM {components} GROUP BY cluster_id)"
@@ -345,15 +449,18 @@ def recluster(
         f" (SELECT count(*) AS n FROM {CLUSTER_TABLE} GROUP BY cluster_id)"
     ).fetchall()
     result = Reclustered(
-        oversized=len(oversized),
-        inconsistent=len(vetoed),
-        components=len(offending),
+        oversized=oversized,
+        inconsistent=inconsistent,
+        components=offending,
         pieces=pieces,
         largest_before=largest_before,
         largest_after=largest_after,
-        keys_moved=len(moved),
+        keys_moved=keys_moved,
     )
     log.info("resolve recluster: %s", result.summary())
+    # Linux reports the peak resident set in KiB.
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
+    log.info("resolve recluster: peak resident memory %.2f GiB", peak)
     return result
 
 
