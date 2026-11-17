@@ -272,11 +272,17 @@ def apply(
     *,
     min_amount: int,
     overrides: Overrides,
+    snapshot: bool = True,
 ) -> Applied:
     """Keep `con`'s `cluster` table as `unadjudicated`, then merge and split it in place as
     `verdicts` (`confident`) say, merges first (the module docstring). A split side's keys'
-    `match_probability` becomes NULL, as an override's split key's does."""
-    con.execute(f"CREATE OR REPLACE TABLE {UNADJUDICATED_TABLE} AS FROM {CLUSTER_TABLE}")
+    `match_probability` becomes NULL, as an override's split key's does.
+
+    Without `snapshot`, `unadjudicated` is left as the caller made it: an incremental run's
+    `cluster` already carries the verdicts applied before, so its `unadjudicated` is the last
+    run's with the new keys added (NEU-2062). The candidates are found in it either way."""
+    if snapshot:
+        con.execute(f"CREATE OR REPLACE TABLE {UNADJUDICATED_TABLE} AS FROM {CLUSTER_TABLE}")
     if not verdicts:
         log.info("adjudications: no confident verdict to apply")
         return Applied(0, 0, 0, 0)

@@ -11,6 +11,8 @@ offending components are read from DuckDB a batch of whole components at a time,
 holds them all (NEU-2325).
 `components_at` rebuilds the components from the kept edges at another cluster threshold, for the
 threshold sweep (NEU-2182), without predicting again.
+`attach` puts an incremental run's new keys among the clusters that stand (NEU-2062), re-clustering
+each group they connect the same way, with those clusters fixed.
 """
 
 import hashlib
@@ -19,6 +21,7 @@ import resource
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass
+from typing import Literal
 
 import duckdb
 from splink import Linker
@@ -111,6 +114,7 @@ def recluster_component(
     edges: Iterable[tuple[str, str, float]],
     vetoed: Set[frozenset[str]],
     max_keys: int,
+    fixed: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Each of a component's keys, and the cluster re-clustering puts it in: its lowest key.
 
@@ -120,6 +124,10 @@ def recluster_component(
     would hold a vetoed pair or more than `max_keys` keys. A refused union is never retried: a
     cluster only grows, so it never becomes allowed. A component with no vetoed pair and at most
     `max_keys` keys comes back as one cluster.
+
+    `fixed` gives some keys a cluster that stands (NEU-2062): keys of one fixed cluster start as
+    one cluster, whatever its size or names, and no union may hold two fixed clusters, so none is
+    ever split or merged.
     """
     parent = {key: key for key in members}
     size = dict.fromkeys(members, 1)
@@ -129,6 +137,8 @@ def recluster_component(
         a, b = sorted(pair)
         partners[a].add(b)
         partners[b].add(a)
+    # The roots of clusters holding a fixed cluster.
+    anchored: set[str] = set()
 
     def root(key: str) -> str:
         while parent[key] != key:
@@ -136,18 +146,31 @@ def recluster_component(
             key = parent[key]
         return key
 
-    for left, right, _ in sorted(edges, key=lambda edge: (-edge[2], edge[0], edge[1])):
-        a, b = root(left), root(right)
-        if a == b or size[a] + size[b] > max_keys:
-            continue
-        few, many = sorted((names[a], names[b]), key=len)
-        if any(not partners[name].isdisjoint(many) for name in few if name in partners):
-            continue
+    def union(a: str, b: str) -> None:
         if size[a] < size[b]:
             a, b = b, a
         parent[b] = a
         size[a] += size[b]
         names[a] |= names.pop(b)
+        if b in anchored:
+            anchored.discard(b)
+            anchored.add(a)
+
+    first_of: dict[str, str] = {}
+    for key, fixed_id in sorted((fixed or {}).items()):
+        if fixed_id in first_of:
+            union(root(first_of[fixed_id]), root(key))
+        else:
+            first_of[fixed_id] = key
+            anchored.add(key)
+    for left, right, _ in sorted(edges, key=lambda edge: (-edge[2], edge[0], edge[1])):
+        a, b = root(left), root(right)
+        if a == b or size[a] + size[b] > max_keys or {a, b} <= anchored:
+            continue
+        few, many = sorted((names[a], names[b]), key=len)
+        if any(not partners[name].isdisjoint(many) for name in few if name in partners):
+            continue
+        union(a, b)
     lowest: dict[str, str] = {}
     for key in members:
         piece = root(key)
@@ -461,6 +484,256 @@ def recluster(
     # Linux reports the peak resident set in KiB.
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
     log.info("resolve recluster: peak resident memory %.2f GiB", peak)
+    return result
+
+
+@dataclass(frozen=True)
+class Attached:
+    """What `attach` did."""
+
+    # New keys clustered, those of them that joined a cluster that stood, and the clusters the
+    # rest became.
+    keys: int
+    joined: int
+    clusters: int
+    # Keys of the clusters that stood which new keys reached, re-clustered with them as fixed.
+    neighbours: int
+
+    def summary(self) -> str:
+        return (
+            f"{self.keys:,} new keys: {self.joined:,} joined donors that stood,"
+            f" the rest {self.clusters:,} new clusters"
+        )
+
+
+# A node of `attach`'s graphs: a new key, or a cluster or component that stood, by its id.
+type _Node = tuple[Literal["key", "cluster", "component"], str]
+
+
+def _connected(nodes: Iterable[_Node], edges: Iterable[tuple[_Node, _Node]]) -> dict[_Node, str]:
+    """Each node, and its connected group's name: the lowest id in it, as linkage names a
+    component by its lowest key."""
+    parent: dict[_Node, _Node] = {node: node for node in nodes}
+
+    def root(node: _Node) -> _Node:
+        parent.setdefault(node, node)
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for a, b in edges:
+        ra, rb = root(a), root(b)
+        if ra != rb:
+            # By id first, so the root is the group's lowest id.
+            low, high = sorted((ra, rb), key=lambda node: (node[1], node[0]))
+            parent[high] = low
+    return {node: root(node)[1] for node in parent}
+
+
+# The temp tables `attach` works in, dropped when it is done.
+_ATTACH_SCRATCH = ("fresh_edge", "attaching", "attaching_member", "placed", "vetoed")
+
+
+def attach(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    new_keys: str,
+    new_edges: str,
+    max_keys: int,
+    cluster_threshold: float,
+) -> Attached:
+    """Put each key of the table `new_keys` into the `cluster` table on `con`, leaving every
+    cluster already in it standing (spec §6.10, NEU-2062): a new key joins a cluster that stood,
+    or clusters with other new keys, or alone. The new keys must be in `contributor`, and every
+    edge with a new key at either end both in `edge` and in the table `new_edges`.
+
+    The new keys' joining edges (those at or above `cluster_threshold`) connect them to each other
+    and to the clusters that stood, each of those one node. Each connected group is re-clustered
+    as `recluster` re-clusters a component (`recluster_component`), over its new keys and every
+    member of the clusters it reaches, each of those clusters fixed: so no new key joins two
+    clusters into one, and no cluster takes in a vetoed pair of first names or passes the cluster
+    cap `max_keys` by taking new keys. `component` gains the new keys, and the components they
+    join become one, named by its lowest key.
+
+    Reads every group at once: a week's new keys and the clusters they reach are few.
+    """
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE fresh_edge AS
+        SELECT
+            e.contributor_key_l,
+            e.contributor_key_r,
+            e.match_probability,
+            cl.cluster_id AS cluster_l,
+            cr.cluster_id AS cluster_r,
+            pl.cluster_id AS component_l,
+            pr.cluster_id AS component_r
+        FROM {new_edges} AS e
+        LEFT JOIN {CLUSTER_TABLE} AS cl ON cl.contributor_key = e.contributor_key_l
+        LEFT JOIN {CLUSTER_TABLE} AS cr ON cr.contributor_key = e.contributor_key_r
+        LEFT JOIN {COMPONENT_TABLE} AS pl ON pl.contributor_key = e.contributor_key_l
+        LEFT JOIN {COMPONENT_TABLE} AS pr ON pr.contributor_key = e.contributor_key_r
+        WHERE e.match_probability >= $threshold
+        """,
+        {"threshold": cluster_threshold},
+    )
+    fresh = con.execute(
+        "SELECT contributor_key_l, contributor_key_r, match_probability, cluster_l, cluster_r,"
+        " component_l, component_r FROM fresh_edge"
+    ).fetchall()
+    new = [key for (key,) in con.execute(f"SELECT contributor_key FROM {new_keys}").fetchall()]
+    keys: list[_Node] = [("key", key) for key in new]
+    # One set of edges, two graphs: a key that stood is its cluster in one, its component in the
+    # other. A new key is itself in both.
+    group_of = _connected(
+        keys,
+        (
+            (
+                ("key", left) if cluster_l is None else ("cluster", cluster_l),
+                ("key", right) if cluster_r is None else ("cluster", cluster_r),
+            )
+            for left, right, _, cluster_l, cluster_r, _, _ in fresh
+        ),
+    )
+    component_of = _connected(
+        keys,
+        (
+            (
+                ("key", left) if component_l is None else ("component", component_l),
+                ("key", right) if component_r is None else ("component", component_r),
+            )
+            for left, right, _, _, _, component_l, component_r in fresh
+        ),
+    )
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE attaching AS SELECT unnest($kinds::VARCHAR[]) AS kind,"
+        " unnest($nodes::VARCHAR[]) AS node, unnest($groups::VARCHAR[]) AS group_id",
+        {
+            "kinds": [kind for kind, _ in group_of],
+            "nodes": [node for _, node in group_of],
+            "groups": list(group_of.values()),
+        },
+    )
+    # Each group's keys: its new keys, and every member of each cluster that stood in it.
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE attaching_member AS
+        SELECT group_id AS cluster_id, node AS contributor_key, NULL::VARCHAR AS fixed_id
+        FROM attaching WHERE kind = 'key'
+        UNION ALL
+        SELECT a.group_id, c.contributor_key, c.cluster_id
+        FROM attaching AS a JOIN {CLUSTER_TABLE} AS c ON c.cluster_id = a.node
+        WHERE a.kind = 'cluster'
+        """
+    )
+    con.execute(
+        f"CREATE OR REPLACE TEMP TABLE vetoed AS {_vetoed_pairs('attaching_member')}",
+        {"jw": FIRST_NAME_VETO_JW},
+    )
+    members = _by_component(
+        (group, (key, first_name, fixed_id))
+        for group, key, first_name, fixed_id in con.execute(
+            f"""
+            SELECT m.cluster_id, m.contributor_key, k.first_name, m.fixed_id
+            FROM attaching_member AS m JOIN {_CONTRIBUTOR_TABLE} AS k USING (contributor_key)
+            ORDER BY m.cluster_id, m.contributor_key
+            """
+        ).fetchall()
+    )
+    vetoed = _by_component(
+        (group, frozenset((a, b)))
+        for group, a, b in con.execute("SELECT cluster_id, a, b FROM vetoed").fetchall()
+    )
+    # Every edge has a new key at one end at least, and that key is in its group.
+    edges = _by_component(
+        (group_of[("key", left if cluster_l is None else right)], (left, right, probability))
+        for left, right, probability, cluster_l, _, _, _ in fresh
+    )
+    placed: dict[str, str] = {}
+    stood_ids: set[str] = set()
+    joined = neighbours = 0
+    for group, held in members.items():
+        fixed = {key: fixed_id for key, _, fixed_id in held if fixed_id is not None}
+        neighbours += len(fixed)
+        piece_of = recluster_component(
+            {key: first_name for key, first_name, _ in held},
+            edges.get(group, []),
+            set(vetoed.get(group, [])),
+            max_keys,
+            fixed,
+        )
+        # A piece holding a cluster that stood is that cluster, under its id.
+        stood = {piece_of[key]: fixed_id for key, fixed_id in fixed.items()}
+        stood_ids |= set(stood.values())
+        for key, _, fixed_id in held:
+            if fixed_id is None:
+                piece = piece_of[key]
+                joined += piece in stood
+                placed[key] = stood.get(piece, piece)
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE placed AS SELECT unnest($keys::VARCHAR[]) AS contributor_key,"
+        " unnest($clusters::VARCHAR[]) AS cluster_id",
+        {"keys": list(placed), "clusters": list(placed.values())},
+    )
+    # A new key's `match_probability` is its strongest joining edge within its cluster, as
+    # `recluster` gives one.
+    con.execute(
+        f"""
+        INSERT INTO {CLUSTER_TABLE} BY NAME
+        WITH
+            ends AS (
+                SELECT contributor_key_l AS contributor_key, contributor_key_r AS other,
+                    match_probability
+                FROM fresh_edge
+                UNION ALL
+                SELECT contributor_key_r, contributor_key_l, match_probability FROM fresh_edge
+            ),
+            home AS (
+                SELECT contributor_key, cluster_id FROM placed
+                UNION ALL
+                SELECT contributor_key, cluster_id FROM {CLUSTER_TABLE}
+                WHERE contributor_key IN (SELECT other FROM ends)
+            )
+        SELECT
+            p.cluster_id,
+            p.contributor_key,
+            max(e.match_probability) FILTER (WHERE h.cluster_id = p.cluster_id)
+                AS match_probability
+        FROM placed AS p
+        LEFT JOIN ends AS e USING (contributor_key)
+        LEFT JOIN home AS h ON h.contributor_key = e.other
+        GROUP BY p.cluster_id, p.contributor_key
+        """
+    )
+    joining = {
+        node: label
+        for (kind, node), label in component_of.items()
+        if kind == "component" and label != node
+    }
+    con.execute(
+        f"""
+        UPDATE {COMPONENT_TABLE} SET cluster_id = joining.label
+        FROM (SELECT unnest($nodes::VARCHAR[]) AS node, unnest($labels::VARCHAR[]) AS label)
+            AS joining
+        WHERE {COMPONENT_TABLE}.cluster_id = joining.node
+        """,
+        {"nodes": list(joining), "labels": list(joining.values())},
+    )
+    con.execute(
+        f"INSERT INTO {COMPONENT_TABLE} BY NAME SELECT unnest($labels::VARCHAR[]) AS cluster_id,"
+        " unnest($keys::VARCHAR[]) AS contributor_key",
+        {"keys": new, "labels": [component_of[("key", key)] for key in new]},
+    )
+    for scratch in _ATTACH_SCRATCH:
+        con.execute(f"DROP TABLE {scratch}")
+    result = Attached(
+        keys=len(new),
+        joined=joined,
+        clusters=len(set(placed.values()) - stood_ids),
+        neighbours=neighbours,
+    )
+    log.info("resolve attach: %s; %d keys of clusters that stood", result.summary(), neighbours)
     return result
 
 

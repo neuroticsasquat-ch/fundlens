@@ -3,9 +3,10 @@ Postgres, for local dev to browse (spec §12).
 
 Serves the fixture zips on the fake FEC server and runs `fundlens run` against it with one new
 build: `extract`, `seats --report` (whose unmatched filings a transform check reads), `transform`,
-`resolve --full` (whose model is saved under the build), `load`, then `publish` (whose Cloudflare
-purge is skipped: dev has no zone). Re-runnable: `extract` finds bronze unchanged and downloads
-nothing, and every other step writes a fresh build, which `publish` swaps in over the last one.
+`resolve` (`--full` the first time, whose model is saved under the build; after that the build's
+new keys, against that model: NEU-2062), `load`, then `publish` (whose Cloudflare purge is
+skipped: dev has no zone). Re-runnable: `extract` finds bronze unchanged and downloads nothing,
+and every other step writes a fresh build, which `publish` swaps in over the last one.
 Run from the repo root inside the app container (`python -m tests.seed`), with the `app` schema
 migrated.
 """

@@ -72,7 +72,7 @@ recluster_component(members, edges, vetoed, max_keys) -> dict[contributor_key, c
 
 `cluster` is rebuilt as `component` with offending components replaced by their pieces, then `match_probability` recomputed per key from `edge` within the final cluster. A dataclass `Reclustered(oversized, inconsistent, components, pieces, largest_before, largest_after, keys_moved)` is returned, logged (`resolve recluster: 318 components (9 oversized, 311 inconsistent) into 4,102 pieces; largest 1,105 → 200`) and carried on `Resolved` for the CLI summary line.
 
-`recluster(con, *, max_keys, cluster_threshold)` is a function of the working file alone: no Linker, no Postgres. It takes the cluster threshold because `edge` holds every pair at or above the match threshold, and only those at or above the cluster threshold join two keys. NEU-2062 (incremental) calls it on the new keys' components with the same `edge` conventions, which is the "reuse" the ticket asks for.
+`recluster(con, *, max_keys, cluster_threshold)` is a function of the working file alone: no Linker, no Postgres. It takes the cluster threshold because `edge` holds every pair at or above the match threshold, and only those at or above the cluster threshold join two keys. NEU-2062 (incremental) calls it on the new keys' components with the same `edge` conventions, which is the "reuse" the ticket asks for. As built (NEU-2062): `cluster.attach` re-clusters each group the new keys connect with `recluster_component`, the clusters that stood fixed, not `recluster` itself, which rebuilds every cluster from its component; project spec §6.10.
 
 ## 4. Settings and the run
 
@@ -168,7 +168,7 @@ Never merge mid-runbook: a merge redeploys `pipeline` and kills a running step. 
 ## 10. Out of scope and deferred
 
 - Retraining the model or changing its comparisons (ticket). A cluster of different JOHN JOHNSONs across one metro whose keys each link at 0.99 is the model's problem; the cap bounds the damage, it does not fix the cause.
-- The incremental resolve (NEU-2062): must call `recluster` on new keys' components; its spec says how `edge` is extended.
+- The incremental resolve (NEU-2062): re-clusters the new keys with `recluster_component` (`cluster.attach`), extending `edge` with their pairs; project spec §6.10.
 - Adjudication (NEU-2055) selects on probabilities in `[0.6, 0.95)`; `edge` holds pairs at or above 0.9 only, so NEU-2055 predicts at its own threshold or lowers the match threshold. Not this ticket's call.
 - Community detection over components, if the single pass proves too blunt on the backfill: a later ticket with a measurement.
 - A `--max-keys` per cycle or per model: one setting for the run.

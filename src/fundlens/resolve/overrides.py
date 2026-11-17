@@ -262,42 +262,47 @@ def _joined(merges: list[set[str]]) -> dict[str, str]:
     return {cluster_id: root(cluster_id) for cluster_id in parent if root(cluster_id) != cluster_id}
 
 
-def join_clusters(con: duckdb.DuckDBPyConnection, merges: list[set[str]]) -> int:
-    """Join each set of cluster ids in `merges` into one cluster of `con`'s `cluster` table, the
-    lowest of the ids its sets link (`_joined`); how many clusters were joined into others.
-    Adjudication's merges (`resolve.adjudicate`) join clusters as an override's do."""
+def join_clusters(
+    con: duckdb.DuckDBPyConnection, merges: list[set[str]], *, table: str = CLUSTER_TABLE
+) -> int:
+    """Join each set of cluster ids in `merges` into one cluster of `con`'s `cluster` table (or
+    `table`), the lowest of the ids its sets link (`_joined`); how many clusters were joined into
+    others. Adjudication's merges (`resolve.adjudicate`) join clusters as an override's do."""
     moves = _joined(merges)
     if moves:
         con.execute(
             f"""
-            UPDATE {CLUSTER_TABLE} SET cluster_id = moved.target
+            UPDATE {table} SET cluster_id = moved.target
             FROM (SELECT unnest($sources::VARCHAR[]) AS source,
                 unnest($targets::VARCHAR[]) AS target) AS moved
-            WHERE {CLUSTER_TABLE}.cluster_id = moved.source
+            WHERE {table}.cluster_id = moved.source
             """,
             {"sources": list(moves), "targets": list(moves.values())},
         )
     return len(moves)
 
 
-def rewrite(con: duckdb.DuckDBPyConnection, overrides: Overrides) -> Applied:
-    """Merge and split `con`'s `cluster` table in place, merges first; every key `overrides` names
-    must be in it. A split key's `match_probability` becomes NULL: no pair joins it to anything."""
+def rewrite(
+    con: duckdb.DuckDBPyConnection, overrides: Overrides, *, table: str = CLUSTER_TABLE
+) -> Applied:
+    """Merge and split `con`'s `cluster` table (or `table`, in its columns) in place, merges
+    first; every key `overrides` names must be in it. A split key's `match_probability` becomes
+    NULL: no pair joins it to anything."""
     cluster_of = dict(
         con.execute(
-            f"SELECT contributor_key, cluster_id FROM {CLUSTER_TABLE}"
+            f"SELECT contributor_key, cluster_id FROM {table}"
             " WHERE contributor_key IN (SELECT unnest($keys::VARCHAR[]))",
             {"keys": sorted(overrides.keys())},
         ).fetchall()
     )
     joined = join_clusters(
-        con, [{cluster_of[key] for key in merge.merge} for merge in overrides.merges]
+        con, [{cluster_of[key] for key in merge.merge} for merge in overrides.merges], table=table
     )
     split_keys = [split.split.contributor_key for split in overrides.splits]
     if split_keys:
         con.execute(
             f"""
-            UPDATE {CLUSTER_TABLE}
+            UPDATE {table}
             SET cluster_id = $prefix || contributor_key, match_probability = NULL
             WHERE contributor_key IN (SELECT unnest($keys::VARCHAR[]))
             """,

@@ -92,6 +92,26 @@ def _copy_from(conn: Connection[TupleRow], statement: Query, path: Path) -> None
             copy.write(chunk)
 
 
+def read_crosswalk(
+    con: duckdb.DuckDBPyConnection, conn: Connection[TupleRow], *, table: str, work: Path
+) -> int:
+    """`app.crosswalk`'s keys and donor_ids as the temp table `table(contributor_key, donor_id)`
+    on `con`, by way of a CSV under `work`; its row count."""
+    work.mkdir(parents=True, exist_ok=True)
+    csv = work / f"{table}.csv"
+    _copy_to(
+        conn,
+        "COPY (SELECT contributor_key, donor_id FROM app.crosswalk) TO STDOUT (FORMAT csv)",
+        csv,
+    )
+    con.execute(
+        f"CREATE OR REPLACE TEMP TABLE {table} AS SELECT * FROM read_csv("
+        f"{literal(csv)}, {_CSV}, columns = {_KEY_ID})"
+    )
+    csv.unlink()
+    return _count(con, f"SELECT * FROM {table}")
+
+
 def _count(con: duckdb.DuckDBPyConnection, query: str) -> int:
     [(rows,)] = con.execute(f"SELECT count(*) FROM ({query})").fetchall()
     return rows
@@ -212,15 +232,7 @@ def assign(
         with conn.transaction():
             # One assignment at a time: a second would read the crosswalk this one is rewriting.
             conn.execute("LOCK TABLE app.crosswalk IN SHARE ROW EXCLUSIVE MODE")
-            _copy_to(
-                conn,
-                "COPY (SELECT contributor_key, donor_id FROM app.crosswalk) TO STDOUT (FORMAT csv)",
-                work / "prior.csv",
-            )
-            con.execute(
-                "CREATE OR REPLACE TEMP TABLE prior AS SELECT * FROM read_csv("
-                f"{literal(work / 'prior.csv')}, {_CSV}, columns = {_KEY_ID})"
-            )
+            read_crosswalk(con, conn, table="prior", work=work)
             fresh = _claim(con)
             # Drawn in Postgres so no id is ever handed out twice, whatever this run does next.
             _copy_to(
