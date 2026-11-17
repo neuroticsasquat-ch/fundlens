@@ -449,6 +449,26 @@ curl -sS "https://api.fundlens.org/v1/cycles" | jq -c '[.[] | {cycle, races: .ra
 2024 still at `20261112T211727Z`. `gold.cycle` has a row for `<C>`, and its `race_count`, `contribution_count`
 and `total_amount` are all above 0. The rows for the cycles before it are unchanged. The API lists the same.
 
+Then the races that hold no money, and the filings that found no race. The 2026-11-13–16 run found five seat bugs
+this way, each a race with the wrong candidates (Log):
+
+```bash
+# VM, in tmux
+curl -sS "https://api.fundlens.org/v1/cycles/$C/races?nocache=$(date +%s)" | jq -r '.[] | select((.total_individual + .total_committee) <= 0) | "$0: \(.race_id) candidates=\(.candidate_count)"'
+pg -c "select office, state, district, count(*) from app.unmatched_filing where cycle = $C group by 1, 2, 3 order by 4 desc"
+```
+
+**Expected:** at most a race or two at $0, each with candidates (1986's and 1992's KY-02 is William Natcher, who
+took no contributions). Stop and file a ticket on any of these:
+
+- a $0 race with `candidates=0`, or several $0 races: candidates filed under another year or district (NEU-2283,
+  NEU-2287);
+- a $0 `-special` race with `candidates=0`: its candidates stand in the regular race (NEU-2319);
+- a $0 race whose only candidates are minor while the seat's known candidates sit in a neighbouring district: the
+  first cycle on a new map (1982, 1992, 2002, 2012, 2022), where `cn` keeps the old district (NEU-2293). Such a
+  race need not be at $0, so in those cycles also compare a few seats that changed with FEC's election results;
+- an unmatched House filing in district `01` for a state whose only seat is `00` (NEU-2324).
+
 Open `https://fundlens.org/cycles/<C>` in a browser. **Expected:** the cycle's races by office and state, with
 non-zero totals.
 
@@ -480,7 +500,7 @@ write contribution`. Then `cycle_record` prints the cycle's row of `capacity.md`
 
 | What failed | What to do |
 | --- | --- |
-| `transform` stops with exit 1 and an `Out of Memory Error` from DuckDB (Bugsink gets it too) | DuckDB reached its `memory_limit` and could not spill. Nothing was uploaded. If step 2 has not run, run it now, then run the cycle again under a new build: `cycle_run "$C"`. If the limit was raised already, stop: file a ticket with the peak and the step `where` names, and link it from NEU-2060 |
+| `transform` stops with exit 1 and an `Out of Memory Error` from DuckDB (Bugsink gets it too) | DuckDB reached its `memory_limit` and could not spill. Nothing was uploaded. If step 2 has not run, run it now. Move the failed build's directory aside, so `cycle_peak` sees only the rerun, then run the cycle again under a new build: `mv "$C" "$C-failed-$(cat $C/build-id.txt)"; cycle_run "$C"`. If the limit was raised already, stop: file a ticket with the peak and the step `where` names, and link it from NEU-2060 |
 | A step stops with `exit 137`, and the sampler showed `pipeline` near 40 GiB | The container killed it for memory: what outgrew the 40 GiB was outside DuckDB's limit, so raising that limit would make it worse. Nothing was uploaded or swapped. Stop: file a ticket with the peak, the step `where` names and the DuckDB limit, and link it from NEU-2060 |
 | `transform` names a `sql/checks/silver_*.sql` | A check returned rows, so nothing was uploaded. Stop, file a ticket with the check's name and a few of its rows, and link it from NEU-2060. The cycles after it wait for the fix, because they are built from one SHA |
 | `extract` fails on FEC (a timeout, a `DownloadError`) | It retried five times already. Wait ten minutes, then resume the build: `cycle_run "$C" "$(cat $C/build-id.txt)" extract` |
@@ -575,6 +595,26 @@ echo "$(date -u +%FT%TZ) start resolve" | tee -a resolve-window.txt
 { time docker exec "$(fl pipeline)" fundlens resolve --full --build-id "$M"; } 2>&1 | tee resolve.log
 echo "$(date -u +%FT%TZ) end resolve" | tee -a resolve-window.txt
 ```
+
+Start a guard before the run, in its own tmux window (`Ctrl-b c`). It enforces the 60 GB floor while nobody
+watches: it restarts `pipeline`, which stops the run, and exits. The 2026-11-16 runs needed it once.
+
+```bash
+# VM, a new tmux window (the helpers are not defined here)
+cd ~/fundlens-backfill
+while true; do
+  f=$(df -BGB --output=avail / | tail -1 | tr -dc '0-9')
+  if [ "$f" -lt 60 ]; then
+    p=$(docker ps --format '{{.Names}}' | grep '^pipeline-lvch8zyndujjzkz16ksys8im' | head -1)
+    echo "$(date -u +%FT%TZ) free=${f}GB < 60: docker restart $p" | tee -a guard.txt
+    docker restart "$p" 2>&1 | tee -a guard.txt
+    break
+  fi
+  sleep 10
+done
+```
+
+Stop it with `Ctrl-c` at step 8, with the sampler.
 
 **Expected:**
 
@@ -733,11 +773,12 @@ gh workflow list --repo neuroticsasquat-ch/fundlens --all
 1. Keep DuckDB at `32GB`. Until incremental resolution (NEU-2062), every weekly run does step 5's `resolve --full`
    over every cycle, so it needs whatever step 5 needed. The compose file's `DUCKDB_MEMORY_LIMIT` fallback is
    `32GB` since NEU-2060's backfill (peaks: 28.97 GiB in 2024's transform, 32.60 GiB in `resolve --full`'s
-   `recluster`, against the 40 GiB `mem_limit`). So delete the Coolify entry step 2 added, and the fallback is in
-   force again ([coolify-setup.md](coolify-setup.md) §6). *Redeploy*, then check `printenv DUCKDB_MEMORY_LIMIT`
-   still prints `32GB`.
+   `recluster`, against the 40 GiB `mem_limit`). Coolify won't delete a variable the compose file references, so
+   empty the entry step 2 set: clear its value and *Save*. An empty value lets the fallback through, since `:-`
+   treats empty as unset ([coolify-setup.md](coolify-setup.md) §6). *Redeploy*, then check `printenv
+   DUCKDB_MEMORY_LIMIT` still prints `32GB`.
 2. If step 4 lowered SigNoz's retention, set it back.
-3. Stop the sampler: `Ctrl-b 1`, `Ctrl-c`, `Ctrl-b 0`.
+3. Stop the sampler (`Ctrl-b 1`, `Ctrl-c`) and step 5.2's guard (its window, `Ctrl-c`, `exit`), then `Ctrl-b 0`.
 
 ```bash
 # VM
@@ -773,12 +814,14 @@ docker exec -i "$(fl pipeline)" python - 2024 20261112T211727Z — — "$(free_g
 ```bash
 # laptop
 mkdir -p ~/fundlens-backfill && cd ~/fundlens-backfill
-for f in backfill-rows.md run-record.txt indiv-sizes.txt resolve-inputs.txt disk-before.txt disk-after.txt meta-before.txt cycles.tsv; do scp "hetzner-01:fundlens-backfill/$f" .; done
+for f in backfill-rows.md run-record.txt indiv-sizes.txt resolve-inputs.txt disk-before.txt disk-after.txt meta-before.txt 2024-row.md; do scp "hetzner-01:fundlens-backfill/$f" .; done
 ```
 
 **Expected:** `run-record.txt` holds the model, resolve's summary lines and its `real`, the resolve peak,
 validate's figures, the final load and publish lines with their `real`, and the `resolved` marker's
-`duration_s`. `2024-row.md` holds 2024's row. The `scp` loop copies eight files into `~/fundlens-backfill`.
+`duration_s`. `2024-row.md` holds 2024's row. The `scp` loop copies eight files into `~/fundlens-backfill`, which
+already holds step 7.1's `cycles.tsv`. If step 3.5 ran, there is no `2024-row.md` to copy: 2024's row is
+`2024/row.md`, already in `backfill-rows.md`.
 One file per `scp`: since OpenSSH 9, `scp` copies over SFTP, which does not expand braces in a remote path.
 
 Then, in one PR, `docs(capacity): record the backfill of every cycle since 1980 (NEU-2060)`:
@@ -981,3 +1024,125 @@ at-large rows. 2024's silver passed every check with no MP filing unmatched; liv
 Its extract downloaded `indiv`, `pas2` and `oth` fresh (FEC files dated 2026-11-16), so it has 50,104,322
 contributions, 2 fewer than `20261115T182139Z`. That difference is FEC's update, not NEU-2324, which only moves
 candidates between races.
+
+### 2026-11-17 — every cycle, 1980 to 2026 (NEU-2060)
+
+All 24 cycles are live with donors: 2024 at `20261116T005426Z` under model `20261116T224205Z`, published
+2026-11-17T01:18:51Z. Each cycle's build, SHA, peak and rerun reason are its row in `capacity.md`'s Backfill table,
+and the entries above give each rerun.
+
+**Steps 1–4.**
+- Step 1.1 started from `2aa1466`. Step 1.2 found `ad1447b` (NEU-2281) touching `sql/silver` beside `6790bc8`, so
+  2024 was rebuilt, transform only (step 3.5). `meta-before.txt`: build `20261112T211727Z`, model
+  `20261112T214620Z`, precision 0.8243, recall 0.9076, top 0.9762 / 0.7874.
+- Step 1.3: 250 GiB free on `/`, database 6,306 MB.
+- Step 1.4: the first `LARGER` cycle was 2020 (`indiv` 5.87 GB, 138% of 2024's 4.24 GB). Step 2 ran at
+  2026-11-15T02:06:49Z, raising Coolify's `DUCKDB_MEMORY_LIMIT` from `28GB` to `32GB`, so 2004, 2006, 2018, 2020,
+  2022, 2024 and 2026 were built under `32GB` and the rest under `28GB`.
+- No disk pause: free disk after a cycle's publish stayed between 241 and 302 GB.
+
+**Step 5, resolution.** Two runs failed before the third finished:
+
+- `20261116T022944Z` from `62a47eb` ran out of disk in `recluster` (`No space left on device`): Splink's training
+  and prediction tables stayed in the 254 GB working file until `save`. NEU-2325 (PR #171) drops them as each phase
+  ends and saves the model right after training.
+- `20261116T160937Z` from `1e274e3` was stopped by the 60 GB guard (step 5.2) at 18:42:51Z, in its first EM session.
+  The working file was 108 GB, and each EM iteration spilled 65–80 GB more, about 15 minutes apiece. At iteration
+  7 the largest change was 0.000332. NEU-2333 (PR #172) caps each EM session at `RESOLVE_EM_MAX_PAIRS` (2e8)
+  pairs.
+- `20261116T224205Z` from `dbe2ffd` finished, 22:42:05Z–00:41:25Z (`real` 119m19.695s, `resolved` marker 7,146.6 s).
+  The guard never fired, and free disk's low was 128 GB. The failed runs' files are in
+  `resolve-failed-<M>/` on the VM.
+
+| EM session (blocking rule) | Pairs `<p>` | `p*` | Pairs used | Iterations |
+| --- | ---: | ---: | ---: | ---: |
+| soundex + ZIP3 | 2,631,540,000 | 0.275683 | 199,982,927 | 8 |
+| last name + first initial + state | 620,280,000 | 0.567834 | 200,583,274 | 7 |
+| employer + last name | 55,100,000 | — (under the cap) | 55,100,000 (estimated) | 12 |
+
+```
+29213828 contributor keys in 12564451 clusters
+recluster: 107,324 components (1,190 oversized, 107,267 inconsistent) into 411,206 pieces; largest 89,299 → 200
+overrides: 1 merges joining 1 clusters into others, 0 splits
+adjudications: 130 verdicts: 0 merges joining 0 clusters into others, 4 splits
+crosswalk: 8699796 new donors, 133498 keys re-pointed, 59884 redirects
+model 20261116T224205Z: trained, wrote resolution/model/20261116T224205Z.json
+load 56.18 s, train 829.52 s, model 0.27 s, cluster 2473.92 s, recluster 520.49 s, overrides 0.95 s, adjudications 95.96 s, save 0.03 s, crosswalk 703.52 s, silver 2459.66 s
+DuckDB memory limit: 29.8 GiB
+```
+
+NEU-2325's lines: three `dropped 2 of Splink's tables (__splink__blocked_id_pairs_, __splink__df_comparison_vectors_)`,
+one per EM session, then `(__splink__df_predict_, __splink__df_clustered_with_input_data_)` after `cluster`.
+`recluster` held 107,324 offending components with 2,935,014 keys and 37,348,348 joining edges. The largest had
+89,299 keys, 3,774 distinct first names and 7,073,685 vetoed pairs. `peak resident memory 32.31 GiB`, against the
+sampler's 32.60 GiB at 23:44:12Z, so the sampler was not counting page cache. The working file is 102 GiB, and
+every cycle is `resolved`.
+
+**Step 5.3.** Validated against `meta-before.txt`:
+
+| Scope | Precision | Recall |
+| --- | --- | --- |
+| overall | 0.8243 → 0.8122 | 0.9076 → 0.8993 |
+| top 10,000 | 0.9762 → 0.9834 | 0.7874 → 0.7591 |
+
+30,148,695 of 50,104,322 contributions matched (60.2%), in 3m41s. Precision is within the 0.02 gate. Recall fell,
+against this runbook's expectation (`capacity.md`, Findings).
+
+**Step 6.** `fundlens run --cycle 2024 --build-id 20261116T005426Z --from load` finished in 26m10s. Load took
+1,402 s (684.82 + 696.97) and publish 157 s, with `previous build: 20261112T211727Z`. It wrote 12,564,451 donors.
+
+**Step 7.** `/v1/meta` names the build and model with step 5.3's figures. `/v1/cycles` checks to `{"cycles": 24, "empty": []}`.
+Every cycle's races hold money. `/cycles/1980`, `/1990`, `/2000`, `/2010` and `/2026` render with non-zero
+totals, and Javits (`S4NY00016`) lists 100 top donors for 1980. Bugsink: every `pipeline` issue came from a step
+that was rerun: NEU-2281, NEU-2282, NEU-2320, NEU-2321, NEU-2323 and NEU-2325. All are resolved. No `api` issue
+since the publish. `cycles.tsv`:
+
+| Cycle | Races | Contributions | Total |
+| --- | ---: | ---: | ---: |
+| 1980 | 475 | 299,705 | $198,799,625 |
+| 1982 | 472 | 167,760 | $163,177,793 |
+| 1984 | 474 | 255,867 | $238,438,253 |
+| 1986 | 473 | 265,718 | $258,898,509 |
+| 1988 | 474 | 408,551 | $401,380,834 |
+| 1990 | 472 | 515,775 | $322,430,474 |
+| 1992 | 475 | 848,268 | $635,386,470 |
+| 1994 | 472 | 823,828 | $528,574,220 |
+| 1996 | 474 | 1,168,063 | $865,258,333 |
+| 1998 | 473 | 977,200 | $658,980,622 |
+| 2000 | 474 | 1,639,770 | $1,342,845,836 |
+| 2002 | 472 | 1,302,335 | $980,447,341 |
+| 2004 | 475 | 2,386,571 | $2,103,216,513 |
+| 2006 | 472 | 1,746,787 | $1,602,865,597 |
+| 2008 | 475 | 3,189,863 | $2,817,556,046 |
+| 2010 | 474 | 1,991,343 | $1,857,399,598 |
+| 2012 | 475 | 3,157,885 | $3,579,546,819 |
+| 2014 | 473 | 1,906,833 | $2,163,241,934 |
+| 2016 | 476 | 15,896,491 | $4,702,140,323 |
+| 2018 | 476 | 15,541,315 | $4,224,616,429 |
+| 2020 | 477 | 45,114,864 | $10,099,723,023 |
+| 2022 | 476 | 32,870,243 | $6,177,354,402 |
+| 2024 | 477 | 50,104,322 | $9,973,281,141 |
+| 2026 | 475 | 36,038,366 | $6,271,917,922 |
+
+**Step 8.** The `dependencies` workflow is `active` again. The DuckDB fallback ticket wasn't filed: PR #173
+(`452db11`) made `${DUCKDB_MEMORY_LIMIT:-32GB}` the compose fallback directly. Coolify refused to delete its entry
+("Please remove it from the Docker Compose file first"), so the entry was emptied, and `pipeline` prints `32GB`
+from the fallback. SigNoz retention was never lowered: ClickHouse is 4.6 GiB. Disk after: 135 GB free;
+`/data/fundlens` 126,422,360 KB, of which `resolution` is 102 GiB, silver 17 GiB and bronze 2.7 GiB; database
+23.11 GB.
+
+**Deviations.**
+- 1986–1998 ran in one loop.
+- Merges during the run:
+  - #152, #154 and #163 (docs only) and #160–#162 merged mid-run. 2016's row reads `a22a808` (#160) but was
+    built from `507d381`.
+  - #167 (docs only) merged before 2024's transform.
+  - #168 and #169 merged mid-run, and #170 (docs only) before step 5.
+  - #171 and #172 merged between resolve runs, while nothing ran.
+- 2020's and 2022's rebuilds ran from NEU-2320's and NEU-2321's own walkthroughs, without the `mv` aside.
+- Step 5.2's guard was added during the run.
+- Step 8's ticket became PR #173, and its Coolify entry was emptied, not deleted.
+
+**Tickets.** NEU-2281, NEU-2282, NEU-2283, NEU-2287, NEU-2293, NEU-2294, NEU-2319, NEU-2320, NEU-2321, NEU-2323,
+NEU-2324, NEU-2325 and NEU-2333, each fixed and merged during the run. No ephemeral-runner trigger fired
+(`capacity.md`, Triggers), so none was filed for one.
