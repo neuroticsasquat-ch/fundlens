@@ -31,6 +31,7 @@ from fundlens.heartbeat import JobFamily, heartbeat_for
 from fundlens.load import gold as gold_load
 from fundlens.logging import configure_logging
 from fundlens.publish import cloudflare
+from fundlens.publish import dataset as dataset_publish
 from fundlens.publish import gold as gold_publish
 from fundlens.r2 import R2
 from fundlens.resolve import adjudicate as adjudication
@@ -957,6 +958,47 @@ def _today() -> date:
     return datetime.now(UTC).date()
 
 
+def _snapshot() -> None:
+    """Take today's dataset snapshot of the live build (spec §9) and say what was done; exit 1
+    when there is no live build or it is not ready to snapshot."""
+    settings = get_settings()
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        try:
+            result = dataset_publish.snapshot(
+                conn,
+                R2.from_settings(settings),
+                R2.from_settings(settings, bucket=settings.r2_public_bucket),
+                snapshot_date=_today(),
+                data_dir=settings.data_dir,
+                overrides_path=settings.overrides_path,
+            )
+        except (dataset_publish.NothingPublished, dataset_publish.BuildNotReady) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+    taken = "took" if result.created else "already took"
+    typer.echo(f"{taken} snapshot {result.snapshot_date} of build {result.build_id}")
+    typer.echo(f"latest/: {'copied' if result.latest_copied else 'already the newest'}")
+    removed = ", ".join(str(removed_date) for removed_date in result.removed) or "none"
+    typer.echo(f"removed snapshots: {removed}")
+
+
+@app.command()
+def dataset(
+    snapshot: Annotated[
+        bool,
+        typer.Option("--snapshot", help="Publish today's snapshot of the live build."),
+    ] = False,
+) -> None:
+    """Publish the live build to the public bucket as today's dataset snapshot, make `latest/`
+    a copy of it and keep the newest 8 (spec §9). Running it again the same day does nothing."""
+    # Ahead of `reporting`: a usage error is not a crash.
+    if not snapshot:
+        raise typer.BadParameter("--snapshot is required", param_hint="--snapshot")
+    # No family: the weekly monitor is `run`'s, which takes the snapshot with `--dataset`.
+    with reporting("dataset", None):
+        _snapshot()
+
+
 def _stages(
     cycle: int, build_id: str, *, scheduled: bool = False, yes: bool = False
 ) -> dict[pipeline.Stage, Callable[[], None]]:
@@ -1006,7 +1048,10 @@ def run(
     ] = None,
     dataset: Annotated[
         bool,
-        typer.Option("--dataset", help="Also publish a dataset snapshot (not built yet)."),
+        typer.Option(
+            "--dataset",
+            help="Then publish today's dataset snapshot of the live build (`dataset --snapshot`).",
+        ),
     ] = False,
     build_id: Annotated[
         str | None,
@@ -1050,8 +1095,6 @@ def run(
     """
     # Ahead of `reporting`: a usage error is not a crash, so it neither reaches Bugsink nor
     # pushes the weekly monitor down.
-    if dataset:
-        raise typer.BadParameter("the dataset snapshot is not built yet", param_hint="--dataset")
     if yes and not scheduled:
         # A run by hand resolves in full by itself when it must.
         raise typer.BadParameter("--yes needs --scheduled", param_hint="--yes")
@@ -1085,6 +1128,10 @@ def run(
         for stage in ran.skipped:
             typer.echo(f"{stage}: skipped, done already")
         typer.echo(f"finished build {build_id} of {cycle}: ran {', '.join(ran.ran) or 'nothing'}")
+        if dataset:
+            # After the `published` marker. A resumed run takes it too: a no-op once taken.
+            with reporting("dataset", None):
+                _snapshot()
 
 
 @app.command("crash-test", hidden=True)

@@ -192,6 +192,31 @@ def reference_dime(version: str, cycle: int) -> str:
     return f"{DIME_PREFIX}v{version}/cycle={cycle}/fec_individual.parquet"
 
 
+# The public dataset (spec §9), in the public bucket: one directory per snapshot, by its date,
+# and `latest/`, a copy of the newest.
+DATASET_PREFIX = "v1/"
+DATASET_LATEST = f"{DATASET_PREFIX}latest/"
+_SNAPSHOT_DIR = re.compile(rf"{DATASET_PREFIX}(\d{{4}}-\d{{2}}-\d{{2}})/")
+
+
+def dataset_snapshot(snapshot_date: date) -> str:
+    """One dataset snapshot's directory in the public bucket: `v1/<YYYY-MM-DD>/`."""
+    return f"{DATASET_PREFIX}{snapshot_date.isoformat()}/"
+
+
+def snapshot_date_of(prefix: str) -> date | None:
+    """The date of the snapshot directory `prefix` (`v1/2026-11-22/`), or None when it is not
+    one (`v1/latest/`, `v1/schema/`)."""
+    match = _SNAPSHOT_DIR.fullmatch(prefix)
+    if match is None:
+        return None
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError:
+        # Shaped like a date and not one (`v1/2026-13-40/`): not a snapshot.
+        return None
+
+
 def local_path(data_dir: Path, key: str) -> Path:
     """Where the local cache keeps the object at `key`."""
     return data_dir / key

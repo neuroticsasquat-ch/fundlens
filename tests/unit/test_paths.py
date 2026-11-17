@@ -48,6 +48,8 @@ BUILD = "20261102T030000Z"
             paths.reference_dime("4.0", 2024),
             "reference/dime/v4.0/cycle=2024/fec_individual.parquet",
         ),
+        (paths.dataset_snapshot(date(2026, 11, 22)), "v1/2026-11-22/"),
+        (paths.DATASET_LATEST, "v1/latest/"),
         *[
             (paths.marker(2026, BUILD, step), f"markers/cycle=2026/build={BUILD}/{step}.json")
             for step in ("extracted", "transformed", "resolved", "loaded", "published")
@@ -167,3 +169,20 @@ def test_the_local_cache_mirrors_the_r2_key() -> None:
     )
     assert paths.scratch_dir(data_dir) == Path("/data/fundlens/scratch")
     assert paths.resolution_dir(data_dir) == Path("/data/fundlens/resolution")
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected"),
+    [
+        ("v1/2026-11-22/", date(2026, 11, 22)),
+        ("v1/latest/", None),
+        ("v1/schema/", None),
+        ("v1/2026-11-22", None),
+        ("v1/2026-13-40/", None),
+        ("v2/2026-11-22/", None),
+    ],
+)
+def test_snapshot_date_of_reads_only_a_snapshot_directory(
+    prefix: str, expected: date | None
+) -> None:
+    assert paths.snapshot_date_of(prefix) == expected

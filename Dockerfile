@@ -38,6 +38,9 @@ RUN uv sync --locked --inexact --no-cache --no-install-project
 RUN pyright --version
 COPY src/ src/
 RUN uv sync --locked --inexact --no-cache
+# DuckDB's httpfs, for the test that reads the public dataset back from MinIO over HTTP
+# (tests/integration/test_dataset.py): installed now, so the tests need no network.
+RUN python -c "import duckdb; duckdb.connect().install_extension('httpfs')"
 # Idle: every task runs through `docker compose exec app …`.
 CMD ["sleep", "infinity"]
 
