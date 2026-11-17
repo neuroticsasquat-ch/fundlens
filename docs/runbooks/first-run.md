@@ -127,7 +127,7 @@ while true; do docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | gre
 ```
 
 **Expected:** two lines every 10 s, e.g. `14:00:00 pipeline-lvch8zyndujjzkz16ksys8im-… 1.2GiB / 40GiB`.
-Switch back with `Ctrl-b 0`. The limit is 40 GB, with DuckDB held to 28 GB; `pipeline` near 40 GiB during
+Switch back with `Ctrl-b 0`. The limit is 40 GB, with DuckDB held to 32 GB; `pipeline` near 40 GiB during
 `transform` or `load` means the step is about to be killed for memory.
 
 ## 2. Extract

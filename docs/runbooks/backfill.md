@@ -57,7 +57,7 @@ of its own, afterwards), scoring cycles other than 2024 against DIME (DIME is im
 | Resource UUID | `lvch8zyndujjzkz16ksys8im` ([coolify-setup.md](coolify-setup.md) Log) |
 | Cycles to build | 1980, 1982, …, 2022, then 2026: 23 cycles, in that order. `ccl` starts in 2000; before that the transform links candidates through `cn.CAND_PCC` and `cm.CAND_ID` (NEU-2059) |
 | Live before this run | `gold.meta.cycles` = {2024: `20261112T211727Z`}, and `markers/live.json` the same (NEU-2059's manual steps, 2026-11-12) |
-| `pipeline` memory | `mem_limit: 40g` (40 GiB), `docker-compose.prod.yml`. DuckDB's `memory_limit` is `DUCKDB_MEMORY_LIMIT`, by default `28GB` (26.08 GiB; DuckDB's GB is 10⁹ bytes) |
+| `pipeline` memory | `mem_limit: 40g` (40 GiB), `docker-compose.prod.yml`. DuckDB's `memory_limit` is `DUCKDB_MEMORY_LIMIT`, by default `28GB` (26.08 GiB; DuckDB's GB is 10⁹ bytes) at the time of this run; `32GB` since (§8) |
 | 2024's memory, the reference | Transform peaked at 24.34 GiB of `pipeline` under the 28 GB limit, after NEU-2076's fix; the first run peaked at 27.2 GiB. `resolve --full` peaked at 24.54 GiB (`capacity.md`) |
 | Raised limit | `DUCKDB_MEMORY_LIMIT=32GB` (29.80 GiB), set before the first cycle whose `indiv` is larger than 2024's (step 2). That leaves 10.2 GiB of the container for Python and Parquet buffers: 2024's transform used up to 1.1 GiB above DuckDB's limit. 32 GB is the top of the handover's 24–32 GB rule |
 | Disk floor | **Stop if free disk on `/` drops under 60 GB**, at any time. Start a cycle only with at least 130 GB free: up to 60 GB of DuckDB scratch (`DUCKDB_MAX_TEMP_DIRECTORY_SIZE`), about 10 GB of unzipped bronze, and the floor |
@@ -377,7 +377,7 @@ running `docker exec`, so check first that no step is running: the last line of 
 1. Coolify → *Projects* → `fundlens` → *production* → the `fundlens` resource → *Environment Variables*.
 2. If `DUCKDB_MEMORY_LIMIT` is listed, write its current value in the Log and set it to `32GB`. If it is not
    listed, *+ Add*: name `DUCKDB_MEMORY_LIMIT`, value `32GB`. Either way leave *Build Variable* unticked, *Save*.
-   This entry overrides the compose file's `28GB` fallback until step 8 removes it
+   This entry overrides the compose file's fallback, then `28GB`, until step 8 removes it
    ([coolify-setup.md](coolify-setup.md) §6).
 3. *Deploy* (top right). Wait for the deployment log to end, and for `api` to show healthy.
 
@@ -730,11 +730,12 @@ gh workflow list --repo neuroticsasquat-ch/fundlens --all
 
 **Expected:** `dependencies` listed as `active`. Then:
 
-1. Leave `DUCKDB_MEMORY_LIMIT` at `32GB` in Coolify. Until incremental resolution (NEU-2062), every weekly run does
-   step 5's `resolve --full` over every cycle, so it needs whatever step 5 needed. File a ticket in the fundlens v1
-   project, related to NEU-2060: set the compose file's `DUCKDB_MEMORY_LIMIT` fallback from the peaks this run
-   recorded, then delete the Coolify entry so the fallback is in force again ([coolify-setup.md](coolify-setup.md)
-   §6). Name the ticket in the Log.
+1. Keep DuckDB at `32GB`. Until incremental resolution (NEU-2062), every weekly run does step 5's `resolve --full`
+   over every cycle, so it needs whatever step 5 needed. The compose file's `DUCKDB_MEMORY_LIMIT` fallback is
+   `32GB` since NEU-2060's backfill (peaks: 28.97 GiB in 2024's transform, 32.60 GiB in `resolve --full`'s
+   `recluster`, against the 40 GiB `mem_limit`). So delete the Coolify entry step 2 added, and the fallback is in
+   force again ([coolify-setup.md](coolify-setup.md) §6). *Redeploy*, then check `printenv DUCKDB_MEMORY_LIMIT`
+   still prints `32GB`.
 2. If step 4 lowered SigNoz's retention, set it back.
 3. Stop the sampler: `Ctrl-b 1`, `Ctrl-c`, `Ctrl-b 0`.
 
