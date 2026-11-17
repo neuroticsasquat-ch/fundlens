@@ -5,7 +5,7 @@ the `api`, the idle `pipeline` and `fundlens-postgres` from `docker-compose.prod
 Bugsink crash reporting, the two Uptime Kuma push monitors and the nightly Postgres backup. Run it once,
 top to bottom. Append to the [Log](#log) at the bottom; never rewrite it.
 
-**Not in this runbook:** the scheduled task (NEU-2063), Cloudflare DNS, R2 and tokens
+**Not in this runbook:** the scheduled task ([weekly.md](weekly.md), NEU-2063), Cloudflare DNS, R2 and tokens
 ([cloudflare-setup.md](cloudflare-setup.md), NEU-2033), the first data run ([first-run.md](first-run.md), NEU-2046).
 
 ## Before you start
@@ -260,7 +260,7 @@ Then resolve the crash-test issue in Bugsink so a real crash later reads as new.
 
 Nothing pushes either monitor on a schedule until NEU-2063 adds the Coolify scheduled task, so both
 would go red 7.5 days from now. In Kuma, open `fundlens/weekly` → *Pause*, and `fundlens/publish` →
-*Pause*. NEU-2063 resumes them.
+*Pause*. [weekly.md](weekly.md) step 5 (NEU-2063) resumes them.
 
 **Check:** both show *Paused* in Kuma's list.
 

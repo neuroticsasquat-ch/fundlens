@@ -255,7 +255,7 @@ For a cycle: all House districts under the apportionment in force (a vendored `a
 
 ### 5.6 Schedule
 
-One Coolify scheduled task on the `pipeline` service: Sunday 03:00 box time, `fundlens run --dataset --scheduled` (no `--cycle`: `run` picks the current cycle itself, NEU-2061). Until the dataset snapshot exists (NEU-2064), `run` rejects `--dataset` as a usage error, so the task runs `fundlens run --scheduled` until then. The current cycle = the next even year ≥ today's year (2026 until 2027-01-01, then 2028). Historical cycles are built once by `fundlens run --cycle <c>` by hand (the backfill milestone) and never rebuilt unless `--full` resolution changes `donor_id`s, in which case every cycle's gold is reloaded.
+One Coolify scheduled task on the `pipeline` service: Sunday 03:00 UTC (Coolify's timezone; the VM's own clock is CET), `fundlens run --dataset --scheduled` (no `--cycle`: `run` picks the current cycle itself, NEU-2061). Until the dataset snapshot exists (NEU-2064), `run` rejects `--dataset` as a usage error, so the task runs `fundlens run --scheduled` until then. The task, the monitors and the procedures for a missed run, a rollback and a `--full` re-resolve are `docs/runbooks/weekly.md` (NEU-2063). The current cycle = the next even year ≥ today's year (2026 until 2027-01-01, then 2028). Historical cycles are built once by `fundlens run --cycle <c>` by hand (the backfill milestone) and never rebuilt unless `--full` resolution changes `donor_id`s, in which case every cycle's gold is reloaded.
 
 ## 6. Entity resolution
 
@@ -377,7 +377,7 @@ Postgres: the ops `backup-postgres.sh` loop picks up the new container (`REQUIRE
 
 ### 10.5 Runbooks (in `docs/runbooks/`, written by their tickets)
 
-Cloudflare setup (zone, R2, tokens, Worker domain), Coolify project setup, the backfill of every cycle since 1980 (`backfill.md`, NEU-2060), rollback (`publish --rollback`), re-resolving with `--full`, adding an override, refreshing the DIME file (`refreshing-dime.md`, NEU-2054), adjudicating the ambiguous high-dollar clusters (`adjudicating.md`, NEU-2055).
+Cloudflare setup (zone, R2, tokens, Worker domain), Coolify project setup, the backfill of every cycle since 1980 (`backfill.md`, NEU-2060), the weekly run with rollback (`publish --rollback`) and re-resolving with `--full` (`weekly.md`, NEU-2063), adding an override, refreshing the DIME file (`refreshing-dime.md`, NEU-2054), adjudicating the ambiguous high-dollar clusters (`adjudicating.md`, NEU-2055).
 
 ### 10.6 Capacity record
 
