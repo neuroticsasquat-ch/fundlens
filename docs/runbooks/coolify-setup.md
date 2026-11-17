@@ -139,7 +139,10 @@ Do **not** add the non-secret variables: `R2_BUCKET`, `R2_PUBLIC_BUCKET`, `LOG_L
 `ADJUDICATE_MODEL`, `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS` and `OTEL_EXPORTER_OTLP_ENDPOINT`. The
 compose file's `${NAME:-default}` fallbacks supply them at deploy, and leaving them out of the UI keeps
 a later change to a fallback effective; a UI entry would shadow it. If Coolify lists them after the
-first deploy, leave those entries as they are. `SERVICE_FQDN_API_8000` is filled by Coolify from step 3.
+first deploy, leave those entries as they are. To take back an entry someone set, clear its value and *Save*.
+Coolify won't delete a variable the compose file references ("Please remove it from the Docker Compose
+file first"), and an empty value lets the fallback through, since `:-` treats empty as unset.
+`DUCKDB_MEMORY_LIMIT`'s entry is empty this way, since the backfill (NEU-2060, PR #173). `SERVICE_FQDN_API_8000` is filled by Coolify from step 3.
 `DATABASE_URL`, `DATA_DIR` and `OTEL_RESOURCE_ATTRIBUTES` are literals in the compose file. Step 8's
 `pipeline` loop proves the fallbacks arrived: `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` come only from
 them.

@@ -23,6 +23,7 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | 2024 | 2026-10-31 | `20261031T202003Z` | `47e3dd5` | — | — | 1343 | — | — | — | — | — | 23.46 GiB | Transform only, with JFC attributions (NEU-2078). 1,088 s of it in `04_contribution.sql`, 14 s in `06_jfc_attribution.sql`. Seven silver tables; `jfc_attribution` 17,037,819 rows, `contributor` 5,620,495 (435,010 more than NEU-2047's build). |
 | 2024 | 2026-11-01 | `20261031T202003Z` | `a4c82b8` | — | 6 | — | 169 (73.08 + 93.51) | 91 | — | 2.03 | 2.61 | 24.54 GiB | First resolved build: donor tables live ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Resolved, loaded and published NEU-2078's build; `seats` ran only to add the `race` partition its transform-only run lacked. Silver is after resolution's bucketed rewrite. Peak memory is resolve's; load and publish stayed below it. |
 | 2024 | 2026-11-02 | `20261102T031624Z` | `22e56ce` | — | — | — | 170 (71.34 + 91.29) | 104 | — | — | — | — | Load and publish after re-clustering (NEU-2122, [refreshing-dime.md](runbooks/refreshing-dime.md) §8); both times are `time`'s `real`. 3,822,946 donors, 6,968,328 `donor_top_recipient` rows, 1 `donor_redirect`. |
+| 1980–2026 | 2026-11-17 | `20261116T005426Z` | `dbe2ffd` | — | — | — | 1402 (684.82 + 696.97) | 157 | — | — | — | — | The backfill's last load and publish, of every cycle with its donors ([backfill.md](runbooks/backfill.md) step 6, NEU-2060): `fundlens run --cycle 2024 --from load` on 2024's rebuild. `gold donor` alone took 6 min. 12,564,451 donors, 26,835,891 `donor_cycle`, 34,127,960 `donor_top_recipient`, 70,635 `donor_redirect` rows. The whole database is 23.11 GB after it, against 7.6 GB before; gold alone was not measured. `real` 26m10s. |
 
 The weekly run (M5) adds its own figures here. The backfill's are under [Backfill](#backfill), apart from its last
 load and publish of every cycle together, which gets a row here.
@@ -39,6 +40,30 @@ publish, in decimal GB.
 
 | Cycle | Date | Build | SHA | `indiv` GB | Extract s | Seats s | Transform s | Load s | Publish s | Bronze GB | Silver GB | Gold GB | Peak `pipeline` memory | DuckDB limit | Free disk GB | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1980 | 2026-11-13 | `20261113T232917Z` | `1aed283` | 0.01 | 7 | 5 | 75 | 197 (79.26 + 106.97) | 92 | 0.02 | 0.02 | 2.97 | 17.14 GiB, gold donor | 28GB | 259 |Fourth build. The first (`20261113T010657Z`) failed `silver_committee_transfer_recipient.sql` (NEU-2281); rebuilt after NEU-2283 and NEU-2287. |
+| 1982 | 2026-11-13 | `20261113T233554Z` | `1aed283` | 0.00 | 7 | 5 | 38 | 192 (78.26 + 106.10) | 92 | 0.02 | 0.01 | 2.97 | 14.23 GiB, gold donor | 28GB | 259 |Rebuilt after NEU-2283 and NEU-2287 (Gramm, TX-06). |
+| 1984 | 2026-11-13 | `20261113T154614Z` | `529ab9e` | 0.01 | 7 | 5 | 60 | 200 (79.43 + 108.63) | 93 | 0.02 | 0.02 | 2.94 | 15.08 GiB, gold check gold_top_donor_not_self_funding | 28GB | 261 |Rebuilt after NEU-2283. The peak is in load's gold phase, just after `gold donor`. |
+| 1986 | 2026-11-13 | `20261113T155247Z` | `529ab9e` | 0.01 | 7 | 6 | 72 | 200 (78.23 + 107.36) | 95 | 0.02 | 0.02 | 2.94 | 12.95 GiB, gold donor | 28GB | 261 |Rebuilt after NEU-2283. KY-02 at $0: William Natcher took no contributions. |
+| 1988 | 2026-11-13 | `20261113T155936Z` | `529ab9e` | 0.01 | 7 | 5 | 98 | 195 (76.49 + 105.87) | 95 | 0.02 | 0.03 | 2.94 | 12.55 GiB, gold donor | 28GB | 261 |Rebuilt after NEU-2283. |
+| 1990 | 2026-11-13 | `20261113T234150Z` | `1aed283` | 0.01 | 7 | 6 | 106 | 197 (78.51 + 107.91) | 94 | 0.02 | 0.04 | 2.97 | 13.45 GiB, gold donor | 28GB | 259 |Rebuilt after NEU-2283 and NEU-2287. |
+| 1992 | 2026-11-14 | `20261114T201011Z` | `8b503a5` | 0.02 | 6 | 5 | 168 | 225 (83.31 + 119.60) | 92 | 0.03 | 0.06 | 3.22 | 13.25 GiB, gold donor | 28GB | 248 |Rebuilt after NEU-2283, then after NEU-2294 (3 filings moved to their 1992 district). KY-02 at $0: Natcher. |
+| 1994 | 2026-11-13 | `20261113T162226Z` | `529ab9e` | 0.02 | 7 | 6 | 153 | 198 (78.16 + 105.88) | 95 | 0.04 | 0.06 | 2.94 | 12.49 GiB, gold donor | 28GB | 261 |The first build (`20261113T023353Z`) stopped at `load` on a NUL byte (NEU-2282); rebuilt after NEU-2283. |
+| 1996 | 2026-11-13 | `20261113T163032Z` | `529ab9e` | 0.03 | 8 | 5 | 211 | 206 (78.71 + 114.08) | 93 | 0.04 | 0.08 | 2.94 | 12.65 GiB, gold donor | 28GB | 261 |Rebuilt after NEU-2283. |
+| 1998 | 2026-11-13 | `20261113T163943Z` | `529ab9e` | 0.03 | 8 | 5 | 183 | 206 (79.41 + 112.89) | 94 | 0.04 | 0.07 | 2.94 | 14.58 GiB, gold donor | 28GB | 261 |Rebuilt after NEU-2283, which restored 25 House incumbents ($14.30M). |
+| 2000 | 2026-11-14 | `20261113T235513Z` | `1aed283` | 0.05 | 7 | 5 | 301 | 198 (79.45 + 109.11) | 91 | 0.06 | 0.11 | 2.96 | 15.56 GiB, gold donor | 28GB | 268 |Rebuilt after NEU-2287 (MA-03 and PA-14 had no candidates). |
+| 2002 | 2026-11-14 | `20261114T174026Z` | `507d381` | 0.04 | 7 | 5 | 268 | 216 (82.43 + 115.81) | 94 | 0.06 | 0.10 | 3.15 | 12.43 GiB, gold check | 28GB | 257 |Rebuilt after NEU-2293 (10 filings moved to their 2002 district). The peak is in load's gold phase. |
+| 2004 | 2026-11-15 | `20261115T234428Z` | `1250468` | 0.09 | 7 | 5 | 515 | 228 (90.78 + 120.35) | 94 | 0.11 | 0.19 | 3.37 | 14.98 GiB, gold check gold_top_donor_not_self_funding | 32GB | 262 |Second build, after NEU-2324 (DE and MT at-large filings). |
+| 2006 | 2026-11-16 | `20261116T000249Z` | `1250468` | 0.06 | 7 | 5 | 351 | 222 (86.51 + 120.23) | 90 | 0.09 | 0.13 | 3.37 | 13.38 GiB, gold donor | 32GB | 263 |Second build, after NEU-2324 (DE at-large filing). |
+| 2008 | 2026-11-14 | `20261114T014209Z` | `c8bec5f` | 0.12 | 34 | 5 | 534 | 203 (79.10 + 114.07) | 91 | 0.16 | 0.25 | 3.08 | 13.23 GiB, gold check gold_top_donor_not_self_funding.sql | 28GB | 266 |The peak is in load's gold phase. |
+| 2010 | 2026-11-14 | `20261114T020123Z` | `c8bec5f` | 0.08 | 32 | 8 | 445 | 289 (101.29 + 176.69) | 97 | 0.10 | 0.15 | 3.12 | 14.41 GiB, gold check gold_top_donor_not_self_funding.sql | 28GB | 302 |Load's `COPY` rose to 177 s and free disk to 302 GB: outside fundlens, transient (both back by 2012). |
+| 2012 | 2026-11-14 | `20261114T180514Z` | `507d381` | 0.27 | 8 | 5 | 519 | 222 (81.67 + 122.18) | 93 | 0.31 | 0.26 | 3.15 | 13.06 GiB, gold donor | 28GB | 253 |Rebuilt after NEU-2293 (11 filings: NY-11's Grimm and Murphy, CA-38's Sánchez). |
+| 2014 | 2026-11-14 | `20261114T182542Z` | `507d381` | 0.17 | 44 | 5 | 334 | 221 (84.09 + 115.38) | 97 | 0.20 | 0.14 | 3.19 | 15.05 GiB, gold check | 28GB | 252 |The peak is in load's gold phase. |
+| 2016 | 2026-11-14 | `20261114T184036Z` | `507d381` | 1.49 | 178 | 6 | 972 | 219 (83.72 + 118.12) | 93 | 1.59 | 0.79 | 3.23 | 14.90 GiB, gold donor | 28GB | 249 |Built from `507d381`. `record.py` read `a22a808`: PR #160 (dependencies) had redeployed `pipeline` before the row was recorded. |
+| 2018 | 2026-11-16 | `20261116T001733Z` | `1250468` | 1.60 | 7 | 5 | 871 | 220 (85.83 + 120.07) | 90 | 1.65 | 0.65 | 3.37 | 15.24 GiB, gold check gold_top_donor_not_self_funding | 32GB | 263 |Third build: after NEU-2319 (the MN and MS specials) and NEU-2324 (MP at-large). |
+| 2020 | 2026-11-15 | `20261115T033259Z` | `2592ae1` | 5.87 | 7 | 6 | 1882 | 216 (83.85 + 119.00) | 91 | 6.13 | 2.07 | 3.29 | 22.54 GiB, write contribution | 32GB | 248 |The first `LARGER` cycle (`indiv` 138% of 2024's); DuckDB raised to 32 GB before it. The first build failed `gold_committee_cycle_refunds` at `load` (NEU-2320). |
+| 2022 | 2026-11-15 | `20261115T173437Z` | `529517d` | 3.60 | 8 | 6 | 1403 | 241 (95.85 + 122.45) | 97 | 3.77 | 1.40 | 3.34 | 20.38 GiB, write contribution | 32GB | 241 |The first build failed at transform on FEC's truncated `itcont.txt` (NEU-2321). The CA special is at $0 by design. |
+| 2024 | 2026-11-16 | `20261116T005426Z` | `1250468` | 4.23 | 469 | 5 | 1728 | — | — | 4.76 | 2.29 | 3.37 | 26.48 GiB, write contribution | 32GB | 260 |Transform only, rebuilt after NEU-2324; loaded and published with every cycle (Per cycle, 2026-11-17). Its earlier transform-only build `20261115T182139Z` peaked at 28.97 GiB, the backfill's highest. |
+| 2026 | 2026-11-16 | `20261116T013416Z` | `1250468` | 2.60 | 7 | 5 | 981 | 223 (87.88 + 121.79) | 91 | 2.83 | 1.36 | 3.37 | 20.36 GiB, write contribution | 32GB | 258 |Resumed at `load` after NEU-2323, then rebuilt after NEU-2324 (MP-00 had no candidates). |
 
 ## Resolution
 
@@ -55,6 +80,7 @@ and `save` only drops Splink's remaining tables. A run with `--model VERSION` ha
 | 2026-11-01 | `20261101T024736Z` | 2024 (`20261031T202003Z`) | `a4c82b8` | 5,620,495 | 3,816,141 | 10.08 / 190.33 / 111.11 / — / 0.00 / 0.12 / 101.13 / 346.49 | 762 | 24.54 GiB | 9.91 | First `resolve --full` on real keys ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Trained (EM converged after 8 iterations), no overrides, DuckDB memory limit 26.0 GiB. The peak came at 02:55:01, early in `silver`, not in Splink. |
 | 2026-11-02 | `20261102T194152Z` | 2024 (`20261102T031624Z`) | `22e56ce` | 5,620,495 | 3,822,946 | 10.21 / 188.02 / 106.62 / 11.85 / 0.18 / 0.13 / 18.81 / 253.41 | 598 | — | 9.5 | First run with re-clustering ([refreshing-dime.md](runbooks/refreshing-dime.md) §8, NEU-2122), cap 200. `recluster: 4,085 components (17 oversized, 4,085 inconsistent) into 10,891 pieces; largest 1,400 → 180`. Crosswalk: 6,806 new donors, 31,213 keys re-pointed, 0 redirects; one override merge. Wall time is `time`'s `real`; peak memory not measured. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | `a2ca75f` | 5,620,495 | 4,009,899 | 10.01 / 174.71 / 112.62 / 10.98 / 0.19 / 0.15 / 32.82 / 197.31 | — | — | 9.4 | First run with the first-name levels of NEU-2188 (initial pair, nickname pair, the veto blind to initials), cap 200. `recluster: 7,339 components (3 oversized, 7,339 inconsistent) into 18,975 pieces; largest 263 → 103`. Crosswalk: 197,265 new donors, 284,508 keys re-pointed, 10,312 redirects; one override merge. The phases sum to 539 s; wall time and peak memory not captured. |
+| 2026-11-16 | `20261116T224205Z` | 1980–2026 (each cycle's live build; 2024 `20261116T005426Z`) | `dbe2ffd` | 29,213,828 | 12,564,451 | 56.18 / 829.52 / 2473.92 / 520.49 / 0.95 / 0.03 / 703.52 / 2459.66 | 7147 | 32.60 GiB | 110 | The first all-cycle run that finished ([backfill.md](runbooks/backfill.md) step 5, NEU-2060), from NEU-2333's sampled EM: each session trained on at most 2e8 pairs (the Log has the three). `model` 0.27 s, `adjudications` 95.96 s (130 verdicts, 4 splits); one override merge. `recluster: 107,324 components (1,190 oversized, 107,267 inconsistent) into 411,206 pieces; largest 89,299 → 200`, 7,073,685 vetoed pairs in the largest. `crosswalk: 8699796 new donors, 133498 keys re-pointed, 59884 redirects`. The peak came in `recluster`, with the process's own peak RSS at 32.31 GiB; DuckDB limit 29.8 GiB; least free disk 128 GB. The working file is 102 GiB by `du`. `real` 119m20s. |
 
 **The first all-cycle run failed (2026-11-16, NEU-2060 step 9, NEU-2325).** It has no row: it resolved nothing.
 Model `20261116T022944Z` from `62a47eb`, all 24 cycles (1980–2026), 29,213,828 contributor keys, DuckDB limit 32 GB.
@@ -93,6 +119,13 @@ free disk from 264 GB to 59 GB, under the 60 GB floor. Splink sampled nothing:
 `RESOLVE_EM_MAX_PAIRS` (2e8) pairs; scaled from 108 GB for 2.6 billion, about an 8 GB working file and a few GB of
 spill per iteration (an estimate, not a measurement). Step 9's next rerun measures it.
 
+**The second rerun finished (2026-11-16, NEU-2060 step 9).** From `dbe2ffd` (NEU-2333): the row above. Each sampled
+session blocked its pairs in about a minute and ran an EM iteration in about 21 s, against 40 minutes and 15
+minutes unsampled, so `train` took 829.52 s against 8,420 s. The working file still ended at 102 GiB, not the
+estimate's 8 GB, which covered only training. Most likely `cluster`'s predictions grew it, since they score every
+blocked pair unsampled and DuckDB never shrinks the file; the file was not measured by phase. Free disk's
+low over the whole run was 128 GB, 68 GB above the floor.
+
 ## Validation
 
 One `fundlens validate` per row ([refreshing-dime.md](runbooks/refreshing-dime.md), NEU-2054): a cycle's resolved
@@ -123,6 +156,7 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8714 (0.9865) | 0.8865 (0.7615) | 213 | T = 0.999, validate --clusters, nothing written (NEU-2189). 6,137 pieces, largest 148 → 97; 292,694 wrong pairs. |
 | 2026-11-03 | `20261104T012451Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.9001 (0.9895) | 0.8468 (0.7118) | 211 | T = 0.9999, validate --clusters, nothing written (NEU-2189). 4,243 pieces, largest 122 → 96; 210,264 wrong pairs. |
 | 2026-11-04 | `20261104T173004Z` | 2024 (`20261103T175128Z`) | v4.0 | 30,175,706 of 51,014,276 (59.2%) | 0.8244 (0.9762) | 0.9075 (0.7867) | 225 | From `c7e8fbb`: NEU-2055's first adjudication run applied (357 merges, 458 splits); the live figures. 2,029,462 correct, 2,461,785 predicted, 2,236,402 true pairs overall; top 10,000: 338,642 correct, 346,911 predicted, 430,470 true. |
+| 2026-11-17 | `20261116T224205Z` | 2024 (`20261116T005426Z`) | v4.0 | 30,148,695 of 50,104,322 (60.2%) | 0.8122 (0.9834) | 0.8993 (0.7591) | 221 | From `dbe2ffd`: the first model over every cycle (NEU-2060 step 5.3); the live figures. 2,012,327 correct, 2,477,510 predicted, 2,237,707 true pairs overall; top 10,000: 327,213 correct, 332,728 predicted, 431,033 true. Against the 2024-only model `20261112T214620Z` live before it: precision −0.0121, recall −0.0083, top precision +0.0072, top recall −0.0283 (Findings). |
 
 ## Findings
 
@@ -206,10 +240,68 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   correct one lost, and if NEU-2188's sample holds, many of those "wrong" pairs are DIME's own errors, so the trade
   is worse than it looks. The cluster cap bound at no threshold (largest 103 keys at most), and 0.95 is kept by the
   rule's last tier, top-scope recall 0.7988 accepted.
+- **Before resolution, a cycle's load was gold over every live cycle, and its peak was `gold donor` (backfill,
+  NEU-2060).** Load ran 192–241 s (289 s at 2010), growing with the cycles before it, and the peak (12–17 GiB) was in load's
+  gold phase, not the cycle's own transform, until 2020. From 2020 the cycle's own `write contribution` led: 22.54
+  GiB for 2020's 5.87 GB `indiv`, 26.48 GiB for 2024's under `32GB`. 2024's earlier build under `32GB` peaked at
+  28.97 GiB against 24.34 GiB under `28GB`: DuckDB holds more before it spills, so the peak follows the limit, not
+  only the data. 28.97 GiB is the backfill's highest transform, about 11 GiB under the 40 GiB `mem_limit`.
+- **Unmatched filings jumped to 37 in 1984 and 28 in 1992,** against 3–13 in other cycles.
+- **The Backfill rows' gold column is all of gold after that cycle's publish,** so it grows with the cycles before
+  it; the rows for 1984–1992 were recorded after 1992's load and overstate their own gold.
+- **Seats needed five fixes before every cycle's races held their candidates.** Each was found by a race at $0 or
+  by `app.unmatched_filing`, and each meant rebuilding the cycles it touched:
+  - 1998's races were missing 25 House incumbents ($14.30M) whose `cn` row carried the next election's year
+    (NEU-2283; 1980–1998 rebuilt). Senate later-year filings, about 60 incumbents a cycle, are senators whose seat
+    isn't up, and correctly have no race.
+  - Census-year cycles keep the old district in `cn` (15 of 15 checked), so 1980 (4 races at $0), 1990 (2), 2000
+    (3) and 1982 (Gramm, TX-06) still missed incumbents (NEU-2287; those four rebuilt).
+  - In the first cycle on a new map, `cn` keeps some House candidates under their old district. NEU-2293 corrected
+    10 filings in 2002 ($476,509 of receipts), 11 in 2012 ($5,969,717) and 47 in 2022 ($24,917,356) from FEC's
+    election results, and NEU-2294 3 in 1992 from its PDF results; 1982 needed none
+    ([house-districts-redistricting.md](measurements/house-districts-redistricting.md)). 2012's misplacement was
+    not a $0 race, so the $0 check alone would have missed it.
+  - A Senate special beside a regular race had no candidates: 54 filings and $275,395,869 stood in the regular race
+    (NEU-2319, [senate-specials-beside-regular-races.md](measurements/senate-specials-beside-regular-races.md)).
+    NEU-2319 measured the seven specials in `specials.csv`, 2018–2024; specials before 2018 are not in it and were
+    not measured.
+  - A state with one House seat has its race at `00`, but `cn` files some candidates under `01`: 8 filings in 2004,
+    2006, 2018, 2024 and 2026 (NEU-2324). The $0 check caught only 2026's MP-00.
+- **Four failures came from FEC's data.** 1994's `cm` holds a NUL byte
+  (NEU-2282). 2020's hybrid PAC C00603084 moved a refund between its accounts (`22Y` −12,500, `20Y` +12,500),
+  which silver counted as a void (NEU-2320); every other cycle passed `gold_committee_cycle_refunds`, so a
+  cross-type pair there nets to 0 or less, but no other cycle was searched. FEC's `indiv22.zip` (regenerated 08 Nov
+  2026) held an `itcont.txt` cut at 4,471,783,424 bytes, 37% of its own `by_date/` members (NEU-2321). Every other
+  cycle's matches byte for byte, or has no `by_date/`. 2026's `cn` held a skeleton candidate row with no name
+  (NEU-2323).
+- **Sampling EM changed training time, not the model (NEU-2333).** On 7.6% of the soundex + ZIP3 session's 2.63
+  billion pairs, EM's largest change per iteration ran 0.414, 0.0747, 0.0969, 0.0365, 0.00816, 0.00167, 0.000337,
+  against 0.414, 0.0753, 0.0971, 0.0364, 0.0081, 0.00166, 0.000332 unsampled. `train` took 14 minutes, against
+  2h20m.
+- **Resolving every cycle at once moved 2024's scores the wrong way for recall.** Against the 2024-only model,
+  precision fell 0.8243 → 0.8122, within the runbook's 0.02 gate, but recall fell too (0.9076 → 0.8993), most in
+  the top 10,000 (0.7874 → 0.7591). The runbook expected cross-cycle keys to raise recall. The run differs in
+  several ways: the recluster at this scale (largest component 89,299 keys and 411,206 pieces, against 263 keys and 18,975 pieces in
+  the 2026-11-03 2024-only run), the EM sample, 2024's rebuilt silver and 4 adjudication splits. Which one moved recall is not measured.
+  One donor to check against DIME: `1901884`, LOEB, JOHN, gives in all 24 cycles, 1980–2026. That could be one
+  person over 46 years, or a cross-cycle chain.
+- **Donors for every cycle triple the database and make load the longest step after resolution.** The database
+  went from 7.6 GB to 23.11 GB, and load from 192–241 s per cycle to 1,402 s, about 6 minutes of it `gold donor`.
+- **The working file stays between runs.** `resolve.duckdb`, 102 GiB, is about 70% of the steady-state disk
+  (Triggers). Every weekly `resolve --full` starts from it until NEU-2062.
 
 ## Triggers
 
 The handover's triggers for moving the pipeline to an ephemeral runner (spec §10.6, §13): a weekly run over 6–8 h,
-or steady-state disk over ~300 GB. Not yet checked. The backfill (NEU-2060) writes the check here from the rows
-above ([backfill.md](runbooks/backfill.md) step 9): the weekly run's estimated time, the steady-state disk, the
-memory peaks against the 40 GiB container, and which triggers fired, each with the ticket filed for it.
+or steady-state disk over ~300 GB. Checked after the backfill (NEU-2060), from the rows above.
+
+| Trigger | Measured | Against | Fired |
+| --- | --- | --- | --- |
+| Weekly run | 9,699 s, 2h42m: 2026's extract, seats and transform (7 + 5 + 981 s, its Backfill row), plus `resolve --full` over every cycle (7,147 s, Resolution), plus the load and publish of every cycle (1,402 + 157 s, Per cycle). With a first-download extract (2024's 469 s), 2h49m | 6–8 h | No |
+| Steady-state disk | 152.6 GB: `/data/fundlens` 129.5 GB (126,422,360 KB, of it `resolve.duckdb` 102 GiB, silver 17 GiB, bronze 2.7 GiB) plus the database's 23.11 GB, on 2026-11-17. ClickHouse, beside it on the same disk, is 4.6 GiB | ~300 GB | No |
+| Memory (not a handover trigger) | 32.60 GiB in `resolve --full`'s `recluster`; the largest transform 28.97 GiB (2024, `write contribution`) | 40 GiB `mem_limit` | — |
+
+**Verdict: no trigger fired, so no ticket was filed.** Resolution is three quarters of the weekly run. Once
+NEU-2062 makes it incremental, the 2026 steps, extract to publish, take about 43 minutes plus that incremental resolve. Memory has 7.4 GiB
+of headroom at resolution's peak, with DuckDB at `32GB` (the compose fallback since PR #173). Resolution's
+transient disk is the tighter margin: free disk's low during the run was 128 GB, from 256 GB at its start.
