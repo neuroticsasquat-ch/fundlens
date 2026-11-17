@@ -7,9 +7,11 @@ only with `--scheduled` (spec §5.1, §5.6; NEU-2061).
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+import typer
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, pipeline
@@ -191,3 +193,82 @@ def test_a_run_by_hand_pushes_nothing_to_weekly(
     # The crash still reaches Bugsink.
     assert len(bugsink.events) == 1
     assert bugsink.events[0]["tags"] == {"pipeline_mode": "load"}
+
+
+@pytest.fixture
+def resolves(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """The arguments of every `resolve` `run`'s resolve stage calls."""
+    calls: list[dict[str, object]] = []
+
+    def fake_resolve(**kwargs: object) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr(cli, "resolve", fake_resolve)
+    return calls
+
+
+def resolve_stage(
+    monkeypatch: pytest.MonkeyPatch, *, ready: bool, scheduled: bool, yes: bool = False
+) -> None:
+    """Run the resolve stage of `run`, with or without something to resolve against."""
+
+    def incremental_ready(store: R2, data_dir: Path) -> bool:
+        return ready
+
+    monkeypatch.setattr(cli.resolution, "incremental_ready", incremental_ready)
+    cli._stages(2026, BUILD, scheduled=scheduled, yes=yes)["resolve"]()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("scheduled", [True, False])
+def test_with_a_live_model_and_working_file_a_run_resolves_only_its_cycle_incrementally(
+    monkeypatch: pytest.MonkeyPatch, resolves: list[dict[str, object]], scheduled: bool
+) -> None:
+    resolve_stage(monkeypatch, ready=True, scheduled=scheduled)
+
+    assert resolves == [{"cycle": 2026}]
+
+
+def test_a_run_by_hand_with_nothing_to_resolve_against_resolves_in_full_under_its_build(
+    monkeypatch: pytest.MonkeyPatch, resolves: list[dict[str, object]]
+) -> None:
+    resolve_stage(monkeypatch, ready=False, scheduled=False)
+
+    assert resolves == [{"full": True, "build_id": BUILD}]
+
+
+def test_a_scheduled_run_with_nothing_to_resolve_against_stops_rather_than_resolve_in_full(
+    monkeypatch: pytest.MonkeyPatch,
+    resolves: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(typer.Exit) as stopped:
+        resolve_stage(monkeypatch, ready=False, scheduled=True)
+
+    assert stopped.value.exit_code == 1
+    assert resolves == []
+    assert "pass --yes" in capsys.readouterr().err
+
+
+def test_a_scheduled_run_told_yes_resolves_in_full(
+    monkeypatch: pytest.MonkeyPatch, resolves: list[dict[str, object]]
+) -> None:
+    resolve_stage(monkeypatch, ready=False, scheduled=True, yes=True)
+
+    assert resolves == [{"full": True, "build_id": BUILD}]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("--full", "--cycle", "2024"), ("--build-id", BUILD), ("--model", BUILD), ("--cycle", "2023")],
+)
+def test_resolve_refuses_flags_of_the_other_mode(args: tuple[str, ...]) -> None:
+    result = CliRunner().invoke(cli.app, ["resolve", *args])
+
+    assert result.exit_code == 2, result.output
+
+
+def test_yes_without_scheduled_is_a_usage_error(fake_pipeline: FakePipeline) -> None:
+    result = invoke("--cycle", "2024", "--yes")
+
+    assert result.exit_code == 2, result.output
+    assert fake_pipeline.calls == []

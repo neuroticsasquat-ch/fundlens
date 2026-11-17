@@ -369,30 +369,51 @@ def resolve(
         bool,
         typer.Option("--full", help="Retrain the model and re-cluster every cycle's contributors."),
     ] = False,
+    cycle: Annotated[
+        int | None,
+        typer.Option(
+            help="Without --full: the cycle whose new contributor keys are resolved. Default: the"
+            " current cycle, the next even year from today's."
+        ),
+    ] = None,
     build_id: Annotated[
         str | None,
         typer.Option(
-            help="The model version the trained model is saved under. Each cycle's `resolved`"
-            " marker goes under its newest transformed build. Default: a build starting now."
+            help="With --full: the model version the trained model is saved under. Each cycle's"
+            " `resolved` marker goes under its newest transformed build. Default: a build"
+            " starting now."
         ),
     ] = None,
     model_version: Annotated[
         str | None,
         typer.Option(
             "--model",
-            help="Resolve with the model saved as this version instead of training one, as that"
-            " version: after a run that stopped once its model was saved. Excludes --build-id.",
+            help="With --full: resolve with the model saved as this version instead of training"
+            " one, as that version: after a run that stopped once its model was saved. Excludes"
+            " --build-id.",
         ),
     ] = None,
 ) -> None:
-    """Link every cycle's contributor keys into clusters of one person with Splink, save the
-    trained model, apply `resolution/overrides.yaml` and the confident adjudications of the
-    configured model and prompt, give each cluster its persistent donor_id,
-    write it onto each cycle's silver and write each cycle's `resolved` marker (spec §6.3–§6.6).
-    `--model` resolves with a saved model, trained by an earlier run, instead (NEU-2325)."""
+    """Resolve one cycle's new contributor keys against everything resolved before, with the
+    live model and no training (spec §6.10, NEU-2062): each joins a donor or forms a new one, and
+    no donor_id already given changes. The cycle's newest transformed build gets its donor_ids
+    and its `resolved` marker.
+
+    `--full` instead links every cycle's contributor keys into clusters of one person with
+    Splink, saves the trained model, applies `resolution/overrides.yaml` and the confident
+    adjudications of the configured model and prompt, gives each cluster its persistent
+    donor_id, writes it onto each cycle's silver and writes each cycle's `resolved` marker (spec
+    §6.3–§6.6). `--model` resolves with a saved model, trained by an earlier run, instead
+    (NEU-2325)."""
+    if full and cycle is not None:
+        # `--full` resolves every cycle there is.
+        raise typer.BadParameter("give --cycle or --full, not both", param_hint="--cycle")
     if not full:
-        # Incremental resolution of one cycle against the saved model (spec §6.10) is not built.
-        raise typer.BadParameter("only `--full` resolution exists so far", param_hint="--full")
+        for given, name in ((build_id, "--build-id"), (model_version, "--model")):
+            if given is not None:
+                raise typer.BadParameter(f"{name} needs --full", param_hint=name)
+        _resolve_incremental(current_cycle(_today()) if cycle is None else cycle)
+        return
     if model_version is not None and build_id is not None:
         # The run's version is the reused model's: there is no second one to name.
         raise typer.BadParameter("give --model or --build-id, not both", param_hint="--model")
@@ -439,6 +460,66 @@ def resolve(
     )
     done = "read" if result.parameters is resolution.Parameters.REUSED else "wrote"
     typer.echo(f"model {result.model_version}: {result.parameters}, {done} {result.model_key}")
+    typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
+    typer.echo(f"DuckDB memory limit: {result.memory_limit}")
+
+
+def _resolve_incremental(cycle: int) -> None:
+    """`resolve` without `--full`: `cycle`'s new keys, against the working file."""
+    try:
+        seat_calendar.check_cycle(cycle)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--cycle") from exc
+    settings = get_settings()
+    try:
+        # Autocommit, so the crosswalk's `conn.transaction()` is a transaction of its own.
+        with psycopg.connect(settings.database_url, autocommit=True) as conn:
+            result = resolution.resolve_incremental(
+                R2.from_settings(settings),
+                cycle=cycle,
+                data_dir=settings.data_dir,
+                limits=runner.Limits.from_settings(settings),
+                thresholds=resolution.Thresholds(
+                    match=settings.resolve_match_threshold,
+                    cluster=settings.resolve_cluster_threshold,
+                ),
+                max_keys=settings.resolve_max_cluster_keys,
+                overrides_path=settings.overrides_path,
+                adjudication=_adjudication(settings),
+                adjudicate_min_amount=settings.adjudicate_min_amount,
+                conn=conn,
+                release=known_release(settings.otel_resource_attributes),
+            )
+    except (resolution.NoBaseline, FileNotFoundError, overrides.OverridesError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"{result.cycle}: build {result.build}")
+    typer.echo(
+        f"{result.new_keys} new contributor keys of {result.cycle_keys},"
+        f" {result.edges} pairs scored at or above the match threshold"
+    )
+    typer.echo(f"attach: {result.attached.summary()}")
+    overridden = result.overridden
+    typer.echo(
+        f"overrides: {overridden.merges} merges joining {overridden.clusters_joined} clusters"
+        f" into others, {overridden.splits} splits"
+    )
+    typer.echo(f"adjudications: {result.adjudicated.summary()}")
+    assigned = result.assigned
+    typer.echo(
+        f"crosswalk: {assigned.new_donors} new donors, {assigned.repointed} keys re-pointed,"
+        f" {assigned.redirects} redirects"
+    )
+    if assigned.repointed:
+        # Only an override or a verdict new since the last run re-points a key that stood, and
+        # only this cycle's silver is rewritten: the runbooks follow one with `resolve --full`.
+        typer.echo(
+            f"warning: {assigned.repointed} keys that stood were re-pointed by overrides or"
+            " verdicts; other cycles' silver and gold keep their old donor_ids until"
+            " `fundlens resolve --full` and their reload",
+            err=True,
+        )
+    typer.echo(f"model {result.model_version}: the live model, untrained")
     typer.echo(", ".join(f"{phase} {seconds:.2f} s" for phase, seconds in result.phase_s.items()))
     typer.echo(f"DuckDB memory limit: {result.memory_limit}")
 
@@ -876,7 +957,9 @@ def _today() -> date:
     return datetime.now(UTC).date()
 
 
-def _stages(cycle: int, build_id: str) -> dict[pipeline.Stage, Callable[[], None]]:
+def _stages(
+    cycle: int, build_id: str, *, scheduled: bool = False, yes: bool = False
+) -> dict[pipeline.Stage, Callable[[], None]]:
     """Each stage of `run` as the commands it is, each under its own `step` wrapper: a crash
     reaches Bugsink tagged with the step that crashed, and `publish` pushes its own monitor."""
 
@@ -885,12 +968,27 @@ def _stages(cycle: int, build_id: str) -> dict[pipeline.Stage, Callable[[], None
         seats(cycle=cycle, report=True, build_id=build_id)
         transform(cycle=cycle, build_id=build_id)
 
+    def resolve_stage() -> None:
+        # The cycle's new keys, against the live model and the working file (spec §6.10).
+        settings = get_settings()
+        if resolution.incremental_ready(R2.from_settings(settings), settings.data_dir):
+            resolve(cycle=cycle)
+        elif scheduled and not yes:
+            # Hours of training and every cycle re-clustered: never unattended (NEU-2062).
+            typer.echo(
+                "no live model and working file to resolve against, and a scheduled run does"
+                " not start `resolve --full` by itself: run it by hand, or pass --yes",
+                err=True,
+            )
+            raise typer.Exit(1)
+        else:
+            # Every cycle's, training the model under this build: nothing resolved yet.
+            resolve(full=True, build_id=build_id)
+
     return {
         "extract": lambda: extract(cycle=cycle, file=None, build_id=build_id),
         "transform": transform_stage,
-        # Every cycle's, retraining the model under this build: incremental resolution of the
-        # one cycle (spec §6.10) is not built yet.
-        "resolve": lambda: resolve(full=True, build_id=build_id),
+        "resolve": resolve_stage,
         "load": lambda: load(cycle=cycle, build_id=build_id),
         # Told the build, so it refuses to swap in one another hand loaded since.
         "publish": lambda: publish(cycle=cycle, rollback=False, build_id=build_id),
@@ -928,19 +1026,35 @@ def run(
             help="Push the `fundlens/weekly` monitor. The Coolify scheduled task's flag only.",
         ),
     ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            help="With --scheduled: resolve with `--full` when there is nothing to resolve"
+            " incrementally against, rather than stop.",
+        ),
+    ] = False,
 ) -> None:
     """Run extract, transform, resolve, load and publish for one build of one cycle, skipping
     each step whose marker exists for the build (spec §5.1, §5.6).
 
+    Resolve is incremental: the cycle's new contributor keys, against the live model (spec
+    §6.10). With no live model or working file it is `resolve --full`, except in a scheduled
+    run, which stops there unless given `--yes` (NEU-2062).
+
     Exit codes: 0 when every step finished, now or in an earlier run of the build; 1 when a step
     crashed (reported to Bugsink, tagged with the step) or stopped on an input it names as
-    missing or a build a newer one has superseded; 2 on a usage error (a cycle with no seat
-    calendar, a malformed --build-id), which runs nothing and reports nothing.
+    missing, a build a newer one has superseded, or a scheduled run's full resolve; 2 on a usage
+    error (a cycle with no seat calendar, a malformed --build-id), which runs nothing and reports
+    nothing.
     """
     # Ahead of `reporting`: a usage error is not a crash, so it neither reaches Bugsink nor
     # pushes the weekly monitor down.
     if dataset:
         raise typer.BadParameter("the dataset snapshot is not built yet", param_hint="--dataset")
+    if yes and not scheduled:
+        # A run by hand resolves in full by itself when it must.
+        raise typer.BadParameter("--yes needs --scheduled", param_hint="--yes")
     cycle = current_cycle(_today()) if cycle is None else cycle
     try:
         seat_calendar.check_cycle(cycle)
@@ -962,7 +1076,7 @@ def run(
                 cycle,
                 R2.from_settings(get_settings()),
                 build_id=build_id,
-                steps=_stages(cycle, build_id),
+                steps=_stages(cycle, build_id, scheduled=scheduled, yes=yes),
                 from_stage=from_stage,
             )
         except pipeline.SupersededBuild as exc:

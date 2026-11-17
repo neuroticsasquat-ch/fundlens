@@ -8,7 +8,7 @@ import duckdb
 import pytest
 
 from fundlens.resolve import cluster
-from fundlens.resolve.cluster import components_at, recluster, recluster_component
+from fundlens.resolve.cluster import attach, components_at, recluster, recluster_component
 from tests.unit.test_resolve_model import NamePair, first_name_levels, nicknames_of
 
 VETOED = {frozenset(("ELIZABETH", "KIRSTEN"))}
@@ -335,3 +335,111 @@ def test_a_threshold_above_an_edge_parts_its_keys_and_recluster_reads_the_rebuil
     assert (result.components, result.largest_before) == (0, 2)
     # Linkage's components stand.
     assert con.execute("SELECT count(DISTINCT cluster_id) FROM component").fetchall() == [(1,)]
+
+
+def test_a_new_key_between_two_fixed_clusters_joins_the_stronger_and_never_merges_them() -> None:
+    members = {"a1": "JOHN", "a2": "JOHN", "b1": "JOHN", "n": "JOHN"}
+    edges = [("a1", "n", 0.97), ("b1", "n", 0.99)]
+    # The fixed clusters stood with no edge between their keys: they start whole regardless.
+    fixed = {"a1": "A", "a2": "A", "b1": "B"}
+
+    found = recluster_component(members, edges, set(), max_keys=200, fixed=fixed)
+
+    assert pieces(found) == {frozenset({"a1", "a2"}), frozenset({"b1", "n"})}
+
+
+def test_a_fixed_cluster_over_the_cap_stands_whole_and_takes_no_new_key() -> None:
+    members = dict.fromkeys(["a1", "a2", "a3", "n"], "JOHN")
+    fixed = {"a1": "A", "a2": "A", "a3": "A"}
+
+    found = recluster_component(members, [("a1", "n", 0.99)], set(), max_keys=2, fixed=fixed)
+
+    assert pieces(found) == {frozenset({"a1", "a2", "a3"}), frozenset({"n"})}
+
+
+def attach_tables(
+    con: duckdb.DuckDBPyConnection,
+    names: dict[str, str | None],
+    clusters: dict[str, str],
+    new_edges: list[tuple[str, str, float]],
+) -> None:
+    """The working file as `attach` finds it: `contributor` holding every key, `cluster` and
+    `component` (one per cluster) the keys that stood, `edge` and `new_edge` the new keys' edges,
+    and `new_key` the keys of `names` not in `clusters`."""
+    contributors(con, names)
+    con.execute(
+        "CREATE TABLE cluster (cluster_id VARCHAR, contributor_key VARCHAR,"
+        " match_probability DOUBLE)"
+    )
+    con.executemany(
+        "INSERT INTO cluster VALUES (?, ?, NULL)", [[c, k] for k, c in clusters.items()]
+    )
+    con.execute("CREATE TABLE component AS SELECT cluster_id, contributor_key FROM cluster")
+    for table in ("edge", "new_edge"):
+        con.execute(
+            f"CREATE TABLE {table} (contributor_key_l VARCHAR, contributor_key_r VARCHAR,"
+            " match_probability DOUBLE)"
+        )
+        con.executemany(f"INSERT INTO {table} VALUES (?, ?, ?)", new_edges)
+    con.execute("CREATE TABLE new_key (contributor_key VARCHAR)")
+    con.executemany(
+        "INSERT INTO new_key VALUES (?)", [[key] for key in names if key not in clusters]
+    )
+
+
+def test_attach_puts_new_keys_into_the_clusters_that_stood_or_new_ones_and_moves_no_old_key() -> (
+    None
+):
+    con = duckdb.connect()
+    names: dict[str, str | None] = {
+        "a1": "MARY",
+        "a2": "MARY",
+        "b1": "MARY",
+        # Reaches both A and B, B the stronger; brings `n2` with it.
+        "n1": "MARY",
+        "n2": None,
+        # Alone, and with a first name A's keys veto: its own cluster.
+        "n3": "KIRSTEN",
+        "n4": "KIRSTEN",
+    }
+    clusters = {"a1": "a1", "a2": "a1", "b1": "b1"}
+    edges = [
+        ("a1", "n1", 0.97),
+        ("b1", "n1", 0.99),
+        ("n1", "n2", 0.98),
+        ("a2", "n3", 0.99),
+        ("n3", "n4", 0.96),
+        # Under the cluster threshold: kept as an edge, joins nothing.
+        ("a1", "n4", 0.92),
+    ]
+    attach_tables(con, names, clusters, edges)
+
+    result = attach(
+        con, new_keys="new_key", new_edges="new_edge", max_keys=200, cluster_threshold=0.95
+    )
+
+    rows = con.execute(
+        "SELECT contributor_key, cluster_id, match_probability FROM cluster ORDER BY 1"
+    ).fetchall()
+    assert rows == [
+        ("a1", "a1", None),
+        ("a2", "a1", None),
+        ("b1", "b1", None),
+        ("n1", "b1", 0.99),
+        ("n2", "b1", 0.98),
+        ("n3", "n3", 0.96),
+        ("n4", "n3", 0.96),
+    ]
+    assert (result.keys, result.joined, result.clusters, result.neighbours) == (4, 2, 1, 3)
+    # Linkage's view: every key the new keys connect is one component, named by its lowest key.
+    components = dict(con.execute("SELECT contributor_key, cluster_id FROM component").fetchall())
+    assert components == dict.fromkeys(names, "a1")
+    # The connection holds nothing `attach` used along the way.
+    assert {name for (name,) in con.execute("SHOW TABLES").fetchall()} == {
+        "contributor",
+        "cluster",
+        "component",
+        "edge",
+        "new_edge",
+        "new_key",
+    }

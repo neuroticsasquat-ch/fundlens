@@ -414,13 +414,6 @@ def test_a_build_transformed_before_jfc_attributions_says_to_transform_it_again(
     assert f"run `fundlens transform --cycle 2024 --build-id {BUILD}`" in result.output
 
 
-def test_resolve_without_full_is_a_usage_error(cli_env: Path) -> None:
-    result = resolve()
-
-    assert result.exit_code == 2
-    assert "--full" in result.output
-
-
 def crosswalk_rows(conninfo: str) -> list[tuple[Any, ...]]:
     with psycopg.connect(conninfo) as conn:
         return conn.execute("SELECT * FROM app.crosswalk ORDER BY contributor_key").fetchall()

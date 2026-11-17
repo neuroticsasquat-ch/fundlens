@@ -51,11 +51,13 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
         assert markers.exists("extracted", store, cycle=2024, build_id=build_id)
         assert markers.exists("transformed", store, cycle=2024, build_id=build_id)
         assert markers.exists("resolved", store, cycle=2024, build_id=build_id)
-        assert store.exists(paths.resolution_model(build_id))
         assert markers.exists("loaded", store, cycle=2024, build_id=build_id)
         assert markers.exists("published", store, cycle=2024, build_id=build_id)
         # The second publish prunes nothing: the first build is the previous live one.
         assert store.list_keys(paths.silver_partition("race", 2024, build_id))
+    # The first run trains the model; the second resolves its new keys against it (NEU-2062).
+    assert store.exists(paths.resolution_model(first))
+    assert not store.exists(paths.resolution_model(second))
     with psycopg.connect(seed_env) as conn:
         unmatched = conn.execute(
             "SELECT candidate_id FROM app.unmatched_filing WHERE cycle = 2024"
@@ -70,9 +72,10 @@ def test_the_seed_extracts_the_fixture_and_records_its_unmatched_filing_on_every
     body = response.json()
     assert body["build_id"] == second
     assert body["published_at"] is not None
-    # The second resolve's model and run record: no overrides, no adjudications, no release (no
-    # OTel resource in tests), and not validated against DIME.
-    assert body["model_version"] == second
+    # The live model, the first resolve's, and the run record the second, incremental, resolve
+    # wrote over it: no overrides, no adjudications, no release (no OTel resource in tests), and not
+    # validated against DIME.
+    assert body["model_version"] == first
     assert (body["overrides_count"], body["adjudications_applied"]) == (0, 0)
     assert body["resolver_version"] is None
     assert (body["precision"], body["recall"], body["matched_rows"]) == (None, None, None)
