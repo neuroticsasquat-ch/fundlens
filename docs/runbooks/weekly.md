@@ -9,7 +9,7 @@ they are needed: [reading a run's output](#reading-a-runs-output), [a run missed
 [Log](#log) at the bottom; never rewrite it.
 
 **Not in this runbook:** the dataset snapshot. The task runs `fundlens run --scheduled` without `--dataset`
-until NEU-2064 builds the snapshot publisher, and NEU-2067 adds the flag to this task. The cycles before the
+until NEU-2067 adds the flag to this task; `fundlens dataset --snapshot` (NEU-2064) is what it then runs. The cycles before the
 current one are built once, by [backfill.md](backfill.md), and rebuilt only by
 [re-resolving with `--full`](#re-resolving-with---full).
 
@@ -465,7 +465,7 @@ finished in 7 d + 12 h), or step 8's check found no `success`. Work down the lis
 | `build <B> of 2026 is older than its newest transformed build, <N>: resume <N> with --build-id <N>, or start a new build` | Someone transformed a newer build of the cycle since this one started | Don't resume `<B>`. Find out who made `<N>` and whether it is meant to go live; then resume `<N>`, or run a new build (`run --scheduled`, with no `--build-id`) |
 | `LockNotAvailable` in `publish` | The nightly backup still held the gold tables (Facts) | Step 4 (it resumes at `publish`). Then step 1.3's check, and the ops ticket if the dump has grown |
 | Nothing: killed by a deploy, or by the task's 6 h timeout | The process died without pushing | A deploy: step 4. The timeout: read SigNoz's logs for the step it was in before resuming, and log how long it had run |
-| `--dataset` usage error, exit 2 | Someone added `--dataset` before NEU-2064 shipped | Remove it from the task. Exit 2 pushes nothing, so the deadman is what caught it |
+| `build <B> of <C> is having its donor ids rewritten: snapshot it once fundlens resolve has finished`, or `no crosswalk snapshot for the live build <B>`, exit 1 after `finished build` | `--dataset`'s snapshot: a resolve was still rewriting the live build, or its publish never took the crosswalk snapshot | The build is live; only the snapshot is missing. Once the resolve has finished (or after `fundlens publish --cycle <C> --build-id <B>` for the crosswalk), run `fundlens dataset --snapshot` |
 
 A `warning: <n> keys that stood were re-pointed` line in a run that finished is not a miss: the run published.
 Schedule [re-resolving with `--full`](#re-resolving-with---full) before the next Sunday.

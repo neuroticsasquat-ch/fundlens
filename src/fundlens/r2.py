@@ -4,8 +4,10 @@ R2 in prod, MinIO in dev and CI: both speak S3, so this is plain boto3 pointed a
 Keys are the strings `paths` builds.
 """
 
+import hashlib
 import io
 from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,6 +38,22 @@ def _dir(prefix: str) -> str:
 
 def _not_found(exc: ClientError) -> bool:
     return exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey")
+
+
+@dataclass(frozen=True)
+class Listed:
+    """One object as a listing gives it."""
+
+    key: str
+    size: int
+    # Without its quotes. A single-part object's is the MD5 of its bytes; a multipart one's is the
+    # MD5 of its parts' MD5s, then `-<parts>` (`multipart_etag`).
+    etag: str
+
+
+def multipart_etag(digests: list[bytes]) -> str:
+    """The ETag S3 gives an object put (or copied) in parts whose MD5s are `digests`."""
+    return f"{hashlib.md5(b''.join(digests)).hexdigest()}-{len(digests)}"
 
 
 class R2:
@@ -122,6 +140,43 @@ class R2:
                 # Always present on a listed object; the stubs mark every field optional.
                 if "Key" in obj:
                     yield obj["Key"]
+
+    def list_objects(self, prefix: str) -> list[Listed]:
+        """Every object starting with `prefix`, with its size and ETag, in key order."""
+        listed: list[Listed] = []
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if "Key" in obj and "Size" in obj and "ETag" in obj:
+                    listed.append(Listed(obj["Key"], obj["Size"], obj["ETag"].strip('"')))
+        return listed
+
+    def list_dirs(self, prefix: str) -> list[str]:
+        """The directory-style prefixes one level below `prefix` (`v1/2026-11-22/` under `v1/`),
+        in key order, without listing the objects under them."""
+        dirs: list[str] = []
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=_dir(prefix), Delimiter="/"):
+            for common in page.get("CommonPrefixes", []):
+                if "Prefix" in common:
+                    dirs.append(common["Prefix"])
+        return dirs
+
+    def copy_from(self, source: "R2", key: str, dest: str, *, if_match: str | None = None) -> None:
+        """Copy `key` of `source`'s bucket (this one's, or another the same credentials reach) to
+        `dest` here, server-side: the bytes never leave R2. Large objects are copied in parts.
+
+        With `if_match`, only while `key`'s ETag is still that one: the copy fails rather than
+        copy bytes other than the ones the caller read.
+        """
+        extra = {"CopySourceIfMatch": f'"{if_match}"'} if if_match else None
+        self.client.copy(
+            {"Bucket": source.bucket, "Key": key},
+            self.bucket,
+            dest,
+            ExtraArgs=extra,
+            Config=_TRANSFER,
+        )
 
     def download_to(self, key: str, path: Path) -> Path:
         """Download `key` to `path`, which appears only once the download is whole.

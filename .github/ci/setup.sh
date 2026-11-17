@@ -22,6 +22,10 @@ curl -fsS -o /dev/null http://localhost:9000/minio/health/live
 docker exec -e MC_HOST_local=http://fundlens:fundlens-dev-secret@localhost:9000 minio \
   mc mb --ignore-existing local/fundlens-data local/fundlens-public
 
+# DuckDB's httpfs, for the test that reads the public dataset back from MinIO over HTTP
+# (tests/integration/test_dataset.py), as the dev image installs it.
+uv run --no-sync python -c "import duckdb; duckdb.connect().install_extension('httpfs')"
+
 # Absolute, so a test that changes directory still finds them. Through $GITHUB_ENV because
 # .github/ci/env is literal and can't name the checkout.
 {

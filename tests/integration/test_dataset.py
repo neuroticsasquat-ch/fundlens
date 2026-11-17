@@ -1,0 +1,328 @@
+"""`fundlens dataset --snapshot` against MinIO, with a private and a public bucket (spec §9).
+
+The fixture cycle is resolved, loaded and published once for the module, into a private bucket
+and database of the module's own; each test snapshots it into an empty public bucket.
+"""
+
+import hashlib
+import os
+from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import date, timedelta
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import duckdb
+import psycopg
+import pytest
+from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import ClientError
+from typer.testing import CliRunner
+
+from fundlens import cli, paths, r2
+from fundlens.paths import SilverTable
+from fundlens.publish import dataset
+from fundlens.publish.dataset import DATASET_TABLES, BuildNotReady, Manifest
+from fundlens.r2 import R2
+from fundlens.settings import get_settings
+from fundlens.transform.runner import literal
+from tests import fec_fixture
+
+# Pipeline state saved for the session: not a dataset snapshot (CONTEXT.md), whence the name.
+from tests.integration.conftest import Snapshot as SavedState
+from tests.integration.conftest import (
+    bucket_name,
+    cli_pointed_at,
+    copy_files,
+    empty_store,
+    scratch_database,
+)
+from tests.integration.test_transform import BUILD
+
+CYCLE = fec_fixture.CYCLE
+DAY = date(2026, 11, 22)
+OVERRIDES = Path(__file__).resolve().parents[2] / "resolution" / "overrides.yaml"
+
+
+def run(*args: str) -> Any:
+    result = CliRunner().invoke(cli.app, list(args))
+    assert result.exit_code == 0, result.output
+    return result
+
+
+@dataclass(frozen=True)
+class Published:
+    """The module's private bucket, database and `DATA_DIR`, the fixture cycle live in them."""
+
+    store: R2
+    conninfo: str
+    data_dir: Path
+
+
+@pytest.fixture(scope="module")
+def published(
+    resolved_snapshot: SavedState, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Published]:
+    """`resolved_snapshot`, loaded and published as build `BUILD`."""
+    data_dir = tmp_path_factory.mktemp("dataset")
+    store = empty_store(bucket_name("dataset"))
+    try:
+        copy_files(resolved_snapshot, store=store, data_dir=data_dir)
+        with scratch_database(template=resolved_snapshot.database) as conninfo:
+            with cli_pointed_at(conninfo=conninfo, data_dir=data_dir, bucket=store.bucket) as env:
+                env.delenv("CLOUDFLARE_ZONE_ID", raising=False)
+                run("load", "--cycle", str(CYCLE), "--build-id", BUILD)
+                run("publish", "--cycle", str(CYCLE), "--build-id", BUILD)
+            yield Published(store, conninfo, data_dir)
+    finally:
+        store.delete_prefix("")
+
+
+@pytest.fixture
+def public() -> Iterator[R2]:
+    """An empty public bucket of the test's own."""
+    bucket = empty_store(bucket_name("public"))
+    yield bucket
+    bucket.delete_prefix("")
+
+
+def take(
+    published: Published, public: R2, day: date = DAY, *, data_dir: Path | None = None
+) -> dataset.Snapshot:
+    with psycopg.connect(published.conninfo, autocommit=True) as conn:
+        return dataset.snapshot(
+            conn,
+            published.store,
+            public,
+            snapshot_date=day,
+            data_dir=data_dir or published.data_dir,
+            overrides_path=OVERRIDES,
+        )
+
+
+@dataclass(frozen=True)
+class Taken:
+    """A public bucket holding the module's one snapshot, of `DAY`, and what taking it did."""
+
+    public: R2
+    result: dataset.Snapshot
+
+
+@pytest.fixture(scope="module")
+def taken(published: Published) -> Iterator[Taken]:
+    """`DAY`'s snapshot of `published`, taken once for the tests that only read it (each snapshot
+    copies every file)."""
+    public = empty_store(bucket_name("public-taken"))
+    try:
+        yield Taken(public, take(published, public))
+    finally:
+        public.delete_prefix("")
+
+
+def manifest(public: R2, root: str) -> Manifest:
+    return Manifest.model_validate_json(public.get(root + dataset.MANIFEST))
+
+
+def silver_rows(data_dir: Path, table: SilverTable) -> int:
+    partition = paths.local_path(data_dir, paths.silver_partition(table, CYCLE, BUILD))
+    with duckdb.connect() as con:
+        row = con.execute(
+            "SELECT count(*) FROM read_parquet(?, hive_partitioning = false)",
+            [f"{partition}/**/*.parquet"],
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def scalar(conninfo: str, query: str) -> int:
+    with psycopg.connect(conninfo) as conn:
+        row = conn.execute(query.encode()).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def listing(public: R2) -> dict[str, tuple[str, Any]]:
+    """Every object of the bucket, as its ETag and last-modified time."""
+    found: dict[str, tuple[str, Any]] = {}
+    for page in public.client.get_paginator("list_objects_v2").paginate(Bucket=public.bucket):
+        for obj in page.get("Contents", []):
+            found[obj.get("Key", "")] = (obj.get("ETag", ""), obj.get("LastModified"))
+    return found
+
+
+def test_a_snapshot_lays_out_every_table_by_cycle_with_a_manifest_of_its_rows(
+    published: Published, taken: Taken
+) -> None:
+    public = taken.public
+
+    assert taken.result.created
+    root = paths.dataset_snapshot(DAY)
+    held = manifest(public, root)
+    assert held.snapshot_date == DAY
+    assert (held.build_id, held.cycles) == (BUILD, {CYCLE: BUILD})
+    assert held.license == "CC BY 4.0"
+    for table in DATASET_TABLES:
+        assert held.tables[table].rows == silver_rows(published.data_dir, table), table
+        assert held.tables[table].files, table
+        for file in held.tables[table].files:
+            assert file.path.startswith(f"{table}/cycle={CYCLE}/")
+            assert "/" not in file.path.removeprefix(f"{table}/cycle={CYCLE}/")
+    assert held.tables["contribution"].rows == fec_fixture.expected()["silver"]["contribution"]
+    assert held.tables["donor"].rows == scalar(
+        published.conninfo, "SELECT count(*) FROM gold.donor"
+    )
+    assert held.tables["crosswalk"].rows == scalar(
+        published.conninfo, "SELECT count(*) FROM app.crosswalk"
+    )
+    # Every file the manifest names is there, byte for byte, and nothing else is.
+    files = [file for entry in held.tables.values() for file in entry.files] + [held.overrides]
+    for file in files:
+        body = public.get(root + file.path)
+        assert (len(body), hashlib.sha256(body).hexdigest()) == (file.bytes, file.sha256)
+    assert set(public.list_keys(root)) == {root + file.path for file in files} | {
+        root + dataset.MANIFEST
+    }
+    # `latest/` is a copy of it.
+    latest = public.list_keys(paths.DATASET_LATEST)
+    assert latest == [
+        paths.DATASET_LATEST + key.removeprefix(root) for key in public.list_keys(root)
+    ]
+    assert public.get(paths.DATASET_LATEST + dataset.MANIFEST) == public.get(
+        root + dataset.MANIFEST
+    )
+
+
+def test_a_second_snapshot_the_same_day_writes_nothing(published: Published, taken: Taken) -> None:
+    before = listing(taken.public)
+
+    again = take(published, taken.public)
+
+    assert (again.created, again.latest_copied, again.removed) == (False, False, [])
+    assert again.build_id == BUILD
+    assert listing(taken.public) == before
+
+
+def test_a_ninth_snapshot_removes_the_oldest_and_latest_follows_the_newest(
+    published: Published, taken: Taken, public: R2, tmp_path: Path
+) -> None:
+    held = taken.public.get(paths.dataset_snapshot(DAY) + dataset.MANIFEST)
+    # Eight earlier snapshots, as manifests alone: retention reads only directories.
+    earlier = [DAY - timedelta(weeks=week) for week in range(7, -1, -1)]
+    for day in earlier:
+        public.put(paths.dataset_snapshot(day) + dataset.MANIFEST, held)
+    # And an attempt that crashed before its manifest, never retried: no snapshot at all.
+    crashed = DAY - timedelta(days=3)
+    public.put(paths.dataset_snapshot(crashed) + "race/cycle=2024/part-0000.parquet", b"")
+    ninth = DAY + timedelta(weeks=1)
+
+    # With no local silver: every file is hashed from a download of R2's copy instead.
+    result = take(published, public, ninth, data_dir=tmp_path / "empty")
+
+    assert result.created and result.latest_copied
+    assert result.removed == [earlier[0], crashed]
+    assert not public.list_keys(paths.dataset_snapshot(earlier[0]))
+    assert not public.list_keys(paths.dataset_snapshot(crashed))
+    newest = paths.dataset_snapshot(ninth)
+    assert public.get(paths.DATASET_LATEST + dataset.MANIFEST) == public.get(
+        newest + dataset.MANIFEST
+    )
+    assert public.list_keys(paths.DATASET_LATEST) == [
+        paths.DATASET_LATEST + key.removeprefix(newest) for key in public.list_keys(newest)
+    ]
+    # The same files hash the same from a download as from the local cache.
+    assert manifest(public, newest).tables == Manifest.model_validate_json(held).tables
+
+
+def test_duckdb_reads_latest_contributions_from_minio_over_http(taken: Taken) -> None:
+    settings = get_settings()
+    endpoint = urlsplit(settings.r2_endpoint)
+    assert endpoint.scheme == "http"
+
+    with duckdb.connect() as con:
+        con.execute("LOAD httpfs")
+        con.execute(
+            f"CREATE SECRET minio (TYPE s3, KEY_ID {literal(settings.r2_access_key_id)},"
+            f" SECRET {literal(settings.r2_secret_access_key.get_secret_value())},"
+            f" ENDPOINT {literal(endpoint.netloc)}, URL_STYLE 'path', USE_SSL false,"
+            " REGION 'auto')"
+        )
+        row = con.execute(
+            "SELECT count(*) FROM read_parquet(?)",
+            [
+                f"s3://{taken.public.bucket}/{paths.DATASET_LATEST}contribution"
+                f"/cycle={CYCLE}/*.parquet"
+            ],
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] == fec_fixture.expected()["silver"]["contribution"]
+
+
+def test_a_build_having_its_donor_ids_rewritten_is_not_snapshotted(
+    published: Published, public: R2
+) -> None:
+    sentinel = paths.rewrite_sentinel(CYCLE, BUILD)
+    published.store.put(sentinel, b"")
+    try:
+        with pytest.raises(BuildNotReady, match="rewritten"):
+            take(published, public)
+    finally:
+        published.store.delete_keys([sentinel])
+    assert not public.exists(paths.dataset_snapshot(DAY) + dataset.MANIFEST)
+
+
+def test_the_cli_snapshots_into_the_public_bucket_once_a_day(
+    published: Published, taken: Taken, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "_today", lambda: DAY)
+    with cli_pointed_at(
+        conninfo=published.conninfo, data_dir=published.data_dir, bucket=published.store.bucket
+    ) as env:
+        env.setenv("R2_PUBLIC_BUCKET", taken.public.bucket)
+        get_settings.cache_clear()
+        result = run("dataset", "--snapshot")
+
+    assert f"already took snapshot {DAY} of build {BUILD}" in result.output
+    assert "latest/: already the newest" in result.output
+
+
+def test_the_cli_with_nothing_published_exits_1(cli_env: Path) -> None:
+    result = CliRunner().invoke(cli.app, ["dataset", "--snapshot"])
+
+    assert result.exit_code == 1
+    assert "no live gold build" in result.output
+
+
+def test_a_local_copy_put_in_parts_is_recognised_by_its_etag(
+    store: R2, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # MinIO's smallest part is 5 MiB: two parts, the second short.
+    part = 5 * 1024 * 1024
+    monkeypatch.setattr(
+        r2, "_TRANSFER", TransferConfig(multipart_threshold=part, multipart_chunksize=part)
+    )
+    monkeypatch.setattr(dataset, "MULTIPART_BYTES", part)
+    local = tmp_path / "object.bin"
+    local.write_bytes(os.urandom(part + 1024))
+    store.put("object.bin", local)
+    [listed] = store.list_objects("object.bin")
+
+    sha256, matches = dataset._hash(local, listed.etag)  # pyright: ignore[reportPrivateUsage]
+
+    assert listed.etag.endswith("-2")
+    assert matches
+    assert sha256 == hashlib.sha256(local.read_bytes()).hexdigest()
+    local.write_bytes(os.urandom(part + 1024))
+    assert not dataset._hash(local, listed.etag)[1]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_copy_pinned_to_an_etag_fails_once_the_object_changes(store: R2) -> None:
+    store.put("object.bin", b"hashed")
+    [listed] = store.list_objects("object.bin")
+    store.put("object.bin", b"rewritten since")
+
+    with pytest.raises(ClientError):
+        store.copy_from(store, "object.bin", "copy.bin", if_match=listed.etag)
+
+    assert not store.exists("copy.bin")

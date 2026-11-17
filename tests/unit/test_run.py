@@ -126,7 +126,7 @@ def test_a_build_id_resumes_that_build_from_the_step_asked_for(fake_pipeline: Fa
 
 @pytest.mark.parametrize(
     "args",
-    [("--build-id", "2026-11-08"), ("--cycle", "2023"), ("--dataset",), ("--from", "seats")],
+    [("--build-id", "2026-11-08"), ("--cycle", "2023"), ("--from", "seats")],
 )
 def test_a_usage_error_runs_nothing_and_reports_nothing(
     fake_pipeline: FakePipeline,
@@ -193,6 +193,57 @@ def test_a_run_by_hand_pushes_nothing_to_weekly(
     # The crash still reaches Bugsink.
     assert len(bugsink.events) == 1
     assert bugsink.events[0]["tags"] == {"pipeline_mode": "load"}
+
+
+@pytest.fixture
+def snapshots(monkeypatch: pytest.MonkeyPatch, fake_pipeline: FakePipeline) -> list[int]:
+    """Every dataset snapshot taken, as the number of pipeline runs that had started by then."""
+    taken: list[int] = []
+
+    def fake_snapshot() -> None:
+        taken.append(len(fake_pipeline.calls))
+
+    monkeypatch.setattr(cli, "_snapshot", fake_snapshot)
+    return taken
+
+
+def test_a_run_with_dataset_takes_the_snapshot_once_every_step_has_finished(
+    fake_pipeline: FakePipeline, pushes: list[tuple[JobFamily, str]], snapshots: list[int]
+) -> None:
+    result = invoke("--cycle", "2024", "--dataset", "--scheduled")
+
+    assert result.exit_code == 0, result.output
+    # Taken once, after the run's steps.
+    assert snapshots == [1]
+    assert pushes == [("weekly", "up")]
+
+
+def test_a_run_that_crashes_takes_no_snapshot(
+    fake_pipeline: FakePipeline, snapshots: list[int], bugsink: FakeTransport
+) -> None:
+    fake_pipeline.crash = True
+
+    result = invoke("--cycle", "2024", "--dataset")
+
+    assert result.exit_code == 1
+    assert snapshots == []
+
+
+def test_a_run_without_dataset_takes_no_snapshot(
+    fake_pipeline: FakePipeline, snapshots: list[int]
+) -> None:
+    assert invoke("--cycle", "2024").exit_code == 0
+    assert snapshots == []
+
+
+def test_dataset_without_snapshot_is_a_usage_error(
+    snapshots: list[int], bugsink: FakeTransport
+) -> None:
+    result = CliRunner().invoke(cli.app, ["dataset"])
+
+    assert result.exit_code == 2
+    assert snapshots == []
+    assert bugsink.events == []
 
 
 @pytest.fixture
