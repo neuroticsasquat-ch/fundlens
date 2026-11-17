@@ -3,6 +3,7 @@ resolved against the saved model, every donor_id already given left as it was (s
 NEU-2062)."""
 
 import logging
+import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -276,17 +277,34 @@ def test_only_the_new_build_is_resolved_and_its_silver_carries_every_donor_id(
     assert (rows, without) == (contributions, 0)
 
 
-def test_an_incremental_resolve_takes_a_fraction_of_a_full_one(incremented: Incremented) -> None:
-    ratio = incremented.incremental_s / incremented.full_s
+def test_an_incremental_resolve_neither_trains_nor_scores_every_pair(
+    incremented: Incremented,
+) -> None:
+    # The times are a measurement only. On a fixture this small, fixed costs (DuckDB, the silver
+    # rewrite) are most of either run, so their ratio is runner noise: 0.84 locally, 1.04 on CI
+    # once (NEU-2340). The work an incremental run skips is what it asserts instead.
     log.info(
         "resolve: full %.2f s, incremental %.2f s (%.2f of full)",
         incremented.full_s,
         incremented.incremental_s,
-        ratio,
+        incremented.incremental_s / incremented.full_s,
     )
-    # Loosely: on a fixture this small, fixed costs (DuckDB, Splink, the silver rewrite) are most
-    # of either run, and the incremental saves only the training and the scoring of every pair.
-    assert ratio < 1
+    output = incremented.result.output
+    [timings] = [line for line in output.splitlines() if re.match(r"load [\d.]+ s, ", line)]
+    phases = re.findall(r"(\w+) [\d.]+ s", timings)
+    # No `train` or `model` (the full run's training), and no `cluster` or `recluster` (its
+    # scoring of every pair and the components it cuts): only the new keys are linked.
+    assert phases == [
+        "load",
+        "link",
+        "attach",
+        "overrides",
+        "adjudications",
+        "save",
+        "crosswalk",
+        "silver",
+    ]
+    assert re.search(r"^model \S+: the live model, untrained$", output, re.MULTILINE)
 
 
 def test_with_no_live_model_an_incremental_resolve_exits_1_naming_the_full_one(
