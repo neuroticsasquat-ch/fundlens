@@ -200,7 +200,7 @@ while true; do docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemU
 ```
 
 **Expected:** two lines every 10 s, e.g. `14:00:00 pipeline-lvch8zyndujjzkz16ksys8im-… 0.5% 410MiB / 40GiB`.
-Switch back with `Ctrl-b 0`. The container limit is 40 GB and DuckDB is held to 28 GB.
+Switch back with `Ctrl-b 0`. The container limit is 40 GB and DuckDB is held to 32 GB.
 
 ## 2. Seats, only if the build has no `race` partition
 
@@ -252,7 +252,7 @@ DuckDB memory limit: <about 26 GiB>
 - `<C>` is below 5,620,495: some keys were joined. On an empty crosswalk every cluster is a new donor,
   so the two `<C>` are the same number.
 - `trained`, not `priors (too few keys to train on)`: 5.6M keys is far above `RESOLVE_MIN_TRAINING_KEYS`.
-- The memory limit is the 28 GB `DUCKDB_MEMORY_LIMIT`, printed in GiB.
+- The memory limit is the 32 GB `DUCKDB_MEMORY_LIMIT`, printed in GiB (29.8 GiB).
 
 **If it fails.**
 

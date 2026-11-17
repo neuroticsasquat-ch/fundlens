@@ -71,7 +71,7 @@ services:
     command: ["sleep", "infinity"]
     # So `sleep`, which ignores SIGTERM as PID 1, stops at once on a redeploy.
     init: true
-    # Spec §3.2: 40 GB of the box's 62 GB, with DuckDB held to 28 GB inside it.
+    # Spec §3.2: 40 GB of the box's 62 GB, with DuckDB held to 32 GB inside it (NEU-2060's backfill).
     mem_limit: 40g
     environment:
       DATABASE_URL: "postgresql://fundlens:${POSTGRES_PASSWORD}@fundlens-postgres:5432/fundlens"
@@ -88,8 +88,8 @@ services:
       # Batch adjudication (spec §6). Time a model before changing it.
       DEEPINFRA_API_KEY: "${DEEPINFRA_API_KEY}"
       ADJUDICATE_MODEL: "${ADJUDICATE_MODEL:-deepseek-ai/DeepSeek-V4-Flash}"
-      # Pipeline only: the API's in-process DuckDB must not inherit a 28 GB limit.
-      DUCKDB_MEMORY_LIMIT: "${DUCKDB_MEMORY_LIMIT:-28GB}"
+      # Pipeline only: the API's in-process DuckDB must not inherit a 32 GB limit.
+      DUCKDB_MEMORY_LIMIT: "${DUCKDB_MEMORY_LIMIT:-32GB}"
       # The box has 8 cores (`nproc`, 2026-10-29); two stay with the API and the other apps.
       DUCKDB_THREADS: "${DUCKDB_THREADS:-6}"
       SENTRY_DSN: "${SENTRY_DSN}"

@@ -109,7 +109,7 @@ frontend/
 | Service | Image | Role |
 |---|---|---|
 | `api` | fundlens (prod target) | `fundlens api`: uvicorn serving the `fundlens.api.app:create_app` factory with `--proxy-headers --forwarded-allow-ips="*"`. Mounts the silver volume read-only. |
-| `pipeline` | fundlens (prod target) | Idle (`sleep infinity`). Coolify scheduled tasks `docker exec` the CLI in it. Mounts silver + scratch + bronze volumes read-write. Memory limit 40 GB; DuckDB `memory_limit` 28 GB. |
+| `pipeline` | fundlens (prod target) | Idle (`sleep infinity`). Coolify scheduled tasks `docker exec` the CLI in it. Mounts silver + scratch + bronze volumes read-write. Memory limit 40 GB; DuckDB `memory_limit` 32 GB (28 GB until NEU-2060's backfill). |
 | `postgres` | postgres:18 | Schemas `app` (authored, migrated), `gold` (live, rebuilt), `gold_prev` (rollback), `gold_build` (in progress). |
 | Worker | Cloudflare | Serves the SPA at `fundlens.org`. |
 | R2 | Cloudflare | `fundlens-data` (private): bronze, silver, resolution snapshots, markers. `fundlens-public` (public, custom domain `data.fundlens.org`): dataset snapshots. |
