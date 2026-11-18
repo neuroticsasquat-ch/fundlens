@@ -9,12 +9,14 @@ linear_team: NEU
 linear_repo: fundlens
 
 Project: P-NEU-105 "fundlens v1: federal races, resolved donors, public dataset" (initiative I-16)
+Project: P-NEU-107 "fundlens: every FEC dollar" (initiative I-16)
 
 ## Docs
 
 specs_dir: docs
 
 Project spec: `docs/specs/fundlens-v1-federal-races-resolved-donors-public-dataset-project-spec.md` — the shared reference for every ticket; read it before implementing anything.
+Every FEC dollar spec: `docs/specs/fundlens-every-fec-dollar-project-spec.md` — the shared reference for P-NEU-107's tickets, read with the v1 project spec: the file catalogue, the milestones' shared contracts, and how a new silver table joins the dataset.
 Glossary: `CONTEXT.md` (terms are enforced in code and tickets; avoid the listed synonyms).
 Decisions: `docs/adr/` (0001 batch ELT on one machine, 0002 R2 is the source of truth, 0003 monorepo + Worker frontend, 0004 earmarks count once, 0005 overrides in git / crosswalk in Postgres, 0006 itemized via DuckDB in the API, 0007 gold loads by DuckDB → CSV → `COPY`, 0008 Mantine is the SPA's component library, 0009 resolution quality is scored against DIME by FEC ids, 0010 clusters are re-clustered by constrained single-linkage, 0011 organizations are grouped by normalized name, not resolved).
 Original brief: `docs/campaign-finance-handover.md`.
