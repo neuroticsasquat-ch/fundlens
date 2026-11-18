@@ -136,6 +136,12 @@ tasks:
     desc: Run only the unit tests
     cmds:
       - "{{.EXEC}} pytest tests/unit {{.CLI_ARGS}}"
+  dataset:schema:
+    desc: Regenerate docs/dataset/schema/ from a snapshot of the fixture cycle and docs/dataset/columns.yaml
+    # The test that checks the committed schemas, told to write them instead
+    # (tests/integration/test_dataset.py). Serially: it is one test.
+    cmds:
+      - "{{.COMPOSE}} exec -T -e DATASET_SCHEMA_WRITE=1 {{.SVC}} pytest tests/integration/test_dataset.py -k committed_schemas -n0"
   test:integration:
     desc: Run only the integration tests (needs Postgres and MinIO up)
     cmds:

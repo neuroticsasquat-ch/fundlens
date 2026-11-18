@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         default=Path("/app/resolution/overrides.yaml"), alias="OVERRIDES_PATH"
     )
 
+    # The documentation `fundlens dataset --snapshot` publishes at `v1/` beside the snapshots
+    # (spec §9): the repo's `docs/dataset/`, which the image copies to /app.
+    dataset_docs_dir: Path = Field(default=Path("/app/docs/dataset"), alias="DATASET_DOCS_DIR")
+
     # DuckDB's limits in transform (spec §3.2, §3.4). The memory limit and thread count are set
     # on the pipeline service alone (docker-compose.prod.yml), so the API's in-process DuckDB
     # never inherits them; unset, DuckDB picks its own. Spill under `scratch/` stops at 60 GB.

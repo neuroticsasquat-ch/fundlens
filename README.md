@@ -61,6 +61,12 @@ it exports the document (`task api:openapi`, which is `fundlens api --export-ope
 regenerates the types. The document carries the package version, so a version bump in
 `pyproject.toml` needs the same.
 
+`docs/dataset/` is the public dataset's README, license, changelog and per-table JSON Schemas,
+which `fundlens dataset --snapshot` publishes beside the snapshots. After changing a column of a
+dataset table, describe it in `docs/dataset/columns.yaml`, run `task dataset:schema` to
+regenerate `docs/dataset/schema/`, add a `docs/dataset/CHANGELOG.md` entry, and commit all three:
+`tests/integration/test_dataset.py` fails until they agree with the files.
+
 Pre-commit hooks call the same `task` targets, so they need the stack up (and `task fe:dev`
 for a commit touching `frontend/`):
 

@@ -959,8 +959,9 @@ def _today() -> date:
 
 
 def _snapshot() -> None:
-    """Take today's dataset snapshot of the live build (spec §9) and say what was done; exit 1
-    when there is no live build or it is not ready to snapshot."""
+    """Publish the dataset's documentation and take today's dataset snapshot of the live build
+    (spec §9), and say what was done; exit 1 when there is no live build, the documentation is
+    not all there or the build is not ready to snapshot."""
     settings = get_settings()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         try:
@@ -971,10 +972,17 @@ def _snapshot() -> None:
                 snapshot_date=_today(),
                 data_dir=settings.data_dir,
                 overrides_path=settings.overrides_path,
+                docs_dir=settings.dataset_docs_dir,
             )
-        except (dataset_publish.NothingPublished, dataset_publish.BuildNotReady) as exc:
+        except (
+            dataset_publish.NothingPublished,
+            dataset_publish.DocsMissing,
+            dataset_publish.BuildNotReady,
+        ) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(1) from exc
+    docs = ", ".join(key.removeprefix(paths.DATASET_PREFIX) for key in result.docs_put)
+    typer.echo(f"docs: {f'put {docs}' if docs else 'unchanged'}")
     taken = "took" if result.created else "already took"
     typer.echo(f"{taken} snapshot {result.snapshot_date} of build {result.build_id}")
     typer.echo(f"latest/: {'copied' if result.latest_copied else 'already the newest'}")

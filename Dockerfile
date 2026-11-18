@@ -54,6 +54,9 @@ COPY src/ src/
 COPY sql/ sql/
 # The overrides `fundlens resolve` applies (`OVERRIDES_PATH`, spec §6.5).
 COPY resolution/ resolution/
+# The README, license, changelog and schemas `fundlens dataset --snapshot` publishes beside the
+# snapshots (`DATASET_DOCS_DIR`, spec §9): the one part of docs/ .dockerignore lets in.
+COPY docs/dataset/ docs/dataset/
 # `alembic upgrade head` runs from /app in the pipeline container (spec §7.3).
 COPY alembic.ini ./
 COPY migrations/ migrations/

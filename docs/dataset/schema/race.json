@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/race.json",
+  "title": "race",
+  "description": "One contest for one seat in one cycle: every House district, the Senate seats up and their specials, and President every fourth year. Partitioned by cycle.",
+  "x-key": [
+    "race_id"
+  ],
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "description": "The race's id, `{cycle}-{office}-{state}-{district}`, then `-special` for a special election.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "office": {
+      "description": "The office, `H` House, `S` Senate or `P` President.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "The state, two letters; `US` for President.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "district": {
+      "description": "The House district, two digits; `00` for an at-large seat, the Senate and President.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "is_special": {
+      "description": "True for a special election.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "slug": {
+      "description": "The race's slug, `{cycle}/{house|senate|president}/{STATE}[-{DD}][-special]`, from which fundlens.org builds the path of the race's page.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "race_id",
+    "cycle",
+    "jurisdiction",
+    "office",
+    "state",
+    "district",
+    "is_special",
+    "slug"
+  ],
+  "additionalProperties": false
+}

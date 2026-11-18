@@ -9,4 +9,5 @@ __pycache__
 .idea
 node_modules
 frontend/
-docs/
+docs/*
+!docs/dataset

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/donor.json",
+  "title": "donor",
+  "description": "One resolved donor: an individual behind many contributor-name, employer and address variants, across every cycle. One file, `donor.parquet`, beside the crosswalk.",
+  "x-key": [
+    "donor_id"
+  ],
+  "type": "object",
+  "properties": {
+    "donor_id": {
+      "description": "The donor's id. Stable from snapshot to snapshot, except where a donor is merged or split.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "display_name": {
+      "description": "The name the donor's contributions report with the most money. Each display column is chosen alone, so the name may come from one spelling and the employer from another.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "employer": {
+      "description": "The employer the donor's contributions report with the most money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "occupation": {
+      "description": "The occupation the donor's contributions report with the most money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "city": {
+      "description": "The city the donor's contributions report with the most money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "The state the donor's contributions report with the most money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "zip5": {
+      "description": "The five-digit ZIP code the donor's contributions report with the most money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "total_all_cycles": {
+      "description": "The donor's contributions in dollars in every cycle, refunds netted.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(16,2)"
+    },
+    "first_cycle": {
+      "description": "The first cycle the donor appears in.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "last_cycle": {
+      "description": "The last cycle the donor appears in.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "contributor_key_count": {
+      "description": "The number of contributor keys resolved to the donor.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    }
+  },
+  "required": [
+    "donor_id",
+    "display_name",
+    "employer",
+    "occupation",
+    "city",
+    "state",
+    "zip5",
+    "total_all_cycles",
+    "first_cycle",
+    "last_cycle",
+    "contributor_key_count"
+  ],
+  "additionalProperties": false
+}

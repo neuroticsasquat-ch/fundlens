@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/committee.json",
+  "title": "committee",
+  "description": "One committee registered with the FEC, as the FEC's committee master file lists it for the cycle. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "committee_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "committee_id": {
+      "description": "The committee's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "name": {
+      "description": "The committee's name.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "treasurer": {
+      "description": "Its treasurer's name.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "street": {
+      "description": "Its street address.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "city": {
+      "description": "Its city.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "Its state.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "zip": {
+      "description": "Its ZIP code.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "designation": {
+      "description": "The FEC committee designation (`P` principal, `A` authorized, `J` joint fundraiser, `D` leadership PAC …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "type": {
+      "description": "The FEC committee type (`H`, `S`, `P` candidate committees, `Q`, `N` PACs, `O` super PAC, `V`, `W` hybrid PACs …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "party": {
+      "description": "The FEC party code.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "filing_frequency": {
+      "description": "The FEC filing frequency (`Q` quarterly, `M` monthly, `T` terminated …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "org_type": {
+      "description": "The FEC interest group category of a connected organization (`C` corporation, `L` labor …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "connected_org": {
+      "description": "The name of its connected organization.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the committee master file names for it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "is_conduit": {
+      "description": "True for a conduit (ActBlue, WinRed …), which forwards earmarked contributions.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    }
+  },
+  "required": [
+    "cycle",
+    "committee_id",
+    "source",
+    "jurisdiction",
+    "name",
+    "treasurer",
+    "street",
+    "city",
+    "state",
+    "zip",
+    "designation",
+    "type",
+    "party",
+    "filing_frequency",
+    "org_type",
+    "connected_org",
+    "candidate_id",
+    "is_conduit"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/crosswalk.json",
+  "title": "crosswalk",
+  "description": "The persistent mapping from contributor key to donor id, as of the snapshot's build, which keeps donor ids stable from build to build. One file, `crosswalk.parquet`.",
+  "x-key": [
+    "contributor_key"
+  ],
+  "type": "object",
+  "properties": {
+    "contributor_key": {
+      "description": "The contributor key, the `contributor` table's key.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "donor_id": {
+      "description": "The donor it is resolved to.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "assigned_at": {
+      "description": "When the key was last given its donor id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "x-duckdb-type": "TIMESTAMP WITH TIME ZONE"
+    },
+    "build_id": {
+      "description": "The build that last gave it, `YYYYMMDDTHHMMSSZ` of the run's start.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "contributor_key",
+    "donor_id",
+    "assigned_at",
+    "build_id"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,314 @@
+# Each table's and column's description in docs/dataset/schema/<table>.json, which is generated
+# from this file and the snapshot's Parquet files (`task dataset:schema`) and checked in CI
+# (tests/integration/test_dataset.py). Every column of a table's file is described here, and
+# nothing else: a column added, dropped or renamed fails CI until this file, the schemas and
+# docs/dataset/CHANGELOG.md say so. Terms are CONTEXT.md's.
+#
+# `key` lists the columns that identify a row. A code the FEC defines is the FEC's, as filed: its
+# meaning is the FEC's data dictionary's (https://www.fec.gov/data/browse-data/?tab=bulk-data).
+
+contribution:
+  description: >-
+    One itemized contribution from an individual (or a candidate) to a committee, as reported to
+    the FEC, counted once: an earmark through a conduit is its recipient's row, and memo lines are
+    left out but for orphaned attributions. A candidate's loans to their own campaign and their
+    repayments are rows too, marked self-funding. Partitioned by cycle; a cycle's rows are split
+    over many files.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    contributor_name: The contributor's name as reported.
+    contributor_city: The contributor's city as reported.
+    contributor_state: The contributor's state as reported.
+    contributor_zip: The contributor's ZIP code as reported.
+    contributor_employer: The contributor's employer as reported.
+    contributor_occupation: The contributor's occupation as reported.
+    contributor_key: >-
+      The contributor's normalized name, ZIP5, employer and occupation joined by `|`; the
+      `contributor` table's key.
+    donor_id: >-
+      The resolved donor the contribution is from, the `donor` table's key. Stable from snapshot
+      to snapshot (the crosswalk), except where a donor is merged or split.
+    recipient_committee_id: The FEC id of the committee that received the contribution.
+    candidate_id: >-
+      The FEC id of the candidate the recipient committee raises for, when it is their principal
+      or authorized committee; else null.
+    amount: >-
+      The amount in dollars. A refund (types 2nY, 4nY) is negative whatever sign it was filed
+      with, unless it reverses an earlier refund, and a loan repaid to the candidate (20C) is
+      negative; any other amount is as filed. Refunds and corrections net out in any sum.
+    date: The date of the contribution as filed; null when the filer gave none.
+    transaction_type: The FEC transaction type (`15`, `15E`, `22Y`, `16C` …).
+    entity_type: The FEC entity type of the contributor (`IND`, `CAN`), or null when the filing left it blank.
+    report_type: The FEC report the row was filed on (`Q1`, `12G`, `YE` …).
+    amendment_indicator: The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).
+    memo_text: The filer's memo text, as reported.
+    conduit_committee_id: >-
+      The FEC id of the conduit (ActBlue, WinRed …) an earmarked contribution came through; null
+      for one that came direct.
+    is_self_funding: >-
+      True for the candidate's own money to their own campaign, loans and loan repayments
+      included. Never counted among a candidate's donors.
+    is_non_contribution_account: >-
+      True for money to a hybrid PAC's non-contribution account, which is outside the contribution
+      limits and outside its individual total.
+    fec_line: >-
+      The line of the FEC form the row is filed on at its recipient (`11(a)(i)`, `13 loans`,
+      `party account 31` …), from its transaction type and the filer's transaction id; null when
+      neither places it.
+    is_other_line: >-
+      True when the row is filed on a line other than 11(a)(i), 11(d), refunds or a
+      non-contribution account: a party account, a loan, a transfer. Kept in a donor's figures,
+      and outside a committee's individual total.
+    image_num: The FEC image number of the page the row is on.
+    file_num: The FEC filing number of the report the row is on.
+
+contributor:
+  description: >-
+    One contributor key seen in a cycle: a unique normalized name, ZIP5, employer and occupation,
+    the unit resolution links into donors. Partitioned by cycle, so a key seen in several cycles
+    has a row in each: `contributor_key` is unique within a cycle's partition, not across them.
+    The files hold no cycle column: read it from the partition.
+  key: [contributor_key]
+  columns:
+    contributor_key: The normalized name, ZIP5, employer and occupation joined by `|`.
+    donor_id: The resolved donor the key belongs to.
+    name_raw: >-
+      The name as the key's chosen variant reports it. The variant is a whole set of reported
+      name, city, state, ZIP, employer and occupation: the one most of the key's contributions in
+      the cycle report, then the one with the most money, then the one most of its JFC
+      attributions report.
+    name_first: The chosen variant's first name, normalized.
+    name_last: Its last name, normalized.
+    name_suffix: Its suffix (`JR`, `III` …), normalized; null for none.
+    zip5: The key's five-digit ZIP code.
+    city: The chosen variant's city.
+    state: The chosen variant's state.
+    employer_raw: The employer as the chosen variant reports it.
+    employer_norm: The employer, normalized.
+    occupation_raw: The occupation as the chosen variant reports it.
+    occupation_norm: The occupation, normalized.
+    contribution_count: The key's contributions in the cycle.
+    amount_total: Their amount in dollars, refunds netted.
+    attribution_count: >-
+      The key's JFC attributions in the cycle: memo lines naming it behind a joint fundraising
+      committee's transfer. Evidence, never money.
+    first_cycle: The cycle of the partition.
+    last_cycle: The cycle of the partition.
+
+committee:
+  description: >-
+    One committee registered with the FEC, as the FEC's committee master file lists it for the
+    cycle. Partitioned by cycle.
+  key: [cycle, committee_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    committee_id: The committee's FEC id.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    name: The committee's name.
+    treasurer: Its treasurer's name.
+    street: Its street address.
+    city: Its city.
+    state: Its state.
+    zip: Its ZIP code.
+    designation: The FEC committee designation (`P` principal, `A` authorized, `J` joint fundraiser, `D` leadership PAC …).
+    type: The FEC committee type (`H`, `S`, `P` candidate committees, `Q`, `N` PACs, `O` super PAC, `V`, `W` hybrid PACs …).
+    party: The FEC party code.
+    filing_frequency: The FEC filing frequency (`Q` quarterly, `M` monthly, `T` terminated …).
+    org_type: The FEC interest group category of a connected organization (`C` corporation, `L` labor …).
+    connected_org: The name of its connected organization.
+    candidate_id: The FEC id of the candidate the committee master file names for it.
+    is_conduit: True for a conduit (ActBlue, WinRed …), which forwards earmarked contributions.
+
+candidate:
+  description: >-
+    One candidate registered with the FEC, as the FEC's candidate master file lists them for the
+    cycle. Partitioned by cycle.
+  key: [cycle, candidate_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    candidate_id: The candidate's FEC id.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    name: The candidate's name, as the FEC lists it.
+    party: The FEC party code.
+    election_year: The election year of the candidate's filing.
+    office: The office sought, `H` House, `S` Senate or `P` President.
+    state: The state, two letters.
+    district: The House district, two digits; `00` for an at-large seat, the Senate and President.
+    incumbent_challenger_open: The FEC incumbent/challenger status (`I`, `C`, `O`).
+    status: The FEC candidate status (`C` statutory candidate, `N` not yet, `P` prior cycle …).
+    principal_committee_id: The FEC id of the candidate's principal campaign committee.
+    race_id: >-
+      The race the candidate stands in this cycle, the `race` table's key; null for a filing that
+      stands in no race of the cycle.
+    alias_of: >-
+      For a second FEC id the same person holds for the same race, the id that holds their money;
+      else null.
+
+candidate_committee_link:
+  description: >-
+    One link between a candidate and a committee in a cycle, from the FEC's candidate-committee
+    linkage file (and, before 2000, which has none, from the master files). Partitioned by cycle.
+  key: [cycle, candidate_id, committee_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    candidate_id: The candidate's FEC id.
+    committee_id: The committee's FEC id.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    committee_type: The FEC committee type of the committee.
+    designation: The FEC committee designation of the link (`P` principal, `A` authorized …).
+    linkage_id: The FEC's id of the link; null for a link read from the master files.
+
+race:
+  description: >-
+    One contest for one seat in one cycle: every House district, the Senate seats up and their
+    specials, and President every fourth year. Partitioned by cycle.
+  key: [race_id]
+  columns:
+    race_id: The race's id, `{cycle}-{office}-{state}-{district}`, then `-special` for a special election.
+    cycle: The two-year election cycle, named by its even year.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    office: The office, `H` House, `S` Senate or `P` President.
+    state: The state, two letters; `US` for President.
+    district: The House district, two digits; `00` for an at-large seat, the Senate and President.
+    is_special: True for a special election.
+    slug: >-
+      The race's slug, `{cycle}/{house|senate|president}/{STATE}[-{DD}][-special]`, from which
+      fundlens.org builds the path of the race's page.
+
+independent_expenditure:
+  description: >-
+    One expenditure for or against a candidate, from the FEC's file of committees' spending on
+    and gifts to candidates (`pas2`): an independent expenditure, a party's coordinated
+    expenditure or a communication cost, told apart by `kind`. Only `kind = 'ie'` is independent expenditure. Never a contribution.
+    Partitioned by cycle.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    committee_id: The FEC id of the committee that spent the money.
+    candidate_id: >-
+      The FEC id of the candidate the filing names, when they are a candidate of the cycle, else
+      null. Where the FEC coded another candidate's id, a hand-curated list restores the filed one;
+      a second id the same person holds for the race is replaced by the one holding their money;
+      and spending naming a candidate whose committee was handed to another (Biden's 2024
+      campaign, Harris's from 2024-07-21), dated on or after the handoff, is the second
+      candidate's.
+    race_id: That candidate's race, the `race` table's key; null when there is none.
+    support_oppose: '`S` for spending in support of the candidate, `O` in opposition.'
+    amount: The amount in dollars, as filed. A correction may be negative and nets out in any sum.
+    date: The date of the expenditure as filed; null when the filer gave none.
+    transaction_type: The FEC transaction type (`24E`, `24A`, `24C`, `24F`, `24N`).
+    kind: >-
+      `ie` for an independent expenditure (24E, 24A), `coordinated` for a party's coordinated
+      expenditure (24C), `communication_cost` for a Form 7 filer's communication cost (24F, 24N).
+
+committee_transfer:
+  description: >-
+    One committee's money to another committee or a candidate: a receipt from another committee,
+    as the recipient reports it, or a committee's contribution to a candidate, as the giver
+    reports it. A gift is often reported on both sides, so sum one `side` only. Committee money,
+    never a contribution. Partitioned by cycle.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    from_committee_id: The FEC id of the committee the money came from.
+    to_committee_id: The FEC id of the committee it went to.
+    candidate_id: >-
+      The FEC id of the candidate the receiving committee raises for, when it is their principal
+      or authorized committee. For a 24K to a committee linked to no candidate, the candidate the
+      giver names, when that is a candidate of the cycle. Else null.
+    amount: The amount in dollars, as filed. A void or refund is negative and nets out in any sum.
+    date: The date as filed; null when the filer gave none.
+    transaction_type: The FEC transaction type (`18K`, `18G`, `24K` …).
+    side: >-
+      `receipt` when the recipient reported it, `disbursement` when the giver did (a 24K
+      contribution to a candidate).
+
+organization_receipt:
+  description: >-
+    One itemized gift to a committee from an organization: a corporation, union, trade
+    association, tribe or other group that is neither an individual nor a committee. Grouped by
+    organization key, never resolved, and never a contribution. Partitioned by cycle.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    organization_name: The organization's name as reported.
+    organization_key: >-
+      The name normalized, its legal form (`INC`, `LLC` …) stripped and its alias applied: rows
+      sharing it are one organization's.
+    city: The organization's city as reported.
+    state: Its state as reported.
+    zip: Its ZIP code as reported.
+    recipient_committee_id: The FEC id of the committee that received the gift.
+    amount: >-
+      The amount in dollars. A refund (types 2nY, 4nY) is negative whatever sign it was filed
+      with, unless it reverses an earlier refund; any other amount is as filed. Refunds and
+      corrections net out in any sum.
+    date: The date of the gift as filed; null when the filer gave none.
+    transaction_type: The FEC transaction type (`15`, `10`, `31` …).
+    entity_type: The FEC entity type of the giver (`ORG`), or null when the filing left it blank.
+    report_type: The FEC report the row was filed on (`Q1`, `12G`, `YE` …).
+    amendment_indicator: The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).
+    memo_text: The filer's memo text, as reported.
+    image_num: The FEC image number of the page the row is on.
+    file_num: The FEC filing number of the report the row is on.
+    classified: >-
+      True when the filing left the entity type blank and fundlens judged the name an
+      organization's.
+    is_non_contribution_account: >-
+      True for money to a hybrid PAC's non-contribution account, which is outside the contribution
+      limits and outside its organizations' total.
+    fec_line: >-
+      The line of the FEC form the row is filed on at its recipient (`11(a)(i)`, `party account
+      31` …), from its transaction type and the filer's transaction id; null when neither places
+      it.
+    is_other_line: >-
+      True when the row is filed on a line other than 11(a)(i), 11(d), refunds or a
+      non-contribution account: a party account, a transfer. Outside a committee's organizations'
+      total.
+
+donor:
+  description: >-
+    One resolved donor: an individual behind many contributor-name, employer and address
+    variants, across every cycle. One file, `donor.parquet`, beside the crosswalk.
+  key: [donor_id]
+  columns:
+    donor_id: The donor's id. Stable from snapshot to snapshot, except where a donor is merged or split.
+    display_name: >-
+      The name the donor's contributions report with the most money. Each display column is
+      chosen alone, so the name may come from one spelling and the employer from another.
+    employer: The employer the donor's contributions report with the most money.
+    occupation: The occupation the donor's contributions report with the most money.
+    city: The city the donor's contributions report with the most money.
+    state: The state the donor's contributions report with the most money.
+    zip5: The five-digit ZIP code the donor's contributions report with the most money.
+    total_all_cycles: The donor's contributions in dollars in every cycle, refunds netted.
+    first_cycle: The first cycle the donor appears in.
+    last_cycle: The last cycle the donor appears in.
+    contributor_key_count: The number of contributor keys resolved to the donor.
+
+crosswalk:
+  description: >-
+    The persistent mapping from contributor key to donor id, as of the snapshot's build, which
+    keeps donor ids stable from build to build. One file, `crosswalk.parquet`.
+  key: [contributor_key]
+  columns:
+    contributor_key: The contributor key, the `contributor` table's key.
+    donor_id: The donor it is resolved to.
+    assigned_at: When the key was last given its donor id.
+    build_id: The build that last gave it, `YYYYMMDDTHHMMSSZ` of the run's start.

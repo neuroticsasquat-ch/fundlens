@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/contribution.json",
+  "title": "contribution",
+  "description": "One itemized contribution from an individual (or a candidate) to a committee, as reported to the FEC, counted once: an earmark through a conduit is its recipient's row, and memo lines are left out but for orphaned attributions. A candidate's loans to their own campaign and their repayments are rows too, marked self-funding. Partitioned by cycle; a cycle's rows are split over many files.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The FEC's id of the row (`SUB_ID`), unique within a source.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_name": {
+      "description": "The contributor's name as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_city": {
+      "description": "The contributor's city as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_state": {
+      "description": "The contributor's state as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_zip": {
+      "description": "The contributor's ZIP code as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_employer": {
+      "description": "The contributor's employer as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_occupation": {
+      "description": "The contributor's occupation as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contributor_key": {
+      "description": "The contributor's normalized name, ZIP5, employer and occupation joined by `|`; the `contributor` table's key.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "donor_id": {
+      "description": "The resolved donor the contribution is from, the `donor` table's key. Stable from snapshot to snapshot (the crosswalk), except where a donor is merged or split.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "recipient_committee_id": {
+      "description": "The FEC id of the committee that received the contribution.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the recipient committee raises for, when it is their principal or authorized committee; else null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amount": {
+      "description": "The amount in dollars. A refund (types 2nY, 4nY) is negative whatever sign it was filed with, unless it reverses an earlier refund, and a loan repaid to the candidate (20C) is negative; any other amount is as filed. Refunds and corrections net out in any sum.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "date": {
+      "description": "The date of the contribution as filed; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "transaction_type": {
+      "description": "The FEC transaction type (`15`, `15E`, `22Y`, `16C` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "entity_type": {
+      "description": "The FEC entity type of the contributor (`IND`, `CAN`), or null when the filing left it blank.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "report_type": {
+      "description": "The FEC report the row was filed on (`Q1`, `12G`, `YE` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amendment_indicator": {
+      "description": "The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "memo_text": {
+      "description": "The filer's memo text, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "conduit_committee_id": {
+      "description": "The FEC id of the conduit (ActBlue, WinRed …) an earmarked contribution came through; null for one that came direct.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "is_self_funding": {
+      "description": "True for the candidate's own money to their own campaign, loans and loan repayments included. Never counted among a candidate's donors.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "is_non_contribution_account": {
+      "description": "True for money to a hybrid PAC's non-contribution account, which is outside the contribution limits and outside its individual total.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "fec_line": {
+      "description": "The line of the FEC form the row is filed on at its recipient (`11(a)(i)`, `13 loans`, `party account 31` …), from its transaction type and the filer's transaction id; null when neither places it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "is_other_line": {
+      "description": "True when the row is filed on a line other than 11(a)(i), 11(d), refunds or a non-contribution account: a party account, a loan, a transfer. Kept in a donor's figures, and outside a committee's individual total.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "image_num": {
+      "description": "The FEC image number of the page the row is on.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "file_num": {
+      "description": "The FEC filing number of the report the row is on.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "contributor_name",
+    "contributor_city",
+    "contributor_state",
+    "contributor_zip",
+    "contributor_employer",
+    "contributor_occupation",
+    "contributor_key",
+    "donor_id",
+    "recipient_committee_id",
+    "candidate_id",
+    "amount",
+    "date",
+    "transaction_type",
+    "entity_type",
+    "report_type",
+    "amendment_indicator",
+    "memo_text",
+    "conduit_committee_id",
+    "is_self_funding",
+    "is_non_contribution_account",
+    "fec_line",
+    "is_other_line",
+    "image_num",
+    "file_num"
+  ],
+  "additionalProperties": false
+}
