@@ -1,9 +1,36 @@
 # fundlens
 
+[![Dataset: CC BY 4.0](https://img.shields.io/badge/dataset-CC%20BY%204.0-blue)](https://data.fundlens.org/v1/README.md)
+
 Free public campaign-finance platform: donor, candidate and committee money for every federal
 race since 1980, presented by race, with individual donors resolved across name, employer and
 address variants. The resolved dataset is the product; the web app at
 [fundlens.org](https://fundlens.org) is its demo.
+
+## Dataset
+
+The resolved data is published as an open dataset at
+[data.fundlens.org](https://data.fundlens.org/v1/README.md): every federal cycle since 1980, as Parquet, a new
+snapshot each week. It holds the contributions, contributors, committees, candidates, races, independent
+expenditures, committee transfers and organization receipts, plus the resolved donors and the crosswalk from each
+contributor key to its donor. The [dataset README](https://data.fundlens.org/v1/README.md) describes the layout,
+the manifest and each table's schema. Every 2024 contribution, in DuckDB:
+
+```sh
+duckdb -c "
+SET VARIABLE files = (
+  SELECT list('https://data.fundlens.org/v1/latest/' || f.path)
+  FROM (SELECT unnest(tables.contribution.files) AS f
+        FROM read_json('https://data.fundlens.org/v1/latest/manifest.json'))
+  WHERE f.path LIKE 'contribution/cycle=2024/%');
+SELECT count(*) AS contributions, sum(amount) AS dollars
+FROM read_parquet(getvariable('files'));
+"
+```
+
+Licensed [CC BY 4.0](https://data.fundlens.org/v1/LICENSE); attribute it as `fundlens (fundlens.org), CC BY 4.0`.
+Whatever this license allows, federal law forbids using the contributors' names and addresses to solicit
+contributions or for commercial purposes (52 U.S.C. §30111(a)(4), 11 CFR 104.15).
 
 ## Where to start
 

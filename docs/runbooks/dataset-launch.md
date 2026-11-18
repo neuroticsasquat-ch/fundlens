@@ -494,20 +494,21 @@ Filled in by step 8. IDs and names only: **no token value or secret goes in this
 
 | What | Value |
 | --- | --- |
-| Re-time | |
-| `DATASET_COPY_WORKERS` | |
-| Scheduled task command | |
-| Trial snapshot deleted | |
-| Custom domain | |
-| `r2.dev` | |
-| CORS policy | |
-| CORS without `Origin` | |
-| `cf-cache-status` (manifest, Parquet) | |
-| Rate-limit rule's count | |
-| One-liner (DuckDB version, rows, dollars, time) | |
-| `/v1/cycles` 2024 | |
-| `/dataset` | |
-| First Sunday with the snapshot | |
+| Re-time | 2026-11-18, release `6bd0db0`, build `20261117T030329Z`: **16m26.675s** at 16 workers (snapshot pass 6,336 objects in 363 s, latest pass 6,340 in 495 s), against the 221m18s baseline. Passed first time |
+| `DATASET_COPY_WORKERS` | 16, the compose default; not set in Coolify |
+| Scheduled task command | `opentelemetry-instrument fundlens run --scheduled --dataset`, `0 3 * * 0`, timeout 21600, container `pipeline` (`coolify-db` `updated_at` 2026-11-18T18:57:17) |
+| Trial snapshot deleted | `v1/2026-11-17/`, 6,340 objects, 2026-11-18, after `latest/` named 2026-11-18 and before the domain was connected |
+| Custom domain | `data.fundlens.org` on `fundlens-public`, **Active**; DNS record `data`, type R2, created by Cloudflare. `fundlens-data` has none |
+| `r2.dev` | Disabled on both buckets |
+| CORS policy | As §5.2: any origin, `GET` and `HEAD`, `Range` allowed, `Content-Length`, `Content-Range`, `Accept-Ranges`, `ETag` exposed, max age 86400 |
+| CORS without `Origin` | R2 sends `access-control-allow-origin: *` and the exposed headers on requests with no `Origin` too. Preflight `OPTIONS` returns `204` |
+| `cf-cache-status` (manifest, Parquet) | `DYNAMIC` for both: nothing cached at the edge. No cache rule added |
+| `manifest.json` type | Served with no `Content-Type`: the publisher puts the manifest untyped (the docs are typed). DuckDB and `fetch().json()` read it regardless |
+| Rate-limit rule's count | **100** per 10 s, unchanged: the one-liner passed twice in a row with no 429 |
+| One-liner (DuckDB version, rows, dollars, time) | DuckDB v2.0.0 (d54cbbe3df): 50,104,322 contributions, $9,973,281,141.00, in 1:48.98 then 1:27.42 |
+| `/v1/cycles` 2024 | `contribution_count` 50,104,322, `total_amount` 9,973,281,141.0: equal to the one-liner |
+| `/dataset` | `latest` 2026-11-18, one snapshot (2026-11-18, `20261117T030329Z`, 11 tables); a file downloaded from the page |
+| First Sunday with the snapshot | Pending (2026-11-22), step 9 |
 
 ## Log
 
@@ -520,3 +521,27 @@ every partition is checked before the first copy. The README's one-liner is NEU-
 from `manifest.json` because DuckDB cannot glob over `https://`.
 
 **Pending:** steps 1–9.
+
+### 2026-11-18 — Launched (NEU-2067)
+
+Steps 1–7 walked from the laptop and `music-box-dancer`, release `6bd0db0` (PR #181) in production. Values in
+[As built](#as-built).
+
+- **Step 1.** Found an unfinished `v1/2026-11-18/` (82 `contribution/cycle=1980` keys, no manifest) beside
+  `v1/2026-11-17/`, `v1/latest/` and `v1/schema/`. Both were most likely left by a snapshot started after NEU-2065
+  deployed and stopped part way: it put the documentation, then copied 82 objects. Not traced further. Step 2's
+  snapshot cleared and retook it, as it does any unfinished snapshot.
+- **Step 2.** 16m26.675s at 16 workers, first try: `docs: unchanged`, `took snapshot 2026-11-18 of build
+  20261117T030329Z`, `latest/: copied`, `removed snapshots: none`. Every table's rows and files equal to
+  2026-11-17's. The two passes are 858 s of it; the rest is the docs check, `gold.donor`'s export, the crosswalk
+  copy and retention.
+- **Step 3.** `--dataset` on the task at 18:57 UTC. NEU-2063's two unattended Sundays are still being counted
+  (accepted risk, spec §1.1): the first Sunday with the flag is 2026-11-22.
+- **Step 4.** `v1/2026-11-17/` deleted, 6,340 objects; `v1/` holds `2026-11-18/`, `latest/` and `schema/`.
+- **Step 5.** Gate passed (README, LICENSE, CHANGELOG, 11 schemas). `data.fundlens.org` connected and Active,
+  CORS set, no cache rule. Unlike this runbook's guess, R2 sends the CORS headers without an `Origin` too.
+  `manifest.json` is served with no `Content-Type`.
+- **Step 6.** The one-liner read 2024's 256 contribution parts twice with no 429, so the rule stays at 100.
+- **Step 7.** `/v1/cycles` 2024 and the one-liner agree exactly; `/dataset` lists the snapshot.
+
+**Pending:** step 9, the first Sunday.

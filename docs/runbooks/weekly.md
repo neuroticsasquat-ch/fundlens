@@ -8,8 +8,9 @@ they are needed: [reading a run's output](#reading-a-runs-output), [a run missed
 [rolling back](#rolling-back) and [re-resolving with `--full`](#re-resolving-with---full). Append to the
 [Log](#log) at the bottom; never rewrite it.
 
-**Not in this runbook:** the dataset snapshot. The task runs `fundlens run --scheduled` without `--dataset`
-until NEU-2067 adds the flag to this task; `fundlens dataset --snapshot` (NEU-2064) is what it then runs. The cycles before the
+**Not in this runbook:** the dataset snapshot. Since 2026-11-18 the task runs `fundlens run --scheduled --dataset`,
+which takes `fundlens dataset --snapshot` (NEU-2064) once every step has finished; its launch, and the check of the
+first Sunday that publishes one, are [dataset-launch.md](dataset-launch.md) (NEU-2067). The cycles before the
 current one are built once, by [backfill.md](backfill.md), and rebuilt only by
 [re-resolving with `--full`](#re-resolving-with---full).
 
@@ -29,7 +30,7 @@ current one are built once, by [backfill.md](backfill.md), and rebuilt only by
 | --- | --- |
 | Host | `music-box-dancer` (tailnet `hetzner-01`) |
 | Resource UUID | `lvch8zyndujjzkz16ksys8im` ([coolify-setup.md](coolify-setup.md) Log) |
-| Scheduled task | `fundlens weekly` on the `pipeline` service: `opentelemetry-instrument fundlens run --scheduled`, `0 3 * * 0` |
+| Scheduled task | `fundlens weekly` on the `pipeline` service: `opentelemetry-instrument fundlens run --scheduled --dataset` (`--dataset` since 2026-11-18, NEU-2067), `0 3 * * 0` |
 | Schedule's timezone | Coolify's, **UTC**: Sunday 03:00 UTC, 04:00 on the VM's own clock (CET) or 05:00 in CEST (ops `docs/runbooks/uptime-kuma-monitors.md`, *Schedules*) |
 | The cycle it builds | `run` picks it: the next even year from today's, 2026 until 2027-01-01, then 2028 (spec §5.6). From the first Sunday of 2027 the task builds 2028 and 2026 is no longer rebuilt |
 | `--scheduled` | The task's flag only. It is the only thing that makes `run` push `fundlens/weekly`, so hand runs, reruns and resumes neither reset the deadman nor alert as a failed Sunday. A hand resume of a failed Sunday passes it, so the monitor recovers ([A run missed](#a-run-missed)) |
@@ -37,7 +38,7 @@ current one are built once, by [backfill.md](backfill.md), and rebuilt only by
 | Push monitors | `fundlens/weekly` (pushed by `run --scheduled` and `crash-test`) and `fundlens/publish` (pushed by every `publish`, scheduled or not, and by `publish --rollback`). Both at 648000 s (7 d + 12 h), retries 0, `Discord #alerts`. Paused by [coolify-setup.md](coolify-setup.md) §12 until step 5 |
 | Why 7 d + 12 h for both | A Sunday's push lands when the run ends, and that varies. A 7 d interval would alert on any Sunday that ended later than the one before. The 12 h grace means a Sunday that never finished alerts at about 15:00 UTC the same day |
 | A run's output | In Coolify's own database, `coolify-db`, table `scheduled_task_executions`, column `message`. Not in `docker logs`: a scheduled task is a `docker exec`, not the container's main process ([Reading a run's output](#reading-a-runs-output)) |
-| How long a run takes | About 45 min plus the incremental resolution: 2026's extract, seats and transform (7 + 5 + 981 s) and the load and publish of every cycle (1,402 + 157 s), `capacity.md`. Step 2 measures the incremental resolution for the first time |
+| How long a run takes | About 45 min plus the incremental resolution: 2026's extract, seats and transform (7 + 5 + 981 s) and the load and publish of every cycle (1,402 + 157 s), `capacity.md`. Step 2 measures the incremental resolution for the first time. Then about 16 minutes for the dataset snapshot, `--dataset` (16m26s by hand on 2026-11-18, `capacity.md` → *Dataset snapshot*) |
 | What a merge does | Every merge to `main` redeploys `pipeline` and kills a running `docker exec`, the scheduled task's included. Don't merge on Sunday between 03:00 UTC and the run's end. Dependabot's auto-merge runs daily at 11:00 UTC and on Saturdays from 13:00 to 23:30 UTC (`.github/workflows/dependencies.yml`), so it never overlaps |
 | The nightly backup | `backup-postgres.sh` runs at 03:00 on the VM's clock, 02:00 UTC, and dumps the whole fundlens database, `gold` and `gold_prev` included (ops `backups/postgres.md`). While it dumps it holds a lock on every gold table, and `publish`'s swap gives up after three tries, each waiting up to 10 s for its locks with 5 s between them, about 40 s in all (`LOCK_TIMEOUT`, `SWAP_RETRY_SECONDS`, `src/fundlens/publish/gold.py`). So the dump must finish before the run reaches `publish`. Step 1.3 checks |
 

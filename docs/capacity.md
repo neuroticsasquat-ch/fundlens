@@ -301,6 +301,7 @@ retention included.
 | Date | Build | SHA | Workers | Objects | Snapshot pass s | Latest pass s | Wall time | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-17 | `20261117T030329Z` | `ff1cff3` | 1 | 6,340 | ~6,300 (1h45m) | ~6,960 (1h56m) | 221m18s (3h41m) | The first production snapshot, all 24 cycles, copied one object at a time (NEU-2064). The passes are from its timestamps, not log lines, which it did not write. About 1.1 s a copy. 6,338 Parquet files (6,144 `contribution` parts), `overrides.yaml` and the manifest. The baseline [dataset-launch.md](runbooks/dataset-launch.md) §2 re-times against: 30 minutes or less. |
+| 2026-11-18 | `20261117T030329Z` | `6bd0db0` | 16 | 6,336 + 6,340 | 363 | 495 | 16m26.675s | The re-time ([dataset-launch.md](runbooks/dataset-launch.md) §2, NEU-2067), by hand: 13.5 times faster than the baseline, inside the 30-minute target first try. Objects are the two passes' log counts. Same build and rows as the baseline. The 128 s outside the passes are the docs check, `gold.donor`'s export, the crosswalk copy and retention. |
 
 ## Triggers
 
