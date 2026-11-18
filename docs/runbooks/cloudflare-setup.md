@@ -6,7 +6,7 @@ API tokens, the SPA's Worker with Workers Builds and its custom domain, and the 
 rules for `api.fundlens.org`. Append to the [Log](#log) at the bottom; never rewrite it.
 
 **Not in this runbook:** public access and the `data.fundlens.org` custom domain on `fundlens-public`
-(NEU-2067), the Coolify side of `api.fundlens.org` ([coolify-setup.md](coolify-setup.md), NEU-2032).
+([dataset-launch.md](dataset-launch.md), NEU-2067), the Coolify side of `api.fundlens.org` ([coolify-setup.md](coolify-setup.md), NEU-2032).
 
 ## Order
 
@@ -35,12 +35,12 @@ Fill this in during Part A, then commit it ([step 9](#9-record-the-as-built-valu
 | Zone ID (`fundlens.org`) | 04a93f8792c4313c7f2c1c3b73175307 |
 | Cloudflare nameservers | kara.ns.cloudflare.com. mike.ns.cloudflare.com. |
 | R2 endpoint (`R2_ENDPOINT`) | `https://6fa481ae677c7dc06dfe81f4522dfa84.r2.cloudflarestorage.com` |
-| R2 buckets | `fundlens-data` (private, location hint WEUR), `fundlens-public` (private until NEU-2067) |
+| R2 buckets | `fundlens-data` (private, location hint WEUR), `fundlens-public` (public by custom domain `data.fundlens.org` since 2026-11-18, `r2.dev` disabled, CORS as [dataset-launch.md](dataset-launch.md) §5.2) |
 | R2 token | `fundlens-pipeline`, Object Read & Write on both buckets; vault item `fundlens R2 token` |
 | Purge token | `fundlens-purge`, Zone → Cache Purge on `fundlens.org`; vault item `fundlens Cloudflare purge token` |
 | Worker | `fundlens`, custom domain `fundlens.org` |
 | Cache rule | `api: cache everything, respect origin` |
-| Rate-limit rule | `api: /v1 per IP` |
+| Rate-limit rule | `api: /v1 per IP`, 100 requests per 10 s per IP. Matches on path, so it covers `data.fundlens.org/v1/…` too; 100 measured enough for the dataset README's one-liner ([dataset-launch.md](dataset-launch.md) §6) |
 
 ## Part A — setup
 
@@ -359,3 +359,10 @@ and 9 now say *Non-production branch builds* off and *Preview URLs* off. `fronte
 dropped its `previews` block, which only `wrangler preview` needed. The 2026-10-30 workaround for the
 preview name-mismatch error went with the step it described. It is still recorded in the entry above
 and in PR #27.
+
+### 2026-11-18 — `fundlens-public` public on `data.fundlens.org` (NEU-2067)
+
+[dataset-launch.md](dataset-launch.md) §5–§6: the custom domain `data.fundlens.org` connected to `fundlens-public`
+(Active, DNS record `data` of type R2), its CORS policy set, `r2.dev` left disabled on both buckets, no cache rule.
+The rate-limit rule `api: /v1 per IP` now covers the dataset as well as the API, since it matches on path; the
+README's DuckDB one-liner (256 files) passed twice under its 100 per 10 s, so the count is unchanged.
