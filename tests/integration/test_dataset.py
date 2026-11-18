@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -58,6 +59,8 @@ OVERRIDES = REPO_ROOT / "resolution" / "overrides.yaml"
 DOCS = REPO_ROOT / "docs" / "dataset"
 # Set by `task dataset:schema`: write the schemas rather than check them.
 WRITE_SCHEMAS = os.environ.get("DATASET_SCHEMA_WRITE") == "1"
+# The copies a snapshot runs at once, unless a test says otherwise (NEU-2067).
+WORKERS = 4
 
 
 def run(*args: str) -> Any:
@@ -109,6 +112,7 @@ def take(
     *,
     data_dir: Path | None = None,
     docs_dir: Path = DOCS,
+    workers: int = WORKERS,
 ) -> dataset.Snapshot:
     with psycopg.connect(published.conninfo, autocommit=True) as conn:
         return dataset.snapshot(
@@ -119,24 +123,72 @@ def take(
             data_dir=data_dir or published.data_dir,
             overrides_path=OVERRIDES,
             docs_dir=docs_dir,
+            workers=workers,
         )
+
+
+class InFlight:
+    """`R2.copy_from`, counting the copies in flight at once into each of the snapshot's
+    directory and `latest/`.
+
+    Each copy waits until another one into the same directory is in flight before it runs, so
+    overlap is observed, never inferred from elapsed time (NEU-2340). A copy that waits 5 s for
+    company stops the waiting for every copy into its directory after it, so a pass that copies one
+    at a time fails rather than hangs, and an odd number of objects never strands the last one.
+    """
+
+    def __init__(self) -> None:
+        self._copy = R2.copy_from
+        self._lock = threading.Lock()
+        self._now: dict[str, int] = {}
+        self._company = {into: threading.Event() for into in ("snapshot", paths.DATASET_LATEST)}
+        self.most: dict[str, int] = {}
+
+    def copy_from(
+        self, target: R2, source: R2, key: str, dest: str, *, if_match: str | None = None
+    ) -> None:
+        into = paths.DATASET_LATEST if dest.startswith(paths.DATASET_LATEST) else "snapshot"
+        with self._lock:
+            self._now[into] = self._now.get(into, 0) + 1
+            self.most[into] = max(self.most.get(into, 0), self._now[into])
+            if self._now[into] > 1:
+                self._company[into].set()
+        try:
+            if not self._company[into].wait(timeout=5):
+                self._company[into].set()
+            self._copy(target, source, key, dest, if_match=if_match)
+        finally:
+            with self._lock:
+                self._now[into] -= 1
 
 
 @dataclass(frozen=True)
 class Taken:
-    """A public bucket holding the module's one snapshot, of `DAY`, and what taking it did."""
+    """A public bucket holding the module's one snapshot, of `DAY`, what taking it did, and the
+    most copies it had in flight at once into each directory."""
 
     public: R2
     result: dataset.Snapshot
+    most_in_flight: dict[str, int]
 
 
 @pytest.fixture(scope="module")
 def taken(published: Published) -> Iterator[Taken]:
-    """`DAY`'s snapshot of `published`, taken once for the tests that only read it (each snapshot
-    copies every file)."""
+    """`DAY`'s snapshot of `published`, `WORKERS` copies at a time, taken once for the tests that
+    only read it (each snapshot copies every file)."""
     public = empty_store(bucket_name("public-taken"))
+    observed = InFlight()
     try:
-        yield Taken(public, take(published, public))
+
+        def copy_from(
+            target: R2, source: R2, key: str, dest: str, *, if_match: str | None = None
+        ) -> None:
+            observed.copy_from(target, source, key, dest, if_match=if_match)
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(R2, "copy_from", copy_from)
+            result = take(published, public)
+        yield Taken(public, result, observed.most)
     finally:
         public.delete_prefix("")
 
@@ -214,6 +266,58 @@ def test_a_snapshot_lays_out_every_table_by_cycle_with_a_manifest_of_its_rows(
     )
 
 
+def test_the_snapshot_pass_copies_several_objects_at_a_time(taken: Taken) -> None:
+    assert taken.most_in_flight["snapshot"] >= 2
+
+
+def test_the_latest_pass_copies_several_objects_at_a_time(taken: Taken) -> None:
+    assert taken.most_in_flight[paths.DATASET_LATEST] >= 2
+
+
+def test_one_worker_and_many_take_the_same_manifest(
+    published: Published, taken: Taken, public: R2
+) -> None:
+    take(published, public, workers=1)
+
+    one = manifest(public, paths.dataset_snapshot(DAY))
+    many = manifest(taken.public, paths.dataset_snapshot(DAY))
+    # Files and all, in the same order.
+    assert one.tables == many.tables
+
+
+def test_a_failed_copy_fails_the_snapshot_and_a_rerun_takes_it(
+    published: Published, public: R2, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = paths.dataset_snapshot(DAY)
+    copy_from = R2.copy_from
+    failed: list[str] = []
+    lock = threading.Lock()
+
+    def failing(
+        target: R2, source: R2, key: str, dest: str, *, if_match: str | None = None
+    ) -> None:
+        # One key only: the first `race` file to be copied.
+        with lock:
+            fail = dest.startswith(root + "race/") and not failed
+            if fail:
+                failed.append(dest)
+        if fail:
+            raise ConnectionError("R2 went away")
+        copy_from(target, source, key, dest, if_match=if_match)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(R2, "copy_from", failing)
+        with pytest.raises(ConnectionError, match="went away"):
+            take(published, public)
+
+    assert len(failed) == 1
+    assert not public.exists(root + dataset.MANIFEST)
+    assert not public.list_keys(paths.DATASET_LATEST)
+    again = take(published, public)
+    assert again.created and again.latest_copied
+    assert public.exists(root + dataset.MANIFEST)
+
+
 def test_a_second_snapshot_the_same_day_writes_nothing(published: Published, taken: Taken) -> None:
     before = listing(taken.public)
 
@@ -242,7 +346,8 @@ def test_a_ninth_snapshot_removes_the_oldest_and_latest_follows_the_newest(
     public.put(paths.dataset_snapshot(crashed) + "race/cycle=2024/part-0000.parquet", b"")
     ninth = DAY + timedelta(weeks=1)
 
-    # With no local silver: every file is hashed from a download of R2's copy instead.
+    # With no local silver: every file is hashed from a download of R2's copy instead, several
+    # at once, each to a file of its own.
     result = take(published, public, ninth, data_dir=tmp_path / "empty")
 
     assert result.created and result.latest_copied
@@ -295,7 +400,27 @@ def test_a_build_having_its_donor_ids_rewritten_is_not_snapshotted(
             take(published, public)
     finally:
         published.store.delete_keys([sentinel])
-    assert not public.exists(paths.dataset_snapshot(DAY) + dataset.MANIFEST)
+    # Every partition is checked before the first copy: nothing of the snapshot is there.
+    assert not public.list_keys(paths.dataset_snapshot(DAY))
+
+
+def test_a_build_lacking_its_last_table_copies_nothing(
+    published: Published, public: R2, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The last table of the manifest, so a check made table by table would have copied the others.
+    last = DATASET_TABLES[-1]
+    partition = paths.silver_partition(last, CYCLE, BUILD) + "/"
+    list_objects = R2.list_objects
+
+    def without_last(store: R2, prefix: str) -> list[r2.Listed]:
+        return [] if prefix == partition else list_objects(store, prefix)
+
+    monkeypatch.setattr(R2, "list_objects", without_last)
+
+    with pytest.raises(BuildNotReady, match=f"has no {last}"):
+        take(published, public)
+
+    assert not public.list_keys(paths.dataset_snapshot(DAY))
 
 
 def test_the_cli_snapshots_into_the_public_bucket_once_a_day(

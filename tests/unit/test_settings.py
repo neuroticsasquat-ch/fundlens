@@ -21,6 +21,7 @@ OPTIONAL = (
     "DUCKDB_MEMORY_LIMIT",
     "DUCKDB_MAX_TEMP_DIRECTORY_SIZE",
     "DUCKDB_THREADS",
+    "DATASET_COPY_WORKERS",
     "LOG_LEVEL",
     "RESOLVE_MATCH_THRESHOLD",
     "RESOLVE_CLUSTER_THRESHOLD",
@@ -65,6 +66,7 @@ def test_reads_required_values_and_applies_defaults(env: pytest.MonkeyPatch) -> 
     assert settings.duckdb_memory_limit is None
     assert settings.duckdb_max_temp_directory_size == "60GB"
     assert settings.duckdb_threads is None
+    assert settings.dataset_copy_workers == 16
     assert settings.log_level == "INFO"
     # Spec §6.4's thresholds, until DIME tunes them.
     assert settings.resolve_match_threshold == 0.9
@@ -125,3 +127,10 @@ def test_a_blank_variable_is_unset(env: pytest.MonkeyPatch) -> None:
     assert settings.data_dir == Path("/data/fundlens")
     assert settings.cloudflare_zone_id is None
     assert settings.sentry_dsn is None
+
+
+def test_a_snapshot_copies_at_least_one_object_at_a_time(env: pytest.MonkeyPatch) -> None:
+    env.setenv("DATASET_COPY_WORKERS", "0")
+
+    with pytest.raises(ValidationError, match="DATASET_COPY_WORKERS"):
+        Settings()  # pyright: ignore[reportCallIssue]

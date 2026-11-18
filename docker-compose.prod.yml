@@ -92,6 +92,8 @@ services:
       DUCKDB_MEMORY_LIMIT: "${DUCKDB_MEMORY_LIMIT:-32GB}"
       # The box has 8 cores (`nproc`, 2026-10-29); two stay with the API and the other apps.
       DUCKDB_THREADS: "${DUCKDB_THREADS:-6}"
+      # Objects a dataset snapshot copies at once (NEU-2067): set by the prod re-time.
+      DATASET_COPY_WORKERS: "${DATASET_COPY_WORKERS:-16}"
       SENTRY_DSN: "${SENTRY_DSN}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector-b144lcfm2xe4mxo73dg7b8z9:4318}"
       OTEL_RESOURCE_ATTRIBUTES: "service.name=fundlens-pipeline,deployment.environment=production,service.version=${SOURCE_COMMIT:-unknown}"

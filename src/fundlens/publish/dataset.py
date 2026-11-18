@@ -22,6 +22,11 @@ A run whose documentation is not all there (`DocsMissing`) copies nothing.
 Then `v1/latest/` is made a copy of the newest snapshot (R2 has no symlinks) and every snapshot
 but the newest `KEEP` is deleted.
 
+The two bulk copies, of the silver files into the snapshot and of the snapshot into `latest/`,
+run `workers` objects at a time (`DATASET_COPY_WORKERS`, NEU-2067): one at a time, the first full
+snapshot took 3h41m, nearly all of it server-side copies. Every partition is listed and checked
+before the first copy, and the manifest is the same at any worker count.
+
 Idempotent per date: when the day's manifest exists, nothing is copied again, `latest/` is
 copied only if its manifest is not the newest snapshot's, and a second run the same day writes
 nothing. A snapshot that crashed before its manifest is cleared and taken again.
@@ -30,6 +35,9 @@ nothing. A snapshot that crashed before its manifest is cleared and taken again.
 import hashlib
 import logging
 import shutil
+import time
+from collections.abc import Callable, Sequence
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -173,6 +181,33 @@ class _Digest:
     rows: int
 
 
+@dataclass(frozen=True)
+class _SilverCopy:
+    """One silver object a snapshot copies: from `obj` in the private bucket to `path` below the
+    snapshot's directory, hashed from `local` when that is R2's copy byte for byte."""
+
+    table: SilverTable
+    obj: Listed
+    path: str
+    local: Path
+
+
+def _pooled[T, R](fn: Callable[[T], R], items: Sequence[T], *, workers: int) -> list[R]:
+    """`fn` of every item, `workers` at a time, in `items`' order (so a manifest is the same at
+    any worker count). On the first exception, the calls not started are cancelled, those in
+    flight finish, and it is raised."""
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        futures = [pool.submit(fn, item) for item in items]
+        done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+        for future in futures:
+            if future in done and (exc := future.exception()) is not None:
+                raise exc
+        return [future.result() for future in futures]
+    finally:
+        pool.shutdown(cancel_futures=True)
+
+
 def _live(conn: Connection[TupleRow]) -> _Live:
     """The live build, from `gold.meta`. Raises `NothingPublished` when there is none."""
     try:
@@ -219,16 +254,16 @@ def _rows(path: Path) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
-def _digest(store: R2, obj: Listed, *, local: Path | None, work: Path) -> _Digest:
+def _digest(store: R2, obj: Listed, *, local: Path | None, download: Path) -> _Digest:
     """`obj`'s SHA-256 and rows, from `local`, the local cache's copy, when it is R2's byte for
-    byte (its ETag says so), else from a download into `work`. S3 keeps no SHA-256 of an
-    object."""
+    byte (its ETag says so), else from a download to `download`, a path of this object's own (the
+    snapshot hashes several at once), deleted after. S3 keeps no SHA-256 of an object."""
     if local is not None and local.is_file() and local.stat().st_size == obj.size:
         sha256, matches = _hash(local, obj.etag)
         if matches:
             return _Digest(sha256, _rows(local))
     log.info("hashing %s from R2: no local copy matches it", obj.key)
-    download = store.download_to(obj.key, work / "object.parquet")
+    download = store.download_to(obj.key, download)
     try:
         sha256, _ = _hash(download)
         return _Digest(sha256, _rows(download))
@@ -242,8 +277,38 @@ def _flat(relative: str) -> str:
     return relative.replace("=", "-").replace("/", "-")
 
 
-def _silver_table(
-    table: SilverTable,
+def _silver_copies(live: _Live, store: R2, *, data_dir: Path) -> list[_SilverCopy]:
+    """Every object of every cycle's live partition of each table of `DATASET_TABLES`, in the
+    manifest's order. Raises `BuildNotReady`, before the snapshot copies anything, when a partition
+    is having its donor ids rewritten or holds no Parquet."""
+    copies: list[_SilverCopy] = []
+    for table in DATASET_TABLES:
+        for cycle, build_id in live.cycles.items():
+            partition = paths.silver_partition(table, cycle, build_id) + "/"
+            objects = store.list_objects(partition)
+            if table == "contribution" and any(
+                obj.key == paths.rewrite_sentinel(cycle, build_id) for obj in objects
+            ):
+                raise BuildNotReady(
+                    f"build {build_id} of {cycle} is having its donor ids rewritten: snapshot it"
+                    " once `fundlens resolve` has finished"
+                )
+            parts = [obj for obj in objects if obj.key.endswith(".parquet")]
+            if not parts:
+                raise BuildNotReady(f"the live build {build_id} of {cycle} has no {table}")
+            copies.extend(
+                _SilverCopy(
+                    table=table,
+                    obj=obj,
+                    path=f"{table}/cycle={cycle}/{_flat(obj.key.removeprefix(partition))}",
+                    local=paths.local_path(data_dir, obj.key),
+                )
+                for obj in parts
+            )
+    return copies
+
+
+def _silver_tables(
     live: _Live,
     store: R2,
     public: R2,
@@ -251,32 +316,35 @@ def _silver_table(
     root: str,
     data_dir: Path,
     work: Path,
-) -> ManifestTable:
-    """Copy every cycle's live partition of `table` under `root`; its manifest entry."""
-    files: list[ManifestFile] = []
-    rows = 0
-    for cycle, build_id in live.cycles.items():
-        partition = paths.silver_partition(table, cycle, build_id) + "/"
-        objects = store.list_objects(partition)
-        if table == "contribution" and any(
-            obj.key == paths.rewrite_sentinel(cycle, build_id) for obj in objects
-        ):
-            raise BuildNotReady(
-                f"build {build_id} of {cycle} is having its donor ids rewritten: snapshot it"
-                " once `fundlens resolve` has finished"
-            )
-        parts = [obj for obj in objects if obj.key.endswith(".parquet")]
-        if not parts:
-            raise BuildNotReady(f"the live build {build_id} of {cycle} has no {table}")
-        for obj in parts:
-            path = f"{table}/cycle={cycle}/{_flat(obj.key.removeprefix(partition))}"
-            local = paths.local_path(data_dir, obj.key)
-            digest = _digest(store, obj, local=local, work=work)
-            # Only the bytes just hashed: a rewrite since then fails the copy.
-            public.copy_from(store, obj.key, root + path, if_match=obj.etag)
-            files.append(ManifestFile(path=path, sha256=digest.sha256, bytes=obj.size))
-            rows += digest.rows
-    return ManifestTable(rows=rows, files=files)
+    workers: int,
+) -> dict[str, ManifestTable]:
+    """Hash and copy every table's live partitions under `root`, `workers` objects at a time;
+    their manifest entries, by table."""
+    copies = _silver_copies(live, store, data_dir=data_dir)
+
+    def copy(job: _SilverCopy) -> _Digest:
+        digest = _digest(store, job.obj, local=job.local, download=work / _flat(job.path))
+        # Only the bytes just hashed: a rewrite since then fails the copy.
+        public.copy_from(store, job.obj.key, root + job.path, if_match=job.obj.etag)
+        return digest
+
+    started = time.monotonic()
+    digests = _pooled(copy, copies, workers=workers)
+    log.info(
+        "hashed and copied %d objects to %s in %.0fs, %d at a time",
+        len(copies),
+        root,
+        time.monotonic() - started,
+        workers,
+    )
+    files: dict[str, list[ManifestFile]] = {table: [] for table in DATASET_TABLES}
+    rows = dict.fromkeys(DATASET_TABLES, 0)
+    for job, digest in zip(copies, digests, strict=True):
+        files[job.table].append(
+            ManifestFile(path=job.path, sha256=digest.sha256, bytes=job.obj.size)
+        )
+        rows[job.table] += digest.rows
+    return {table: ManifestTable(rows=rows[table], files=files[table]) for table in DATASET_TABLES}
 
 
 def _put(public: R2, root: str, name: str, local: Path, *, rows: int) -> ManifestTable:
@@ -321,7 +389,7 @@ def _crosswalk(live: _Live, store: R2, public: R2, *, root: str, work: Path) -> 
         )
     obj = listed[0]
     # Never in the local cache: `publish` writes it from scratch space it then clears.
-    digest = _digest(store, obj, local=None, work=work)
+    digest = _digest(store, obj, local=None, download=work / CROSSWALK)
     public.copy_from(store, key, root + CROSSWALK, if_match=obj.etag)
     file = ManifestFile(path=CROSSWALK, sha256=digest.sha256, bytes=obj.size)
     return ManifestTable(rows=digest.rows, files=[file])
@@ -337,6 +405,7 @@ def _take(
     snapshot_date: date,
     data_dir: Path,
     overrides_path: Path,
+    workers: int,
 ) -> None:
     """Write the snapshot's files under `root`, its manifest last."""
     # Whatever a crashed attempt left: it may have been of another live build.
@@ -344,12 +413,9 @@ def _take(
     work = paths.scratch_dir(data_dir) / f"dataset-{snapshot_date.isoformat()}"
     work.mkdir(parents=True, exist_ok=True)
     try:
-        tables = {
-            table: _silver_table(
-                table, live, store, public, root=root, data_dir=data_dir, work=work
-            )
-            for table in DATASET_TABLES
-        }
+        tables = _silver_tables(
+            live, store, public, root=root, data_dir=data_dir, work=work, workers=workers
+        )
         donor = _donor(conn, work)
         tables["donor"] = _put(public, root, DONOR, donor, rows=_rows(donor))
         tables["crosswalk"] = _crosswalk(live, store, public, root=root, work=work)
@@ -374,10 +440,11 @@ def snapshot_dates(public: R2) -> list[date]:
     return sorted(found_date for found_date in found if found_date is not None)
 
 
-def _refresh_latest(public: R2) -> bool:
-    """Make `latest/` a copy of the newest finished snapshot; whether anything was copied.
+def _refresh_latest(public: R2, *, workers: int) -> bool:
+    """Make `latest/` a copy of the newest finished snapshot, `workers` objects at a time;
+    whether anything was copied.
 
-    The manifest goes last, so a `latest/manifest.json` naming a snapshot means its files are
+    The manifest goes last, alone, so a `latest/manifest.json` naming a snapshot means its files are
     all there; then whatever the previous snapshot had that this one lacks is deleted.
     """
     newest = next(
@@ -398,9 +465,21 @@ def _refresh_latest(public: R2) -> bool:
         current = None
     copied = current != public.get(newest + MANIFEST)
     if copied:
-        manifest = newest + MANIFEST
-        for key in [key for key in keys if key != manifest] + [manifest]:
+
+        def copy(key: str) -> None:
             public.copy_from(public, key, paths.DATASET_LATEST + key.removeprefix(newest))
+
+        manifest = newest + MANIFEST
+        started = time.monotonic()
+        _pooled(copy, [key for key in keys if key != manifest], workers=workers)
+        copy(manifest)
+        log.info(
+            "copied %d objects to %s in %.0fs, %d at a time",
+            len(keys),
+            paths.DATASET_LATEST,
+            time.monotonic() - started,
+            workers,
+        )
         log.info("latest/ is now %s", newest)
     stale = [key for key in public.list_keys(paths.DATASET_LATEST) if key not in wanted]
     public.delete_keys(stale)
@@ -469,10 +548,12 @@ def snapshot(
     data_dir: Path,
     overrides_path: Path,
     docs_dir: Path,
+    workers: int,
 ) -> Snapshot:
     """Publish the documentation in `docs_dir` (`publish_docs`), then take the live build's
     dataset snapshot for `snapshot_date` from `store` into `public`, unless it exists; then
-    refresh `latest/` and delete all but the newest `KEEP` snapshots.
+    refresh `latest/` and delete all but the newest `KEEP` snapshots. The copies into the
+    snapshot and into `latest/` run `workers` at a time.
 
     Raises `NothingPublished` when no gold build is live, `DocsMissing` when `docs_dir` lacks a
     file of the documentation, and `BuildNotReady` when the live build lacks a dataset table or
@@ -493,12 +574,13 @@ def snapshot(
             snapshot_date=snapshot_date,
             data_dir=data_dir,
             overrides_path=overrides_path,
+            workers=workers,
         )
         log.info("took snapshot %s of build %s", snapshot_date, live.build_id)
     else:
         # The build it holds, which a publish since may have replaced.
         build_id = Manifest.model_validate_json(public.get(root + MANIFEST)).build_id
         log.info("snapshot %s of build %s exists already: not taken again", snapshot_date, build_id)
-    latest_copied = _refresh_latest(public)
+    latest_copied = _refresh_latest(public, workers=workers)
     removed = _retain(public)
     return Snapshot(snapshot_date, build_id, created, latest_copied, removed, docs_put)
