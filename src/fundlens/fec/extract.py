@@ -1,12 +1,18 @@
-"""`fundlens extract`: one cycle's FEC bulk zips into R2 bronze (spec §3.3, §5.1; ADR-0002).
+"""`fundlens extract`: one cycle's FEC bulk files into R2 bronze (spec §3.3, §5.1; ADR-0002).
 
 Each catalogued file FEC publishes for the cycle is checked with a HEAD of its URL: when its
 `Last-Modified` and size match the metadata of the newest bronze object for that (cycle, file),
-nothing is downloaded or uploaded. Otherwise the zip is streamed to the local cache, uploaded
-to `bronze/cycle=<c>/<file>/<download date>.zip` with the source's `Last-Modified` and size as
-object metadata, and dropped from disk unless the cycle is the current one, the only cycle kept
-locally (spec §3.4). The current cycle's zip is also fetched back from R2 when only the disk
-copy is missing, so transform finds it.
+nothing is downloaded or uploaded. Otherwise the file is streamed to the local cache, checked
+(a zip is a zip; a CSV's header row is the catalogue's columns exactly), uploaded to
+`bronze/cycle=<c>/<file>/<download date>.zip` or `.csv` with the source's `Last-Modified` and
+size as object metadata, and dropped from disk unless the cycle is the current one, the only
+cycle kept locally (spec §3.4). The current cycle's file is also fetched back from R2 when only
+the disk copy is missing, so transform finds it.
+
+An undated file, one URL for every cycle, is kept under the cycle being extracted, so each
+cycle's bronze is self-contained: extracting two cycles downloads it twice, each with its own
+change check. FEC rewrites some historical CSVs daily (`committee_summary_2008.csv` carried that
+day's `Last-Modified` on 2026-11-18), so re-extracting a historical cycle downloads those again.
 """
 
 import logging
@@ -23,12 +29,19 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from fundlens import markers, paths
-from fundlens.fec.files import CATALOGUE, BulkFile, FecFile, current_cycle, files_for
+from fundlens.fec.files import (
+    CATALOGUE,
+    BulkFile,
+    FecFile,
+    current_cycle,
+    files_for,
+    read_csv_header,
+)
 from fundlens.r2 import R2
 
 log = logging.getLogger(__name__)
 
-# Object metadata on each bronze zip: what FEC served, to compare the next HEAD against.
+# Object metadata on each bronze file: what FEC served, to compare the next HEAD against.
 LAST_MODIFIED = "source-last-modified"
 SIZE = "source-size"
 
@@ -45,12 +58,12 @@ Sleep = Callable[[float], None]
 
 
 class DownloadError(Exception):
-    """A response that cannot be a whole zip: worth another try."""
+    """A response that cannot be the whole file: worth another try."""
 
 
 @dataclass(frozen=True)
 class Source:
-    """What FEC says about one zip: enough to tell whether it changed since the last download."""
+    """What FEC says about one file: enough to tell whether it changed since the last download."""
 
     last_modified: str
     size: int
@@ -115,8 +128,19 @@ def _head(url: str) -> Source:
         return Source.from_headers(url, response.headers)
 
 
-def _download(url: str, dest: Path) -> Source:
-    """Stream `url` to `dest`, which appears only once the zip is whole (via a `.part` file)."""
+def _check(file: BulkFile, url: str, partial: Path) -> None:
+    """Raise `DownloadError` unless `partial` is what `file` must be: a zip, or a CSV whose
+    header row is the catalogue's columns."""
+    if file.format == "csv":
+        if read_csv_header(partial) != list(file.columns):
+            raise DownloadError(f"{url}: the header row is not the catalogued {file.name} columns")
+    elif not zipfile.is_zipfile(partial):
+        raise DownloadError(f"{url}: not a zip")
+
+
+def _download(file: BulkFile, url: str, dest: Path) -> Source:
+    """Stream `url` to `dest`, which appears only once the file is whole and checked (via a
+    `.part` file)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.with_name(dest.name + ".part")
     try:
@@ -128,8 +152,7 @@ def _download(url: str, dest: Path) -> Source:
         received = partial.stat().st_size
         if received != source.size:
             raise DownloadError(f"{url}: got {received} of {source.size} bytes")
-        if not zipfile.is_zipfile(partial):
-            raise DownloadError(f"{url}: not a zip")
+        _check(file, url, partial)
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
@@ -158,7 +181,7 @@ def _keep_only(directory: Path, keep: Path | None) -> None:
 def _drop_historical(data_dir: Path, current: int) -> None:
     """Delete every cycle's local bronze but the current one's (spec §3.4).
 
-    What keeps a cycle's zips off the disk once it has rolled over, and what a crashed
+    What keeps a cycle's files off the disk once it has rolled over, and what a crashed
     historical extract left behind.
     """
     bronze = data_dir / "bronze"
@@ -196,13 +219,14 @@ def extract_file(
         log.info("%s %d unchanged since %s", file.name, cycle, key)
         return Extracted(file.name, key, downloaded=False)
 
-    key = paths.bronze_zip(cycle, file.name, today)
+    bronze_key = paths.bronze_csv if file.format == "csv" else paths.bronze_zip
+    key = bronze_key(cycle, file.name, today)
     local = paths.local_path(data_dir, key)
-    source = _with_retries(f"GET {url}", lambda: _download(url, local), sleep)
+    source = _with_retries(f"GET {url}", lambda: _download(file, url, local), sleep)
     try:
         store.put(key, local, metadata=source.metadata())
     finally:
-        # Even when the upload fails: a historical zip never stays on disk.
+        # Even when the upload fails: a historical file never stays on disk.
         _keep_only(local_dir, local if keep_local else None)
     log.info("%s %d downloaded to %s (%d bytes)", file.name, cycle, key, source.size)
     return Extracted(file.name, key, downloaded=True)
@@ -247,7 +271,7 @@ def extract(
             build_id=build_id,
             started_at=started_at,
             finished_at=datetime.now(UTC),
-            # Extract writes zips, not rows; transform counts those.
+            # Extract writes files, not rows; transform counts those.
             row_counts={},
         )
     return results

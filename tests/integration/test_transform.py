@@ -3,6 +3,7 @@
 
 import io
 import logging
+import re
 import zipfile
 from collections.abc import Iterator, Mapping
 from datetime import date
@@ -15,15 +16,17 @@ import pytest
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
+from fundlens.fec.extract import extract_file
 from fundlens.fec.files import FecFile, files_for
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
 from fundlens.transform import seats
-from fundlens.transform.runner import ChecksFailed, render
+from fundlens.transform.runner import ChecksFailed, fetch_bulk, register_bulk, render
 from fundlens.transform.seats import Race
 from tests import fec_fixture
-from tests.fake_fec import zipped
+from tests.fake_fec import FakeFec, zipped
+from tests.fec_fixture import SAMPLE
 from tests.integration.conftest import cli_pointed_at, empty_store, scratch_database
 
 BUILD = "20261030T030000Z"
@@ -2663,3 +2666,79 @@ def test_a_key_with_no_contributions_shows_the_variant_most_of_its_attributions_
         "ACHTERBERG,LIESBETH",
         3,
     )
+
+
+# The CSV format's reader (NEU-2138), on the test-only `SAMPLE` entry. 2024 is a historical
+# cycle on this date, so `fetch_bulk` fetches the bronze file from R2 rather than the disk.
+SAMPLE_CYCLE = 2024
+SAMPLE_DAY = date(2026, 10, 30)
+
+
+def sample_model(store: R2, data_dir: Path) -> tuple[list[tuple[object, ...]], dict[str, str]]:
+    """The sample's rows and column types, read by a test model through the view the runner
+    registers for it: `CREATE TABLE … AS SELECT … FROM sample`, rendered as a silver model is."""
+    model = data_dir / "01_sample.sql"
+    model.write_text("CREATE TABLE sample_model AS SELECT * FROM sample WHERE {cycle} = {cycle}")
+    work = data_dir / "work"
+    work.mkdir(exist_ok=True)
+    with duckdb.connect() as con:
+        text = fetch_bulk(store, SAMPLE_CYCLE, SAMPLE, data_dir=data_dir, work=work)
+        register_bulk(con, SAMPLE, text)
+        con.execute(render(model, {"cycle": SAMPLE_CYCLE}))
+        rows = con.execute('SELECT * FROM sample_model ORDER BY "CMTE_ID"').fetchall()
+        types = dict(
+            con.execute(
+                "SELECT column_name, data_type FROM information_schema.columns"
+                " WHERE table_name = 'sample_model'"
+            ).fetchall()
+        )
+    return rows, types
+
+
+def put_sample(store: R2, body: bytes) -> str:
+    key = paths.bronze_csv(SAMPLE_CYCLE, SAMPLE.name, SAMPLE_DAY)
+    store.put(key, body)
+    return key
+
+
+def test_a_csv_extracted_to_bronze_reads_into_a_model_by_its_name(
+    store: R2, tmp_path: Path
+) -> None:
+    with FakeFec().running() as fec:
+        fec_fixture.publish(
+            fec, SAMPLE, SAMPLE_CYCLE, fec_fixture.bulk_body(SAMPLE, fec_fixture.SAMPLE_FILE)
+        )
+        extract_file(
+            SAMPLE, SAMPLE_CYCLE, store, data_dir=tmp_path, base_url=fec.url, today=SAMPLE_DAY
+        )
+
+    rows, types = sample_model(store, tmp_path)
+
+    assert rows == [
+        ("C00000001", 'SMITH, JONES & "FRIENDS" | PAC', None, "20241016"),
+        ("C00000002", " GO AMERICA PAC", Decimal("1234.56"), "31-OCT-24"),
+    ]
+    assert types["TTL_RECEIPTS"] == "DECIMAL(14,2)"
+    assert types["CMTE_NM"] == "VARCHAR"
+
+
+def test_a_bronze_csv_whose_header_is_not_the_catalogues_is_refused(
+    store: R2, tmp_path: Path
+) -> None:
+    key = put_sample(store, b'CMTE_ID,CMTE_NAME,TTL_RECEIPTS,COVERAGE_END_DT\n"C1","N","1","D"\n')
+
+    with pytest.raises(ValueError, match=re.escape(key)):
+        fetch_bulk(store, SAMPLE_CYCLE, SAMPLE, data_dir=tmp_path, work=tmp_path)
+
+    assert not (tmp_path / "sample.txt").exists()
+
+
+def test_a_bronze_csv_reads_as_utf8_without_its_nuls(store: R2, tmp_path: Path) -> None:
+    put_sample(
+        store,
+        b'CMTE_ID,CMTE_NM,TTL_RECEIPTS,COVERAGE_END_DT\n"C1","CAF\xc9\x00 PAC","1","20241016"\n',
+    )
+
+    rows, _ = sample_model(store, tmp_path)
+
+    assert rows == [("C1", "CAFÉ PAC", Decimal("1.00"), "20241016")]

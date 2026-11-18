@@ -186,3 +186,28 @@ def test_snapshot_date_of_reads_only_a_snapshot_directory(
     prefix: str, expected: date | None
 ) -> None:
     assert paths.snapshot_date_of(prefix) == expected
+
+
+def test_a_csvs_bronze_key_ends_in_csv() -> None:
+    assert (
+        paths.bronze_csv(2024, "committee_summary", date(2026, 11, 2))
+        == "bronze/cycle=2024/committee_summary/2026-11-02.csv"
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["bronze/cycle=2026/indiv/2026-11-02.zip", "bronze/cycle=2026/lobbyist/2026-11-02.csv"],
+)
+def test_download_date_of_reads_a_bronze_keys_date(key: str) -> None:
+    # What `load.gold` records as a file's source date: a bare ISO date, whatever the suffix.
+    assert paths.download_date_of(key) == "2026-11-02"
+    assert date.fromisoformat(paths.download_date_of(key)) == date(2026, 11, 2)
+
+
+@pytest.mark.parametrize(
+    "key", ["bronze/cycle=2026/indiv/", "bronze/cycle=2026/indiv/2026-11-02.zip.part"]
+)
+def test_download_date_of_refuses_any_other_key(key: str) -> None:
+    with pytest.raises(ValueError, match="bronze"):
+        paths.download_date_of(key)

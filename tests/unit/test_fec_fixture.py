@@ -875,6 +875,30 @@ def test_a_row_with_a_value_too_many_is_refused(tmp_path: Path) -> None:
         fec_fixture.read_rows("ccl", tmp_path)
 
 
+def test_the_csv_sample_renders_in_fecs_csv_layout() -> None:
+    body = fec_fixture.bulk_body(fec_fixture.SAMPLE, fec_fixture.SAMPLE_FILE)
+
+    assert body == (
+        b"CMTE_ID,CMTE_NM,TTL_RECEIPTS,COVERAGE_END_DT\n"
+        b'"C00000001","SMITH, JONES & ""FRIENDS"" | PAC","","20241016"\n'
+        b'"C00000002"," GO AMERICA PAC","1234.56","31-OCT-24"\n'
+    )
+
+
+def test_a_csv_fixture_whose_header_is_not_the_entrys_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "sample.csv"
+    path.write_text("CMTE_ID,CMTE_NAME,TTL_RECEIPTS,COVERAGE_END_DT\nC1,N,1,D\n")
+    with pytest.raises(ValueError, match="header"):
+        fec_fixture.read_file(fec_fixture.SAMPLE, path)
+
+
+def test_a_csv_fixture_row_short_of_a_value_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "sample.csv"
+    path.write_text("CMTE_ID,CMTE_NM,TTL_RECEIPTS,COVERAGE_END_DT\nC1,N,1\n")
+    with pytest.raises(ValueError, match="row 1"):
+        fec_fixture.read_file(fec_fixture.SAMPLE, path)
+
+
 def test_each_race_total_is_the_sum_of_its_candidates() -> None:
     for race_id, race in EXPECTED["races"].items():
         members = [c for c in EXPECTED["candidates"].values() if c["race_id"] == race_id]

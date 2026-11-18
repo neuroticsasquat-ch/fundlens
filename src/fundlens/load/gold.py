@@ -218,12 +218,12 @@ def _register_silver(
 
 
 def _source_dates(store: R2, cycle: int) -> dict[str, str | None]:
-    """The download date of the newest bronze zip of each of the cycle's files."""
+    """The download date of the newest bronze file of each of the cycle's files."""
     dates: dict[str, str | None] = {}
     for file in files_for(cycle):
         # Keys end in an ISO download date, so key order is download order.
         keys = sorted(store.list_keys(paths.bronze_dir(cycle, file.name)))
-        dates[file.name] = keys[-1].rsplit("/", 1)[1].removesuffix(".zip") if keys else None
+        dates[file.name] = paths.download_date_of(keys[-1]) if keys else None
     return dates
 
 

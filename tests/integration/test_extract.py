@@ -11,11 +11,20 @@ import pytest
 from typer.testing import CliRunner
 
 from fundlens import cli, markers, paths
-from fundlens.fec.extract import Extracted, extract
-from fundlens.fec.files import FecFile
+from fundlens.fec.extract import (
+    LAST_MODIFIED,
+    SIZE,
+    DownloadError,
+    Extracted,
+    extract,
+    extract_file,
+)
+from fundlens.fec.files import BulkFile, FecFile
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
-from tests.fake_fec import FakeFec
+from tests import fec_fixture
+from tests.fake_fec import FakeFec, zipped
+from tests.fec_fixture import SAMPLE, SAMPLE_UNDATED
 from tests.integration.conftest import TEST_BUCKET
 
 BUILD = "20261030T030000Z"
@@ -274,3 +283,125 @@ def test_a_failed_upload_leaves_no_historical_zip_on_disk(
         run_extract(fec, store, tmp_path, cycle=2024, file="cm")
 
     assert local_files(tmp_path) == []
+
+
+# The CSV format (NEU-2138), through `extract_file` with the test-only entries: one per cycle in
+# the cycle's folder, one undated.
+CSVS = pytest.mark.parametrize("sample", [SAMPLE, SAMPLE_UNDATED], ids=["per_cycle", "undated"])
+SAMPLE_BODY = fec_fixture.bulk_body(SAMPLE, fec_fixture.SAMPLE_FILE)
+NEXT_WEEKS_LAST_MODIFIED = "Fri, 06 Nov 2026 05:40:00 GMT"
+
+
+def extract_csv(
+    fec: FakeFec,
+    store: R2,
+    data_dir: Path,
+    sample: BulkFile,
+    *,
+    cycle: int = 2024,
+    today: date = TODAY,
+    sleeps: list[float] | None = None,
+) -> Extracted:
+    return extract_file(
+        sample,
+        cycle,
+        store,
+        data_dir=data_dir,
+        base_url=fec.url,
+        today=today,
+        sleep=(sleeps if sleeps is not None else []).append,
+    )
+
+
+@CSVS
+def test_a_csv_is_downloaded_once_and_again_only_when_it_changes(
+    fec: FakeFec, store: R2, tmp_path: Path, sample: BulkFile
+) -> None:
+    path = fec_fixture.publish(fec, sample, 2024, SAMPLE_BODY)
+
+    first = extract_csv(fec, store, tmp_path, sample)
+
+    assert first.downloaded
+    assert first.key == f"bronze/cycle=2024/{sample.name}/2026-10-30.csv"
+    assert fec.gets() == [path]
+    assert store.get(first.key) == SAMPLE_BODY
+    metadata = store.metadata(first.key)
+    assert (metadata[LAST_MODIFIED], metadata[SIZE]) == (
+        "Fri, 30 Oct 2026 05:43:50 GMT",
+        str(len(SAMPLE_BODY)),
+    )
+
+    fec.requests.clear()
+    unchanged = extract_csv(fec, store, tmp_path, sample)
+
+    assert not unchanged.downloaded
+    assert unchanged.key == first.key
+    assert fec.gets() == []
+    assert list(bronze(store)) == [first.key]
+
+    fec_fixture.publish(fec, sample, 2024, SAMPLE_BODY, last_modified=NEXT_WEEKS_LAST_MODIFIED)
+    changed = extract_csv(fec, store, tmp_path, sample, today=NEXT_WEEK)
+
+    assert changed.downloaded
+    assert changed.key == paths.bronze_csv(2024, sample.name, NEXT_WEEK)
+    assert sorted(bronze(store)) == [first.key, changed.key]
+
+
+@CSVS
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"<!DOCTYPE html><html><body>Not found</body></html>\n",
+        zipped("sample.txt", "C00000001|NAME|1.00|20241016\n"),
+        SAMPLE_BODY.replace(b"CMTE_NM", b"CMTE_NAME", 1),
+    ],
+    ids=["html", "zip", "renamed_column"],
+)
+def test_a_response_that_is_not_the_catalogued_csv_is_refused(
+    fec: FakeFec, store: R2, tmp_path: Path, sample: BulkFile, body: bytes
+) -> None:
+    fec_fixture.publish(fec, sample, 2024, body)
+    sleeps: list[float] = []
+
+    with pytest.raises(DownloadError, match="header row"):
+        extract_csv(fec, store, tmp_path, sample, sleeps=sleeps)
+
+    assert len(sleeps) == 4
+    assert bronze(store) == {}
+    assert local_files(tmp_path) == []
+
+
+def test_an_undated_csv_is_kept_under_each_cycle_extracted(
+    fec: FakeFec, store: R2, tmp_path: Path
+) -> None:
+    path = fec_fixture.publish(fec, SAMPLE_UNDATED, 2024, SAMPLE_BODY)
+
+    of_2024 = extract_csv(fec, store, tmp_path, SAMPLE_UNDATED, cycle=2024)
+    of_2026 = extract_csv(fec, store, tmp_path, SAMPLE_UNDATED, cycle=2026)
+
+    assert path == "/data.fec.gov/sample.csv"
+    assert fec.gets() == [path, path]
+    assert sorted(bronze(store)) == [
+        "bronze/cycle=2024/sample_undated/2026-10-30.csv",
+        "bronze/cycle=2026/sample_undated/2026-10-30.csv",
+    ]
+    assert of_2024.downloaded and of_2026.downloaded
+
+    fec.requests.clear()
+    again = extract_csv(fec, store, tmp_path, SAMPLE_UNDATED, cycle=2024)
+
+    assert not again.downloaded
+    assert fec.gets() == []
+
+
+@CSVS
+def test_only_the_current_cycles_csv_stays_on_disk(
+    fec: FakeFec, store: R2, tmp_path: Path, sample: BulkFile
+) -> None:
+    fec_fixture.publish(fec, sample, 2024, SAMPLE_BODY)
+    fec_fixture.publish(fec, sample, 2026, SAMPLE_BODY)
+
+    extract_csv(fec, store, tmp_path, sample, cycle=2024)
+    current = extract_csv(fec, store, tmp_path, sample, cycle=2026)
+
+    assert local_files(tmp_path) == [paths.local_path(tmp_path, current.key)]

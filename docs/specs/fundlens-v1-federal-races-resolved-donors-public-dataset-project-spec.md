@@ -135,7 +135,8 @@ Local (Coolify volumes, all under `/data/fundlens/`): `bronze/` (current cycle o
 R2 `fundlens-data`:
 
 ```
-bronze/cycle=2026/indiv/2026-11-02.zip          one object per (cycle, file, download date); historical cycles download once
+bronze/cycle=2026/indiv/2026-11-02.zip          one object per (cycle, file, download date); historical cycles download once (zips, and CSVs FEC does not rewrite)
+bronze/cycle=2026/<file>/2026-11-02.csv         a CSV file as downloaded; an undated file is kept under each cycle extracted
 silver/<table>/cycle=<cycle>/build=<build_id>/part-0000.parquet   zstd, row groups ≤ 1M rows
 silver/contribution/cycle=<cycle>/build=<build_id>/bucket=<00..ff>/part-*.parquet   bucket = donor_id % 256, zero-padded hex
 resolution/build=<build_id>/{crosswalk,adjudication}.parquet       snapshot taken at publish
@@ -245,7 +246,7 @@ For a cycle: all House districts under the apportionment in force (a vendored `a
 
 ### 5.3 Transform
 
-`transform.runner` opens DuckDB with `memory_limit`, `temp_directory`, `threads` from settings, registers the bronze zips for the cycle via `read_csv` (pipe delimiter, vendored column names, all-varchar then cast), runs `sql/silver/*.sql` in filename order with `{cycle}` and `{build_id}` parameters, writes each table to the local silver path, runs `sql/checks/*.sql` (every check is a query that must return zero rows), then uploads the partition to R2 and writes the `transformed` marker. Any check failure aborts before upload.
+`transform.runner` opens DuckDB with `memory_limit`, `temp_directory`, `threads` from settings, registers the bronze files for the cycle, zip or CSV, via `read_csv` (a zip's text pipe-delimited with vendored column names, a CSV comma-delimited with its checked header row; all-varchar then cast), runs `sql/silver/*.sql` in filename order with `{cycle}` and `{build_id}` parameters, writes each table to the local silver path, runs `sql/checks/*.sql` (every check is a query that must return zero rows), then uploads the partition to R2 and writes the `transformed` marker. Any check failure aborts before upload.
 
 ### 5.4 Resolve — see §6.
 

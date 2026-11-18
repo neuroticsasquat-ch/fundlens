@@ -185,6 +185,10 @@ _Avoid_: latest model, newest model (a newer one may be saved and not live)
 The regulator bulk files fundlens reads. A file outside it is neither downloaded nor read.
 _Avoid_: file list, registry, manifest (the manifest is a snapshot's)
 
+**Undated file**:
+A regulator bulk file published once for every cycle, not once per cycle. Bronze keeps a copy under each cycle extracted, so a cycle rebuilds from its own bronze alone.
+_Avoid_: global file, cycle-less file, shared file
+
 **Bronze**:
 Raw regulator bulk files exactly as downloaded.
 

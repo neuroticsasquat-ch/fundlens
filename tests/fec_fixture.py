@@ -1,10 +1,19 @@
-"""The synthetic fixture cycle: readable CSVs in, FEC bulk zips out (spec §12).
+"""The synthetic fixture cycle: readable CSVs in, FEC bulk files out (spec §12).
 
 `tests/fixtures/fec/<cycle>/<file>.csv` holds each bulk file by hand: a header row naming the
-vendored FEC columns, then the rows, with `#` comment lines saying which case each block plants.
-`zips` writes them in FEC's own layout (one member per zip, pipe-delimited, unquoted, no header
-row) for the fake FEC server to serve, so a test or `task db:seed` runs the real `extract` on
-them. `expected.yaml` beside them records what the pipeline must make of them.
+entry's columns (for a zip, the vendored FEC header), then the rows, with `#` comment lines
+saying which case each block plants. `bulk_body` writes one in FEC's own layout for its format:
+
+- a zip: one member per zip, pipe-delimited, unquoted, no header row (`zips`);
+- a CSV: the header row unquoted, every data field double-quoted with `""` for a quote, LF line
+  endings (`csv_text`), as FEC's CSVs were on 2026-11-18.
+
+The fake FEC server serves them at the path each entry's `url()` gives, so a test or
+`task db:seed` runs the real `extract` on them. `expected.yaml` beside them records what the
+pipeline must make of them.
+
+`SAMPLE` and `SAMPLE_UNDATED` are test-only CSV entries, in no catalogue, that render
+`fixtures/fec/csv/sample.csv` (NEU-2138): the extract and transform tests of the CSV format.
 """
 
 import csv
@@ -16,14 +25,16 @@ from typing import Any, TypedDict, cast
 
 import yaml
 
-from fundlens.fec.files import CATALOGUE, FecFile, files_for
-from tests.fake_fec import FakeFec, zipped
+from fundlens.fec.files import AMOUNT, CATALOGUE, VARCHAR, BulkFile, FecFile, files_for
+from tests.fake_fec import CSV, ZIP, FakeFec, zipped
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CYCLE = 2024
 
 # The one file each fixture zip holds, named as in FEC's own zips.
-MEMBERS: dict[FecFile, str] = {name: bulk.member for name, bulk in CATALOGUE.items()}
+MEMBERS: dict[FecFile, str] = {
+    name: bulk.member for name, bulk in CATALOGUE.items() if bulk.member is not None
+}
 
 # One fixture row, keyed by FEC column name. Read-only: `read_rows` hands every caller the same
 # cached rows, so a test that changed one would change it for every later test.
@@ -34,37 +45,77 @@ def fixture_dir(cycle: int = CYCLE) -> Path:
     return FIXTURES / "fec" / str(cycle)
 
 
-@functools.cache
-def read_rows(file: FecFile, directory: Path | None = None) -> tuple[Row, ...]:
-    """One bulk file's rows from `<file>.csv`, keyed by FEC column name.
+def read_file(bulk: BulkFile, path: Path) -> tuple[Row, ...]:
+    """The rows of the fixture file at `path` for `bulk`, keyed by column name.
 
-    Raises `ValueError` unless the header row is the vendored header exactly and every row has
-    one value per column: a fixture that drifts from FEC's layout fails here, not in a transform.
-    Read once per file and directory, then cached (NEU-2267): the tally in
-    `tests/unit/test_fec_fixture.py` reads them inside per-row predicates.
+    Raises `ValueError` unless the header row is `bulk.header()` exactly and every row has one
+    value per column, and, for a zip, no value holds a `|`: a fixture that drifts from FEC's
+    layout fails here, not in a transform.
     """
-    path = (directory or fixture_dir()) / f"{file}.csv"
     lines = [line for line in path.read_text().splitlines() if not line.startswith("#")]
     reader = csv.DictReader(lines)
-    columns = CATALOGUE[file].header()
+    columns = bulk.header()
     if reader.fieldnames != columns:
-        raise ValueError(f"{path}: header is not the vendored {file} header")
+        raise ValueError(f"{path}: header is not the {bulk.name} header")
     rows = list(reader)
     for n, row in enumerate(rows, start=1):
         # DictReader files surplus values under `None` and pads a short row with `None`s.
         if None in row or None in row.values():
             raise ValueError(f"{path}: data row {n} has not {len(columns)} values")
-        if any("|" in value for value in row.values()):
+        if bulk.format == "zip" and any("|" in value for value in row.values()):
             raise ValueError(f"{path}: data row {n} holds a `|`, FEC's delimiter")
     return tuple(MappingProxyType(row) for row in rows)
 
 
+@functools.cache
+def read_rows(file: FecFile, directory: Path | None = None) -> tuple[Row, ...]:
+    """One catalogued bulk file's rows from `<file>.csv` (`read_file`), keyed by FEC column name.
+
+    Read once per file and directory, then cached (NEU-2267): the tally in
+    `tests/unit/test_fec_fixture.py` reads them inside per-row predicates.
+    """
+    return read_file(CATALOGUE[file], (directory or fixture_dir()) / f"{file}.csv")
+
+
+def pipe_text(bulk: BulkFile, rows: tuple[Row, ...]) -> str:
+    """`rows` as FEC writes a zip's text: pipe-delimited, unquoted, no header row."""
+    columns = bulk.header()
+    return "".join("|".join(row[column] for column in columns) + "\n" for row in rows)
+
+
+def csv_text(bulk: BulkFile, rows: tuple[Row, ...]) -> str:
+    """`rows` as FEC writes a CSV: the header row unquoted, every data field quoted with `""`
+    for a quote, LF line endings."""
+
+    def quoted(value: str) -> str:
+        return '"' + value.replace('"', '""') + '"'
+
+    columns = bulk.header()
+    lines = [",".join(columns), *(",".join(quoted(row[c]) for c in columns) for row in rows)]
+    return "".join(line + "\n" for line in lines)
+
+
+def bulk_body(bulk: BulkFile, path: Path) -> bytes:
+    """The fixture file at `path` as FEC serves `bulk`: a zip, or a CSV."""
+    rows = read_file(bulk, path)
+    if bulk.format == "csv":
+        return csv_text(bulk, rows).encode()
+    if bulk.member is None:
+        raise ValueError(f"{bulk.name} is not a zip")
+    return zipped(bulk.member, pipe_text(bulk, rows))
+
+
+def publish(fec: FakeFec, bulk: BulkFile, cycle: int, body: bytes, **kwargs: str) -> str:
+    """Publish `body` as `bulk` for `cycle` at the path its `url()` gives; that path.
+
+    `kwargs` go to `FakeFec.serve_path` (`last_modified`)."""
+    content_type = CSV if bulk.format == "csv" else ZIP
+    return fec.serve_path(bulk.url("", cycle), body, content_type=content_type, **kwargs)
+
+
 def bulk_text(file: FecFile, directory: Path | None = None) -> str:
     """`<file>.csv` as FEC writes it: pipe-delimited, unquoted, no header row."""
-    columns = CATALOGUE[file].header()
-    return "".join(
-        "|".join(row[column] for column in columns) + "\n" for row in read_rows(file, directory)
-    )
+    return pipe_text(CATALOGUE[file], read_rows(file, directory))
 
 
 def zips(cycle: int = CYCLE) -> dict[FecFile, bytes]:
@@ -72,13 +123,46 @@ def zips(cycle: int = CYCLE) -> dict[FecFile, bytes]:
     return {
         bulk.name: zipped(MEMBERS[bulk.name], bulk_text(bulk.name, fixture_dir(cycle)))
         for bulk in files_for(cycle)
+        if bulk.format == "zip"
     }
 
 
 def serve(fec: FakeFec, cycle: int = CYCLE) -> None:
-    """Publish the fixture cycle's zips on the fake FEC server."""
-    for name, body in zips(cycle).items():
-        fec.serve(cycle, name, body)
+    """Publish every file of the fixture cycle on the fake FEC server, each at its URL."""
+    directory = fixture_dir(cycle)
+    for bulk in files_for(cycle):
+        if bulk.format == "zip":
+            body = zipped(MEMBERS[bulk.name], bulk_text(bulk.name, directory))
+        else:
+            body = bulk_body(bulk, directory / f"{bulk.name}.csv")
+        publish(fec, bulk, cycle, body)
+
+
+# The CSV format's test-only entries (NEU-2138), both rendering `SAMPLE_FILE`: one per cycle in
+# the cycle's folder, one undated. Their names are in no `FecFile`.
+SAMPLE_FILE = FIXTURES / "fec" / "csv" / "sample.csv"
+SAMPLE_COLUMNS = {
+    "CMTE_ID": VARCHAR,
+    "CMTE_NM": VARCHAR,
+    "TTL_RECEIPTS": AMOUNT,
+    "COVERAGE_END_DT": VARCHAR,
+}
+SAMPLE = BulkFile(
+    cast(FecFile, "sample"),
+    1980,
+    None,
+    SAMPLE_COLUMNS,
+    format="csv",
+    url_pattern="{yyyy}/sample_{yyyy}.csv",
+)
+SAMPLE_UNDATED = BulkFile(
+    cast(FecFile, "sample_undated"),
+    1980,
+    None,
+    SAMPLE_COLUMNS,
+    format="csv",
+    url_pattern="data.fec.gov/sample.csv",
+)
 
 
 class RaceTotals(TypedDict):
