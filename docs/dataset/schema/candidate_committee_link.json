@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/candidate_committee_link.json",
+  "title": "candidate_committee_link",
+  "description": "One link between a candidate and a committee in a cycle, from the FEC's candidate-committee linkage file (and, before 2000, which has none, from the master files). Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "candidate_id",
+    "committee_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "candidate_id": {
+      "description": "The candidate's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The committee's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_type": {
+      "description": "The FEC committee type of the committee.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "designation": {
+      "description": "The FEC committee designation of the link (`P` principal, `A` authorized …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "linkage_id": {
+      "description": "The FEC's id of the link; null for a link read from the master files.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    }
+  },
+  "required": [
+    "cycle",
+    "candidate_id",
+    "committee_id",
+    "source",
+    "jurisdiction",
+    "committee_type",
+    "designation",
+    "linkage_id"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/organization_receipt.json",
+  "title": "organization_receipt",
+  "description": "One itemized gift to a committee from an organization: a corporation, union, trade association, tribe or other group that is neither an individual nor a committee. Grouped by organization key, never resolved, and never a contribution. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The FEC's id of the row (`SUB_ID`), unique within a source.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "organization_name": {
+      "description": "The organization's name as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "organization_key": {
+      "description": "The name normalized, its legal form (`INC`, `LLC` …) stripped and its alias applied: rows sharing it are one organization's.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "city": {
+      "description": "The organization's city as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "Its state as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "zip": {
+      "description": "Its ZIP code as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "recipient_committee_id": {
+      "description": "The FEC id of the committee that received the gift.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amount": {
+      "description": "The amount in dollars. A refund (types 2nY, 4nY) is negative whatever sign it was filed with, unless it reverses an earlier refund; any other amount is as filed. Refunds and corrections net out in any sum.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "date": {
+      "description": "The date of the gift as filed; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "transaction_type": {
+      "description": "The FEC transaction type (`15`, `10`, `31` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "entity_type": {
+      "description": "The FEC entity type of the giver (`ORG`), or null when the filing left it blank.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "report_type": {
+      "description": "The FEC report the row was filed on (`Q1`, `12G`, `YE` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amendment_indicator": {
+      "description": "The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "memo_text": {
+      "description": "The filer's memo text, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "image_num": {
+      "description": "The FEC image number of the page the row is on.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "file_num": {
+      "description": "The FEC filing number of the report the row is on.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "classified": {
+      "description": "True when the filing left the entity type blank and fundlens judged the name an organization's.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "is_non_contribution_account": {
+      "description": "True for money to a hybrid PAC's non-contribution account, which is outside the contribution limits and outside its organizations' total.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "fec_line": {
+      "description": "The line of the FEC form the row is filed on at its recipient (`11(a)(i)`, `party account 31` …), from its transaction type and the filer's transaction id; null when neither places it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "is_other_line": {
+      "description": "True when the row is filed on a line other than 11(a)(i), 11(d), refunds or a non-contribution account: a party account, a transfer. Outside a committee's organizations' total.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "organization_name",
+    "organization_key",
+    "city",
+    "state",
+    "zip",
+    "recipient_committee_id",
+    "amount",
+    "date",
+    "transaction_type",
+    "entity_type",
+    "report_type",
+    "amendment_indicator",
+    "memo_text",
+    "image_num",
+    "file_num",
+    "classified",
+    "is_non_contribution_account",
+    "fec_line",
+    "is_other_line"
+  ],
+  "additionalProperties": false
+}

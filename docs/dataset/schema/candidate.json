@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/candidate.json",
+  "title": "candidate",
+  "description": "One candidate registered with the FEC, as the FEC's candidate master file lists them for the cycle. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "candidate_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "candidate_id": {
+      "description": "The candidate's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "name": {
+      "description": "The candidate's name, as the FEC lists it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "party": {
+      "description": "The FEC party code.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "election_year": {
+      "description": "The election year of the candidate's filing.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "SMALLINT"
+    },
+    "office": {
+      "description": "The office sought, `H` House, `S` Senate or `P` President.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "The state, two letters.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "district": {
+      "description": "The House district, two digits; `00` for an at-large seat, the Senate and President.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "incumbent_challenger_open": {
+      "description": "The FEC incumbent/challenger status (`I`, `C`, `O`).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "status": {
+      "description": "The FEC candidate status (`C` statutory candidate, `N` not yet, `P` prior cycle …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "principal_committee_id": {
+      "description": "The FEC id of the candidate's principal campaign committee.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "race_id": {
+      "description": "The race the candidate stands in this cycle, the `race` table's key; null for a filing that stands in no race of the cycle.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "alias_of": {
+      "description": "For a second FEC id the same person holds for the same race, the id that holds their money; else null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "candidate_id",
+    "source",
+    "jurisdiction",
+    "name",
+    "party",
+    "election_year",
+    "office",
+    "state",
+    "district",
+    "incumbent_challenger_open",
+    "status",
+    "principal_committee_id",
+    "race_id",
+    "alias_of"
+  ],
+  "additionalProperties": false
+}

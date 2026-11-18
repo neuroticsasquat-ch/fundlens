@@ -92,18 +92,32 @@ class R2:
             raise
         return response["Body"].read()
 
-    def put(self, key: str, body: bytes | Path, metadata: Mapping[str, str] | None = None) -> None:
+    def put(
+        self,
+        key: str,
+        body: bytes | Path,
+        metadata: Mapping[str, str] | None = None,
+        *,
+        content_type: str | None = None,
+    ) -> None:
         """Write `body` (bytes, or a local file) to `key`, in parts above `MULTIPART_BYTES`.
 
         `metadata` is stored as the object's user metadata (`metadata` reads it back). S3
-        lowercases its keys, so give them in lower case.
+        lowercases its keys, so give them in lower case. `content_type` is the `Content-Type` a
+        reader is served it with; unset, S3's default, `binary/octet-stream`.
         """
-        extra = {"Metadata": dict(metadata)} if metadata else None
+        extra: dict[str, object] = {}
+        if metadata:
+            extra["Metadata"] = dict(metadata)
+        if content_type is not None:
+            extra["ContentType"] = content_type
         if isinstance(body, Path):
-            self.client.upload_file(str(body), self.bucket, key, ExtraArgs=extra, Config=_TRANSFER)
+            self.client.upload_file(
+                str(body), self.bucket, key, ExtraArgs=extra or None, Config=_TRANSFER
+            )
         else:
             self.client.upload_fileobj(
-                io.BytesIO(body), self.bucket, key, ExtraArgs=extra, Config=_TRANSFER
+                io.BytesIO(body), self.bucket, key, ExtraArgs=extra or None, Config=_TRANSFER
             )
 
     def metadata(self, key: str) -> dict[str, str]:

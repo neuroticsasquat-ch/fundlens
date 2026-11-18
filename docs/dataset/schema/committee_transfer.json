@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/committee_transfer.json",
+  "title": "committee_transfer",
+  "description": "One committee's money to another committee or a candidate: a receipt from another committee, as the recipient reports it, or a committee's contribution to a candidate, as the giver reports it. A gift is often reported on both sides, so sum one `side` only. Committee money, never a contribution. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The FEC's id of the row (`SUB_ID`), unique within a source.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "from_committee_id": {
+      "description": "The FEC id of the committee the money came from.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "to_committee_id": {
+      "description": "The FEC id of the committee it went to.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the receiving committee raises for, when it is their principal or authorized committee. For a 24K to a committee linked to no candidate, the candidate the giver names, when that is a candidate of the cycle. Else null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amount": {
+      "description": "The amount in dollars, as filed. A void or refund is negative and nets out in any sum.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "date": {
+      "description": "The date as filed; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "transaction_type": {
+      "description": "The FEC transaction type (`18K`, `18G`, `24K` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "side": {
+      "description": "`receipt` when the recipient reported it, `disbursement` when the giver did (a 24K contribution to a candidate).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "from_committee_id",
+    "to_committee_id",
+    "candidate_id",
+    "amount",
+    "date",
+    "transaction_type",
+    "side"
+  ],
+  "additionalProperties": false
+}

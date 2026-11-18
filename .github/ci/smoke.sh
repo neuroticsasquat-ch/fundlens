@@ -13,3 +13,11 @@ docker run --rm --entrypoint sh "$1" -c '
   done
   echo "writable as $(id -un)"
 '
+# What `fundlens dataset --snapshot` refuses to publish without (DATASET_DOCS_DIR, spec §9).
+docker run --rm --entrypoint sh "$1" -c '
+  set -eu
+  for f in README.md LICENSE CHANGELOG.md schema/contribution.json; do
+    test -s "/app/docs/dataset/$f"
+  done
+  echo "dataset docs present"
+'

@@ -2,10 +2,16 @@
 
 The fixture cycle is resolved, loaded and published once for the module, into a private bucket
 and database of the module's own; each test snapshots it into an empty public bucket.
+
+Here too the committed schemas (`docs/dataset/schema/`) are checked against that snapshot's files,
+and the README's DuckDB one-liner is run against it over plain HTTP (NEU-2065).
 """
 
 import hashlib
+import json
 import os
+import re
+import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -22,8 +28,8 @@ from typer.testing import CliRunner
 
 from fundlens import cli, paths, r2
 from fundlens.paths import SilverTable
-from fundlens.publish import dataset
-from fundlens.publish.dataset import DATASET_TABLES, BuildNotReady, Manifest
+from fundlens.publish import dataset, dataset_schema
+from fundlens.publish.dataset import DATASET_TABLES, BuildNotReady, DocsMissing, Manifest
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 from fundlens.transform.runner import literal
@@ -42,7 +48,11 @@ from tests.integration.test_transform import BUILD
 
 CYCLE = fec_fixture.CYCLE
 DAY = date(2026, 11, 22)
-OVERRIDES = Path(__file__).resolve().parents[2] / "resolution" / "overrides.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+OVERRIDES = REPO_ROOT / "resolution" / "overrides.yaml"
+DOCS = REPO_ROOT / "docs" / "dataset"
+# Set by `task dataset:schema`: write the schemas rather than check them.
+WRITE_SCHEMAS = os.environ.get("DATASET_SCHEMA_WRITE") == "1"
 
 
 def run(*args: str) -> Any:
@@ -88,7 +98,12 @@ def public() -> Iterator[R2]:
 
 
 def take(
-    published: Published, public: R2, day: date = DAY, *, data_dir: Path | None = None
+    published: Published,
+    public: R2,
+    day: date = DAY,
+    *,
+    data_dir: Path | None = None,
+    docs_dir: Path = DOCS,
 ) -> dataset.Snapshot:
     with psycopg.connect(published.conninfo, autocommit=True) as conn:
         return dataset.snapshot(
@@ -98,6 +113,7 @@ def take(
             snapshot_date=day,
             data_dir=data_dir or published.data_dir,
             overrides_path=OVERRIDES,
+            docs_dir=docs_dir,
         )
 
 
@@ -198,7 +214,12 @@ def test_a_second_snapshot_the_same_day_writes_nothing(published: Published, tak
 
     again = take(published, taken.public)
 
-    assert (again.created, again.latest_copied, again.removed) == (False, False, [])
+    assert (again.created, again.latest_copied, again.removed, again.docs_put) == (
+        False,
+        False,
+        [],
+        [],
+    )
     assert again.build_id == BUILD
     assert listing(taken.public) == before
 
@@ -283,6 +304,7 @@ def test_the_cli_snapshots_into_the_public_bucket_once_a_day(
         get_settings.cache_clear()
         result = run("dataset", "--snapshot")
 
+    assert "docs: unchanged" in result.output
     assert f"already took snapshot {DAY} of build {BUILD}" in result.output
     assert "latest/: already the newest" in result.output
 
@@ -326,3 +348,121 @@ def test_a_copy_pinned_to_an_etag_fails_once_the_object_changes(store: R2) -> No
         store.copy_from(store, "object.bin", "copy.bin", if_match=listed.etag)
 
     assert not store.exists("copy.bin")
+
+
+def test_the_documentation_is_published_at_v1_beside_the_snapshots(taken: Taken) -> None:
+    public = taken.public
+
+    names = [*dataset.DOCS, *(f"schema/{table}.json" for table in dataset.MANIFEST_TABLES)]
+    for name in names:
+        key = paths.DATASET_PREFIX + name
+        assert public.get(key) == (DOCS / name).read_bytes(), name
+    assert sorted(taken.result.docs_put) == sorted(paths.DATASET_PREFIX + name for name in names)
+    served = public.client.head_object(Bucket=public.bucket, Key=f"{paths.DATASET_PREFIX}README.md")
+    assert served.get("ContentType") == "text/markdown; charset=utf-8"
+
+
+def test_only_changed_documentation_is_put_and_stale_schemas_are_deleted(
+    public: R2, tmp_path: Path
+) -> None:
+    docs = tmp_path / "docs"
+    shutil.copytree(DOCS, docs)
+    dataset.publish_docs(public, docs)
+    stale = f"{paths.DATASET_PREFIX}schema/dropped_table.json"
+    public.put(stale, b"{}")
+    (docs / "CHANGELOG.md").write_text((DOCS / "CHANGELOG.md").read_text() + "\nA change.\n")
+
+    put = dataset.publish_docs(public, docs)
+
+    assert put == [f"{paths.DATASET_PREFIX}CHANGELOG.md"]
+    assert not public.exists(stale)
+    assert public.get(put[0]) == (docs / "CHANGELOG.md").read_bytes()
+
+
+def test_a_snapshot_without_its_license_copies_nothing(
+    published: Published, public: R2, tmp_path: Path
+) -> None:
+    docs = tmp_path / "docs"
+    shutil.copytree(DOCS, docs)
+    (docs / "LICENSE").unlink()
+
+    with pytest.raises(DocsMissing, match="LICENSE"):
+        take(published, public, docs_dir=docs)
+
+    assert not public.list_keys("")
+
+
+def snapshot_files(published: Published, work: Path) -> dict[str, Path]:
+    """One file of each table a snapshot of `published` would hold, by table: the silver files it
+    copies byte for byte, the donor file it writes and the crosswalk snapshot it copies. Not from
+    a snapshot itself, which is refused while a schema is missing (`DocsMissing`), so a new
+    table's schema can be written here."""
+    files: dict[str, Path] = {}
+    for table in DATASET_TABLES:
+        partition = paths.local_path(
+            published.data_dir, paths.silver_partition(table, CYCLE, BUILD)
+        )
+        files[table] = min(partition.rglob("*.parquet"))
+    with psycopg.connect(published.conninfo, autocommit=True) as conn:
+        files["donor"] = dataset._donor(conn, work)  # pyright: ignore[reportPrivateUsage]
+    files["crosswalk"] = published.store.download_to(
+        paths.resolution_snapshot(BUILD, "crosswalk"), work / dataset.CROSSWALK
+    )
+    assert sorted(files) == sorted(dataset.MANIFEST_TABLES)
+    return files
+
+
+def test_the_committed_schemas_are_the_snapshots(published: Published, tmp_path: Path) -> None:
+    """Each table's schema, generated from its Parquet file and `columns.yaml`, is the one
+    committed: a silver column changed without its description and schema fails here. With
+    `DATASET_SCHEMA_WRITE=1` (`task dataset:schema`), the schemas are written instead."""
+    files = snapshot_files(published, tmp_path)
+
+    generated = dataset_schema.generate(files, DOCS / dataset_schema.COLUMNS)
+
+    assert sorted(generated) == sorted(f"schema/{table}.json" for table in files)
+    if WRITE_SCHEMAS:
+        dataset_schema.write(DOCS, generated)
+    stale = dataset_schema.differences(DOCS, generated)
+    assert not stale, (
+        f"docs/dataset/{', '.join(stale)} not as generated: run `task dataset:schema`, and add a"
+        " docs/dataset/CHANGELOG.md entry for the schema change"
+    )
+
+
+def readme_duckdb_one_liner() -> str:
+    """The SQL of the README's DuckDB one-liner, `duckdb -c "…"`, as written."""
+    found = re.findall(r'^duckdb -c "(.+?)"$', (DOCS / "README.md").read_text(), re.M | re.S)
+    assert len(found) == 1, "the README holds one `duckdb -c` one-liner"
+    return found[0]
+
+
+def test_the_readme_duckdb_one_liner_reads_latest_over_plain_http(taken: Taken) -> None:
+    # Anyone may read, as on data.fundlens.org; DuckDB is given no credentials.
+    bucket = taken.public.bucket
+    taken.public.client.put_bucket_policy(
+        Bucket=bucket,
+        Policy=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": ["*"]},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{bucket}/*"],
+                    }
+                ],
+            }
+        ),
+    )
+    origin = f"{get_settings().r2_endpoint}/{bucket}/"
+    sql = readme_duckdb_one_liner().replace("https://data.fundlens.org/", origin)
+    assert origin in sql
+
+    with duckdb.connect() as con:
+        row = con.execute(sql).fetchone()
+
+    assert row is not None
+    contributions = manifest(taken.public, paths.DATASET_LATEST).tables["contribution"].rows
+    assert row[0] == contributions == fec_fixture.expected()["silver"]["contribution"]

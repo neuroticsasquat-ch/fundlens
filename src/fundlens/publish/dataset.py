@@ -14,6 +14,11 @@ A snapshot is a directory of the public bucket named for its date, `v1/<YYYY-MM-
 - `overrides.yaml`, the manual merges and splits (`OVERRIDES_PATH`);
 - `manifest.json` (`Manifest`), written last: a snapshot directory without one is unfinished.
 
+Before it, on every run, the dataset's documentation (`DOCS`, from `docs/dataset/`) is put at
+`v1/` wherever the bucket's copy differs, so the license and the 11 CFR 104.15 notice are there
+before any data they cover and a corrected README goes out with the next run, snapshot or not.
+A run whose documentation is not all there (`DocsMissing`) copies nothing.
+
 Then `v1/latest/` is made a copy of the newest snapshot (R2 has no symlinks) and every snapshot
 but the newest `KEEP` is deleted.
 
@@ -37,6 +42,7 @@ from pydantic import BaseModel
 
 from fundlens import paths
 from fundlens.paths import SilverTable
+from fundlens.publish.dataset_schema import SCHEMA_DIR
 from fundlens.r2 import MULTIPART_BYTES, R2, Listed, multipart_etag
 from fundlens.transform.runner import literal
 
@@ -63,6 +69,16 @@ CROSSWALK = "crosswalk.parquet"
 OVERRIDES = "overrides.yaml"
 LICENSE = "CC BY 4.0"
 ATTRIBUTION = "fundlens (fundlens.org), CC BY 4.0"
+# Every table a manifest lists, each with a schema at `schema/<table>.json`.
+MANIFEST_TABLES: tuple[str, ...] = (*DATASET_TABLES, "donor", "crosswalk")
+# The documentation beside the snapshots (spec §9): each file's path below `docs/dataset/`, which
+# is its path below `v1/`, and the type it is served as. Then a schema per manifest table.
+DOCS: dict[str, str] = {
+    "README.md": "text/markdown; charset=utf-8",
+    "LICENSE": "text/plain; charset=utf-8",
+    "CHANGELOG.md": "text/markdown; charset=utf-8",
+}
+_SCHEMA_TYPE = "application/json"
 
 # `gold.donor` (sql/gold/ddl/donor.sql) as Postgres writes it in CSV, typed for DuckDB.
 _DONOR_COLUMNS = (
@@ -93,6 +109,10 @@ class NothingPublished(Exception):
 
 class BuildNotReady(Exception):
     """The live build lacks a table the dataset needs, or is being rewritten."""
+
+
+class DocsMissing(Exception):
+    """A file of the dataset's documentation is not there to publish beside it."""
 
 
 class ManifestFile(BaseModel):
@@ -135,6 +155,8 @@ class Snapshot:
     latest_copied: bool
     # The snapshots deleted as beyond the newest `KEEP`, oldest first.
     removed: list[date]
+    # The documentation's keys put, because the bucket lacked them or held other bytes.
+    docs_put: list[str]
 
 
 @dataclass(frozen=True)
@@ -385,6 +407,45 @@ def _refresh_latest(public: R2) -> bool:
     return copied
 
 
+def _docs(docs_dir: Path) -> dict[str, Path]:
+    """The documentation to publish, by its path below `v1/`: `DOCS` and a schema of every
+    manifest table. Raises `DocsMissing` when `docs_dir` lacks one."""
+    names = [*DOCS, *(f"{SCHEMA_DIR}/{table}.json" for table in MANIFEST_TABLES)]
+    missing = [name for name in names if not (docs_dir / name).is_file()]
+    if missing:
+        raise DocsMissing(
+            f"{docs_dir} lacks {', '.join(missing)}: the dataset is never published without its"
+            " license, notice and schemas"
+        )
+    return {name: docs_dir / name for name in names}
+
+
+def publish_docs(public: R2, docs_dir: Path) -> list[str]:
+    """Put the documentation in `docs_dir` at `v1/` wherever the bucket's copy differs, and
+    delete each schema there that is no manifest table's; the keys put. Raises `DocsMissing`
+    when `docs_dir` lacks a file of it, before anything is put."""
+    docs = _docs(docs_dir)
+    schemas = paths.DATASET_PREFIX + SCHEMA_DIR + "/"
+    held = {
+        obj.key: obj.etag
+        for prefix in [*(paths.DATASET_PREFIX + name for name in DOCS), schemas]
+        for obj in public.list_objects(prefix)
+    }
+    put: list[str] = []
+    for name, local in docs.items():
+        key = paths.DATASET_PREFIX + name
+        etag = held.get(key)
+        if etag is not None and _hash(local, etag)[1]:
+            continue
+        public.put(key, local, content_type=DOCS.get(name, _SCHEMA_TYPE))
+        put.append(key)
+    wanted = {paths.DATASET_PREFIX + name for name in docs}
+    public.delete_keys([key for key in held if key.startswith(schemas) and key not in wanted])
+    if put:
+        log.info("put %d documentation files at %s", len(put), paths.DATASET_PREFIX)
+    return put
+
+
 def _retain(public: R2) -> list[date]:
     """Delete every finished snapshot but the newest `KEEP`, and every unfinished one (a crashed
     attempt never retried that day, which no reader should take for a snapshot); the dates
@@ -407,14 +468,18 @@ def snapshot(
     snapshot_date: date,
     data_dir: Path,
     overrides_path: Path,
+    docs_dir: Path,
 ) -> Snapshot:
-    """Take the live build's dataset snapshot for `snapshot_date` from `store` into `public`,
-    unless it exists; then refresh `latest/` and delete all but the newest `KEEP` snapshots.
+    """Publish the documentation in `docs_dir` (`publish_docs`), then take the live build's
+    dataset snapshot for `snapshot_date` from `store` into `public`, unless it exists; then
+    refresh `latest/` and delete all but the newest `KEEP` snapshots.
 
-    Raises `NothingPublished` when no gold build is live and `BuildNotReady` when the live build
-    lacks a dataset table or its crosswalk snapshot, or its contributions are being rewritten.
+    Raises `NothingPublished` when no gold build is live, `DocsMissing` when `docs_dir` lacks a
+    file of the documentation, and `BuildNotReady` when the live build lacks a dataset table or
+    its crosswalk snapshot, or its contributions are being rewritten.
     """
     live = _live(conn)
+    docs_put = publish_docs(public, docs_dir)
     root = paths.dataset_snapshot(snapshot_date)
     created = not public.exists(root + MANIFEST)
     build_id = live.build_id
@@ -436,4 +501,4 @@ def snapshot(
         log.info("snapshot %s of build %s exists already: not taken again", snapshot_date, build_id)
     latest_copied = _refresh_latest(public)
     removed = _retain(public)
-    return Snapshot(snapshot_date, build_id, created, latest_copied, removed)
+    return Snapshot(snapshot_date, build_id, created, latest_copied, removed, docs_put)

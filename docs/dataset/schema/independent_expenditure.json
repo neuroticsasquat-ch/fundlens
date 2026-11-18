@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/independent_expenditure.json",
+  "title": "independent_expenditure",
+  "description": "One expenditure for or against a candidate, from the FEC's file of committees' spending on and gifts to candidates (`pas2`): an independent expenditure, a party's coordinated expenditure or a communication cost, told apart by `kind`. Only `kind = 'ie'` is independent expenditure. Never a contribution. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The FEC's id of the row (`SUB_ID`), unique within a source.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The FEC id of the committee that spent the money.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the filing names, when they are a candidate of the cycle, else null. Where the FEC coded another candidate's id, a hand-curated list restores the filed one; a second id the same person holds for the race is replaced by the one holding their money; and spending naming a candidate whose committee was handed to another (Biden's 2024 campaign, Harris's from 2024-07-21), dated on or after the handoff, is the second candidate's.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "race_id": {
+      "description": "That candidate's race, the `race` table's key; null when there is none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "support_oppose": {
+      "description": "`S` for spending in support of the candidate, `O` in opposition.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amount": {
+      "description": "The amount in dollars, as filed. A correction may be negative and nets out in any sum.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "date": {
+      "description": "The date of the expenditure as filed; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "transaction_type": {
+      "description": "The FEC transaction type (`24E`, `24A`, `24C`, `24F`, `24N`).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "kind": {
+      "description": "`ie` for an independent expenditure (24E, 24A), `coordinated` for a party's coordinated expenditure (24C), `communication_cost` for a Form 7 filer's communication cost (24F, 24N).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "committee_id",
+    "candidate_id",
+    "race_id",
+    "support_oppose",
+    "amount",
+    "date",
+    "transaction_type",
+    "kind"
+  ],
+  "additionalProperties": false
+}

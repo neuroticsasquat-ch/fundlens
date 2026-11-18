@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/contributor.json",
+  "title": "contributor",
+  "description": "One contributor key seen in a cycle: a unique normalized name, ZIP5, employer and occupation, the unit resolution links into donors. Partitioned by cycle, so a key seen in several cycles has a row in each: `contributor_key` is unique within a cycle's partition, not across them. The files hold no cycle column: read it from the partition.",
+  "x-key": [
+    "contributor_key"
+  ],
+  "type": "object",
+  "properties": {
+    "contributor_key": {
+      "description": "The normalized name, ZIP5, employer and occupation joined by `|`.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "donor_id": {
+      "description": "The resolved donor the key belongs to.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "name_raw": {
+      "description": "The name as the key's chosen variant reports it. The variant is a whole set of reported name, city, state, ZIP, employer and occupation: the one most of the key's contributions in the cycle report, then the one with the most money, then the one most of its JFC attributions report.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "name_first": {
+      "description": "The chosen variant's first name, normalized.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "name_last": {
+      "description": "Its last name, normalized.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "name_suffix": {
+      "description": "Its suffix (`JR`, `III` …), normalized; null for none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "zip5": {
+      "description": "The key's five-digit ZIP code.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "city": {
+      "description": "The chosen variant's city.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "state": {
+      "description": "The chosen variant's state.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "employer_raw": {
+      "description": "The employer as the chosen variant reports it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "employer_norm": {
+      "description": "The employer, normalized.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "occupation_raw": {
+      "description": "The occupation as the chosen variant reports it.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "occupation_norm": {
+      "description": "The occupation, normalized.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "contribution_count": {
+      "description": "The key's contributions in the cycle.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DOUBLE"
+    },
+    "amount_total": {
+      "description": "Their amount in dollars, refunds netted.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(38,2)"
+    },
+    "attribution_count": {
+      "description": "The key's JFC attributions in the cycle: memo lines naming it behind a joint fundraising committee's transfer. Evidence, never money.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DOUBLE"
+    },
+    "first_cycle": {
+      "description": "The cycle of the partition.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "last_cycle": {
+      "description": "The cycle of the partition.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    }
+  },
+  "required": [
+    "contributor_key",
+    "donor_id",
+    "name_raw",
+    "name_first",
+    "name_last",
+    "name_suffix",
+    "zip5",
+    "city",
+    "state",
+    "employer_raw",
+    "employer_norm",
+    "occupation_raw",
+    "occupation_norm",
+    "contribution_count",
+    "amount_total",
+    "attribution_count",
+    "first_cycle",
+    "last_cycle"
+  ],
+  "additionalProperties": false
+}
