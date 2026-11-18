@@ -76,6 +76,9 @@ class R2:
             # always accepted; only where the operation requires one keeps R2 and MinIO alike.
             config=Config(
                 retries={"mode": "standard"},
+                # A connection per snapshot copy in flight (`DATASET_COPY_WORKERS`): fewer works,
+                # but costs a TLS handshake for each copy beyond the pool.
+                max_pool_connections=max(10, settings.dataset_copy_workers),
                 request_checksum_calculation="when_required",
                 response_checksum_validation="when_required",
             ),

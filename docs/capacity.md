@@ -290,6 +290,18 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
 - **The working file stays between runs.** `resolve.duckdb`, 102 GiB, is about 70% of the steady-state disk
   (Triggers). Every weekly `resolve --full` starts from it until NEU-2062.
 
+## Dataset snapshot
+
+One row per full `fundlens dataset --snapshot` (spec §9), timed by hand or on a Sunday (NEU-2067). The snapshot
+pass hashes the live build's silver files and copies them from `fundlens-data` into `v1/<date>/`; the latest pass
+copies that directory into `v1/latest/`. Each pass's seconds are from its log line (`hashed and copied <n>
+objects …`, `copied <n> objects to v1/latest/ …`); wall time is `time`'s `real`, documentation, donor export and
+retention included.
+
+| Date | Build | SHA | Workers | Objects | Snapshot pass s | Latest pass s | Wall time | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-17 | `20261117T030329Z` | `ff1cff3` | 1 | 6,340 | ~6,300 (1h45m) | ~6,960 (1h56m) | 221m18s (3h41m) | The first production snapshot, all 24 cycles, copied one object at a time (NEU-2064). The passes are from its timestamps, not log lines, which it did not write. About 1.1 s a copy. 6,338 Parquet files (6,144 `contribution` parts), `overrides.yaml` and the manifest. The baseline [dataset-launch.md](runbooks/dataset-launch.md) §2 re-times against: 30 minutes or less. |
+
 ## Triggers
 
 The handover's triggers for moving the pipeline to an ephemeral runner (spec §10.6, §13): a weekly run over 6–8 h,

@@ -973,6 +973,7 @@ def _snapshot() -> None:
                 data_dir=settings.data_dir,
                 overrides_path=settings.overrides_path,
                 docs_dir=settings.dataset_docs_dir,
+                workers=settings.dataset_copy_workers,
             )
         except (
             dataset_publish.NothingPublished,
