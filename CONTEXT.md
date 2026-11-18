@@ -181,6 +181,10 @@ _Avoid_: latest model, newest model (a newer one may be saved and not live)
 
 ### Data tiers
 
+**File catalogue**:
+The regulator bulk files fundlens reads. A file outside it is neither downloaded nor read.
+_Avoid_: file list, registry, manifest (the manifest is a snapshot's)
+
 **Bronze**:
 Raw regulator bulk files exactly as downloaded.
 
