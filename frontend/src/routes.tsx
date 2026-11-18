@@ -1,8 +1,8 @@
 import type { RouteObject } from "react-router";
 import CandidatePage from "./pages/CandidatePage";
 import CommitteePage from "./pages/CommitteePage";
-import ComingSoon from "./pages/ComingSoon";
 import CyclePage from "./pages/CyclePage";
+import DatasetPage from "./pages/DatasetPage";
 import DonorPage from "./pages/DonorPage";
 import HomePage from "./pages/HomePage";
 import MethodologyPage from "./pages/MethodologyPage";
@@ -49,7 +49,7 @@ export const routes: RouteObject[] = [
       { path: "/committee/:id", element: <CommitteePage />, handle: cycleRow },
       { path: "/donor/:id", element: <DonorPage /> },
       { path: "/search", element: <SearchPage /> },
-      { path: "/dataset", element: <ComingSoon name="Dataset" /> },
+      { path: "/dataset", element: <DatasetPage /> },
       { path: "/methodology", element: <MethodologyPage /> },
       { path: "*", element: <NotFound /> },
     ],

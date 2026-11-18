@@ -77,6 +77,62 @@ class Meta(BaseModel):
     cycles: dict[str, MetaCycle]
 
 
+class DatasetPart(BaseModel):
+    """One table's files in one cycle of a dataset snapshot, or a table's one file when it has
+    no cycle (`donor`, `crosswalk`)."""
+
+    # None for a table with no cycle.
+    cycle: int | None
+    # Relative to the snapshot's `url`: the file itself when the part is one file, which a
+    # browser can download; else the directory holding its files (`contribution/cycle=2024/`),
+    # which HTTPS cannot list: the snapshot's `manifest.json` names each file.
+    path: str
+    files: int
+    bytes: int
+
+
+class DatasetTable(BaseModel):
+    """One table of a dataset snapshot, from its `manifest.json` (spec §9)."""
+
+    name: str
+    rows: int
+    files: int
+    bytes: int
+    # In the manifest's order: by cycle, oldest first.
+    parts: list[DatasetPart]
+
+
+class DatasetSnapshot(BaseModel):
+    """One finished dataset snapshot, `v1/<snapshot_date>/` in the public bucket."""
+
+    snapshot_date: date
+    # Where its files are served: `https://data.fundlens.org/v1/<snapshot_date>/`.
+    url: str
+    # The build `gold` was published from when it was taken.
+    build_id: str
+    # Newest first.
+    cycles: list[int]
+    # In the manifest's order.
+    tables: list[DatasetTable]
+    # Resolution quality against DIME (spec §6.9): None when the live model was unscored.
+    precision: float | None
+    recall: float | None
+    license: str
+    attribution: str
+
+
+class Dataset(BaseModel):
+    """The public dataset's snapshots (`GET /v1/dataset`, spec §9)."""
+
+    # Where the dataset is served: its README, LICENSE, CHANGELOG and `schema/` are here too.
+    base_url: str
+    # The snapshot `latest/` is a copy of: None before the first, or while its first copy is
+    # unfinished.
+    latest: date | None
+    # Every finished snapshot, newest first.
+    snapshots: list[DatasetSnapshot]
+
+
 class Cycle(BaseModel):
     """`gold.cycle`: one cycle's totals."""
 

@@ -658,6 +658,189 @@
         "title": "Cycle",
         "type": "object"
       },
+      "Dataset": {
+        "description": "The public dataset's snapshots (`GET /v1/dataset`, spec \u00a79).",
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetSnapshot"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_url",
+          "latest",
+          "snapshots"
+        ],
+        "title": "Dataset",
+        "type": "object"
+      },
+      "DatasetPart": {
+        "description": "One table's files in one cycle of a dataset snapshot, or a table's one file when it has\nno cycle (`donor`, `crosswalk`).",
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cycle",
+          "path",
+          "files",
+          "bytes"
+        ],
+        "title": "DatasetPart",
+        "type": "object"
+      },
+      "DatasetSnapshot": {
+        "description": "One finished dataset snapshot, `v1/<snapshot_date>/` in the public bucket.",
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "cycles": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "snapshot_date": {
+            "format": "date",
+            "title": "Snapshot Date",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetTable"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_date",
+          "url",
+          "build_id",
+          "cycles",
+          "tables",
+          "precision",
+          "recall",
+          "license",
+          "attribution"
+        ],
+        "title": "DatasetSnapshot",
+        "type": "object"
+      },
+      "DatasetTable": {
+        "description": "One table of a dataset snapshot, from its `manifest.json` (spec \u00a79).",
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetPart"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "rows",
+          "files",
+          "bytes",
+          "parts"
+        ],
+        "title": "DatasetTable",
+        "type": "object"
+      },
       "Donor": {
         "description": "A donor page: `gold.donor`, every name, employer and address variant resolved into one\n(spec \u00a76), a row per cycle, newest first, and whom they gave most to.",
         "properties": {
@@ -2497,6 +2680,24 @@
           }
         },
         "summary": "List Races"
+      }
+    },
+    "/v1/dataset": {
+      "get": {
+        "operationId": "get_dataset_v1_dataset_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Dataset"
       }
     },
     "/v1/donors/{donor_id}": {

@@ -4,6 +4,8 @@ import type {
   CommitteeCycle,
   Contribution,
   Cycle,
+  Dataset,
+  DatasetSnapshot,
   Donor,
   IndependentExpenditure,
   Meta,
@@ -765,3 +767,60 @@ export const EXPENDITURES: IndependentExpenditure[] = [
   expenditure("4240200000000000003", "2024-10-05", 80000, "S4MD00104", "WHITLOCK, GORDON", "2024-S-MD-00", "O", "24A"),
   expenditure("4240200000000000001", "2024-09-20", 120000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E"),
 ];
+
+const DATA = "https://data.fundlens.org/v1/";
+
+const snapshot = (date: string, build_id: string): DatasetSnapshot => ({
+  snapshot_date: date,
+  url: `${DATA}${date}/`,
+  build_id,
+  cycles: [2024, 2022],
+  tables: [
+    {
+      name: "contribution",
+      rows: 1_200,
+      files: 3,
+      bytes: 30_500,
+      parts: [
+        {
+          cycle: 2022,
+          path: "contribution/cycle=2022/bucket-00-part-0000.parquet",
+          files: 1,
+          bytes: 500,
+        },
+        { cycle: 2024, path: "contribution/cycle=2024/", files: 2, bytes: 30_000 },
+      ],
+    },
+    {
+      name: "race",
+      rows: 12,
+      files: 2,
+      bytes: 3_000,
+      parts: [
+        { cycle: 2022, path: "race/cycle=2022/part-0000.parquet", files: 1, bytes: 1_000 },
+        { cycle: 2024, path: "race/cycle=2024/part-0000.parquet", files: 1, bytes: 2_000 },
+      ],
+    },
+    {
+      name: "donor",
+      rows: 40,
+      files: 1,
+      bytes: 9_876,
+      parts: [{ cycle: null, path: "donor.parquet", files: 1, bytes: 9_876 }],
+    },
+  ],
+  precision: 0.97,
+  recall: 0.95,
+  license: "CC BY 4.0",
+  attribution: "fundlens (fundlens.org), CC BY 4.0",
+});
+
+/** Two snapshots, the newest the one `latest/` is a copy of. */
+export const DATASET: Dataset = {
+  base_url: DATA,
+  latest: "2026-11-22",
+  snapshots: [
+    snapshot("2026-11-22", "20261122T030000Z"),
+    { ...snapshot("2026-11-15", "20261115T030000Z"), precision: null, recall: null },
+  ],
+};

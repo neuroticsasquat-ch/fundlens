@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { count, DASH, isoDate, money, moneyCompact, percent } from "./format";
+import { count, DASH, fileSize, isoDate, money, moneyCompact, percent } from "./format";
 
 describe("format", () => {
   it("writes full dollars, a minus sign for negatives and a dash for nothing", () => {
@@ -30,5 +30,12 @@ describe("format", () => {
     expect(percent(0.6288)).toBe("62.9%");
     expect(percent(1)).toBe("100.0%");
     expect(percent(null)).toBe(DASH);
+  });
+
+  it("writes file sizes in decimal units to one decimal", () => {
+    expect(fileSize(512)).toBe("512 bytes");
+    expect(fileSize(9876)).toBe("9.9 kB");
+    expect(fileSize(1_234_567_890)).toBe("1.2 GB");
+    expect(fileSize(null)).toBe(DASH);
   });
 });

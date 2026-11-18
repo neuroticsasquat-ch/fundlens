@@ -41,3 +41,18 @@ export function count(v: number | null | undefined): string {
 export function isoDate(v: string | null | undefined): string {
   return v ? v.slice(0, 10) : DASH;
 }
+
+const sized = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+const UNITS = ["bytes", "kB", "MB", "GB", "TB"];
+
+/** A file's size in decimal units: `512 bytes`, `9.9 kB`, `1.2 GB`. */
+export function fileSize(v: number | null | undefined): string {
+  if (v == null) return DASH;
+  let size = v;
+  let unit = 0;
+  while (size >= 1000 && unit < UNITS.length - 1) {
+    size /= 1000;
+    unit += 1;
+  }
+  return `${sized.format(size)} ${UNITS[unit]}`;
+}
