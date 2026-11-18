@@ -143,13 +143,15 @@ def cap_duckdb(env: pytest.MonkeyPatch) -> None:
 def point_cli_at(
     env: pytest.MonkeyPatch, *, conninfo: str, data_dir: Path, bucket: str = TEST_BUCKET
 ) -> None:
-    """Point the CLI's settings at `bucket`, the database `conninfo`, `data_dir` and no
-    overrides."""
+    """Point the CLI's settings at `bucket`, the database `conninfo`, `data_dir`, no overrides
+    and the checkout's dataset docs."""
     env.setattr(cli, "configure_logging", leave_logging_alone)
     env.setenv("R2_BUCKET", bucket)
     env.setenv("DATABASE_URL", conninfo)
     env.setenv("DATA_DIR", str(data_dir))
     env.setenv("OVERRIDES_PATH", str(NO_OVERRIDES))
+    # The checkout's, wherever it is: /app only in the dev container and the image.
+    env.setenv("DATASET_DOCS_DIR", str(REPO_ROOT / "docs" / "dataset"))
     cap_duckdb(env)
 
 
