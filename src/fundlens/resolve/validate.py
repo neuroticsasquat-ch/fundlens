@@ -30,7 +30,7 @@ from fundlens.fec.files import CATALOGUE
 from fundlens.r2 import R2
 from fundlens.resolve import crosswalk, model
 from fundlens.resolve.cluster import CLUSTER_TABLE
-from fundlens.transform.runner import ROW_GROUP_ROWS, Limits, literal, register_bulk, unzip_bulk
+from fundlens.transform.runner import ROW_GROUP_ROWS, Limits, fetch_bulk, literal, register_bulk
 
 log = logging.getLogger(__name__)
 
@@ -300,7 +300,7 @@ def label(
         data_dir=data_dir,
     )
     indiv = CATALOGUE["indiv"]
-    register_bulk(con, indiv, unzip_bulk(store, cycle, indiv, data_dir=data_dir, work=work))
+    register_bulk(con, indiv, fetch_bulk(store, cycle, indiv, data_dir=data_dir, work=work))
     silver = (
         f"read_parquet({literal(contributions / '**' / '*.parquet')}, hive_partitioning = false)"
     )

@@ -35,6 +35,7 @@ _BUILD_ID = re.compile(r"\d{8}T\d{6}Z")
 _BUILD_IN_KEY = re.compile(r"/build=(\d{8}T\d{6}Z)(?:/|$)")
 _CYCLE_IN_KEY = re.compile(r"/cycle=(\d+)/")
 _MODEL_KEY = re.compile(r"resolution/model/(\d{8}T\d{6}Z)\.json")
+_DOWNLOAD_DATE = re.compile(r"/(\d{4}-\d{2}-\d{2})\.(?:zip|csv)\Z")
 
 # Every completion marker of every cycle lives under here (`markers_dir`).
 MARKERS_PREFIX = "markers/"
@@ -89,6 +90,22 @@ def bronze_dir(cycle: int, file: str) -> str:
 def bronze_zip(cycle: int, file: str, download_date: date) -> str:
     """One FEC bulk zip, as downloaded on `download_date`: `bronze/cycle=<c>/<file>/<date>.zip`."""
     return f"{bronze_dir(cycle, file)}{download_date.isoformat()}.zip"
+
+
+def bronze_csv(cycle: int, file: str, download_date: date) -> str:
+    """One FEC bulk CSV, as downloaded on `download_date`: `bronze/cycle=<c>/<file>/<date>.csv`.
+
+    An undated file is kept under each cycle it is extracted for, like any other."""
+    return f"{bronze_dir(cycle, file)}{download_date.isoformat()}.csv"
+
+
+def download_date_of(key: str) -> str:
+    """The ISO download date a bronze key ends in, zip or CSV: `2026-11-02` for
+    `bronze/cycle=2026/indiv/2026-11-02.zip`. Raises `ValueError` for any other key."""
+    match = _DOWNLOAD_DATE.search(key)
+    if match is None:
+        raise ValueError(f"{key!r} is not a bronze file's key")
+    return match.group(1)
 
 
 def silver_cycle_dir(table: SilverTable, cycle: int) -> str:

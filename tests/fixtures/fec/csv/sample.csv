@@ -1,0 +1,8 @@
+# The CSV format's sample (NEU-2138), rendered by the test-only entries `SAMPLE` and
+# `SAMPLE_UNDATED` in tests/fec_fixture.py.
+CMTE_ID,CMTE_NM,TTL_RECEIPTS,COVERAGE_END_DT
+# A name holding a comma, a quote and a `|`, which a CSV may hold, and a blank amount: NULL
+# once read.
+C00000001,"SMITH, JONES & ""FRIENDS"" | PAC",,20241016
+# A leading space inside a quoted name, as FEC's `leadership` holds, and an amount.
+C00000002, GO AMERICA PAC,1234.56,31-OCT-24

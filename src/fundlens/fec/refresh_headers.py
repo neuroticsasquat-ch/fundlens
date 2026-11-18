@@ -38,17 +38,21 @@ def main(argv: list[str] | None = None) -> int:
     base_url = get_settings().fec_bulk_url
     stale: list[str] = []
     for file in CATALOGUE.values():
-        live = fetch(base_url, file.header_file)
-        vendored = HEADERS_DIR / file.header_file
-        if vendored.exists() and columns(vendored.read_bytes()) == columns(live):
-            print(f"{file.header_file}: unchanged")
+        header_file = file.header_file
+        # A CSV's header row is in the file itself: there is nothing vendored to refresh.
+        if header_file is None:
             continue
-        stale.append(file.header_file)
+        live = fetch(base_url, header_file)
+        vendored = HEADERS_DIR / header_file
+        if vendored.exists() and columns(vendored.read_bytes()) == columns(live):
+            print(f"{header_file}: unchanged")
+            continue
+        stale.append(header_file)
         if args.check:
-            print(f"{file.header_file}: differs from FEC's")
+            print(f"{header_file}: differs from FEC's")
         else:
             vendored.write_bytes(live)
-            print(f"{file.header_file}: updated")
+            print(f"{header_file}: updated")
     return 1 if args.check and stale else 0
 
 

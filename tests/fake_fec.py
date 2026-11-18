@@ -1,8 +1,8 @@
 """A stand-in for FEC's bulk-download server, since tests never reach the network (spec §12).
 
-Serves the zips a test gives it over real HTTP on localhost, with the `Last-Modified` and
-`Content-Length` FEC's S3 bucket sends, and logs every request so a test can assert what was
-(and was not) downloaded.
+Serves the files a test gives it, zips and CSVs, over real HTTP on localhost, with the
+`Last-Modified`, `Content-Length` and `Content-Type` FEC's S3 bucket sends, and logs every
+request so a test can assert what was (and was not) downloaded.
 """
 
 import io
@@ -14,6 +14,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # What FEC's bucket sent for a 2024 file on the day this was written.
 LAST_MODIFIED = "Fri, 30 Oct 2026 05:43:50 GMT"
+ZIP = "application/zip"
+CSV = "text/csv"
 
 
 def zipped(member: str, text: str | bytes) -> bytes:
@@ -26,8 +28,8 @@ def zipped(member: str, text: str | bytes) -> bytes:
 
 class FakeFec:
     def __init__(self) -> None:
-        # URL path → (body, Last-Modified).
-        self.files: dict[str, tuple[bytes, str]] = {}
+        # URL path → (body, Last-Modified, Content-Type).
+        self.files: dict[str, tuple[bytes, str, str]] = {}
         # URL path → statuses to answer GETs with, in order, before serving the file.
         self.failures: dict[str, list[int]] = {}
         # (method, path) of every request, in arrival order.
@@ -38,8 +40,22 @@ class FakeFec:
         self, cycle: int, name: str, body: bytes | None = None, last_modified: str = LAST_MODIFIED
     ) -> str:
         """Publish `<name><yy>.zip` for `cycle`; its URL path."""
-        path = f"/{cycle}/{name}{cycle % 100:02d}.zip"
-        self.files[path] = (body or zipped(f"{name}.txt", f"{name}|{cycle}\n"), last_modified)
+        return self.serve_path(
+            f"/{cycle}/{name}{cycle % 100:02d}.zip",
+            body or zipped(f"{name}.txt", f"{name}|{cycle}\n"),
+            last_modified=last_modified,
+        )
+
+    def serve_path(
+        self,
+        path: str,
+        body: bytes,
+        *,
+        content_type: str = ZIP,
+        last_modified: str = LAST_MODIFIED,
+    ) -> str:
+        """Publish `body` at URL path `path` (`/2024/sample_2024.csv`); the path."""
+        self.files[path] = (body, last_modified, content_type)
         return path
 
     def gets(self) -> list[str]:
@@ -64,9 +80,9 @@ class FakeFec:
                 if self.path not in fake.files:
                     self.send_error(404)
                     return
-                body, last_modified = fake.files[self.path]
+                body, last_modified, content_type = fake.files[self.path]
                 self.send_response(200)
-                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Last-Modified", last_modified)
                 self.end_headers()

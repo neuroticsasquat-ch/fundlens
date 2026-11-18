@@ -36,11 +36,12 @@ The first four were locked on 2026-11-02, the last two on 2026-11-18. v1 §2 sta
 
 Bulk files are catalogued only in `fundlens.fec.files`: a file outside the file catalogue is neither downloaded nor read. v1 put six files in it (`cm`, `cn`, `ccl`, `indiv`, `pas2`, `oth`; v1 §4), which this project reads as v1 does. It adds the ten below.
 
-- **Formats.** `zip`: a pipe-delimited text file with no header row, zipped, its columns named by a vendored header. `csv`: comma-delimited with a header row, not zipped. Bronze keeps either as downloaded (ADR-0002). NEU-2138 adds the `format` field and the CSV reader.
-- **URL shapes**, each below `FEC_BULK_URL` (`https://www.fec.gov/files/bulk-downloads`). Three, where NEU-2138's ticket text names two (per cycle and undated), so its URL template per file must cover all of them:
+- **Formats.** `zip`: a pipe-delimited text file with no header row, zipped, its columns named by a vendored header. `csv`: comma-delimited with a header row, not zipped. A CSV's header row must equal the entry's `columns` exactly, the same names in the same order; extract refuses a download that differs, and transform checks the bronze file again before reading it. FEC serves its CSVs in one dialect: the header row unquoted, every data field double-quoted (a blank one as `""`, read as NULL), LF line endings, no BOM. Bronze keeps either format as downloaded (ADR-0002); transform rewrites both as UTF-8 without NUL bytes under `scratch/` before reading them. NEU-2138 adds the `format` field and the CSV reader.
+- **URL shapes**, each below `FEC_BULK_URL` (`https://www.fec.gov/files/bulk-downloads`), given by the entry's `url_pattern` (`{yyyy}` and `{yy}` its only placeholders; a zip without one is at `{yyyy}/<name>{yy}.zip`). Three:
   1. Per cycle, in the cycle's directory: `<yyyy>/<name><yy>.zip` and `<yyyy>/<name>_<yyyy>.csv`.
   2. Per cycle, in an undated directory: `data.fec.gov/leadership<yyyy>.csv`.
   3. One undated file for every cycle: `data.fec.gov/lobbyist.csv`.
+- **FEC rewrites some historical CSVs daily.** `committee_summary_2008.csv` carried that day's `Last-Modified` on 2026-11-18; `leadership2010.csv` carried 2 January 2025. The change check is `Last-Modified` and size, as for zips, so re-extracting a historical cycle downloads those CSVs again and writes a new dated bronze object. The weekly run extracts only the current cycle.
 - **First cycles are the page's.** Both tables below record FEC's bulk-data page, <https://www.fec.gov/data/browse-data/?tab=bulk-data>, as read on **2026-11-18**: the files it links, the URL each link has, and the earliest two-year range it links for each. FEC labels a file by its range (`2009–2010`); the first cycle is the range's even year. No file's contents were read for this section.
 
 ### 3.1 Read by this project

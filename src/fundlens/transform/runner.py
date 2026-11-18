@@ -1,13 +1,14 @@
-"""`fundlens transform`: one cycle's bronze zips into the silver tables (spec §5.3).
+"""`fundlens transform`: one cycle's bronze files into the silver tables (spec §5.3).
 
 Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views to read:
 
 - one view per FEC bulk file published for the cycle, named for it (`cm`, `cn`, `ccl`, …): the
-  newest bronze zip's text file read with the vendored column names, as VARCHAR and then cast to
-  the catalogue's types (`fec.files`). DuckDB cannot read a zip, so the text is unpacked under
+  newest bronze file read with the catalogue's column names, as VARCHAR and then cast to the
+  catalogue's types (`fec.files`). A zip's text file, pipe-delimited and named by the vendored
+  header, and a CSV, whose header row must be the catalogue's columns, are both copied under
   `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
-  deleted after it. An `indiv` text file that disagrees in size with the same rows split under
-  `by_date/` is read from those files instead (`copy_bulk`, NEU-2321);
+  deleted after it (`fetch_bulk`). An `indiv` text file that disagrees in size with the same rows
+  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321);
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
@@ -60,7 +61,7 @@ from psycopg.rows import TupleRow
 
 from fundlens import markers, paths
 from fundlens.fec import lines
-from fundlens.fec.files import CATALOGUE, VARCHAR, BulkFile, files_for
+from fundlens.fec.files import CATALOGUE, VARCHAR, BulkFile, files_for, read_csv_header
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
@@ -213,6 +214,8 @@ def copy_bulk(archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, sourc
     agree, as every other cycle's do, `member` is read, so a built cycle's rows keep their order;
     reading both would count every row twice.
     """
+    if file.member is None:
+        raise ValueError(f"{file.name} is not a zip")
     whole = archive.getinfo(file.member)
     split = sorted(
         (
@@ -243,40 +246,57 @@ def copy_bulk(archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, sourc
         _end_line(out)
 
 
-def unzip_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
-    """The newest bronze zip of `file` unpacked under `work` as UTF-8; the text file's path.
+def fetch_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: Path) -> Path:
+    """The newest bronze file of `file` copied under `work` as UTF-8; the copy's path.
 
-    The current cycle's zip is on local disk already (`fec.extract` keeps it there); any other is
-    fetched into `work`, so a historical zip never outlives the run (spec §3.4). The text is the
-    file's member, or its split files when the two disagree (`copy_bulk`).
+    The current cycle's file is on local disk already (`fec.extract` keeps it there); any other
+    is fetched into `work`, so a historical file never outlives the run (spec §3.4). A zip's text
+    is its member, or its split files when the two disagree (`copy_bulk`). A CSV's header row
+    must be the catalogue's columns, else `ValueError` naming the bronze key, before any of it is
+    read.
     """
     key = _newest_bronze(store, cycle, file)
     local = paths.local_path(data_dir, key)
     if not local.exists():
-        local = store.download_to(key, work / f"{file.name}.zip")
+        local = store.download_to(key, work / f"{file.name}.{file.format}")
     text = work / f"{file.name}.txt"
-    with zipfile.ZipFile(local) as archive, text.open("w+b") as out:
-        copy_bulk(archive, file, out, source=key)
+    if file.format == "csv":
+        if read_csv_header(local) != list(file.columns):
+            raise ValueError(f"{key}: the header row is not the catalogued {file.name} columns")
+        with local.open("rb") as src, text.open("wb") as out:
+            copy_as_utf8(src, out)
+    else:
+        with zipfile.ZipFile(local) as archive, text.open("w+b") as out:
+            copy_bulk(archive, file, out, source=key)
     log.info("%s %d read from %s", file.name, cycle, key)
     return text
 
 
 def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
-    """The view `<file>`: the bulk file's rows under the vendored names, cast to their types."""
-    names = file.header()
-    if names != list(file.columns):
+    """The view `<file>`: the bulk file's rows under the catalogue's names, cast to their types.
+
+    `text` is `fetch_bulk`'s copy, UTF-8 throughout.
+    """
+    # A CSV's header row was checked by `fetch_bulk`; a zip's names are its vendored header.
+    if file.format == "zip" and file.header() != list(file.columns):
         raise ValueError(f"the vendored {file.header_file} disagrees with the catalogue")
-    columns = ", ".join(f"{literal(name)}: 'VARCHAR'" for name in names)
+    columns = ", ".join(f"{literal(name)}: 'VARCHAR'" for name in file.columns)
     selected = ", ".join(
         f'"{name}"' if kind == VARCHAR else f'CAST("{name}" AS {kind}) AS "{name}"'
         for name, kind in file.columns.items()
     )
-    # Pipe-delimited and unquoted (a quote in a name is just a character), with no header row.
-    # UTF-8 throughout, since `unzip_bulk` rewrote it so.
+    if file.format == "csv":
+        # RFC 4180 with a header row, which `fetch_bulk` checked. FEC quotes every field and
+        # writes a blank one as `""`, which reads as NULL, as a zip's empty field does.
+        dialect = (
+            "delim = ',', quote = '\"', escape = '\"', header = true, allow_quoted_nulls = true"
+        )
+    else:
+        # Pipe-delimited and unquoted (a quote in a name is just a character), no header row.
+        dialect = "delim = '|', quote = '', escape = '', header = false"
     con.execute(
         f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
-        f" delim = '|', quote = '', escape = '', header = false, auto_detect = false,"
-        f" columns = {{{columns}}}, encoding = 'utf-8')"
+        f" {dialect}, auto_detect = false, columns = {{{columns}}}, encoding = 'utf-8')"
     )
 
 
@@ -452,7 +472,7 @@ def transform(
             published = files_for(cycle)
             for file in published:
                 register_bulk(
-                    con, file, unzip_bulk(store, cycle, file, data_dir=data_dir, work=work)
+                    con, file, fetch_bulk(store, cycle, file, data_dir=data_dir, work=work)
                 )
             for file in CATALOGUE.values():
                 if file not in published:
