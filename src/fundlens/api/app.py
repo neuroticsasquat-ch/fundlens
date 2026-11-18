@@ -17,12 +17,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fundlens import __version__
 from fundlens.api.cache import CacheHeaders, TtlCache, read_build_id
 from fundlens.api.cors import DefaultAllowOrigin
+from fundlens.api.dataset import DatasetIndex
 from fundlens.api.itemized import ItemizedReader, read_live_builds
 from fundlens.api.problems import install_problem_handlers
 from fundlens.api.routers import (
     candidates,
     committees,
     cycles,
+    dataset,
     donors,
     health,
     meta,
@@ -30,6 +32,7 @@ from fundlens.api.routers import (
     search,
 )
 from fundlens.load.db import create_pool
+from fundlens.r2 import R2
 from fundlens.settings import Settings, get_settings
 
 
@@ -45,6 +48,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.build_ids = TtlCache(partial(read_build_id, pool))
             live_builds = TtlCache(partial(read_live_builds, pool))
             app.state.itemized = ItemizedReader(settings.data_dir, live_builds.get)
+            app.state.dataset = DatasetIndex(
+                R2.from_settings(settings, bucket=settings.r2_public_bucket)
+            )
             try:
                 yield
             finally:
@@ -61,7 +67,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
     )
-    for module in (health, meta, cycles, races, candidates, committees, donors, search):
+    for module in (
+        health,
+        meta,
+        cycles,
+        races,
+        candidates,
+        committees,
+        donors,
+        search,
+        dataset,
+    ):
         app.include_router(module.router)
     return app
 

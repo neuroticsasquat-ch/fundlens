@@ -3,13 +3,6 @@ import { describe, expect, it } from "vitest";
 import { renderApp } from "./test/app";
 
 describe("routes", () => {
-  it("/dataset renders the Dataset stub until its page is built", async () => {
-    renderApp("/dataset");
-
-    expect(await screen.findByText("Dataset pages are coming.")).toBeInTheDocument();
-    expect(document.title).toBe("Dataset · fundlens");
-  });
-
   it.each([
     ["/", "Who funds federal races."],
     ["/cycles/2024", "2024 races"],
@@ -19,6 +12,7 @@ describe("routes", () => {
     ["/committee/C00401224", "ACTBLUE"],
     ["/donor/412", "MARLOWE, AUGUSTINE MR."],
     ["/search?q=calloway", "Search: calloway"],
+    ["/dataset", "Dataset"],
     ["/methodology", "Methodology"],
   ])("%s renders its page", async (path, heading) => {
     renderApp(path);
@@ -33,7 +27,7 @@ describe("routes", () => {
     expect(document.title).toBe("Not found · fundlens");
   });
 
-  it("reaches the methodology page and the dataset stub from the footer links", async () => {
+  it("reaches the methodology and dataset pages from the footer links", async () => {
     const { router } = renderApp("/");
     const footer = screen.getByRole("contentinfo");
 
@@ -44,6 +38,7 @@ describe("routes", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(within(footer).getByRole("link", { name: "Dataset" }));
-    expect(await screen.findByText("Dataset pages are coming.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/dataset");
+    expect(await screen.findByRole("heading", { level: 1, name: "Dataset" })).toBeInTheDocument();
   });
 });

@@ -368,7 +368,7 @@ def _take(
     public.put(root + MANIFEST, manifest.model_dump_json(indent=2).encode())
 
 
-def _snapshot_dates(public: R2) -> list[date]:
+def snapshot_dates(public: R2) -> list[date]:
     """The date of every snapshot directory in the public bucket, oldest first."""
     found = (paths.snapshot_date_of(prefix) for prefix in public.list_dirs(paths.DATASET_PREFIX))
     return sorted(found_date for found_date in found if found_date is not None)
@@ -383,7 +383,7 @@ def _refresh_latest(public: R2) -> bool:
     newest = next(
         (
             root
-            for root in map(paths.dataset_snapshot, reversed(_snapshot_dates(public)))
+            for root in map(paths.dataset_snapshot, reversed(snapshot_dates(public)))
             if public.exists(root + MANIFEST)
         ),
         None,
@@ -450,7 +450,7 @@ def _retain(public: R2) -> list[date]:
     """Delete every finished snapshot but the newest `KEEP`, and every unfinished one (a crashed
     attempt never retried that day, which no reader should take for a snapshot); the dates
     deleted. Called once the day's own snapshot is finished."""
-    dates = _snapshot_dates(public)
+    dates = snapshot_dates(public)
     finished = [day for day in dates if public.exists(paths.dataset_snapshot(day) + MANIFEST)]
     unfinished = [day for day in dates if day not in finished]
     removed = sorted(unfinished + (finished[:-KEEP] if len(finished) > KEEP else []))

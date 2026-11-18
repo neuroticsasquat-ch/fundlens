@@ -4,7 +4,8 @@ The fixture cycle is resolved, loaded and published once for the module, into a 
 and database of the module's own; each test snapshots it into an empty public bucket.
 
 Here too the committed schemas (`docs/dataset/schema/`) are checked against that snapshot's files,
-and the README's DuckDB one-liner is run against it over plain HTTP (NEU-2065).
+the README's DuckDB one-liner is run against it over plain HTTP (NEU-2065), and `GET /v1/dataset`
+lists it (NEU-2066).
 """
 
 import hashlib
@@ -24,9 +25,13 @@ import psycopg
 import pytest
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
+from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from fundlens import cli, paths, r2
+from fundlens.api.app import create_app
+from fundlens.api.dataset import DATASET_CACHE_CONTROL, PUBLIC_URL, DatasetIndex, summarize
+from fundlens.api.schemas import Dataset
 from fundlens.paths import SilverTable
 from fundlens.publish import dataset, dataset_schema
 from fundlens.publish.dataset import DATASET_TABLES, BuildNotReady, DocsMissing, Manifest
@@ -466,3 +471,75 @@ def test_the_readme_duckdb_one_liner_reads_latest_over_plain_http(taken: Taken) 
     assert row is not None
     contributions = manifest(taken.public, paths.DATASET_LATEST).tables["contribution"].rows
     assert row[0] == contributions == fec_fixture.expected()["silver"]["contribution"]
+
+
+def test_v1_dataset_lists_the_snapshot_from_its_manifest(
+    published: Published, taken: Taken
+) -> None:
+    settings = get_settings().model_copy(
+        update={
+            "database_url": published.conninfo,
+            "data_dir": published.data_dir,
+            "r2_public_bucket": taken.public.bucket,
+        }
+    )
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/v1/dataset")
+
+    assert response.status_code == 200, response.text
+    # Not the gold build's week at the edge: the snapshot is taken after its build is published.
+    assert response.headers["cache-control"] == DATASET_CACHE_CONTROL
+    assert "etag" not in response.headers
+    body = Dataset.model_validate(response.json())
+    assert body.base_url == PUBLIC_URL
+    assert body.latest == DAY
+    (snapshot,) = body.snapshots
+    assert snapshot == summarize(manifest(taken.public, paths.dataset_snapshot(DAY)))
+    assert [table.name for table in snapshot.tables] == list(dataset.MANIFEST_TABLES)
+    # Every cycled table's part is in the fixture cycle's directory on data.fundlens.org.
+    for table in snapshot.tables:
+        for part in table.parts:
+            url = snapshot.url + part.path
+            if table.name in ("donor", "crosswalk"):
+                assert url == f"https://data.fundlens.org/v1/{DAY}/{table.name}.parquet"
+            else:
+                assert url.startswith(
+                    f"https://data.fundlens.org/v1/{DAY}/{table.name}/cycle={CYCLE}/"
+                )
+                assert part.cycle == CYCLE
+
+
+def test_the_dataset_index_lists_finished_snapshots_newest_first(public: R2, taken: Taken) -> None:
+    index = DatasetIndex(public, ttl=0)
+    assert index.get() == Dataset(base_url=PUBLIC_URL, latest=None, snapshots=[])
+
+    held = manifest(taken.public, paths.dataset_snapshot(DAY))
+    earlier = DAY - timedelta(days=7)
+
+    def put(day: date, build_id: str) -> None:
+        body = held.model_copy(update={"snapshot_date": day, "build_id": build_id})
+        public.put(paths.dataset_snapshot(day) + dataset.MANIFEST, body.model_dump_json().encode())
+
+    put(DAY, held.build_id)
+    put(earlier, "20261115T030000Z")
+    # Unreadable: left out, rather than failing the list.
+    public.put(paths.dataset_snapshot(DAY - timedelta(days=14)) + dataset.MANIFEST, b"{}")
+    # Unfinished: no manifest, so not a snapshot yet.
+    public.put(paths.dataset_snapshot(DAY + timedelta(days=7)) + "race/cycle=2024/x.parquet", b"")
+    public.copy_from(
+        public,
+        paths.dataset_snapshot(DAY) + dataset.MANIFEST,
+        paths.DATASET_LATEST + dataset.MANIFEST,
+    )
+
+    listed = index.get()
+    assert [snapshot.snapshot_date for snapshot in listed.snapshots] == [DAY, earlier]
+    assert listed.latest == DAY
+
+    # A manifest is read again when its ETag changes, and a deleted snapshot leaves the list.
+    put(earlier, "20261116T030000Z")
+    public.delete_prefix(paths.dataset_snapshot(DAY))
+    relisted = index.get()
+    assert [(s.snapshot_date, s.build_id) for s in relisted.snapshots] == [
+        (earlier, "20261116T030000Z")
+    ]

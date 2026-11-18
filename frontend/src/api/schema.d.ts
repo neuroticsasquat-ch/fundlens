@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dataset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset */
+        get: operations["get_dataset_v1_dataset_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/donors/{donor_id}": {
         parameters: {
             query?: never;
@@ -441,6 +458,76 @@ export interface components {
             race_count: number;
             /** Total Amount */
             total_amount: number;
+        };
+        /**
+         * Dataset
+         * @description The public dataset's snapshots (`GET /v1/dataset`, spec §9).
+         */
+        Dataset: {
+            /** Base Url */
+            base_url: string;
+            /** Latest */
+            latest: string | null;
+            /** Snapshots */
+            snapshots: components["schemas"]["DatasetSnapshot"][];
+        };
+        /**
+         * DatasetPart
+         * @description One table's files in one cycle of a dataset snapshot, or a table's one file when it has
+         *     no cycle (`donor`, `crosswalk`).
+         */
+        DatasetPart: {
+            /** Bytes */
+            bytes: number;
+            /** Cycle */
+            cycle: number | null;
+            /** Files */
+            files: number;
+            /** Path */
+            path: string;
+        };
+        /**
+         * DatasetSnapshot
+         * @description One finished dataset snapshot, `v1/<snapshot_date>/` in the public bucket.
+         */
+        DatasetSnapshot: {
+            /** Attribution */
+            attribution: string;
+            /** Build Id */
+            build_id: string;
+            /** Cycles */
+            cycles: number[];
+            /** License */
+            license: string;
+            /** Precision */
+            precision: number | null;
+            /** Recall */
+            recall: number | null;
+            /**
+             * Snapshot Date
+             * Format: date
+             */
+            snapshot_date: string;
+            /** Tables */
+            tables: components["schemas"]["DatasetTable"][];
+            /** Url */
+            url: string;
+        };
+        /**
+         * DatasetTable
+         * @description One table of a dataset snapshot, from its `manifest.json` (spec §9).
+         */
+        DatasetTable: {
+            /** Bytes */
+            bytes: number;
+            /** Files */
+            files: number;
+            /** Name */
+            name: string;
+            /** Parts */
+            parts: components["schemas"]["DatasetPart"][];
+            /** Rows */
+            rows: number;
         };
         /**
          * Donor
@@ -851,6 +938,10 @@ export type CommitteeTopRecipient = components['schemas']['CommitteeTopRecipient
 export type Contribution = components['schemas']['Contribution'];
 export type ContributionPage = components['schemas']['ContributionPage'];
 export type Cycle = components['schemas']['Cycle'];
+export type Dataset = components['schemas']['Dataset'];
+export type DatasetPart = components['schemas']['DatasetPart'];
+export type DatasetSnapshot = components['schemas']['DatasetSnapshot'];
+export type DatasetTable = components['schemas']['DatasetTable'];
 export type Donor = components['schemas']['Donor'];
 export type DonorCycle = components['schemas']['DonorCycle'];
 export type DonorTopRecipient = components['schemas']['DonorTopRecipient'];
@@ -1333,6 +1424,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_dataset_v1_dataset_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
                 };
             };
         };

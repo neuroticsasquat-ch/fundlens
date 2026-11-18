@@ -23,6 +23,7 @@ ROUTES = {
     "/v1/donors/{donor_id}",
     "/v1/donors/{donor_id}/contributions",
     "/v1/search",
+    "/v1/dataset",
 }
 
 

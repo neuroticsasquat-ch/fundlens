@@ -7,6 +7,7 @@ from fastapi import Depends, Request
 from psycopg import Connection
 from psycopg.rows import TupleRow
 
+from fundlens.api.dataset import DatasetIndex
 from fundlens.api.itemized import PAGE_SIZE, ItemizedReader
 from fundlens.load.db import Pool
 from fundlens.settings import Settings
@@ -30,6 +31,10 @@ def get_itemized(request: Request) -> ItemizedReader:
     return request.app.state.itemized
 
 
+def get_dataset(request: Request) -> DatasetIndex:
+    return request.app.state.dataset
+
+
 def get_page_size() -> int:
     """Rows per `/contributions` page; a dependency so a test can page a small fixture."""
     return PAGE_SIZE
@@ -39,4 +44,5 @@ PoolDep = Annotated[Pool, Depends(get_pool)]
 Conn = Annotated[Connection[TupleRow], Depends(get_conn)]
 AppSettings = Annotated[Settings, Depends(get_app_settings)]
 Itemized = Annotated[ItemizedReader, Depends(get_itemized)]
+DatasetDep = Annotated[DatasetIndex, Depends(get_dataset)]
 PageSize = Annotated[int, Depends(get_page_size)]
