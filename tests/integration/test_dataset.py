@@ -264,6 +264,10 @@ def test_a_snapshot_lays_out_every_table_by_cycle_with_a_manifest_of_its_rows(
     assert public.get(paths.DATASET_LATEST + dataset.MANIFEST) == public.get(
         root + dataset.MANIFEST
     )
+    # Both manifests are served as JSON: the copy into `latest/` keeps the type.
+    for key in (root + dataset.MANIFEST, paths.DATASET_LATEST + dataset.MANIFEST):
+        served = public.client.head_object(Bucket=public.bucket, Key=key)
+        assert served.get("ContentType") == "application/json", key
 
 
 def test_the_snapshot_pass_copies_several_objects_at_a_time(taken: Taken) -> None:

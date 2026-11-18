@@ -87,6 +87,8 @@ DOCS: dict[str, str] = {
     "CHANGELOG.md": "text/markdown; charset=utf-8",
 }
 _SCHEMA_TYPE = "application/json"
+# `manifest.json`'s, which the copy into `latest/` keeps.
+_MANIFEST_TYPE = "application/json"
 
 # `gold.donor` (sql/gold/ddl/donor.sql) as Postgres writes it in CSV, typed for DuckDB.
 _DONOR_COLUMNS = (
@@ -431,7 +433,11 @@ def _take(
         precision=live.precision,
         recall=live.recall,
     )
-    public.put(root + MANIFEST, manifest.model_dump_json(indent=2).encode())
+    public.put(
+        root + MANIFEST,
+        manifest.model_dump_json(indent=2).encode(),
+        content_type=_MANIFEST_TYPE,
+    )
 
 
 def snapshot_dates(public: R2) -> list[date]:
