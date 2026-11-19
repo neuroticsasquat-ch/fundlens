@@ -65,6 +65,16 @@ def dollars(value: Decimal) -> int:
     return int(value)
 
 
+def whole(value: Decimal | None) -> int | None:
+    """A nullable dollar figure, as `expected.yaml` lists it."""
+    return None if value is None else int(value)
+
+
+def ratio(value: float | None) -> float | None:
+    """A ratio to four places, as `expected.yaml` lists it."""
+    return None if value is None else round(value, 4)
+
+
 def ranked(lists: dict[str, list[list[str | int]]]) -> dict[str, list[tuple[str | int, ...]]]:
     """expected.yaml's ranked lists, each row a tuple as the test builds gold's."""
     return {key: [tuple(row) for row in rows] for key, rows in lists.items()}
@@ -174,6 +184,83 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         ), committee_id
         # Its independent expenditures for and against candidates; not the party's 24C.
         assert dollars(row["ie_total"]) == totals["ie_total"], committee_id
+
+    # FEC's reported figures beside fundlens's itemized one (every-FEC-dollar spec §4.4): coverage 1
+    # where the two agree, above 1 where fundlens counts more, NULL at a conduit or a reported 0.
+    reported = expected["gold_reported"]
+    assert {
+        committee_id: [
+            dollars(row["itemized_total"]),
+            whole(row["reported_individual_itemized"]),
+            whole(row["reported_cash_on_hand_end"]),
+            ratio(row["coverage"]),
+        ]
+        for committee_id, row in committee_cycles.items()
+    } == reported["committees"]
+    whitlock_committee = committee_cycles["C00800104"]
+    assert (
+        whitlock_committee["reported_source_file"],
+        whitlock_committee["reported_period_start"],
+        whitlock_committee["reported_period_end"],
+        whole(whitlock_committee["reported_candidate_loans"]),
+    ) == ("committee_summary", date(2023, 1, 1), date(2024, 12, 31), 1500000)
+    # A candidate's are its credited committees' added up: OKAFOR's two, HARRIS's handed-off
+    # committee whole and BIDEN none, STRATTON's campaign turned leadership PAC (§4.3).
+    assert {
+        candidate_id: [
+            whole(row["reported_receipts"]),
+            whole(row["reported_cash_on_hand_end"]),
+            whole(row["itemized_total"]),
+            ratio(row["coverage"]),
+            row["reported_includes_converted_committee"],
+        ]
+        for candidate_id, row in candidate_cycles.items()
+    } == reported["candidates"]
+    assert {
+        candidate_id: row["reported_source_file"]
+        for candidate_id, row in candidate_cycles.items()
+        if row["reported_source_file"] is not None
+    } == {
+        candidate_id: "committee_summary"
+        for candidate_id, figures in reported["candidates"].items()
+        if figures[0] is not None
+    }
+    for candidate_id, row in race_candidates.items():
+        figures = (
+            "reported_receipts",
+            "reported_disbursements",
+            "reported_cash_on_hand_end",
+            "reported_debts_owed_by",
+            "coverage",
+        )
+        assert {f: row[f] for f in figures} == {
+            f: candidate_cycles[candidate_id][f] for f in figures
+        }, candidate_id
+    assert {
+        race_id: whole(races[race_id]["reported_cash_on_hand"]) for race_id in reported["races"]
+    } == reported["races"]
+    # FENWICK FOR CONGRESS, its itemized figure filed more than 1% under fundlens's; not YANG FOR
+    # MARYLAND's, under by less (§4.5).
+    assert {
+        row["committee_id"]: [
+            row["measure"],
+            dollars(row["fundlens"]),
+            dollars(row["reported"]),
+            ratio(row["ratio"]),
+        ]
+        for row in rows(migrated_db, "reconciliation")
+        if row["cycle"] == 2024
+    } == reported["reconciliation"]
+    # An unresolved build has no donors, so no itemized gift-size bucket: only FEC's unitemized
+    # lump, where a candidate has one (BIDEN, whose committee is HARRIS's, has none).
+    gift_sizes = rows(migrated_db, "candidate_gift_size")
+    assert {row["bucket"] for row in gift_sizes} == {"unitemized"}
+    assert {row["candidate_id"]: (dollars(row["amount"]), row["donors"]) for row in gift_sizes} == {
+        candidate_id: (dollars(row["reported_individual_unitemized"]), None)
+        for candidate_id, row in candidate_cycles.items()
+        if row["reported_individual_unitemized"] is not None
+    }
+    assert "P80000722" not in {row["candidate_id"] for row in gift_sizes}
 
     # Each committee's organizations by rank, CHESAPEAKE STEEL once under its most-money spelling.
     top_organizations: dict[str, list[list[str | int]]] = defaultdict(list)
@@ -478,6 +565,26 @@ def test_load_of_a_resolved_build_builds_the_donor_tables(
             if line["candidate_id"] == "S4MD00103" and not line["is_self_funding"]
         }
     )
+
+    # Each donor's bucket is their net gifts to the candidate (every-FEC-dollar spec §4.6):
+    # THACKERAY's twenty $50 gifts to BRANNIGAN are one $1,000 donor, in under_2000.
+    gift_sizes: dict[str, dict[str, list[int | None]]] = defaultdict(dict)
+    for row in rows(migrated_db, "candidate_gift_size"):
+        gift_sizes[row["candidate_id"]][row["bucket"]] = [dollars(row["amount"]), row["donors"]]
+    brannigan = "S4MD00111"
+    assert gift_sizes[brannigan] == expected["gold_reported"]["gift_sizes"][brannigan]
+    assert donor_cycles[donor("twenty_small_gifts")]["contribution_count"] == 20
+    # Every candidate with counted money has the five itemized buckets, adding up to it; QUILL, with
+    # none, has no row.
+    for candidate_id, totals in expected["candidates"].items():
+        itemized = {b: v for b, v in gift_sizes.get(candidate_id, {}).items() if b != "unitemized"}
+        if totals["total_individual"] == 0:
+            assert itemized == {}, candidate_id
+            continue
+        assert len(itemized) == 5, candidate_id
+        assert sum(amount or 0 for amount, _ in itemized.values()) == totals["total_individual"]
+    assert "P40000110" not in gift_sizes
+
     assert rows(migrated_db, "donor_redirect") == [{"old_donor_id": 9001, "donor_id": 1}]
     marker = markers.read("loaded", store, cycle=2024, build_id=BUILD)
     assert marker is not None
@@ -663,6 +770,108 @@ def test_the_refunds_check_fails_on_a_positive_refunds_figure() -> None:
 
         # C3's refunds add to its totals rather than subtracting.
         assert failing_rows(con, "gold_committee_cycle_refunds.sql") == [("C3", Decimal("0.01"))]
+
+
+ITEMIZED_BUCKETS = ("200_or_less", "under_500", "under_1000", "under_2000", "2000_or_more")
+
+
+def test_the_gift_size_check_fails_on_buckets_not_adding_up_to_the_candidates_money() -> None:
+    buckets = {
+        # Five buckets adding up to the candidate's money, and FEC's lump beside them.
+        "H1": [("unitemized", 9000), *zip(ITEMIZED_BUCKETS, (100, 200, 300, 400, 0), strict=True)],
+        "H2": list(zip(ITEMIZED_BUCKETS, (100, 100, 100, 100, 0), strict=True)),
+        "H3": list(zip(ITEMIZED_BUCKETS[:4], (250, 250, 250, 250), strict=True)),
+    }
+    values = ", ".join(
+        f"('{candidate}', 2024, '{bucket}', {amount})"
+        for candidate, rows_ in buckets.items()
+        for bucket, amount in rows_
+    )
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        # H7's gift and its refund net to $0: a counted contribution all the same.
+        con.execute(
+            "CREATE TABLE silver.contribution AS SELECT * FROM (VALUES"
+            " (2024, 'H4', 250, false, false), (2024, 'H5', 900, true, false),"
+            " (2024, 'H7', 300, false, false), (2024, 'H7', -300, false, false)"
+            ") AS t(cycle, candidate_id, amount, is_self_funding, is_other_line)"
+        )
+        con.execute(
+            "CREATE TABLE candidate_cycle AS SELECT * FROM (VALUES"
+            " ('H1', 2024, 1000, 4), ('H2', 2024, 500, 3), ('H3', 2024, 1000, 4),"
+            " ('H4', 2024, 250, 1), ('H5', 2024, 0, 0), ('H6', 2024, 750, NULL),"
+            " ('H7', 2024, 0, 1)"
+            ") AS t(candidate_id, cycle, total_individual, contributor_count)"
+        )
+        con.execute(
+            f"CREATE TABLE candidate_gift_size AS SELECT * FROM (VALUES {values})"
+            " AS t(candidate_id, cycle, bucket, amount)"
+        )
+
+        # H2's buckets miss $100, H3 has four, H4's money is in none, H7's gifts netting to $0 have
+        # no buckets; H5 has only its own money, and H6's cycle was loaded before `resolve`.
+        assert sorted(failing_rows(con, "gold_candidate_gift_size_total.sql")) == [
+            ("H2", 2024, 500, 400, 5),
+            ("H3", 2024, 1000, 1000, 4),
+            ("H4", 2024, 250, None, None),
+            ("H7", 2024, 0, None, None),
+        ]
+
+
+def test_reconciliation_lists_a_committee_over_by_more_than_1pct_or_over_a_reported_0() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            "CREATE TABLE silver.committee AS SELECT * FROM (VALUES"
+            " (2024, 'C1', false), (2024, 'C2', false), (2024, 'C3', false), (2024, 'C4', false),"
+            " (2024, 'C5', false), (2024, 'C6', true), (2024, 'C7', false)"
+            ") AS t(cycle, committee_id, is_conduit)"
+        )
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', 2024, 3800.00, 3700.00), ('C2', 2024, 6400.00, 6350.00),"
+            " ('C3', 2024, 500.00, 0.00), ('C4', 2024, 0.00, 0.00), ('C5', 2024, 900.00, NULL),"
+            " ('C6', 2024, 9000.00, 780.00), ('C7', 2024, 100.00, 400.00)"
+            ") AS t(committee_id, cycle, itemized_total, reported_individual_itemized)"
+        )
+        con.execute(render(REPO_ROOT / "sql" / "gold" / "19_reconciliation.sql", {}))
+
+        # C1 is 2.7% over; C2 within 1%. C3's reported 0 is a figure FEC gives, so it is listed
+        # with no ratio; C4 has nothing over it. C5's blank figure, the conduit C6 and C7's
+        # shortfall are not listed.
+        listed = con.execute(
+            "SELECT committee_id, measure, fundlens, reported, round(ratio, 4)"
+            " FROM reconciliation ORDER BY committee_id"
+        ).fetchall()
+    assert listed == [
+        ("C1", "individual_itemized", Decimal("3800.00"), Decimal("3700.00"), 1.027),
+        ("C3", "individual_itemized", Decimal("500.00"), Decimal("0.00"), None),
+    ]
+
+
+def test_the_coverage_check_fails_on_a_figure_where_none_is_due_or_none_where_one_is() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            "CREATE TABLE silver.committee AS SELECT * FROM (VALUES"
+            " (2024, 'C1', false), (2024, 'C2', false), (2024, 'C3', false), (2024, 'C4', true),"
+            " (2024, 'C5', false), (2024, 'C6', false)"
+            ") AS t(cycle, committee_id, is_conduit)"
+        )
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', 2024, 1000, 0.95), ('C2', 2024, NULL, NULL), ('C3', 2024, 0, 1.0),"
+            " ('C4', 2024, 780, 0.01), ('C5', 2024, 500, NULL), ('C6', 2024, 0, NULL)"
+            ") AS t(committee_id, cycle, reported_individual_itemized, coverage)"
+        )
+
+        # C3's reported figure is 0 and C4 is a conduit, yet each has a coverage; C5 has a figure
+        # to divide by and none.
+        assert sorted(failing_rows(con, "gold_committee_cycle_coverage.sql")) == [
+            ("C3", 2024, 0, False, Decimal("1.0")),
+            ("C4", 2024, 780, True, Decimal("0.01")),
+            ("C5", 2024, 500, False, None),
+        ]
 
 
 def test_a_committee_cm_lists_as_a_skeleton_keeps_the_name_an_earlier_cycle_gave_it() -> None:

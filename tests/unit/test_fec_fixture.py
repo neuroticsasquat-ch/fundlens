@@ -17,7 +17,7 @@ from decimal import Decimal
 from importlib.resources import files as package_files
 from pathlib import Path
 from types import MappingProxyType
-from typing import get_args
+from typing import Any, get_args
 
 import pytest
 
@@ -887,35 +887,6 @@ def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() ->
             assert archive.namelist() == [member]
 
 
-def test_each_committees_indv_item_contb_is_its_itemized_total_so_coverage_is_1() -> None:
-    # `committee_summary`'s INDV_ITEM_CONTB is each committee's itemized_total (every-FEC-dollar
-    # spec §4.4: total_individual + total_from_organizations - total_refunds), and at a conduit
-    # every earmark it took, which fundlens counts at the recipient.
-    organizations = EXPECTED["organization_receipts"]["by_committee"]
-    refunds = EXPECTED["refunds"]["by_committee"]
-    itemized = {
-        committee_id: totals["total_individual"]
-        + organizations.get(committee_id, 0)
-        - refunds.get(committee_id, 0)
-        for committee_id, totals in EXPECTED["committees"].items()
-    }
-    for conduit_id in CONDUITS.values():
-        itemized[conduit_id] = sum(
-            amount(r)
-            for r in rows("indiv")
-            if r["CMTE_ID"] == conduit_id and not r["TRANSACTION_TP"].endswith("Y")
-        )
-    reported = {
-        r["CMTE_ID"]: int(r["INDV_ITEM_CONTB"])
-        for r in rows("committee_summary")
-        if r["CMTE_ID"] in committee_ids() and r["INDV_ITEM_CONTB"]
-    }
-
-    assert reported == {c: v for c, v in itemized.items() if c in reported}
-    # A Form 5 filer's row carries only INDT_EXP, and the electioneering committee's nothing.
-    assert set(itemized) - set(reported) == {"C90800206", "C90800207"}
-
-
 def test_committee_summary_repeats_a_committee_only_per_linked_candidate() -> None:
     by_committee: dict[str, list[Row]] = defaultdict(list)
     for r in rows("committee_summary"):
@@ -1096,6 +1067,189 @@ def test_the_summary_fixtures_plant_each_precedence_case() -> None:
         "H8MD05201",
         "H8MD05202",
     }
+
+
+def reported(committee_id: str, column: str) -> Any:
+    """A 2024 committee's silver reported_total figure, as `expected.yaml` lists it."""
+    row = EXPECTED["reported_totals"]["reported_total"][CYCLE].get(committee_id)
+    return None if row is None else row[REPORTED_COLUMNS.index(column)]
+
+
+def itemized_totals() -> dict[str, int]:
+    """Each committee's itemized_total (every-FEC-dollar spec §4.4): total_individual +
+    total_from_organizations - total_refunds, the organizations' money on line 11(a)(i) only."""
+    organizations = EXPECTED["organization_receipts"]["by_committee"]
+    outside = (
+        EXPECTED["non_contribution_account"]["organizations_by_committee"],
+        EXPECTED["other_lines"]["organizations_by_committee"],
+    )
+    refunds = EXPECTED["refunds"]["by_committee"]
+    return {
+        committee_id: totals["total_individual"]
+        + organizations.get(committee_id, 0)
+        - sum(each.get(committee_id, 0) for each in outside)
+        - refunds.get(committee_id, 0)
+        for committee_id, totals in EXPECTED["committees"].items()
+    }
+
+
+def coverage(itemized: int | None, reported_itemized: int | None) -> float | None:
+    """The ratio to four places, as `gold_reported` lists it; None where there is none."""
+    return (
+        None
+        if itemized is None or not reported_itemized
+        else round(itemized / reported_itemized, 4)
+    )
+
+
+def test_the_expected_committee_coverage_is_itemized_over_reported_null_at_a_conduit() -> None:
+    itemized = itemized_totals()
+
+    assert EXPECTED["gold_reported"]["committees"] == {
+        committee_id: [
+            itemized[committee_id],
+            reported(committee_id, "individual_itemized"),
+            reported(committee_id, "cash_on_hand_end"),
+            None
+            if committee_id in CONDUITS.values()
+            else coverage(itemized[committee_id], reported(committee_id, "individual_itemized")),
+        ]
+        for committee_id in EXPECTED["committees"]
+    }
+    # A conduit's INDV_ITEM_CONTB is every earmark it took, which fundlens counts at the recipient.
+    for conduit_id in CONDUITS.values():
+        assert reported(conduit_id, "individual_itemized") == sum(
+            amount(r)
+            for r in rows("indiv")
+            if r["CMTE_ID"] == conduit_id and not r["TRANSACTION_TP"].endswith("Y")
+        )
+    # Every other committee filed its itemized_total but the two planted to differ: FENWICK FOR
+    # CONGRESS by more than 1%, YANG FOR MARYLAND by less.
+    differ = {
+        committee_id: figures[3]
+        for committee_id, figures in EXPECTED["gold_reported"]["committees"].items()
+        if figures[3] not in (None, 1.0)
+    }
+    assert differ == {"C00800109": 1.027, "C00800108": 1.0079}
+
+
+def credited_committees() -> dict[str, list[tuple[str, bool]]]:
+    """Each candidate's credited committees for reported figures (every-FEC-dollar spec §4.3),
+    each with whether only its CAND_PCC credits it (a campaign turned PAC): `linked_candidates`,
+    but a handed-off committee is the second candidate's whole."""
+    designated = {(r["CAND_ID"], r["CMTE_ID"]) for r in rows("ccl") if r["CMTE_DSGN"] in ("P", "A")}
+    credited: dict[str, list[tuple[str, bool]]] = defaultdict(list)
+    for committee_id, candidate_id in linked_candidates().items():
+        if committee_id in HANDOFFS:
+            candidate_id = HANDOFFS[committee_id][1]
+        credited[candidate_id].append(
+            (committee_id, (candidate_id, committee_id) not in designated)
+        )
+    return credited
+
+
+def test_the_expected_candidate_figures_sum_their_credited_committees() -> None:
+    itemized, credited = itemized_totals(), credited_committees()
+
+    def summed(committee_ids: list[str], column: str) -> int | None:
+        figures = [f for c in committee_ids if (f := reported(c, column)) is not None]
+        return sum(figures) if figures else None
+
+    expected: dict[str, list[Any]] = {}
+    for candidate_id in EXPECTED["candidates"]:
+        ids = [committee_id for committee_id, _ in credited.get(candidate_id, [])]
+        expected[candidate_id] = [
+            summed(ids, "receipts"),
+            summed(ids, "cash_on_hand_end"),
+            sum(itemized[c] for c in ids) if ids else None,
+            coverage(
+                sum(itemized[c] for c in ids if reported(c, "individual_itemized") is not None),
+                summed(ids, "individual_itemized"),
+            ),
+            any(
+                converted and reported(c, "receipts") is not None
+                for c, converted in credited.get(candidate_id, [])
+            ),
+        ]
+    assert EXPECTED["gold_reported"]["candidates"] == expected
+    # HARRIS holds C00703975 whole; BIDEN, who has itemized money from it, has no reported figure.
+    assert expected["P00009423"][0] == reported("C00703975", "receipts")
+    assert expected["P80000722"][0] is None
+    assert EXPECTED["candidates"]["P80000722"]["total_individual"] > 0
+
+    races = defaultdict[str, list[int]](list)
+    for candidate_id, totals in EXPECTED["candidates"].items():
+        if totals["race_id"] is not None and (cash := expected[candidate_id][1]) is not None:
+            races[totals["race_id"]].append(cash)
+    assert EXPECTED["gold_reported"]["races"] == {
+        race_id: sum(races[race_id]) if race_id in races else None for race_id in EXPECTED["races"]
+    }
+
+
+def test_the_expected_reconciliation_lists_each_committee_over_its_reported_figure_by_1pct() -> (
+    None
+):
+    listed = {
+        committee_id: [
+            "individual_itemized",
+            fundlens,
+            reported_itemized,
+            coverage(fundlens, reported_itemized),
+        ]
+        for committee_id, (fundlens, reported_itemized, _, _) in EXPECTED["gold_reported"][
+            "committees"
+        ].items()
+        if reported_itemized is not None
+        and committee_id not in CONDUITS.values()
+        and fundlens - reported_itemized > Decimal("0.01") * reported_itemized
+    }
+
+    assert EXPECTED["gold_reported"]["reconciliation"] == listed
+
+
+GIFT_SIZE_BUCKETS = ("200_or_less", "under_500", "under_1000", "under_2000", "2000_or_more")
+
+
+def gift_size_bucket(gift_size: int) -> str:
+    """Every-FEC-dollar spec §4.6's bucket for a donor's net gifts to one candidate."""
+    if gift_size <= 200:
+        return "200_or_less"
+    if gift_size < 500:
+        return "under_500"
+    if gift_size < 1000:
+        return "under_1000"
+    if gift_size < 2000:
+        return "under_2000"
+    return "2000_or_more"
+
+
+def test_the_expected_gift_sizes_bucket_each_donors_net_gifts_to_the_candidate() -> None:
+    cids, credited = donor_cids(), credited_committees()
+    gift_sizes: defaultdict[tuple[str, str], int] = defaultdict(int)
+    for r in counted():
+        candidate_id = candidate_of(r["CMTE_ID"], r)
+        if candidate_id is not None and not is_self_funding(r) and not is_other_line(r):
+            gift_sizes[candidate_id, cids[int(r["SUB_ID"])]] += signed(r)
+    for candidate_id, buckets in EXPECTED["gold_reported"]["gift_sizes"].items():
+        tallied = {bucket: [0, 0] for bucket in GIFT_SIZE_BUCKETS}
+        for (each, _), gift_size in gift_sizes.items():
+            if each == candidate_id:
+                tallied[gift_size_bucket(gift_size)][0] += gift_size
+                tallied[gift_size_bucket(gift_size)][1] += 1
+        unitemized = sum(
+            reported(committee_id, "individual_unitemized")
+            for committee_id, _ in credited[candidate_id]
+        )
+
+        assert buckets == {"unitemized": [unitemized, None], **tallied}, candidate_id
+        assert (
+            sum(tallied[b][0] for b in GIFT_SIZE_BUCKETS)
+            == (EXPECTED["candidates"][candidate_id]["total_individual"])
+        )
+    # THACKERAY's twenty $50 gifts are one $1,000 donor, not twenty in 200_or_less.
+    thackeray = EXPECTED["donors"]["twenty_small_gifts"]
+    assert len(thackeray["sub_ids"]) == 20
+    assert gift_size_bucket(thackeray["amount"]) == "under_2000"
 
 
 def test_a_csv_whose_header_is_not_fecs_is_refused(tmp_path: Path) -> None:

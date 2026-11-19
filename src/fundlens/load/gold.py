@@ -5,7 +5,8 @@ Gold holds every cycle, so a load of one cycle's build rebuilds all of gold: the
 from that build, every other cycle from the build it is live from (`markers/live.json`, which
 `publish` rewrites, or, before any publish has written it, the live `gold.meta.cycles`). DuckDB
 computes every gold table from those silver partitions (`sql/gold/NN_<table>.sql`, in filename
-order, reading the views `silver.<table>`, each over every cycle's partition), runs
+order, reading the views `silver.<table>`, each over every cycle's partition, and `handoff`, the
+vendored handoffs), runs
 `sql/checks/gold_*.sql` (each a query that must return no rows), and writes each table as a CSV
 file under `scratch/`. Then, in one Postgres transaction, `gold_build` is dropped and
 recreated, each table gets its hand-written DDL (`sql/gold/ddl/`), its CSV streamed in with
@@ -48,7 +49,7 @@ from fundlens.publish.dataset_schema import committed_columns
 from fundlens.r2 import R2
 from fundlens.resolve import model
 from fundlens.resolve.runner import run_record
-from fundlens.transform.runner import CHUNK_BYTES, Limits, check, literal, render
+from fundlens.transform.runner import CHUNK_BYTES, Limits, check, handoffs, literal, render
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,8 @@ GoldTable = Literal[
     "candidate_top_donor",
     "committee_top_donor",
     "committee_top_organization",
+    "reconciliation",
+    "candidate_gift_size",
 ]
 
 # `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
@@ -82,17 +85,21 @@ GoldTable = Literal[
 FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 
 # The silver tables the gold SQL reads, and the command that writes each one's partition.
-# (`candidate_committee_link` is not among them: silver `contribution` already carries the
-# candidate each committee raises for.)
+# `candidate_committee_link` credits a committee's reported figures to its candidate
+# (every-FEC-dollar spec §4.3): silver `contribution` carries the candidate of each row, not of a
+# committee with no counted money.
 INPUTS: dict[SilverTable, str] = {
     "committee": "transform",
     "candidate": "transform",
+    "candidate_committee_link": "transform",
     "contribution": "transform",
     "committee_transfer": "transform",
     "jfc_attribution": "transform",
     "contributor": "transform",
     "organization_receipt": "transform",
     "independent_expenditure": "transform",
+    "reported_total": "transform",
+    "candidate_reported_total": "transform",
     "race": "seats",
 }
 
@@ -257,6 +264,23 @@ def _register_silver(
             )
     # DuckDB's CSV writer prints a list as `[…]`; Postgres reads an array as `{…}`.
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
+
+
+def _register_handoffs(con: duckdb.DuckDBPyConnection) -> None:
+    """`handoff`: every vendored handoff (`fec/handoffs.csv`) with the cycle its date falls in, so
+    a handed-off committee's reported figures are the second candidate's whole (every-FEC-dollar
+    spec §4.3). The repo's list, as a transform of any cycle would read it today."""
+    con.execute(
+        "CREATE TABLE handoff (cycle INTEGER, committee_id VARCHAR, from_candidate_id VARCHAR,"
+        " to_candidate_id VARCHAR, handoff_date DATE)"
+    )
+    rows = [
+        (day.year + day.year % 2, committee_id, from_id, to_id, day)
+        for committee_id, from_id, to_id, day in handoffs()
+    ]
+    # DuckDB's executemany refuses an empty list.
+    if rows:
+        con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?, ?)", rows)
 
 
 def _source_dates(store: R2, cycle: int) -> dict[str, str]:
@@ -452,6 +476,7 @@ def load(
         aggregate_started = time.monotonic()
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
             _register_silver(con, local_dirs, docs_dir=docs_dir)
+            _register_handoffs(con)
             for table, path in models:
                 log.info("gold %s (%s): %s", table, ", ".join(map(str, sorted(builds))), path.name)
                 con.execute(render(path, params))

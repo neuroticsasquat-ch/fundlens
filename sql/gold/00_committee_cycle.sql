@@ -32,6 +32,17 @@
 -- expenditures it made, for and against candidates alike (silver's kind 'ie': 24E and 24A,
 -- NEU-2057), net of corrections: those naming no candidate of the cycle too, which are in no
 -- candidate's or race's figure. Its coordinated expenditures and communication costs are not.
+--
+-- The reported_* fields are FEC's figures for the committee as filed, its silver reported_total row
+-- (every-FEC-dollar spec §4.1, §4.4): NULL where it has no row or the cycle's file lacks the
+-- measure, never 0, and never added to any figure above. itemized_total is fundlens's figure to
+-- compare with reported_individual_itemized (FEC's line 11(a)(i), CONTEXT.md): total_individual +
+-- total_from_organizations - total_refunds, gross of refunds as FEC's is, never NULL; a comparison
+-- figure, in no race total or top list. coverage is itemized_total / reported_individual_itemized,
+-- a ratio stored as computed, above 1 where fundlens counts more than FEC: NULL where the reported
+-- figure is NULL or 0 (every cycle before 2008, a Form 4 or Form 5 filer), and at a conduit, whose
+-- itemized figure includes the earmarks fundlens counts at their recipients (ADR-0004).
+-- 00_ so it runs first: candidate_cycle sums its credited committees' figures.
 CREATE TABLE committee_cycle AS
 WITH received AS (
     SELECT
@@ -109,34 +120,79 @@ independent AS (
     FROM silver.independent_expenditure
     WHERE kind = 'ie'
     GROUP BY cycle, committee_id
+),
+totals AS (
+    SELECT
+        committee.committee_id,
+        CAST(committee.cycle AS INTEGER) AS cycle,
+        CAST(coalesce(received.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
+        CAST(coalesce(received.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
+        CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
+        CAST(coalesce(from_organizations.total_from_organizations, 0) AS DECIMAL(16, 2))
+            AS total_from_organizations,
+        CAST(
+            coalesce(received.non_contribution_account, 0)
+                + coalesce(from_organizations.non_contribution_account, 0)
+            AS DECIMAL(16, 2)
+        ) AS total_non_contribution_account,
+        CAST(
+            coalesce(received.other_lines, 0) + coalesce(from_organizations.other_lines, 0)
+            AS DECIMAL(16, 2)
+        ) AS total_other_lines,
+        CAST(
+            coalesce(received.refunds, 0) + coalesce(from_organizations.refunds, 0) AS DECIMAL(16, 2)
+        ) AS total_refunds,
+        CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
+        CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
+            AS total_returned_by_candidates,
+        CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total,
+        committee.is_conduit
+    FROM silver.committee AS committee
+    LEFT JOIN received USING (cycle, committee_id)
+    LEFT JOIN from_committees USING (cycle, committee_id)
+    LEFT JOIN from_organizations USING (cycle, committee_id)
+    LEFT JOIN to_candidates USING (cycle, committee_id)
+    LEFT JOIN independent USING (cycle, committee_id)
+),
+itemized AS (
+    SELECT
+        *,
+        CAST(total_individual + total_from_organizations - total_refunds AS DECIMAL(16, 2))
+            AS itemized_total
+    FROM totals
 )
 SELECT
-    committee.committee_id,
-    CAST(committee.cycle AS INTEGER) AS cycle,
-    CAST(coalesce(received.total_individual, 0) AS DECIMAL(16, 2)) AS total_individual,
-    CAST(coalesce(received.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
-    CAST(coalesce(from_committees.total_from_committees, 0) AS DECIMAL(16, 2)) AS total_from_committees,
-    CAST(coalesce(from_organizations.total_from_organizations, 0) AS DECIMAL(16, 2))
-        AS total_from_organizations,
-    CAST(
-        coalesce(received.non_contribution_account, 0)
-            + coalesce(from_organizations.non_contribution_account, 0)
-        AS DECIMAL(16, 2)
-    ) AS total_non_contribution_account,
-    CAST(
-        coalesce(received.other_lines, 0) + coalesce(from_organizations.other_lines, 0)
-        AS DECIMAL(16, 2)
-    ) AS total_other_lines,
-    CAST(
-        coalesce(received.refunds, 0) + coalesce(from_organizations.refunds, 0) AS DECIMAL(16, 2)
-    ) AS total_refunds,
-    CAST(coalesce(to_candidates.total_to_candidates, 0) AS DECIMAL(16, 2)) AS total_to_candidates,
-    CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
-        AS total_returned_by_candidates,
-    CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total
-FROM silver.committee AS committee
-LEFT JOIN received USING (cycle, committee_id)
-LEFT JOIN from_committees USING (cycle, committee_id)
-LEFT JOIN from_organizations USING (cycle, committee_id)
-LEFT JOIN to_candidates USING (cycle, committee_id)
-LEFT JOIN independent USING (cycle, committee_id);
+    itemized.* EXCLUDE (is_conduit, itemized_total),
+    reported.source_file AS reported_source_file,
+    reported.period_start AS reported_period_start,
+    reported.period_end AS reported_period_end,
+    CAST(reported.receipts AS DECIMAL(16, 2)) AS reported_receipts,
+    CAST(reported.disbursements AS DECIMAL(16, 2)) AS reported_disbursements,
+    CAST(reported.cash_on_hand_start AS DECIMAL(16, 2)) AS reported_cash_on_hand_start,
+    CAST(reported.cash_on_hand_end AS DECIMAL(16, 2)) AS reported_cash_on_hand_end,
+    CAST(reported.debts_owed_by AS DECIMAL(16, 2)) AS reported_debts_owed_by,
+    CAST(reported.debts_owed_to AS DECIMAL(16, 2)) AS reported_debts_owed_to,
+    CAST(reported.individual_itemized AS DECIMAL(16, 2)) AS reported_individual_itemized,
+    CAST(reported.individual_unitemized AS DECIMAL(16, 2)) AS reported_individual_unitemized,
+    CAST(reported.individual_total AS DECIMAL(16, 2)) AS reported_individual_total,
+    CAST(reported.individual_refunds AS DECIMAL(16, 2)) AS reported_individual_refunds,
+    CAST(reported.party_contributions AS DECIMAL(16, 2)) AS reported_party_contributions,
+    CAST(reported.other_committee_contributions AS DECIMAL(16, 2)) AS reported_other_committee_contributions,
+    CAST(reported.candidate_contributions AS DECIMAL(16, 2)) AS reported_candidate_contributions,
+    CAST(reported.candidate_loans AS DECIMAL(16, 2)) AS reported_candidate_loans,
+    CAST(reported.other_loans AS DECIMAL(16, 2)) AS reported_other_loans,
+    CAST(reported.candidate_loan_repayments AS DECIMAL(16, 2)) AS reported_candidate_loan_repayments,
+    CAST(reported.other_loan_repayments AS DECIMAL(16, 2)) AS reported_other_loan_repayments,
+    CAST(reported.transfers_in AS DECIMAL(16, 2)) AS reported_transfers_in,
+    CAST(reported.transfers_out AS DECIMAL(16, 2)) AS reported_transfers_out,
+    CAST(reported.independent_expenditures AS DECIMAL(16, 2)) AS reported_independent_expenditures,
+    CAST(reported.party_coordinated AS DECIMAL(16, 2)) AS reported_party_coordinated,
+    CAST(reported.operating_expenditures AS DECIMAL(16, 2)) AS reported_operating_expenditures,
+    CAST(reported.federal_funds AS DECIMAL(16, 2)) AS reported_federal_funds,
+    itemized.itemized_total,
+    CASE
+        WHEN NOT itemized.is_conduit AND reported.individual_itemized <> 0
+            THEN CAST(itemized.itemized_total AS DOUBLE) / CAST(reported.individual_itemized AS DOUBLE)
+    END AS coverage
+FROM itemized
+LEFT JOIN silver.reported_total AS reported USING (cycle, committee_id);

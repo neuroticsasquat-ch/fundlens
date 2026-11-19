@@ -304,6 +304,54 @@ def test_before_2008_reported_totals_are_webks_committees_and_weballs_candidates
     assert {row["cycle"] for row in [*committees, *candidates]} == {EARLY}
 
 
+def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
+    two_cycles: Snapshot,
+) -> None:
+    """A 1998 candidate's reported figures are their weball row as filed, not their committees'
+    sum; no file before 2008 has an itemized figure, so no coverage, reconciliation or unitemized
+    gift-size row (every-FEC-dollar spec §4.3 to §4.7)."""
+    columns = EXPECTED["reported_totals"]["columns"]
+    weball = EXPECTED["reported_totals"]["candidate_reported_total"][EARLY]
+    webk = EXPECTED["reported_totals"]["reported_total"][EARLY]
+    with (
+        scratch_database(template=two_cycles.database) as conninfo,
+        psycopg.connect(conninfo) as conn,
+    ):
+        candidates = conn.execute(
+            "SELECT candidate_id, reported_source_file, reported_receipts,"
+            " reported_cash_on_hand_end, coverage, reported_includes_converted_committee"
+            " FROM gold.candidate_cycle WHERE cycle = %s",
+            (EARLY,),
+        ).fetchall()
+        committees = conn.execute(
+            "SELECT committee_id, reported_source_file, reported_receipts, coverage"
+            " FROM gold.committee_cycle WHERE cycle = %s AND reported_source_file IS NOT NULL",
+            (EARLY,),
+        ).fetchall()
+        later = conn.execute(
+            "SELECT (SELECT count(*) FROM gold.reconciliation WHERE cycle = %s),"
+            " (SELECT count(*) FROM gold.candidate_gift_size"
+            "  WHERE cycle = %s AND bucket = 'unitemized')",
+            (EARLY, EARLY),
+        ).fetchone()
+
+    receipts, cash = columns.index("receipts"), columns.index("cash_on_hand_end")
+    assert {row[0]: row[1:] for row in candidates} == {
+        candidate_id: (
+            "weball",
+            weball[candidate_id][receipts],
+            weball[candidate_id][cash],
+            None,
+            False,
+        )
+        for candidate_id in (CALDER, PARRISH)
+    }
+    assert {row[0]: row[1:] for row in committees} == {
+        committee_id: ("webk", row[receipts], None) for committee_id, row in webk.items()
+    }
+    assert later == (0, 0)
+
+
 # The stand-in backfill-pending table: a dataset table, not resolved, which the 2024 fixture has
 # rows of and 1998 none.
 PENDING = "independent_expenditure"

@@ -260,6 +260,20 @@ class ReportedTotals(TypedDict):
     candidate_reported_total: dict[int, dict[str, list[Any]]]
 
 
+class GoldReported(TypedDict):
+    # Per committee: [itemized_total, reported_individual_itemized, reported_cash_on_hand_end,
+    # coverage]; per candidate: [reported_receipts, reported_cash_on_hand_end, itemized_total,
+    # coverage, reported_includes_converted_committee].
+    committees: dict[str, list[Any]]
+    candidates: dict[str, list[Any]]
+    # Per race: reported_cash_on_hand.
+    races: dict[str, int | None]
+    # Per committee: [measure, fundlens, reported, ratio].
+    reconciliation: dict[str, list[Any]]
+    # Per candidate, then bucket: [amount, donors].
+    gift_sizes: dict[str, dict[str, list[int | None]]]
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
@@ -285,6 +299,7 @@ class Expected(TypedDict):
     attributions: Attributions
     validation: Validation
     reported_totals: ReportedTotals
+    gold_reported: GoldReported
 
 
 @functools.cache
