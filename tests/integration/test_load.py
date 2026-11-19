@@ -3,6 +3,7 @@ of its own (spec §5.5, NEU-2039 §4.1, §6)."""
 
 import shutil
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, get_args
@@ -15,6 +16,8 @@ from psycopg.rows import dict_row
 from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
+from fundlens.fec.files import FecFile
+from fundlens.load import gold
 from fundlens.load.gold import GoldTable
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
@@ -279,9 +282,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert meta["cycles"] == {
         "2024": {
             "build_id": BUILD,
-            "source_dates": dict.fromkeys(
-                ("cm", "cn", "ccl", "indiv", "pas2", "oth"), "2026-10-30"
-            ),
+            "source_dates": dict.fromkeys(get_args(FecFile), "2026-10-30"),
         }
     }
 
@@ -481,6 +482,18 @@ def test_load_of_a_resolved_build_builds_the_donor_tables(
     marker = markers.read("loaded", store, cycle=2024, build_id=BUILD)
     assert marker is not None
     assert marker.row_counts == {table: len(rows(migrated_db, table)) for table in GOLD_TABLES}
+
+
+def test_a_file_with_no_bronze_has_no_source_date(store: R2) -> None:
+    # A cycle transformed before the summary files were catalogued, and not extracted since, has
+    # none of them in bronze (NEU-2142): `gold.meta` names only the files it downloaded.
+    store.put(paths.bronze_zip(2024, "cm", date(2026, 10, 30)), b"")
+    store.put(paths.bronze_zip(2024, "cm", date(2026, 11, 6)), b"")
+    store.put(paths.bronze_zip(2024, "indiv", date(2026, 10, 30)), b"")
+
+    dates = gold._source_dates(store, 2024)  # pyright: ignore[reportPrivateUsage]
+
+    assert dates == {"cm": "2026-11-06", "indiv": "2026-10-30"}
 
 
 def test_load_without_a_build_id_takes_the_newest_transformed_build(

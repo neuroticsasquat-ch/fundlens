@@ -4,7 +4,9 @@ A bulk file comes in one of two formats (`Format`):
 
 - `zip`: a zip holding one pipe-delimited text file with no header row. Its column names come
   from FEC's data dictionaries (`data_dictionaries/<name>_header_file.csv`), vendored under
-  `headers/` and refreshed by `task fec:headers` (`fundlens.fec.refresh_headers`).
+  `headers/` and refreshed by `task fec:headers` (`fundlens.fec.refresh_headers`). FEC publishes
+  no header file for `weball` or `webk` (a 404 on 2026-11-05): theirs are vendored by hand from
+  FEC's file descriptions, and the refresh leaves them alone (`header_from_fec`).
 - `csv`: a comma-separated file, not zipped, whose first line is a header row. That row must be
   the entry's `columns` exactly, in order; extract and transform both check it
   (`read_csv_header`).
@@ -24,13 +26,13 @@ from importlib.resources import files as package_files
 from pathlib import Path
 from typing import Literal
 
-FecFile = Literal["cm", "cn", "ccl", "indiv", "pas2", "oth"]
+FecFile = Literal["cm", "cn", "ccl", "indiv", "pas2", "oth", "weball", "webk", "committee_summary"]
 
 # How a bulk file is published: a zipped pipe-delimited text file, or a CSV with a header row.
 Format = Literal["zip", "csv"]
 
-# The placeholders a `url_pattern` may hold: the cycle in four digits, and in two.
-_URL_FIELDS = frozenset({"yyyy", "yy"})
+# The placeholders a `url_pattern` or `member` may hold: the cycle in four digits, and in two.
+_CYCLE_FIELDS = frozenset({"yyyy", "yy"})
 # How far `read_csv_header` reads looking for the end of the header row.
 CSV_HEADER_BYTES = 64 * 1024
 
@@ -39,6 +41,7 @@ CSV_HEADER_BYTES = 64 * 1024
 VARCHAR = "VARCHAR"
 YEAR = "SMALLINT"  # NUMBER(4)
 AMOUNT = "DECIMAL(14,2)"  # NUMBER(14,2)
+PERCENT = "DECIMAL(7,4)"  # NUMBER(7,4)
 # SUB_ID is NUMBER(19): unsigned, because a 19-digit id can pass BIGINT's 9.2e18.
 SUB_ID = "UBIGINT"
 FILE_NUM = "BIGINT"  # NUMBER(22), in practice seven digits
@@ -47,6 +50,14 @@ LINKAGE_ID = "BIGINT"  # NUMBER(12)
 
 def _varchar(*names: str) -> dict[str, str]:
     return dict.fromkeys(names, VARCHAR)
+
+
+def _amount(*names: str) -> dict[str, str]:
+    return dict.fromkeys(names, AMOUNT)
+
+
+def _format_cycle(pattern: str, cycle: int) -> str:
+    return pattern.format(yyyy=f"{cycle:04d}", yy=f"{cycle % 100:02d}")
 
 
 # `indiv` and `oth` share one layout; `pas2` adds CAND_ID after OTHER_ID.
@@ -86,7 +97,8 @@ class BulkFile:
     # The first cycle FEC publishes this file for.
     first_cycle: int
     # The text file inside a zip; None for a CSV. A zip is opened by this name, never as "its one
-    # file": the `indiv` zip also holds the same rows again, split by date under `by_date/`.
+    # file": the `indiv` zip also holds the same rows again, split by date under `by_date/`. It may
+    # hold `{yyyy}` and `{yy}`, as `url_pattern` does: `weball24.zip` holds `weball24.txt`.
     member: str | None
     # Column name → DuckDB type, in file order. A zip's vendored header, and a CSV's header row,
     # must name the same columns in the same order.
@@ -99,6 +111,9 @@ class BulkFile:
     # `{yyyy}` and `{yy}`, with the file's name written out. None, for a zip only, means
     # `{yyyy}/<name>{yy}.zip`.
     url_pattern: str | None = None
+    # Whether a zip's vendored header is FEC's own header file, which `task fec:headers`
+    # refreshes; False where FEC publishes none and it was written from FEC's file description.
+    header_from_fec: bool = True
 
     def __post_init__(self) -> None:
         if self.format == "zip" and self.member is None:
@@ -108,12 +123,15 @@ class BulkFile:
                 raise ValueError(f"{self.name}: a CSV has no member or split folder")
             if not self.url_pattern:
                 raise ValueError(f"{self.name}: a CSV needs a URL pattern")
-        if self.url_pattern is not None:
-            for _, field, spec, conversion in string.Formatter().parse(self.url_pattern):
-                if field is not None and (field not in _URL_FIELDS or spec or conversion):
+            if not self.header_from_fec:
+                raise ValueError(f"{self.name}: a CSV's header row is in the file itself")
+        for what, pattern in (("URL pattern", self.url_pattern), ("member", self.member)):
+            if pattern is None:
+                continue
+            for _, field, spec, conversion in string.Formatter().parse(pattern):
+                if field is not None and (field not in _CYCLE_FIELDS or spec or conversion):
                     raise ValueError(
-                        f"{self.name}: URL pattern {self.url_pattern!r} may hold only"
-                        " {yyyy} and {yy}"
+                        f"{self.name}: {what} {pattern!r} may hold only {{yyyy}} and {{yy}}"
                     )
 
     @property
@@ -127,8 +145,13 @@ class BulkFile:
         pattern = (
             f"{{yyyy}}/{self.name}{{yy}}.zip" if self.url_pattern is None else self.url_pattern
         )
-        path = pattern.format(yyyy=f"{cycle:04d}", yy=f"{cycle % 100:02d}")
-        return f"{base_url.rstrip('/')}/{path}"
+        return f"{base_url.rstrip('/')}/{_format_cycle(pattern, cycle)}"
+
+    def member_for(self, cycle: int) -> str:
+        """The text file inside `cycle`'s zip, e.g. `weball24.txt`; `ValueError` for a CSV."""
+        if self.member is None:
+            raise ValueError(f"{self.name} is not a zip")
+        return _format_cycle(self.member, cycle)
 
     def header(self) -> list[str]:
         """The column names, in file order: a zip's from its vendored header file; a CSV's are
@@ -208,6 +231,182 @@ CATALOGUE: dict[FecFile, BulkFile] = {
             "pas2", 1980, "itpas2.txt", _ITEMIZED_HEAD | {"CAND_ID": VARCHAR} | _ITEMIZED_TAIL
         ),
         BulkFile("oth", 1980, "itoth.txt", _ITEMIZED_HEAD | _ITEMIZED_TAIL),
+        # The summary files (every-FEC-dollar spec §3, §4). The two zips' headers are FEC's file
+        # descriptions (all candidates; PAC and party summary), read 2026-11-05, and each zip's
+        # one member is named for its cycle. Their dates are MM/DD/YYYY, `committee_summary`'s
+        # YYYYMMDD; both stay VARCHAR, as the itemized files' do.
+        BulkFile(
+            "weball",
+            1980,
+            "weball{yy}.txt",
+            _varchar("CAND_ID", "CAND_NAME", "CAND_ICI", "PTY_CD", "CAND_PTY_AFFILIATION")
+            | _amount(
+                "TTL_RECEIPTS",
+                "TRANS_FROM_AUTH",
+                "TTL_DISB",
+                "TRANS_TO_AUTH",
+                "COH_BOP",
+                "COH_COP",
+                "CAND_CONTRIB",
+                "CAND_LOANS",
+                "OTHER_LOANS",
+                "CAND_LOAN_REPAY",
+                "OTHER_LOAN_REPAY",
+                "DEBTS_OWED_BY",
+                "TTL_INDIV_CONTRIB",
+            )
+            | _varchar(
+                "CAND_OFFICE_ST",
+                "CAND_OFFICE_DISTRICT",
+                "SPEC_ELECTION",
+                "PRIM_ELECTION",
+                "RUN_ELECTION",
+                "GEN_ELECTION",
+            )
+            # FEC's spelling. The election results are filled in 1996–2006 only.
+            | {"GEN_ELECTION_PRECENT": PERCENT}
+            | _amount("OTHER_POL_CMTE_CONTRIB", "POL_PTY_CONTRIB")
+            | {"CVG_END_DT": VARCHAR}
+            | _amount("INDIV_REFUNDS", "CMTE_REFUNDS"),
+            header_from_fec=False,
+        ),
+        BulkFile(
+            "webk",
+            1996,
+            "webk{yy}.txt",
+            _varchar("CMTE_ID", "CMTE_NM", "CMTE_TP", "CMTE_DSGN", "CMTE_FILING_FREQ")
+            | _amount(
+                "TTL_RECEIPTS",
+                "TRANS_FROM_AFF",
+                "INDV_CONTRIB",
+                "OTHER_POL_CMTE_CONTRIB",
+                "CAND_CONTRIB",
+                "CAND_LOANS",
+                "TTL_LOANS_RECEIVED",
+                "TTL_DISB",
+                "TRANF_TO_AFF",
+                "INDV_REFUNDS",
+                "OTHER_POL_CMTE_REFUNDS",
+                "CAND_LOAN_REPAY",
+                "LOAN_REPAY",
+                "COH_BOP",
+                "COH_COP",
+                "DEBTS_OWED_BY",
+                "NONFED_TRANS_RECEIVED",
+                "CONTRIB_TO_OTHER_CMTE",
+                "IND_EXP",
+                "PTY_COORD_EXP",
+                "NONFED_SHARE_EXP",
+            )
+            | {"CVG_END_DT": VARCHAR},
+            header_from_fec=False,
+        ),
+        # The header row is the same in every cycle's file, 2008 to 2026, read 2026-11-18. FEC's
+        # file description spells some names differently (`OTH_FED_OPE_EXP`); the row's are
+        # these. `Link_Image` is the committee's page on fec.gov.
+        BulkFile(
+            "committee_summary",
+            2008,
+            None,
+            _varchar(
+                "Link_Image",
+                "CMTE_ID",
+                "CMTE_NM",
+                "CMTE_TP",
+                "CMTE_DSGN",
+                "CMTE_FILING_FREQ",
+                "CMTE_ST1",
+                "CMTE_ST2",
+                "CMTE_CITY",
+                "CMTE_ST",
+                "CMTE_ZIP",
+                "TRES_NM",
+                "CAND_ID",
+            )
+            | {"FEC_ELECTION_YR": YEAR}
+            | _amount(
+                "INDV_CONTB",
+                "PTY_CMTE_CONTB",
+                "OTH_CMTE_CONTB",
+                "TTL_CONTB",
+                "TRANF_FROM_OTHER_AUTH_CMTE",
+                "OFFSETS_TO_OP_EXP",
+                "OTHER_RECEIPTS",
+                "TTL_RECEIPTS",
+                "TRANF_TO_OTHER_AUTH_CMTE",
+                "OTH_LOAN_REPYMTS",
+                "INDV_REF",
+                "POL_PTY_CMTE_REF",
+                "TTL_CONTB_REF",
+                "OTHER_DISB",
+                "TTL_DISB",
+                "NET_CONTB",
+                "NET_OP_EXP",
+                "COH_BOP",
+            )
+            | {"CVG_START_DT": VARCHAR, "COH_COP": AMOUNT, "CVG_END_DT": VARCHAR}
+            | _amount(
+                "DEBTS_OWED_BY_CMTE",
+                "DEBTS_OWED_TO_CMTE",
+                "INDV_ITEM_CONTB",
+                "INDV_UNITEM_CONTB",
+                "OTH_LOANS",
+                "TRANF_FROM_NONFED_ACCT",
+                "TRANF_FROM_NONFED_LEVIN",
+                "TTL_NONFED_TRANF",
+                "LOAN_REPYMTS_RECEIVED",
+                "OFFSETS_TO_FNDRSG",
+                "OFFSETS_TO_LEGAL_ACCTG",
+                "FED_CAND_CONTB_REF",
+                "TTL_FED_RECEIPTS",
+                "SHARED_FED_OP_EXP",
+                "SHARED_NONFED_OP_EXP",
+                "OTHER_FED_OP_EXP",
+                "TTL_OP_EXP",
+                "FED_CAND_CMTE_CONTB",
+                "INDT_EXP",
+                "COORD_EXP_BY_PTY_CMTE",
+                "LOANS_MADE",
+                "SHARED_FED_ACTVY_FED_SHR",
+                "SHARED_FED_ACTVY_NONFED",
+                "NON_ALLOC_FED_ELECT_ACTVY",
+                "TTL_FED_ELECT_ACTVY",
+                "TTL_FED_DISB",
+                "CAND_CNTB",
+                "CAND_LOAN",
+                "TTL_LOANS",
+                "OP_EXP",
+                "CAND_LOAN_REPYMNT",
+                "TTL_LOAN_REPYMTS",
+                "OTH_CMTE_REF",
+                "TTL_OFFSETS_TO_OP_EXP",
+                "EXEMPT_LEGAL_ACCTG_DISB",
+                "FNDRSG_DISB",
+                "ITEM_REF_REB_RET",
+                "SUBTTL_REF_REB_RET",
+                "UNITEM_REF_REB_RET",
+                "ITEM_OTHER_REF_REB_RET",
+                "UNITEM_OTHER_REF_REB_RET",
+                "SUBTTL_OTHER_REF_REB_RET",
+                "ITEM_OTHER_INCOME",
+                "UNITEM_OTHER_INCOME",
+                "EXP_PRIOR_YRS_SUBJECT_LIM",
+                "EXP_SUBJECT_LIMITS",
+                "FED_FUNDS",
+                "ITEM_CONVN_EXP_DISB",
+                "ITEM_OTHER_DISB",
+                "SUBTTL_CONVN_EXP_DISB",
+                "TTL_EXP_SUBJECT_LIMITS",
+                "UNITEM_CONVN_EXP_DISB",
+                "UNITEM_OTHER_DISB",
+                "TTL_COMMUNICATION_COST",
+                "COH_BOY",
+                "COH_COY",
+            )
+            | {"ORG_TP": VARCHAR},
+            format="csv",
+            url_pattern="{yyyy}/committee_summary_{yyyy}.csv",
+        ),
     )
 }
 

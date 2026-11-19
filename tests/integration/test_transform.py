@@ -200,16 +200,21 @@ def put_bronze(
     store: R2, cycle: int = 2024, texts: Mapping[FecFile, str | bytes] | None = None
 ) -> None:
     """Every file of `cycle` in bronze: the fixture's for that cycle
-    (`tests/fixtures/fec/<cycle>/`), or the text `texts` gives for it."""
+    (`tests/fixtures/fec/<cycle>/`), or the text `texts` gives for it. A zip's text is its
+    member's; a CSV's is the file, its header row included, and an empty one a file with only its
+    header row."""
     texts = texts or {}
+    downloaded = date(2026, 10, 30)
     for bulk in files_for(cycle):
-        text = (
-            texts[bulk.name]
-            if bulk.name in texts
-            else fec_fixture.bulk_text(bulk.name, fec_fixture.fixture_dir(cycle))
-        )
-        body = zipped(fec_fixture.MEMBERS[bulk.name], text)
-        store.put(paths.bronze_zip(cycle, bulk.name, date(2026, 10, 30)), body)
+        if bulk.name not in texts:
+            body = fec_fixture.body(bulk.name, cycle)
+        elif bulk.format == "csv":
+            text = texts[bulk.name] or fec_fixture.csv_text(bulk, ())
+            body = text.encode() if isinstance(text, str) else text
+        else:
+            body = zipped(bulk.member_for(cycle), texts[bulk.name])
+        key = paths.bronze_csv if bulk.format == "csv" else paths.bronze_zip
+        store.put(key(cycle, bulk.name, downloaded), body)
 
 
 def run(*args: str) -> Result:
@@ -1078,9 +1083,9 @@ def test_a_filing_for_a_lone_special_joins_it_and_a_later_cycles_filing_joins_no
         # race check leaves it alone.
         "S8MD00140|LOE, KIM|DEM|2028|MD|S|00|C|C||2 HIGH ST||BALTIMORE|MD|21201\n"
     )
-    put_bronze(
-        store, 2026, texts={"cm": "", "cn": cn, "ccl": "", "indiv": "", "pas2": "", "oth": ""}
-    )
+    texts: dict[FecFile, str | bytes] = {bulk.name: "" for bulk in files_for(2026)}
+    texts["cn"] = cn
+    put_bronze(store, 2026, texts=texts)
 
     result = transform(2026)
 

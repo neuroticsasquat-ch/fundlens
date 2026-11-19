@@ -259,13 +259,19 @@ def _register_silver(
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
 
 
-def _source_dates(store: R2, cycle: int) -> dict[str, str | None]:
-    """The download date of the newest bronze file of each of the cycle's files."""
-    dates: dict[str, str | None] = {}
+def _source_dates(store: R2, cycle: int) -> dict[str, str]:
+    """The download date of the newest bronze file of each of the cycle's files.
+
+    A file with no bronze is left out: a cycle transformed before the file was catalogued, and
+    not extracted since, never downloaded it (the summary files, NEU-2142), and `gold.meta`
+    gives every file it names a date.
+    """
+    dates: dict[str, str] = {}
     for file in files_for(cycle):
         # Keys end in an ISO download date, so key order is download order.
         keys = sorted(store.list_keys(paths.bronze_dir(cycle, file.name)))
-        dates[file.name] = paths.download_date_of(keys[-1]) if keys else None
+        if keys:
+            dates[file.name] = paths.download_date_of(keys[-1])
     return dates
 
 

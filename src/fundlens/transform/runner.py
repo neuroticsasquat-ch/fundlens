@@ -203,20 +203,21 @@ def _end_line(out: IO[bytes]) -> None:
         out.write(b"\n")
 
 
-def copy_bulk(archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, source: str) -> None:
-    """Copy `file`'s text out of `archive` into `out` as UTF-8 (`copy_as_utf8`); `out` must be
-    readable as well as writable.
+def copy_bulk(
+    archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, cycle: int, source: str
+) -> None:
+    """Copy `file`'s text for `cycle` out of `archive` into `out` as UTF-8 (`copy_as_utf8`);
+    `out` must be readable as well as writable.
 
-    The text is `file.member`, unless the zip also holds its rows split under `file.split_dir`
-    and the two disagree in size: then the split files are copied in its place, in name order,
-    each ending its last line, with a warning naming `source`. FEC's 2022 `indiv` zip holds an
-    `itcont.txt` cut off mid-row at 37% of its `by_date/` files' bytes (NEU-2321). When the two
-    agree, as every other cycle's do, `member` is read, so a built cycle's rows keep their order;
-    reading both would count every row twice.
+    The text is `file.member_for(cycle)`, unless the zip also holds its rows split under
+    `file.split_dir` and the two disagree in size: then the split files are copied in its place,
+    in name order, each ending its last line, with a warning naming `source`. FEC's 2022 `indiv`
+    zip holds an `itcont.txt` cut off mid-row at 37% of its `by_date/` files' bytes (NEU-2321).
+    When the two agree, as every other cycle's do, the member is read, so a built cycle's rows
+    keep their order; reading both would count every row twice.
     """
-    if file.member is None:
-        raise ValueError(f"{file.name} is not a zip")
-    whole = archive.getinfo(file.member)
+    member = file.member_for(cycle)
+    whole = archive.getinfo(member)
     split = sorted(
         (
             info
@@ -234,7 +235,7 @@ def copy_bulk(archive: zipfile.ZipFile, file: BulkFile, out: IO[bytes], *, sourc
     log.warning(
         "%s: %s holds %s bytes but %s %s; reading %s",
         source,
-        file.member,
+        member,
         f"{whole.file_size:,}",
         file.split_dir,
         f"{split_bytes:,}",
@@ -267,7 +268,7 @@ def fetch_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: P
             copy_as_utf8(src, out)
     else:
         with zipfile.ZipFile(local) as archive, text.open("w+b") as out:
-            copy_bulk(archive, file, out, source=key)
+            copy_bulk(archive, file, out, cycle=cycle, source=key)
     log.info("%s %d read from %s", file.name, cycle, key)
     return text
 

@@ -5,7 +5,9 @@
 
 The one place fundlens fetches the dictionaries; the pipeline and the tests read only the
 vendored copies. After a refresh changes a file, update its columns in `files.CATALOGUE`
-(`tests/unit/test_fec_files.py` fails until they agree).
+(`tests/unit/test_fec_files.py` fails until they agree). A header FEC publishes no file for
+(`weball`, `webk`: `header_from_fec` false) was written from FEC's file description and is
+skipped: a change there is made by hand.
 """
 
 import argparse
@@ -41,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         header_file = file.header_file
         # A CSV's header row is in the file itself: there is nothing vendored to refresh.
         if header_file is None:
+            continue
+        if not file.header_from_fec:
+            print(f"{header_file}: from FEC's file description, not refreshed")
             continue
         live = fetch(base_url, header_file)
         vendored = HEADERS_DIR / header_file

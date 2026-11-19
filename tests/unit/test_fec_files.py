@@ -58,6 +58,9 @@ def test_the_vendored_header_names_the_catalogued_columns(name: FecFile) -> None
         ("pas2", 2026, f"{BASE}/2026/pas226.zip"),
         ("ccl", 2000, f"{BASE}/2000/ccl00.zip"),
         ("cm", 1980, f"{BASE}/1980/cm80.zip"),
+        ("weball", 1980, f"{BASE}/1980/weball80.zip"),
+        ("webk", 2024, f"{BASE}/2024/webk24.zip"),
+        ("committee_summary", 2008, f"{BASE}/2008/committee_summary_2008.csv"),
     ],
 )
 def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -> None:
@@ -65,9 +68,61 @@ def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -
     assert CATALOGUE[name].url(BASE + "/", cycle) == url
 
 
+@pytest.mark.parametrize(
+    ("name", "first_cycle"),
+    [
+        ("cm", 1980),
+        ("cn", 1980),
+        ("ccl", 2000),
+        ("indiv", 1980),
+        ("pas2", 1980),
+        ("oth", 1980),
+        # Every-FEC-dollar spec §3.1: the earliest range FEC's bulk-data page links.
+        ("weball", 1980),
+        ("webk", 1996),
+        ("committee_summary", 2008),
+    ],
+)
+def test_each_files_first_cycle_is_the_first_fec_publishes(name: FecFile, first_cycle: int) -> None:
+    assert CATALOGUE[name].first_cycle == first_cycle
+    assert CATALOGUE[name] not in files_for(first_cycle - 2)
+    assert CATALOGUE[name] in files_for(first_cycle)
+
+
 def test_files_for_leaves_out_files_fec_did_not_yet_publish() -> None:
-    assert [file.name for file in files_for(1998)] == ["cm", "cn", "indiv", "pas2", "oth"]
-    assert [file.name for file in files_for(2000)] == list(get_args(FecFile))
+    assert [file.name for file in files_for(1994)] == ["cm", "cn", "indiv", "pas2", "oth", "weball"]
+    assert [file.name for file in files_for(1998)] == [
+        "cm",
+        "cn",
+        "indiv",
+        "pas2",
+        "oth",
+        "weball",
+        "webk",
+    ]
+    assert CATALOGUE["committee_summary"] not in files_for(2004)
+    assert [file.name for file in files_for(2008)] == list(get_args(FecFile))
+
+
+@pytest.mark.parametrize(
+    ("name", "cycle", "member"),
+    [
+        ("cm", 2024, "cm.txt"),
+        ("indiv", 1980, "itcont.txt"),
+        ("weball", 1980, "weball80.txt"),
+        ("weball", 2024, "weball24.txt"),
+        ("webk", 2000, "webk00.txt"),
+    ],
+)
+def test_a_zips_member_is_named_for_its_cycle_where_fecs_is(
+    name: FecFile, cycle: int, member: str
+) -> None:
+    assert CATALOGUE[name].member_for(cycle) == member
+
+
+def test_a_csv_has_no_member() -> None:
+    with pytest.raises(ValueError, match="not a zip"):
+        CATALOGUE["committee_summary"].member_for(2024)
 
 
 @pytest.mark.parametrize(
@@ -120,6 +175,8 @@ def test_a_zip_with_a_pattern_renders_it() -> None:
         ({"url_pattern": "{}/sample.csv"}, "only"),
         ({"url_pattern": "{yy:03d}/sample.csv"}, "only"),
         ({"url_pattern": "{yyyy!r}/sample.csv"}, "only"),
+        ({"header_from_fec": False}, "header row"),
+        ({"format": "zip", "member": "sample{cycle}.txt", "url_pattern": None}, "only"),
     ],
 )
 def test_an_entry_that_cannot_work_is_refused_when_made(
@@ -135,6 +192,17 @@ def test_a_csvs_header_is_its_columns_and_it_has_no_header_file() -> None:
     assert file.header_file is None
     assert file.header() == ["CMTE_ID", "TTL_RECEIPTS"]
     assert CATALOGUE["cm"].header_file == "cm_header_file.csv"
+
+
+def test_only_the_summary_zips_headers_are_not_fecs_header_files() -> None:
+    # FEC publishes no header file for either (a 404 on 2026-11-05): `task fec:headers` skips
+    # them, and their vendored columns are FEC's file descriptions'.
+    assert [file.name for file in CATALOGUE.values() if not file.header_from_fec] == [
+        "weball",
+        "webk",
+    ]
+    assert CATALOGUE["weball"].header_file == "weball_header_file.csv"
+    assert CATALOGUE["webk"].header_file == "webk_header_file.csv"
 
 
 @pytest.mark.parametrize(

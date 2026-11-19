@@ -4,7 +4,8 @@
 entry's columns (for a zip, the vendored FEC header), then the rows, with `#` comment lines
 saying which case each block plants. `bulk_body` writes one in FEC's own layout for its format:
 
-- a zip: one member per zip, pipe-delimited, unquoted, no header row (`zips`);
+- a zip: one member per zip, named as FEC names it for the cycle, pipe-delimited, unquoted, no
+  header row (`zips`);
 - a CSV: the header row unquoted, every data field double-quoted with `""` for a quote, LF line
   endings (`csv_text`), as FEC's CSVs were on 2026-11-18.
 
@@ -30,11 +31,6 @@ from tests.fake_fec import CSV, ZIP, FakeFec, zipped
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CYCLE = 2024
-
-# The one file each fixture zip holds, named as in FEC's own zips.
-MEMBERS: dict[FecFile, str] = {
-    name: bulk.member for name, bulk in CATALOGUE.items() if bulk.member is not None
-}
 
 # One fixture row, keyed by FEC column name. Read-only: `read_rows` hands every caller the same
 # cached rows, so a test that changed one would change it for every later test.
@@ -95,14 +91,16 @@ def csv_text(bulk: BulkFile, rows: tuple[Row, ...]) -> str:
     return "".join(line + "\n" for line in lines)
 
 
-def bulk_body(bulk: BulkFile, path: Path) -> bytes:
-    """The fixture file at `path` as FEC serves `bulk`: a zip, or a CSV."""
-    rows = read_file(bulk, path)
+def body_of(bulk: BulkFile, cycle: int, rows: tuple[Row, ...]) -> bytes:
+    """`rows` as FEC serves `bulk` for `cycle`: a zip holding its member, or a CSV."""
     if bulk.format == "csv":
         return csv_text(bulk, rows).encode()
-    if bulk.member is None:
-        raise ValueError(f"{bulk.name} is not a zip")
-    return zipped(bulk.member, pipe_text(bulk, rows))
+    return zipped(bulk.member_for(cycle), pipe_text(bulk, rows))
+
+
+def bulk_body(bulk: BulkFile, path: Path, cycle: int = CYCLE) -> bytes:
+    """The fixture file at `path` as FEC serves `bulk` for `cycle`: a zip, or a CSV."""
+    return body_of(bulk, cycle, read_file(bulk, path))
 
 
 def publish(fec: FakeFec, bulk: BulkFile, cycle: int, body: bytes, **kwargs: str) -> str:
@@ -118,24 +116,22 @@ def bulk_text(file: FecFile, directory: Path | None = None) -> str:
     return pipe_text(CATALOGUE[file], read_rows(file, directory))
 
 
-def zips(cycle: int = CYCLE) -> dict[FecFile, bytes]:
-    """Every bulk zip FEC publishes for `cycle`, built from its fixture CSVs."""
-    return {
-        bulk.name: zipped(MEMBERS[bulk.name], bulk_text(bulk.name, fixture_dir(cycle)))
-        for bulk in files_for(cycle)
-        if bulk.format == "zip"
-    }
+@functools.cache
+def body(file: FecFile, cycle: int = CYCLE) -> bytes:
+    """`<file>.csv` of the `cycle` fixture as FEC serves it. Built once per file and cycle, then
+    cached, as `read_rows` is."""
+    return body_of(CATALOGUE[file], cycle, read_rows(file, fixture_dir(cycle)))
+
+
+def bodies(cycle: int = CYCLE) -> dict[FecFile, bytes]:
+    """Every bulk file FEC publishes for `cycle` as FEC serves it (`body`)."""
+    return {bulk.name: body(bulk.name, cycle) for bulk in files_for(cycle)}
 
 
 def serve(fec: FakeFec, cycle: int = CYCLE) -> None:
     """Publish every file of the fixture cycle on the fake FEC server, each at its URL."""
-    directory = fixture_dir(cycle)
-    for bulk in files_for(cycle):
-        if bulk.format == "zip":
-            body = zipped(MEMBERS[bulk.name], bulk_text(bulk.name, directory))
-        else:
-            body = bulk_body(bulk, directory / f"{bulk.name}.csv")
-        publish(fec, bulk, cycle, body)
+    for name, body in bodies(cycle).items():
+        publish(fec, CATALOGUE[name], cycle, body)
 
 
 # The CSV format's test-only entries (NEU-2138), both rendering `SAMPLE_FILE`: one per cycle in
