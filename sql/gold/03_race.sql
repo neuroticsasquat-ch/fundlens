@@ -1,5 +1,7 @@
 -- race (spec §7.1): every race of the seat calendar, its totals summed over race_candidate.
--- A race no one filed for (the fixture's 2024-H-MD-08) is a row with 0s.
+-- A race no one filed for (the fixture's 2024-H-MD-08) is a row with 0s. reported_cash_on_hand is
+-- its candidates' reported_cash_on_hand_end added up, FEC's figures (every-FEC-dollar spec §4.4):
+-- NULL when none has one, never 0, and in no other total.
 CREATE TABLE race AS
 SELECT
     race.race_id,
@@ -16,7 +18,8 @@ SELECT
         coalesce(sum(race_candidate.total_jfc_transfers), 0) AS DECIMAL(16, 2)
     ) AS total_jfc_transfers,
     CAST(coalesce(sum(race_candidate.ie_support), 0) AS DECIMAL(16, 2)) AS ie_support,
-    CAST(coalesce(sum(race_candidate.ie_oppose), 0) AS DECIMAL(16, 2)) AS ie_oppose
+    CAST(coalesce(sum(race_candidate.ie_oppose), 0) AS DECIMAL(16, 2)) AS ie_oppose,
+    CAST(sum(race_candidate.reported_cash_on_hand_end) AS DECIMAL(16, 2)) AS reported_cash_on_hand
 FROM silver.race AS race
 LEFT JOIN race_candidate USING (race_id)
 GROUP BY ALL;

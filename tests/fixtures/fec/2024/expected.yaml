@@ -88,7 +88,7 @@ rows:
   cm: 23
   cn: 15
   ccl: 15
-  indiv: 383
+  indiv: 403
   pas2: 30
   oth: 32
   weball: 12
@@ -106,7 +106,7 @@ silver:
   committee: 23
   candidate: 15
   candidate_committee_link: 15
-  contribution: 327
+  contribution: 347
   independent_expenditure: 15
   committee_transfer: 32
   organization_receipt: 17
@@ -115,7 +115,7 @@ silver:
   # One row per contributor key among the counted contributions and the JFC attributions (spec
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
-  contributor: 132
+  contributor: 133
   # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
   reported_total: 23
   candidate_reported_total: 0
@@ -154,7 +154,7 @@ contributions:
     C00401224: 8
     C00694323: 7
   # Every counted contribution, self-funding included.
-  total_amount: 2601575
+  total_amount: 2602575
 
 # Organization receipts (NEU-2131, ADR-0011): the ORG rows of either file, and the classified
 # blank-type `indiv` rows (NEU-2132), by the rule above, each the receiving committee's and no
@@ -397,7 +397,7 @@ races:
     ie_oppose: 5000
   2024-S-MD-00:
     candidate_count: 4
-    total_individual: 92975
+    total_individual: 93975
     total_committee: 11000
     total_jfc_transfers: 19500
     ie_support: 150000
@@ -493,9 +493,9 @@ candidates:
     self_funding: 0
     ie_support: 0
     ie_oppose: 0
-  S4MD00111: # BRANNIGAN
+  S4MD00111: # BRANNIGAN: THACKERAY's twenty $50 gifts among hers (NEU-2144)
     race_id: 2024-S-MD-00
-    total_individual: 7175
+    total_individual: 8175
     total_committee: 0
     total_jfc_transfers: 0
     self_funding: 0
@@ -604,7 +604,7 @@ committees:
     total_to_candidates: 0
     ie_total: 0
   C00800111: # BRANNIGAN FOR MARYLAND
-    total_individual: 7175
+    total_individual: 8175
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
@@ -824,9 +824,36 @@ donors:
     resolved_by: none
     amount: 600
     sub_ids: [4240100000000000362, 4240100000000000365]
+  # THACKERAY, OPHELIA (NEU-2144): twenty $50 gifts to BRANNIGAN under one contributor key, one
+  # $1,000 donor in candidate_gift_size's under_2000 bucket.
+  twenty_small_gifts:
+    bonica_cid: 100000125
+    resolved_by: none
+    amount: 1000
+    sub_ids:
+      - 4240100000000000384
+      - 4240100000000000385
+      - 4240100000000000386
+      - 4240100000000000387
+      - 4240100000000000388
+      - 4240100000000000389
+      - 4240100000000000390
+      - 4240100000000000391
+      - 4240100000000000392
+      - 4240100000000000393
+      - 4240100000000000394
+      - 4240100000000000395
+      - 4240100000000000396
+      - 4240100000000000397
+      - 4240100000000000398
+      - 4240100000000000399
+      - 4240100000000000400
+      - 4240100000000000401
+      - 4240100000000000402
+      - 4240100000000000403
 
 # The donors behind the counted contributions, as DIME tells them apart: distinct `bonica.cid`s.
-distinct_donors: 124
+distinct_donors: 125
 
 # JFC attributions (spec §6.11): `oth` 15J memo lines from an individual (IND, or blank and not
 # classified: CHESAPEAKE STEEL INC's line is in no table, NEU-2132) filed by a committee in `cm`.
@@ -853,9 +880,9 @@ validation:
   # import drops a label with no date and the validator matches on it, so VOSS's undated gift is
   # never matched. DIME labels no `oth` row, so WHITLOCK's loan and repayment there (NEU-2071) are
   # unmatched too; their contributor key is his labelled one.
-  matched_rows: 324
-  # Contributor keys with a dated counted contribution: 132 less the 15J-only key and VOSS's.
-  labelled_keys: 130
+  matched_rows: 344
+  # Contributor keys with a dated counted contribution: 133 less the 15J-only key and VOSS's.
+  labelled_keys: 131
   overall: {precision: 1.0, recall: 1.0}
   top: {limit: 3, precision: 1.0, recall: 1.0}
 
@@ -881,16 +908,16 @@ reported_totals:
       C00800115: [committee_summary, 2023-01-01, 2024-12-31, 19500, 19500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 19500, 0, 0, 0, null]
       C00800104: [committee_summary, 2023-01-01, 2024-12-31, 1942000, 1650700, 0, 291300, 1250000, 0, 31850, 5150, 37000, 0, 0, 5000, 400000, 1500000, 0, 250000, 0, 0, 0, null, null, 1400700, null]
       C00800105: [committee_summary, 2023-01-01, 2024-12-31, 12200, 10900, 0, 1300, 0, 0, 11250, 950, 12200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 10900, null]
-      C00800111: [committee_summary, 2023-01-01, 2024-12-31, 8500, 7600, 0, 900, 0, 0, 7175, 1325, 8500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, null]
+      C00800111: [committee_summary, 2023-01-01, 2024-12-31, 9500, 7600, 0, 1900, 0, 0, 8175, 1325, 9500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, null]
       C00800106: [committee_summary, 2023-01-01, 2024-12-31, 51000, 40800, 8000, 18200, 0, 500, 36825, 4175, 41000, 1000, 0, 10000, 0, 0, 0, 0, 0, 0, 0, null, null, 39800, null]
       C00800114: [committee_summary, 2023-01-01, 2024-12-31, 4000, 5000, 6000, 5000, 0, 0, 4000, 0, 4000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
       C00800107: [committee_summary, 2023-01-01, 2024-12-31, 44500, 35600, 0, 8900, 0, 0, 26325, 3675, 30000, 500, 0, 4500, 0, 0, 10000, 0, 4000, 0, 0, null, null, 31100, null]
-      C00800108: [committee_summary, 2023-01-01, 2024-12-31, 7000, 5600, 0, 1400, 0, 0, 6400, 600, 7000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 5600, null]
-      C00800109: [committee_summary, 2023-01-01, 2024-12-31, 6000, 4800, 0, 1200, 0, 0, 3800, 1200, 5000, 0, 0, 1000, 0, 0, 0, 0, 0, 0, 0, null, null, 4800, null]
-      C00800201: [committee_summary, 2023-01-01, 2024-12-31, 760000, 722000, 150000, 188000, 0, 0, 564925, 15075, 580000, 1600, 0, 155000, null, null, 25000, null, 0, 0, 0, 670000, 0, 50400, null]
+      C00800108: [committee_summary, 2023-01-01, 2024-12-31, 7000, 5600, 0, 1400, 0, 0, 6350, 650, 7000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 5600, null]
+      C00800109: [committee_summary, 2023-01-01, 2024-12-31, 6000, 4800, 0, 1200, 0, 0, 3700, 1300, 5000, 0, 0, 1000, 0, 0, 0, 0, 0, 0, 0, null, null, 4800, null]
+      C00800201: [committee_summary, 2023-01-01, 2024-12-31, 760000, 722000, 150000, 188000, 0, 0, 544925, 35075, 580000, 1600, 0, 155000, null, null, 25000, null, 0, 0, 0, 670000, 0, 50400, null]
       C00800202: [committee_summary, 2023-01-01, 2024-12-31, 6000, 47000, 60000, 19000, 0, 0, 4550, 1450, 6000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 24000, 0, 0, null]
-      C00800203: [committee_summary, 2023-01-01, 2024-12-31, 81000, 73500, 40000, 47500, 0, 0, 57300, 6700, 64000, 2500, 0, 17000, null, null, 0, null, 0, 0, 0, 45000, 20000, 0, null]
-      C00800204: [committee_summary, 2023-01-01, 2024-12-31, 255000, 153000, 0, 102000, 0, 0, 253000, 2000, 255000, 5250, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 147750, null]
+      C00800203: [committee_summary, 2023-01-01, 2024-12-31, 81000, 73500, 40000, 47500, 0, 0, 18300, 45700, 64000, 2500, 0, 17000, null, null, 0, null, 0, 0, 0, 45000, 20000, 0, null]
+      C00800204: [committee_summary, 2023-01-01, 2024-12-31, 255000, 153000, 0, 102000, 0, 0, 4000, 251000, 255000, 5250, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 147750, null]
       C00703975: [committee_summary, 2023-01-01, 2024-12-31, 8500, 7600, 0, 900, 0, 0, 3850, 2150, 6000, 0, 0, 2500, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, 0]
       C00800205: [committee_summary, 2023-01-01, 2024-12-31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
       C90800206: [committee_summary+webk, 2023-01-01, 2024-12-31, 35000, 30000, 0, 5000, 0, null, null, null, 35000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 30000, 0, null, null]
@@ -903,3 +930,84 @@ reported_totals:
     1998:
       H8MD05201: [weball, null, 1998-12-31, 9500, 8200, 0, 1300, 0, null, null, null, 7500, 0, 0, 2000, 0, 0, 0, 0, 0, 0, 0, null, null, null, null]
       H8MD05202: [weball, null, 1998-12-31, 4250, 4000, 1500, 1750, 0, null, null, null, 4250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, null, null]
+
+# Gold's reported fields, coverage, reconciliation and gift sizes (every-FEC-dollar spec §4.3 to
+# §4.6), this cycle's.
+# - A committee's itemized_total is total_individual + total_from_organizations - total_refunds
+#   (`committees`, and `organization_receipts`, `non_contribution_account`, `other_lines` and
+#   `refunds` above), never null. Every committee's INDV_ITEM_CONTB is its itemized_total, so its
+#   coverage is 1, but at the conduits ActBlue and WinRed (every earmark they took, which fundlens
+#   counts at the recipient: coverage null), FENWICK FOR CONGRESS (filed $100 under fundlens's
+#   figure, more than 1%: in `reconciliation`) and YANG FOR MARYLAND ($50 under, within 1%: not).
+# - coverage is itemized_total / reported_individual_itemized, to four places here; null where the
+#   reported figure is 0 or null, or at a conduit.
+# - A candidate's figures are the sums over the committees credited to them: P or A in `ccl`, or
+#   their `cn` CAND_PCC (STRATTON's, a leadership PAC since the election, so
+#   reported_includes_converted_committee); a committee handed off is the second candidate's whole
+#   (HARRIS's C00703975, so BIDEN has none). Null where no credited committee has the figure.
+gold_reported:
+  # [itemized_total, reported_individual_itemized, reported_cash_on_hand_end, coverage]
+  committees:
+    C00401224: [5, 780, 80, null]
+    C00694323: [0, 2950, 50, null]
+    C00800101: [19625, 19625, 9325, 1.0]
+    C00800102: [35150, 35150, 27750, 1.0]
+    C00703975: [3850, 3850, 900, 1.0]
+    C00800103: [38550, 38550, 54300, 1.0]
+    C00800113: [12150, 12150, 2800, 1.0]
+    C00800115: [0, 0, 0, null]
+    C00800104: [31850, 31850, 291300, 1.0]
+    C00800105: [11250, 11250, 1300, 1.0]
+    C00800111: [8175, 8175, 1900, 1.0]
+    C00800106: [36825, 36825, 18200, 1.0]
+    C00800114: [4000, 4000, 5000, 1.0]
+    C00800107: [26325, 26325, 8900, 1.0]
+    C00800108: [6400, 6350, 1400, 1.0079]
+    C00800109: [3800, 3700, 1200, 1.027]
+    C00800201: [544925, 544925, 188000, 1.0]
+    C00800202: [4550, 4550, 19000, 1.0]
+    C00800203: [18300, 18300, 47500, 1.0]
+    C00800204: [4000, 4000, 102000, 1.0]
+    C00800205: [0, 0, 0, null]
+    C90800206: [0, null, 5000, null]
+    C90800207: [0, null, null, null]
+  # [reported_receipts, reported_cash_on_hand_end, itemized_total, coverage,
+  #  reported_includes_converted_committee]
+  candidates:
+    P40000101: [30825, 9325, 19625, 1.0, false]
+    P40000102: [39250, 27750, 35150, 1.0, true]
+    P80000722: [null, null, null, null, false]
+    P00009423: [8500, 900, 3850, 1.0, false]
+    P40000110: [null, null, null, null, false]
+    S4MD00103: [131000, 57100, 50700, 1.0, false]
+    S4MD00104: [1942000, 291300, 31850, 1.0, false]
+    S4MD00105: [12200, 1300, 11250, 1.0, false]
+    S4MD00111: [9500, 1900, 8175, 1.0, false]
+    H4MD05106: [51000, 18200, 36825, 1.0, false]
+    H4MD05107: [44500, 8900, 26325, 1.0, false]
+    H4MD05108: [7000, 1400, 6400, 1.0079, false]
+    H4MD05112: [null, null, null, null, false]
+    H4MD09109: [6000, 1200, 3800, 1.027, false]
+  # reported_cash_on_hand: its candidates' reported_cash_on_hand_end added up, null when none has one.
+  races:
+    2024-P-US-00: 37975
+    2024-S-MD-00: 351600
+    2024-H-MD-05: 28500
+    2024-S-NE-00-special: null
+    2024-H-MD-08: null
+  # Every committee fundlens's itemized_total exceeds the reported figure of by more than 1%, not a
+  # conduit: [measure, fundlens, reported, ratio], the ratio to four places.
+  reconciliation:
+    C00800109: [individual_itemized, 3800, 3700, 1.027]
+  # A candidate's gift sizes on a resolved build, by bucket: [amount, donors]. Each donor's bucket
+  # is their net gifts to the candidate (DIME's `bonica.cid` tells the donors apart): THACKERAY's
+  # twenty $50 gifts are one $1,000 donor, in under_2000. unitemized is the candidate's
+  # reported_individual_unitemized, with no donor count.
+  gift_sizes:
+    S4MD00111:
+      unitemized: [1325, null]
+      200_or_less: [125, 2]
+      under_500: [250, 1]
+      under_1000: [500, 1]
+      under_2000: [4000, 4]
+      2000_or_more: [3300, 1]

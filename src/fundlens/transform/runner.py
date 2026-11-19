@@ -315,13 +315,23 @@ def _register_conduits(con: duckdb.DuckDBPyConnection) -> None:
     con.executemany("INSERT INTO conduit VALUES (?, ?)", rows)
 
 
-def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+def handoffs() -> list[tuple[str, str, str, date]]:
+    """Every vendored handoff (`fec/handoffs.csv`, NEU-2126): the committee, the candidates it was
+    handed from and to, and the date."""
     text = package_files("fundlens.fec").joinpath("handoffs.csv").read_text()
-    rows = [
-        (row["committee_id"], row["from_candidate_id"], row["to_candidate_id"], handoff_date)
+    return [
+        (
+            row["committee_id"],
+            row["from_candidate_id"],
+            row["to_candidate_id"],
+            date.fromisoformat(row["handoff_date"]),
+        )
         for row in csv.DictReader(io.StringIO(text))
-        if (handoff_date := date.fromisoformat(row["handoff_date"])).year in (cycle - 1, cycle)
     ]
+
+
+def _register_handoffs(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    rows = [handoff for handoff in handoffs() if handoff[3].year in (cycle - 1, cycle)]
     con.execute(
         "CREATE TABLE handoff (committee_id VARCHAR, from_candidate_id VARCHAR,"
         " to_candidate_id VARCHAR, handoff_date DATE)"

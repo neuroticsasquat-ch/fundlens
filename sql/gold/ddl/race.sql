@@ -11,5 +11,6 @@ CREATE TABLE gold_build.race (
     total_committee numeric(16, 2) NOT NULL,
     total_jfc_transfers numeric(16, 2) NOT NULL,
     ie_support numeric(16, 2) NOT NULL,
-    ie_oppose numeric(16, 2) NOT NULL
+    ie_oppose numeric(16, 2) NOT NULL,
+    reported_cash_on_hand numeric(16, 2)
 );
