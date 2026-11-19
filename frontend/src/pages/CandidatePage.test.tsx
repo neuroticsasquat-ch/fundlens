@@ -1,9 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { CandidateCycle } from "../api/client";
+import type { ChartOption } from "../components/charts/echarts";
 import { http } from "../test/api";
 import { renderApp } from "../test/app";
-import { lastOption } from "../test/echarts";
-import { CANDIDATE_OKAFOR } from "../test/fixtures";
+import { allOptions } from "../test/echarts";
+import { CANDIDATE_CALDER_1998, CANDIDATE_OKAFOR } from "../test/fixtures";
+import { figures } from "../test/reported";
 
 const section = (name: string) => screen.getByRole("region", { name });
 const rows = (name: string) => within(section(name)).getAllByRole("row").slice(1);
@@ -11,6 +14,37 @@ const cells = (row: HTMLElement) =>
   within(row)
     .getAllByRole("cell")
     .map((cell) => cell.textContent);
+
+/** OKAFOR with her 2024 cycle changed by `cycle`. */
+function okafor(cycle: Partial<CandidateCycle>) {
+  return [
+    http.get("/v1/candidates/{candidate_id}", ({ response }) =>
+      response(200).json({
+        ...CANDIDATE_OKAFOR,
+        cycles: [{ ...CANDIDATE_OKAFOR.cycles[0], ...cycle }],
+      }),
+    ),
+  ];
+}
+
+/** The last option set on the chart one of whose series is `name`: a page draws two. */
+function chart(name: string): ChartOption {
+  const option = allOptions()
+    .filter((set) =>
+      (set.series as { name?: string }[] | undefined)?.some((series) => series.name === name),
+    )
+    .at(-1);
+  if (!option) throw new Error(`No chart with a ${name} series was drawn`);
+  return option;
+}
+
+const giftSizes = () => chart("Gift sizes");
+
+/** The tooltip the gift-size chart shows over its `index`th bar. */
+const giftSizeTooltip = (index: number) =>
+  (giftSizes().tooltip as { formatter: (params: object) => string }).formatter({
+    dataIndex: index,
+  });
 
 /** OKAFOR in 2024 and 2022, answering each contributions request with one row naming its cycle. */
 function twoCycles() {
@@ -100,7 +134,7 @@ describe("CandidatePage", () => {
     renderApp("/candidate/S4MD00103");
     await screen.findByRole("region", { name: "Totals by cycle" });
 
-    const option = lastOption();
+    const option = chart("From individuals");
     expect(option.xAxis).toMatchObject({ data: ["2024"] });
     expect(option.series).toMatchObject([
       { type: "bar", name: "From individuals", stack: "total", data: [49700] },
@@ -188,6 +222,200 @@ describe("CandidatePage", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 2, name: "In 2024" })).toBeInTheDocument(),
     );
+  });
+
+  it("shows the cycle's reported totals beside fundlens's itemized total, with its coverage", async () => {
+    renderApp("/candidate/S4MD00103");
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(
+      within(reported).getByText(/Reporting period 2023-01-01 to 2024-12-31 · source/),
+    ).toHaveTextContent("committee_summary");
+    expect(figures(reported)).toEqual([
+      ["Raised", "$131,000"],
+      ["Spent", "$98,900"],
+      ["Cash on hand", "$57,100"],
+      ["Debts", "$3,000"],
+      ["Loans from the candidate", "$0"],
+      ["Other loans", "$0"],
+      ["Unitemized from individuals", "$10,300"],
+      ["Itemized from individuals", "$50,700"],
+      ["Itemized by fundlens", "$50,700"],
+    ]);
+    expect(
+      within(reported).getByText(
+        /fundlens itemizes 100\.0% of the itemized individual money this campaign reported\./,
+      ),
+    ).toBeInTheDocument();
+    expect(within(reported).getByRole("link", { name: "Methodology" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
+    // Reported totals are never added to the itemized ones.
+    expect(cells(rows("Totals by cycle")[0])[6]).toBe("$79,200");
+  });
+
+  it("shows a coverage over 100% as it is", async () => {
+    renderApp("/candidate/S4MD00103", { handlers: okafor({ coverage: 1.1234 }) });
+
+    expect(
+      await screen.findByText(/fundlens itemizes 112\.3% of the itemized individual money/),
+    ).toBeInTheDocument();
+  });
+
+  it("says why a candidate with individuals' money but no credited committee has no reported totals", async () => {
+    // A handoff's first candidate: no credited committee, so no reported totals, itemized total
+    // or unitemized lump, beside the five itemized buckets of their own donors (spec §4.3, §4.6).
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({
+        reported: null,
+        itemized_total: null,
+        coverage: null,
+        gift_sizes: CANDIDATE_CALDER_1998.cycles[0].gift_sizes,
+      }),
+    });
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(reported).toHaveTextContent(
+      "No committee's reported totals are credited to this candidate in 2024. A campaign " +
+        "committee handed to another candidate during the cycle counts whole as the second " +
+        "candidate's, what it raised before the handoff included.",
+    );
+    expect(within(reported).queryByRole("term")).toBeNull();
+    expect(giftSizes().xAxis).toMatchObject({
+      data: ["$200 or less", "$200–$500", "$500–$1,000", "$1,000–$2,000", "$2,000 or more"],
+    });
+  });
+
+  it("names no handoff for a candidate with no credited committee and no money of their own", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({
+        reported: null,
+        itemized_total: null,
+        coverage: null,
+        total_individual: 0,
+        gift_sizes: [],
+      }),
+    });
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(reported).toHaveTextContent(
+      "No committee's reported totals are credited to this candidate in 2024.",
+    );
+    expect(reported).not.toHaveTextContent(/handed/);
+    expect(within(section("Gift sizes")).getByText("No gift sizes in 2024.")).toBeInTheDocument();
+  });
+
+  it("says why a 2008-on cycle with no reported itemized money has no coverage", async () => {
+    const { reported } = CANDIDATE_OKAFOR.cycles[0];
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({ reported: { ...reported!, individual_itemized: 0 }, coverage: null }),
+    });
+
+    expect(
+      await screen.findByText(
+        "No coverage: this campaign reported no itemized individual money to set it against.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("notes a converted committee counted in the candidate's reported totals", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({ reported_includes_converted_committee: true }),
+    });
+
+    expect(
+      await screen.findByText(/Includes a campaign committee that became a PAC, counted whole/),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing of a converted committee where none is counted", async () => {
+    renderApp("/candidate/S4MD00103");
+    await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(screen.queryByText(/became a PAC/)).toBeNull();
+  });
+
+  it("draws the unitemized lump as its own bar, and says why no donor's bucket is drawn", async () => {
+    renderApp("/candidate/S4MD00103");
+    const sizes = await screen.findByRole("region", { name: "Gift sizes" });
+
+    expect(giftSizes().xAxis).toMatchObject({ data: ["Unitemized"] });
+    expect(giftSizes().series).toMatchObject([{ type: "bar", data: [{ value: 10300 }] }]);
+    expect(giftSizeTooltip(0)).toBe("Unitemized: $10,300, reported as one lump");
+    expect(
+      within(sizes).getByText(
+        "No donors are resolved for 2024 yet, so only the unitemized lump is shown.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("charts every gift-size bucket in bucket order, unitemized in a colour of its own", async () => {
+    const buckets: CandidateCycle["gift_sizes"] = [
+      { bucket: "2000_or_more", amount: 6600, donors: 2 },
+      { bucket: "unitemized", amount: 10300, donors: null },
+      { bucket: "200_or_less", amount: 400, donors: 3 },
+      { bucket: "under_500", amount: 750, donors: 2 },
+      { bucket: "under_1000", amount: 500, donors: 1 },
+      { bucket: "under_2000", amount: 1500, donors: 1 },
+    ];
+    renderApp("/candidate/S4MD00103", { handlers: okafor({ gift_sizes: buckets }) });
+    const sizes = await screen.findByRole("region", { name: "Gift sizes" });
+
+    expect(giftSizes().xAxis).toMatchObject({
+      data: [
+        "Unitemized",
+        "$200 or less",
+        "$200–$500",
+        "$500–$1,000",
+        "$1,000–$2,000",
+        "$2,000 or more",
+      ],
+    });
+    const [bar] = giftSizes().series as { data: { value: number; itemStyle: { color: string } }[] }[];
+    expect(bar.data.map((point) => point.value)).toEqual([10300, 400, 750, 500, 1500, 6600]);
+    const colours = new Set(bar.data.slice(1).map((point) => point.itemStyle.color));
+    expect(colours.size).toBe(1);
+    expect(colours.has(bar.data[0].itemStyle.color)).toBe(false);
+    expect(giftSizeTooltip(1)).toBe("$200 or less: $400 from 3 donors");
+    expect(giftSizeTooltip(4)).toBe("$1,000–$2,000: $1,500 from 1 donor");
+    expect(within(sizes).queryByText(/No donors are resolved/)).toBeNull();
+  });
+
+  it("shows a pre-2008 cycle's reported totals with what FEC's files lack as not reported", async () => {
+    renderApp("/candidate/H8MD05201", {
+      handlers: [
+        http.get("/v1/candidates/{candidate_id}", ({ response }) =>
+          response(200).json(CANDIDATE_CALDER_1998),
+        ),
+      ],
+    });
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(within(reported).getByText(/Reporting period to 1998-12-31 · source/)).toHaveTextContent(
+      "weball",
+    );
+    expect(figures(reported)).toEqual([
+      ["Raised", "$9,500"],
+      ["Spent", "$8,200"],
+      ["Cash on hand", "$1,300"],
+      ["Debts", "$0"],
+      ["Loans from the candidate", "$0"],
+      ["Other loans", "$0"],
+      ["Unitemized from individuals", "not reported"],
+      ["Itemized from individuals", "not reported"],
+      ["Itemized by fundlens", "$1,000"],
+    ]);
+    expect(within(reported).queryByText(/fundlens itemizes/)).toBeNull();
+    expect(
+      within(reported).getByText(
+        "No coverage: FEC's figures before 2008 do not split itemized money from unitemized.",
+      ),
+    ).toBeInTheDocument();
+    // The five itemized buckets, and no unitemized bar.
+    expect(giftSizes().xAxis).toMatchObject({
+      data: ["$200 or less", "$200–$500", "$500–$1,000", "$1,000–$2,000", "$2,000 or more"],
+    });
   });
 
   it("says when there is no such candidate", async () => {

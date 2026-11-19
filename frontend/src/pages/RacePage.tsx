@@ -7,7 +7,7 @@ import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
 import TopDonorsTable from "../components/TopDonorsTable";
-import { count, DASH, money } from "../components/format";
+import { count, DASH, money, reportedMoney } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { candidateName, candidateTotal } from "../domain/candidates";
 import { officeLabel, raceLabel } from "../domain/states";
@@ -113,6 +113,14 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     align: "right",
     render: (candidate) => money(candidate.ie_oppose),
     sortValue: (candidate) => candidate.ie_oppose,
+  },
+  // FEC's reported figure, not fundlens's itemized money, so last and never in a total.
+  {
+    key: "cash-on-hand",
+    header: "Cash on hand",
+    align: "right",
+    render: (candidate) => reportedMoney(candidate.reported?.cash_on_hand_end),
+    sortValue: (candidate) => candidate.reported?.cash_on_hand_end ?? null,
   },
 ];
 
@@ -297,6 +305,10 @@ function RaceDetail({ race }: { race: Race }) {
                 rowKey={(candidate) => candidate.candidate_id}
                 defaultSort={{ key: "total", direction: "desc" }}
               />
+              <Text c="dimmed" size="sm">
+                Cash on hand: what each campaign reported to the FEC it held at the end of its
+                latest report, never added to what it raised.
+              </Text>
             </Stack>
           </section>
           <section aria-labelledby="top-committees">

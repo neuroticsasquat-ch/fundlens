@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { Contribution } from "../api/client";
 import { http } from "../test/api";
 import { renderApp } from "../test/app";
-import { contribution, problem } from "../test/fixtures";
+import {
+  COMMITTEE_BUILDERS_PAC_1998,
+  COMMITTEE_OKAFOR,
+  contribution,
+  problem,
+} from "../test/fixtures";
+import { figures } from "../test/reported";
 
 const section = (name: string) => screen.getByRole("region", { name });
 const rows = (name: string) => within(section(name)).getAllByRole("row").slice(1);
@@ -394,6 +400,96 @@ describe("CommitteePage", () => {
     await screen.findByText("D");
     expect(contributors()).toEqual(["A", "B", "C", "D"]);
     expect(cursors).toEqual(["", "p2", "p2"]);
+  });
+
+  it("shows the cycle's reported totals beside fundlens's itemized total, with its coverage", async () => {
+    renderApp("/committee/C00800103");
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(
+      within(reported).getByText(/Reporting period 2023-01-01 to 2024-12-31 · source/),
+    ).toHaveTextContent("committee_summary");
+    expect(figures(reported)).toEqual([
+      ["Raised", "$117,000"],
+      ["Spent", "$87,700"],
+      ["Cash on hand", "$54,300"],
+      ["Debts", "$3,000"],
+      ["Loans from the candidate", "$0"],
+      ["Other loans", "$0"],
+      ["Unitemized from individuals", "$8,450"],
+      ["Itemized from individuals", "$38,550"],
+      ["Itemized by fundlens", "$38,550"],
+    ]);
+    expect(
+      within(reported).getByText(
+        /fundlens itemizes 100\.0% of the itemized individual money this committee reported\./,
+      ),
+    ).toBeInTheDocument();
+    expect(within(reported).getByRole("link", { name: "Methodology" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
+  });
+
+  it("says why a conduit has no coverage", async () => {
+    renderApp("/committee/C00401224");
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(within(reported).queryByText(/fundlens itemizes/)).toBeNull();
+    expect(
+      within(reported).getByText(/No coverage for a conduit: its reported itemized figure/),
+    ).toBeInTheDocument();
+  });
+
+  it("says when FEC's files have no reported totals for the committee", async () => {
+    renderApp("/committee/C00800103", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}", ({ response }) =>
+          response(200).json({
+            ...COMMITTEE_OKAFOR,
+            cycles: [{ ...COMMITTEE_OKAFOR.cycles[0], reported: null, coverage: null }],
+          }),
+        ),
+      ],
+    });
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(reported).toHaveTextContent(
+      "FEC's files have no reported totals for this committee in 2024.",
+    );
+    expect(within(reported).queryByRole("term")).toBeNull();
+  });
+
+  it("shows a pre-2008 committee's reported totals with what FEC's files lack as not reported", async () => {
+    renderApp("/committee/C00298003", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}", ({ response }) =>
+          response(200).json(COMMITTEE_BUILDERS_PAC_1998),
+        ),
+      ],
+    });
+    const reported = await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(within(reported).getByText(/Reporting period to 1998-12-31 · source/)).toHaveTextContent(
+      "webk",
+    );
+    expect(figures(reported)).toEqual([
+      ["Raised", "$6,000"],
+      ["Spent", "$2,500"],
+      ["Cash on hand", "$7,500"],
+      ["Debts", "$0"],
+      ["Loans from the candidate", "$0"],
+      ["Other loans", "$0"],
+      ["Unitemized from individuals", "not reported"],
+      ["Itemized from individuals", "not reported"],
+      ["Itemized by fundlens", "$0"],
+    ]);
+    expect(within(reported).queryByText(/fundlens itemizes/)).toBeNull();
+    expect(
+      within(reported).getByText(
+        "No coverage: FEC's figures before 2008 do not split itemized money from unitemized.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says when there is no such committee", async () => {

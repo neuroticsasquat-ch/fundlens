@@ -19,6 +19,7 @@ import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
 import { useScrollToHash, useShownCycle } from "./entityCycle";
 import { RECIPIENT_COLUMNS } from "./recipientColumns";
+import ReportedPanel from "./ReportedPanel";
 
 const ORGANIZATIONS_COLUMN: Column<CommitteeCycle> = {
   key: "organizations",
@@ -167,6 +168,11 @@ function gross(row: CommitteeCycle): number {
   return row.total_individual + row.total_from_organizations - row.total_refunds;
 }
 
+// A conduit has no coverage (every-FEC-dollar spec §4.4).
+const CONDUIT_COVERAGE =
+  "No coverage for a conduit: its reported itemized figure includes the earmarks fundlens counts " +
+  "at their recipients.";
+
 /** `/committee/:id`: a committee's money in every cycle; whom it gave to and got from in one. */
 function CommitteePage() {
   const id = useParams().id ?? "";
@@ -301,6 +307,15 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
         <section aria-labelledby="in-cycle">
           <Stack gap="lg">
             <CycleHeading cycles={cycles} cycle={shown.cycle} onChange={showCycle} />
+            <ReportedPanel
+              cycle={shown.cycle}
+              reported={shown.reported}
+              itemizedTotal={shown.itemized_total}
+              coverage={shown.coverage}
+              filer="committee"
+              missing={`FEC's files have no reported totals for this committee in ${shown.cycle}.`}
+              noCoverage={committee.is_conduit ? CONDUIT_COVERAGE : undefined}
+            />
             <section aria-labelledby="top-recipients">
               <Title order={3} id="top-recipients" mb="sm">
                 Top recipients

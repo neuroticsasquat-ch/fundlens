@@ -15,6 +15,14 @@ export function money(v: number | null | undefined): string {
   return signed(v, whole.format(Math.abs(v)));
 }
 
+/**
+ * A reported total's figure: `money`, but a measure FEC's file for the cycle lacks is "not
+ * reported", never 0 and never a dash (every-FEC-dollar spec §4.7).
+ */
+export function reportedMoney(v: number | null | undefined): string {
+  return v == null ? "not reported" : money(v);
+}
+
 /** `$1.2M`, `$54.8K`, `$975`. */
 export function moneyCompact(v: number | null | undefined): string {
   if (v == null) return DASH;
