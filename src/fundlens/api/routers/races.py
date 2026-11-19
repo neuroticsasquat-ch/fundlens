@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from psycopg.rows import class_row, dict_row
 
 from fundlens.api.deps import Conn
+from fundlens.api.reported import (
+    RACE_CANDIDATE_REPORTED_FIELDS,
+    pop_race_candidate_reported,
+    reported_columns,
+)
 from fundlens.api.routers.cycles import RACE_COLUMNS
 from fundlens.api.schemas import (
     Race,
@@ -44,19 +49,37 @@ def get_race(
     )
     if race is None:
         raise HTTPException(404, f"No race {slug}.")
-    candidates = (
-        conn.cursor(row_factory=class_row(RaceCandidate))
+    # The source file and itemized_total are candidate_cycle's, whose figures race_candidate's
+    # reported fields and coverage copy (every-FEC-dollar spec §4.4).
+    rows = (
+        conn.cursor(row_factory=dict_row)
         .execute(
-            "SELECT candidate_id, name, party, incumbent_challenger_open, principal_committee_id,"
-            " total_individual, total_committee, total_jfc_transfers, self_funding, ie_support,"
-            " ie_oppose"
-            " FROM gold.race_candidate WHERE race_id = %s"
-            " ORDER BY total_individual + total_committee + total_jfc_transfers + self_funding"
-            " DESC, candidate_id",
-            (race["race_id"],),
+            "SELECT race_candidate.candidate_id, race_candidate.name, race_candidate.party,"
+            " race_candidate.incumbent_challenger_open, race_candidate.principal_committee_id,"
+            " race_candidate.total_individual, race_candidate.total_committee,"
+            " race_candidate.total_jfc_transfers, race_candidate.self_funding,"
+            " race_candidate.ie_support, race_candidate.ie_oppose,"
+            " candidate_cycle.reported_source_file,"
+            f" {reported_columns('race_candidate', RACE_CANDIDATE_REPORTED_FIELDS[1:])},"
+            " candidate_cycle.itemized_total, race_candidate.coverage"
+            " FROM gold.race_candidate"
+            " LEFT JOIN gold.candidate_cycle"
+            " ON candidate_cycle.candidate_id = race_candidate.candidate_id"
+            " AND candidate_cycle.cycle = %s"
+            " WHERE race_candidate.race_id = %s"
+            " ORDER BY race_candidate.total_individual + race_candidate.total_committee"
+            " + race_candidate.total_jfc_transfers + race_candidate.self_funding DESC,"
+            " race_candidate.candidate_id",
+            (race["cycle"], race["race_id"]),
         )
         .fetchall()
     )
+    candidates = [
+        RaceCandidate(reported=reported, **row)
+        for row in rows
+        # Popped first, so `row` holds no `reported_*` column when it is spread.
+        for reported in [pop_race_candidate_reported(row)]
+    ]
     top_committees = (
         conn.cursor(row_factory=class_row(RaceTopCommittee))
         .execute(

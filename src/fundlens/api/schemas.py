@@ -14,6 +14,15 @@ PROBLEM_JSON = "application/problem+json"
 
 type Office = Literal["H", "S", "P"]
 type SearchKind = Literal["donor", "candidate", "committee", "race"]
+# Where a row's reported figures came from (every-FEC-dollar spec §4.1, §4.2): a committee's from
+# `committee_summary` (2008 on, `+webk` where a Form 5 or 7 filer's blanks were filled), `webk`
+# (1996-2006); a candidate's summed from their committees' (`committee_summary`) or `weball`.
+type ReportedSourceFile = Literal["committee_summary", "committee_summary+webk", "webk", "weball"]
+# A candidate's gift-size buckets (spec §4.6), in this order: FEC's unitemized lump, then each
+# donor's net gifts to the candidate in the cycle.
+type GiftSizeBucket = Literal[
+    "unitemized", "200_or_less", "under_500", "under_1000", "under_2000", "2000_or_more"
+]
 
 
 class Problem(BaseModel):
@@ -161,6 +170,68 @@ class RaceSummary(BaseModel):
     total_jfc_transfers: float
     ie_support: float
     ie_oppose: float
+    # FEC's reported cash on hand at the end of the cycle, its candidates' added up; None when none
+    # has a reported figure (every-FEC-dollar spec §4.4).
+    reported_cash_on_hand: float | None
+
+
+class ReportedTotals(BaseModel):
+    """A committee's or candidate's reported totals for a cycle, as filed (CONTEXT.md;
+    every-FEC-dollar spec §4.1 to §4.4): never summed with itemized money, shown beside the
+    itemized total.
+
+    A measure the cycle's file lacks is None, never 0, while the rest stand: before 2008 there is
+    no `period_start`, `debts_owed_to`, itemized and unitemized split, `operating_expenditures` or
+    `federal_funds` (spec §4.7). A candidate's from 2008 are their credited committees' added up.
+    """
+
+    source_file: ReportedSourceFile
+    # The reporting period the figures cover (CONTEXT.md), as filed, so possibly reversed.
+    period_start: date | None
+    period_end: date | None
+    receipts: float | None
+    disbursements: float | None
+    cash_on_hand_start: float | None
+    cash_on_hand_end: float | None
+    debts_owed_by: float | None
+    debts_owed_to: float | None
+    individual_itemized: float | None
+    # A committee-level lump of gifts under $200, never attributed to a donor.
+    individual_unitemized: float | None
+    individual_total: float | None
+    individual_refunds: float | None
+    party_contributions: float | None
+    other_committee_contributions: float | None
+    candidate_contributions: float | None
+    candidate_loans: float | None
+    other_loans: float | None
+    candidate_loan_repayments: float | None
+    other_loan_repayments: float | None
+    transfers_in: float | None
+    transfers_out: float | None
+    independent_expenditures: float | None
+    party_coordinated: float | None
+    operating_expenditures: float | None
+    federal_funds: float | None
+
+
+class RaceCandidateReported(BaseModel):
+    """A race candidate's headline reported figures, their `candidate_cycle` values (spec §4.4)."""
+
+    source_file: ReportedSourceFile
+    receipts: float | None
+    disbursements: float | None
+    cash_on_hand_end: float | None
+    debts_owed_by: float | None
+
+
+class GiftSize(BaseModel):
+    """`gold.candidate_gift_size`: one bucket of a candidate's money in a cycle (spec §4.6)."""
+
+    bucket: GiftSizeBucket
+    amount: float
+    # The bucket's donors; None for `unitemized`, FEC's lump, which names no donor.
+    donors: int | None
 
 
 class RaceCandidate(BaseModel):
@@ -179,6 +250,12 @@ class RaceCandidate(BaseModel):
     self_funding: float
     ie_support: float
     ie_oppose: float
+    # The candidate's reported totals, None where FEC's files have no row for any committee
+    # credited to them; their itemized total, None when no committee is credited to them; and
+    # coverage, the one over the other (spec §4.4), None where that cannot be taken.
+    reported: RaceCandidateReported | None
+    itemized_total: float | None
+    coverage: float | None
 
 
 class RaceTopCommittee(BaseModel):
@@ -247,8 +324,22 @@ class CandidateCycle(BaseModel):
     ie_oppose: float
     # None until M3 resolves donors.
     contributor_count: int | None
+    # Reported totals (spec §4.3): from 2008 the credited committees' added up, before it the
+    # candidate's `weball` row; None where there is none.
+    reported: ReportedTotals | None
+    # True when a credited committee is a campaign turned PAC, counted whole, so the reported
+    # figures include what it raised after converting, which FEC credits to no one (spec §4.3).
+    reported_includes_converted_committee: bool
+    # The credited committees' itemized totals added up, None when no committee is credited to
+    # the candidate; over their reported itemized figure, `coverage`: a ratio (0.9412), which can
+    # exceed 1, None before 2008 or where the reported figure is 0 or missing (spec §4.4).
+    itemized_total: float | None
+    coverage: float | None
     # Empty on a build loaded before donors were resolved.
     top_donors: list[TopDonor]
+    # In bucket order (`GiftSizeBucket`): the five itemized buckets add up to `total_individual`;
+    # `unitemized` only from 2008, and alone on a build loaded before donors were resolved.
+    gift_sizes: list[GiftSize]
 
 
 class Candidate(BaseModel):
@@ -311,6 +402,15 @@ class CommitteeCycle(BaseModel):
     # total_from_organizations - total_refunds.
     total_refunds: float
     ie_total: float
+    # The committee's reported totals as filed (spec §4.1), None where FEC's files have no row
+    # for it: every committee before 1996, and House and Senate campaigns before 2008.
+    reported: ReportedTotals | None
+    # The itemized total, toward the line FEC's itemized individual figure reports:
+    # total_individual + total_from_organizations - total_refunds. `coverage` is it over that
+    # figure: a ratio, which can exceed 1, None before 2008, at a conduit, or where the reported
+    # figure is 0 or missing (spec §4.4).
+    itemized_total: float
+    coverage: float | None
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.
     top_donors: list[TopDonor]
@@ -439,6 +539,32 @@ class ContributionPage(BaseModel):
     """A page of contributions, newest first; `next_cursor` fetches the next, None on the last."""
 
     contributions: list[Contribution]
+    next_cursor: str | None
+
+
+class Reconciliation(BaseModel):
+    """`gold.reconciliation`: a committee whose itemized total exceeds its reported total by more
+    than 1% (every-FEC-dollar spec §4.5). Never a build failure: reported totals lag amendments,
+    and a filer's line choice is not fundlens's to fix."""
+
+    committee_id: str
+    name: str | None
+    cycle: int
+    # The measure compared: `individual_itemized`, the itemized total against the reported
+    # itemized individual figure.
+    measure: str
+    # fundlens's figure (the itemized total) and the reported one, as gold's columns name them.
+    fundlens: float
+    reported: float
+    # fundlens over reported; None where FEC reported 0.
+    ratio: float | None
+
+
+class ReconciliationPage(BaseModel):
+    """A page of a cycle's reconciliation rows, the largest excess (fundlens - reported) first;
+    `next_cursor` fetches the next, None on the last."""
+
+    rows: list[Reconciliation]
     next_cursor: str | None
 
 

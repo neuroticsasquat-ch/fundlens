@@ -352,6 +352,84 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     assert later == (0, 0)
 
 
+# What a 1996-2006 `webk` row lacks and `committee_summary` has (every-FEC-dollar spec §4.7).
+ONLY_FROM_2008 = {
+    "period_start",
+    "debts_owed_to",
+    "individual_itemized",
+    "individual_unitemized",
+    "party_contributions",
+    "operating_expenditures",
+    "federal_funds",
+}
+
+
+def test_a_1998_committee_page_has_webks_figures_and_null_only_where_webk_has_none(
+    client: TestClient,
+) -> None:
+    """The API answers a pre-2008 committee with its reported totals as `webk` filed them, None for
+    the measures no file before 2008 has, never the whole object, and no coverage (NEU-2145)."""
+    [cycle] = ok(client.get(f"/v1/committees/{CALDER_COMMITTEE}"))["cycles"]
+    [both_newest, both_early] = ok(client.get(f"/v1/committees/{BOTH_CYCLES_COMMITTEE}"))["cycles"]
+    columns = EXPECTED["reported_totals"]["columns"]
+    filed = EXPECTED["reported_totals"]["reported_total"][EARLY]
+
+    # CALDER's campaign committee files no webk row in 1998 (spec §4.1); the party committee does.
+    assert cycle["reported"] is None
+    reported = both_early["reported"]
+    assert reported == {
+        column: value.isoformat() if isinstance(value, date) else value
+        for column, value in zip(columns, filed[BOTH_CYCLES_COMMITTEE], strict=True)
+    }
+    assert reported["source_file"] == "webk"
+    # The party committee also leaves its candidate contribution and loan lines blank, as filed.
+    blank = {column for column, value in reported.items() if value is None}
+    candidate_lines = {"candidate_contributions", "candidate_loans", "candidate_loan_repayments"}
+    assert blank - candidate_lines == ONLY_FROM_2008
+    assert (both_early["coverage"], both_newest["reported"]["source_file"]) == (
+        None,
+        "committee_summary",
+    )
+
+
+def test_a_pac_page_has_every_measure_webk_files_before_2008(client: TestClient) -> None:
+    [cycle] = ok(client.get("/v1/committees/C00298003"))["cycles"]
+
+    assert {
+        column for column, value in cycle["reported"].items() if value is None
+    } == ONLY_FROM_2008
+    assert cycle["coverage"] is None
+
+
+def test_a_resolved_candidate_page_has_its_gift_sizes_in_bucket_order(client: TestClient) -> None:
+    """Each donor's net gifts to the candidate decide their bucket (spec §4.6): BRANNIGAN's 2024
+    six, FEC's unitemized lump first; CALDER's 1998 the five itemized only, adding up to his
+    individual money, since no file before 2008 has an unitemized figure."""
+    [brannigan] = ok(client.get("/v1/candidates/S4MD00111"))["cycles"]
+    [calder] = ok(client.get(f"/v1/candidates/{CALDER}"))["cycles"]
+
+    assert {
+        row["bucket"]: [row["amount"], row["donors"]] for row in brannigan["gift_sizes"]
+    } == EXPECTED["gold_reported"]["gift_sizes"]["S4MD00111"]
+    assert [row["bucket"] for row in brannigan["gift_sizes"]] == [
+        "unitemized",
+        "200_or_less",
+        "under_500",
+        "under_1000",
+        "under_2000",
+        "2000_or_more",
+    ]
+    assert [row["bucket"] for row in calder["gift_sizes"]] == [
+        "200_or_less",
+        "under_500",
+        "under_1000",
+        "under_2000",
+        "2000_or_more",
+    ]
+    assert sum(row["amount"] for row in calder["gift_sizes"]) == calder["total_individual"]
+    assert calder["reported"]["source_file"] == "weball"
+
+
 # The stand-in backfill-pending table: a dataset table, not resolved, which the 2024 fixture has
 # rows of and 1998 none.
 PENDING = "independent_expenditure"

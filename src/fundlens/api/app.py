@@ -29,6 +29,7 @@ from fundlens.api.routers import (
     health,
     meta,
     races,
+    reconciliation,
     search,
 )
 from fundlens.load.db import create_pool
@@ -75,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         candidates,
         committees,
         donors,
+        reconciliation,
         search,
         dataset,
     ):
