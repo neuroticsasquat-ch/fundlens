@@ -67,7 +67,10 @@ A snapshot is taken weekly, after the Sunday run, at `v1/<YYYY-MM-DD>/`. The new
 
 Each snapshot's `manifest.json` lists its live build per cycle, every file with its row count,
 size and SHA-256, and the resolution scores (null until the live model is scored). Paths in it
-are relative to the snapshot, so they hold for `latest/` too. Abridged, with made-up values:
+are relative to the snapshot, so they hold for `latest/` too. A table added to the dataset
+recently may have no files for a cycle not yet rebuilt since: the manifest lists exactly the files
+that exist, so read a table's cycles from its files, not from `cycles`. Abridged, with made-up
+values:
 
 ```json
 {

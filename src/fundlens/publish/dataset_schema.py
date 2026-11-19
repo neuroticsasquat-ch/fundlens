@@ -96,6 +96,14 @@ def columns(parquet: Path) -> list[tuple[str, str]]:
     return [(str(name), str(kind)) for name, kind, *_ in rows]
 
 
+def committed_columns(docs_dir: Path, table: str) -> list[tuple[str, str]]:
+    """`table`'s columns as its committed schema records them: each name with its DuckDB type,
+    in the file's order; the inverse of `columns`. Raises `FileNotFoundError` when `docs_dir`
+    holds no schema for it."""
+    schema = json.loads((docs_dir / SCHEMA_DIR / f"{table}.json").read_text())
+    return [(str(name), str(prop["x-duckdb-type"])) for name, prop in schema["properties"].items()]
+
+
 def json_type(duckdb_type: str) -> dict[str, str]:
     """The JSON Schema type of a column DuckDB reads as `duckdb_type`."""
     if duckdb_type in _JSON_TYPES:

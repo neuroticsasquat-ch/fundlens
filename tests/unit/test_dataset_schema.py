@@ -5,7 +5,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from fundlens.load import gold
 from fundlens.publish import dataset_schema
+from fundlens.publish.dataset import MANIFEST_TABLES
 from fundlens.publish.dataset_schema import SchemaDocsError, TableDoc
 from fundlens.transform.runner import literal
 
@@ -102,3 +104,26 @@ def test_differences_name_changed_missing_and_stale_schemas(tmp_path: Path) -> N
     dataset_schema.write(tmp_path, generated)
 
     assert dataset_schema.differences(tmp_path, generated) == []
+
+
+DATASET_DOCS = Path(__file__).resolve().parents[2] / "docs" / "dataset"
+
+
+@pytest.mark.parametrize("table", MANIFEST_TABLES)
+def test_a_committed_schemas_columns_type_an_empty_view_as_the_file_has_them(table: str) -> None:
+    committed = dataset_schema.committed_columns(DATASET_DOCS, table)
+
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        gold._empty_view(con, table, DATASET_DOCS)  # pyright: ignore[reportPrivateUsage]
+        described = con.execute(f"DESCRIBE silver.{table}").fetchall()
+        [(rows,)] = con.execute(f"SELECT count(*) FROM silver.{table}").fetchall()
+
+    assert committed
+    assert [(name, kind) for name, kind, *_ in described] == committed
+    assert rows == 0
+
+
+def test_a_table_with_no_committed_schema_raises_file_not_found(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        dataset_schema.committed_columns(tmp_path, "race")

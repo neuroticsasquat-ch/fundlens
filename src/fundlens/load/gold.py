@@ -17,6 +17,12 @@ its DIME figures for the newest cycle validated under it from `app.resolution_qu
 failed load leaves no `gold_build` at all, never a partial one; a successful one writes the
 `loaded` marker.
 `fundlens publish` swaps the schema in.
+
+A build may lack a backfill-pending table (`paths.BACKFILL_PENDING`, CONTEXT.md): one transformed
+before the table existed. Its cycle reads as having no rows of it: `silver.<table>` is over the
+partitions of the builds that have it, or, when none has, an empty view typed from the table's
+committed dataset schema (`docs/dataset/schema/<table>.json`), so the gold SQL never asks which
+cycles have it. Any other table a build lacks fails the load.
 """
 
 import logging
@@ -38,6 +44,7 @@ from psycopg.types.json import Jsonb
 from fundlens import markers, paths
 from fundlens.fec.files import files_for
 from fundlens.paths import SilverTable
+from fundlens.publish.dataset_schema import committed_columns
 from fundlens.r2 import R2
 from fundlens.resolve import model
 from fundlens.resolve.runner import run_record
@@ -156,10 +163,15 @@ def _models(sql_dir: Path) -> list[tuple[GoldTable, Path]]:
 def _require_inputs(
     store: R2, cycle: int, build_id: str, *, data_dir: Path
 ) -> dict[SilverTable, Path]:
-    """Every silver partition the gold SQL reads, on local disk; its directory per table.
+    """Every silver partition of the build the gold SQL reads, on local disk; its directory
+    per table.
 
-    A partition absent from the local cache is downloaded from R2 first (ADR-0002). Raises
-    `FileNotFoundError` naming the table and the command that writes it when R2 lacks one.
+    A partition absent from the local cache is downloaded from R2 first (ADR-0002). R2 decides
+    what the build holds, never the cache: a backfill-pending table (`paths.BACKFILL_PENDING`)
+    with nothing under its prefix in R2 is left out, and the cycle reads as having no rows of it.
+    Raises `FileNotFoundError` naming the table and the command that writes it when R2 lacks any
+    other table's partition, when a partition holds no Parquet, or when its donor_id rewrite died
+    part way.
     """
     if not markers.exists("transformed", store, cycle=cycle, build_id=build_id):
         raise FileNotFoundError(
@@ -170,6 +182,14 @@ def _require_inputs(
     for table, command in INPUTS.items():
         prefix = paths.silver_partition(table, cycle, build_id)
         keys = store.list_keys(prefix + "/")
+        if not keys and table in paths.BACKFILL_PENDING:
+            log.info(
+                "build %s of %s has no silver %s: backfill-pending, read as no rows",
+                build_id,
+                cycle,
+                table,
+            )
+            continue
         if not keys:
             raise FileNotFoundError(
                 f"no silver {table} partition for build {build_id} of {cycle}:"
@@ -181,6 +201,11 @@ def _require_inputs(
                 f"the donor_id rewrite of silver {table} for build {build_id} of {cycle} died"
                 " part way: run `fundlens resolve --full` again"
             )
+        if not any(key.endswith(".parquet") for key in keys):
+            raise FileNotFoundError(
+                f"the silver {table} partition of build {build_id} of {cycle} holds no Parquet:"
+                f" run `fundlens {command} --cycle {cycle} --build-id {build_id}`"
+            )
         for key in keys:
             local = paths.local_path(data_dir, key)
             if not local.exists():
@@ -189,12 +214,29 @@ def _require_inputs(
     return local_dirs
 
 
+def _empty_view(con: duckdb.DuckDBPyConnection, table: str, docs_dir: Path) -> None:
+    """`silver.<table>` with no rows, its columns as the table's committed dataset schema has
+    them: a backfill-pending table no build of the load has."""
+    columns = ", ".join(
+        f'CAST(NULL AS {kind}) AS "{name}"' for name, kind in committed_columns(docs_dir, table)
+    )
+    con.execute(f"CREATE VIEW silver.{table} AS SELECT {columns} WHERE false")
+
+
 def _register_silver(
-    con: duckdb.DuckDBPyConnection, local_dirs: Mapping[SilverTable, list[Path]]
+    con: duckdb.DuckDBPyConnection,
+    local_dirs: Mapping[SilverTable, list[Path]],
+    *,
+    docs_dir: Path,
 ) -> None:
-    """The views `silver.<table>` over the Parquet parts of each cycle's partition."""
+    """The views `silver.<table>` over the Parquet parts of each cycle's partition that exists;
+    a table with none, a backfill-pending one no build has, empty and typed from its schema in
+    `docs_dir`."""
     con.execute("CREATE SCHEMA silver")
     for table, partitions in local_dirs.items():
+        if not partitions:
+            _empty_view(con, table, docs_dir)
+            continue
         # The file's own columns: DuckDB would otherwise add `cycle` and `build` from the path;
         # every silver row carries its cycle. `**` reaches into a resolved `contribution`'s
         # `bucket=` directories too (spec §3.4). By name, so a cycle built before a column was
@@ -359,14 +401,19 @@ def load(
     build_id: str | None,
     data_dir: Path,
     sql_dir: Path,
+    docs_dir: Path,
     limits: Limits,
     conn: Connection[TupleRow],
 ) -> Loaded:
     """Build `gold_build` from build `build_id` of `cycle` (the newest transformed one when
     None) and every other cycle's live build; write the `loaded` marker for `build_id`.
 
+    A build lacking a backfill-pending table reads as having no rows of it, the loaded build
+    like every other; when none has it, its view is typed from its schema in `docs_dir`
+    (`DATASET_DOCS_DIR`).
+
     Raises `FileNotFoundError` when the build, another cycle's live build, or one of their
-    silver partitions is missing; and
+    silver partitions is missing (a backfill-pending table aside) or holds no Parquet; and
     `ChecksFailed` when a gold check returns rows; in both cases Postgres is untouched and no
     marker is written. Re-running for the same build rebuilds `gold_build` from scratch.
     """
@@ -385,6 +432,7 @@ def load(
         each: entry["build_id"] for each, entry in live.items()
     }
     builds = live_builds | {cycle: build_id}
+    # Every table of `INPUTS`, with no partitions when no build has it.
     local_dirs: dict[SilverTable, list[Path]] = {table: [] for table in INPUTS}
     for each, each_build in sorted(builds.items()):
         for table, local in _require_inputs(store, each, each_build, data_dir=data_dir).items():
@@ -397,7 +445,7 @@ def load(
     try:
         aggregate_started = time.monotonic()
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
-            _register_silver(con, local_dirs)
+            _register_silver(con, local_dirs, docs_dir=docs_dir)
             for table, path in models:
                 log.info("gold %s (%s): %s", table, ", ".join(map(str, sorted(builds))), path.name)
                 con.execute(render(path, params))

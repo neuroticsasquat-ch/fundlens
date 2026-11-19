@@ -866,6 +866,7 @@ def load(
                 build_id=build_id,
                 data_dir=settings.data_dir,
                 sql_dir=settings.sql_dir,
+                docs_dir=settings.dataset_docs_dir,
                 limits=runner.Limits.from_settings(settings),
                 conn=conn,
             )
