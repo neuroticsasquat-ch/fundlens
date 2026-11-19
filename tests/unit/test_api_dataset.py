@@ -68,3 +68,20 @@ def test_each_cycles_files_are_one_part_and_a_lone_file_is_linked_itself() -> No
         "race/cycle=2024/part-0000.parquet",
     ]
     assert donor.parts == [DatasetPart(cycle=None, path="donor.parquet", files=1, bytes=3)]
+
+
+def test_a_table_with_no_files_has_no_parts() -> None:
+    # A backfill-pending table no live build has yet (NEU-2352).
+    manifest = MANIFEST.model_copy(
+        update={"tables": {"independent_expenditure": ManifestTable(rows=0, files=[])}}
+    )
+
+    [table] = summarize(manifest).tables
+
+    assert (table.name, table.rows, table.files, table.bytes) == (
+        "independent_expenditure",
+        0,
+        0,
+        0,
+    )
+    assert table.parts == []

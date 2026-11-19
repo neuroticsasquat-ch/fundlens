@@ -24,6 +24,14 @@ SilverTable = Literal[
     "independent_expenditure",
 ]
 
+# The backfill-pending tables (CONTEXT.md): the silver tables a live build may lack, because it
+# was transformed before the table existed. A cycle whose build lacks one reads as having no rows
+# of it, in gold (`load.gold`) and in a dataset snapshot (`publish.dataset`). A silver ticket adds
+# its table here in the PR that creates it; NEU-2180's backfill rebuilds every cycle and empties
+# this again. Each must be a dataset table and not a resolved one. Read it as
+# `paths.BACKFILL_PENDING`, never imported by name, so a test can replace it.
+BACKFILL_PENDING: frozenset[SilverTable] = frozenset()
+
 # One completion marker per pipeline step (spec §5.1), named for the state it records.
 Step = Literal["extracted", "transformed", "resolved", "loaded", "published"]
 

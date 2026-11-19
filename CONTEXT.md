@@ -209,6 +209,10 @@ _Avoid_: run id, version
 The build `gold.meta.cycles` names for a cycle: the one gold was built from and the one the API resolves silver partitions from. Every publish and rollback copies them to `markers/live.json` in R2, and a load of one cycle rebuilds gold from its new build and every other cycle's live build. The build it replaced sits in `gold_prev` and is the rollback target.
 _Avoid_: current build, latest build (the newest build in R2 need not be live)
 
+**Backfill-pending table**:
+A silver table a live build may lack because the build was transformed before the table existed. A cycle whose build lacks one reads as having no rows of it, in gold and in a snapshot, whose manifest lists the table with only the cycles that have it. The tables are listed in `paths.BACKFILL_PENDING`: a silver ticket adds its table in the PR that creates it, and the backfill that rebuilds every cycle empties the list. Any other table missing from a live build fails the load and the snapshot.
+_Avoid_: optional table, absent table (the state is temporary, and ends with the backfill)
+
 **Rollback**:
 `fundlens publish --rollback`: swapping `gold_prev` back in as `gold` and purging again. A second rollback swaps forward again.
 

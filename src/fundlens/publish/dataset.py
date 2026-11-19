@@ -5,7 +5,10 @@ A snapshot is a directory of the public bucket named for its date, `v1/<YYYY-MM-
 - `<table>/cycle=<c>/*.parquet` for each silver table of `DATASET_TABLES`, every cycle's live
   build (`gold.meta.cycles`), copied object by object from the private bucket, server-side: the
   bytes never leave R2. A contribution build's `bucket=<xx>/part-<n>.parquet` becomes
-  `bucket-<xx>-part-<n>.parquet`, so each cycle is one flat directory a reader globs;
+  `bucket-<xx>-part-<n>.parquet`, so each cycle is one flat directory a reader globs. A
+  backfill-pending table (`paths.BACKFILL_PENDING`, CONTEXT.md) may be missing from a live build
+  transformed before it existed: that cycle has no files of it, and the manifest lists the table
+  with the cycles that have it;
 - `donor.parquet`, `gold.donor` (spec §7.1): the one dataset table with no cycle, since a donor
   spans every cycle they gave in, so it sits beside the crosswalk rather than under `cycle=`;
 - `crosswalk.parquet`, the crosswalk as of the live build's publish
@@ -118,7 +121,8 @@ class NothingPublished(Exception):
 
 
 class BuildNotReady(Exception):
-    """The live build lacks a table the dataset needs, or is being rewritten."""
+    """The live build lacks a table the dataset needs (a backfill-pending one aside), holds no
+    Parquet of one, or is being rewritten."""
 
 
 class DocsMissing(Exception):
@@ -281,13 +285,23 @@ def _flat(relative: str) -> str:
 
 def _silver_copies(live: _Live, store: R2, *, data_dir: Path) -> list[_SilverCopy]:
     """Every object of every cycle's live partition of each table of `DATASET_TABLES`, in the
-    manifest's order. Raises `BuildNotReady`, before the snapshot copies anything, when a partition
-    is having its donor ids rewritten or holds no Parquet."""
+    manifest's order; none for a backfill-pending table a cycle's live build lacks, R2 holding
+    nothing under its partition. Raises `BuildNotReady`, before the snapshot copies anything, when
+    a partition is having its donor ids rewritten or holds no Parquet, or a table that is not
+    backfill-pending is missing."""
     copies: list[_SilverCopy] = []
     for table in DATASET_TABLES:
         for cycle, build_id in live.cycles.items():
             partition = paths.silver_partition(table, cycle, build_id) + "/"
             objects = store.list_objects(partition)
+            if not objects and table in paths.BACKFILL_PENDING:
+                log.info(
+                    "the live build %s of %s has no %s: backfill-pending, not in the snapshot",
+                    build_id,
+                    cycle,
+                    table,
+                )
+                continue
             if table == "contribution" and any(
                 obj.key == paths.rewrite_sentinel(cycle, build_id) for obj in objects
             ):
@@ -562,8 +576,9 @@ def snapshot(
     snapshot and into `latest/` run `workers` at a time.
 
     Raises `NothingPublished` when no gold build is live, `DocsMissing` when `docs_dir` lacks a
-    file of the documentation, and `BuildNotReady` when the live build lacks a dataset table or
-    its crosswalk snapshot, or its contributions are being rewritten.
+    file of the documentation, and `BuildNotReady` when the live build lacks a dataset table
+    (a backfill-pending one aside) or its crosswalk snapshot, or its contributions are being
+    rewritten.
     """
     live = _live(conn)
     docs_put = publish_docs(public, docs_dir)
