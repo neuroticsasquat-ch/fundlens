@@ -1740,22 +1740,6 @@ def test_the_reported_total_committee_check_fails_on_a_committee_cm_lacks() -> N
         ]
 
 
-def test_the_reported_total_period_check_fails_on_a_period_ending_before_it_starts() -> None:
-    with duckdb.connect() as con:
-        con.execute(
-            "CREATE TABLE reported_total AS SELECT * FROM (VALUES"
-            " (2024, 'C1', DATE '2023-01-01', DATE '2024-12-31'),"
-            " (2024, 'C2', DATE '2024-12-31', DATE '2024-12-31'),"
-            " (2024, 'C3', NULL, DATE '2024-12-31'),"
-            " (2024, 'C4', DATE '2024-12-31', DATE '2023-01-01')"
-            ") AS t(cycle, committee_id, period_start, period_end)"
-        )
-
-        assert failing_rows(con, "silver_reported_total_period.sql") == [
-            (2024, "C4", date(2024, 12, 31), date(2023, 1, 1))
-        ]
-
-
 def test_the_repeat_check_fails_on_a_committee_whose_summary_repeats_differ() -> None:
     """A committee repeated per linked candidate passes while its rows differ only in CAND_ID
     and Link_Image, and fails once a figure differs (every-FEC-dollar spec §4.1)."""

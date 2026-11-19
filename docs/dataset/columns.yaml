@@ -331,8 +331,8 @@ reported_total:
       The FEC summary file the figures are from: `committee_summary`, `committee_summary+webk`
       (a figure `committee_summary` left blank is `webk`'s) or `webk`.
     committee_id: The committee's FEC id.
-    period_start: The start of the committee's first report of the cycle; null before 2008.
-    period_end: The end of its latest report of the cycle, which says how current the figures are.
+    period_start: The start of the committee's first report of the cycle; null before 2008. As FEC files it, so it can fall after `period_end` (C00807263, 2024).
+    period_end: The end of its latest report of the cycle, which says how current the figures are. As FEC files it, so it can fall before `period_start`.
     receipts: Total receipts.
     disbursements: Total disbursements.
     cash_on_hand_start: Cash on hand at the start of the reporting period.
