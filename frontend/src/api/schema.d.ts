@@ -246,6 +246,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reconciliation
+         * @description A cycle's committees over FEC's reported figure by more than 1%, the largest excess first.
+         *     Empty before 2008, whose files have no itemized figure.
+         */
+        get: operations["list_reconciliation_v1_reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/search": {
         parameters: {
             query?: never;
@@ -293,16 +314,25 @@ export interface components {
         CandidateCycle: {
             /** Contributor Count */
             contributor_count: number | null;
+            /** Coverage */
+            coverage: number | null;
             /** Cycle */
             cycle: number;
+            /** Gift Sizes */
+            gift_sizes: components["schemas"]["GiftSize"][];
             /** Ie Oppose */
             ie_oppose: number;
             /** Ie Support */
             ie_support: number;
+            /** Itemized Total */
+            itemized_total: number | null;
             /** Race Id */
             race_id: string | null;
             /** Race Slug */
             race_slug: string | null;
+            reported: components["schemas"]["ReportedTotals"] | null;
+            /** Reported Includes Converted Committee */
+            reported_includes_converted_committee: boolean;
             /** Self Funding */
             self_funding: number;
             /** Top Donors */
@@ -342,10 +372,15 @@ export interface components {
          *     gave most to it.
          */
         CommitteeCycle: {
+            /** Coverage */
+            coverage: number | null;
             /** Cycle */
             cycle: number;
             /** Ie Total */
             ie_total: number;
+            /** Itemized Total */
+            itemized_total: number;
+            reported: components["schemas"]["ReportedTotals"] | null;
             /** Self Funding */
             self_funding: number;
             /** Top Donors */
@@ -594,6 +629,19 @@ export interface components {
              */
             recipient_kind: "candidate" | "committee";
         };
+        /**
+         * GiftSize
+         * @description `gold.candidate_gift_size`: one bucket of a candidate's money in a cycle (spec §4.6).
+         */
+        GiftSize: {
+            /** Amount */
+            amount: number;
+            bucket: components["schemas"]["GiftSizeBucket"];
+            /** Donors */
+            donors: number | null;
+        };
+        /** @enum {string} */
+        GiftSizeBucket: "unitemized" | "200_or_less" | "under_500" | "under_1000" | "under_2000" | "2000_or_more";
         /** Health */
         Health: {
             /** Postgres */
@@ -731,6 +779,8 @@ export interface components {
             office: components["schemas"]["Office"];
             /** Race Id */
             race_id: string;
+            /** Reported Cash On Hand */
+            reported_cash_on_hand: number | null;
             /** Slug */
             slug: string;
             /** State */
@@ -753,18 +803,23 @@ export interface components {
         RaceCandidate: {
             /** Candidate Id */
             candidate_id: string;
+            /** Coverage */
+            coverage: number | null;
             /** Ie Oppose */
             ie_oppose: number;
             /** Ie Support */
             ie_support: number;
             /** Incumbent Challenger Open */
             incumbent_challenger_open: string | null;
+            /** Itemized Total */
+            itemized_total: number | null;
             /** Name */
             name: string | null;
             /** Party */
             party: string | null;
             /** Principal Committee Id */
             principal_committee_id: string | null;
+            reported: components["schemas"]["RaceCandidateReported"] | null;
             /** Self Funding */
             self_funding: number;
             /** Total Committee */
@@ -773,6 +828,21 @@ export interface components {
             total_individual: number;
             /** Total Jfc Transfers */
             total_jfc_transfers: number;
+        };
+        /**
+         * RaceCandidateReported
+         * @description A race candidate's headline reported figures, their `candidate_cycle` values (spec §4.4).
+         */
+        RaceCandidateReported: {
+            /** Cash On Hand End */
+            cash_on_hand_end: number | null;
+            /** Debts Owed By */
+            debts_owed_by: number | null;
+            /** Disbursements */
+            disbursements: number | null;
+            /** Receipts */
+            receipts: number | null;
+            source_file: components["schemas"]["ReportedSourceFile"];
         };
         /**
          * RaceSummary
@@ -794,6 +864,8 @@ export interface components {
             office: components["schemas"]["Office"];
             /** Race Id */
             race_id: string;
+            /** Reported Cash On Hand */
+            reported_cash_on_hand: number | null;
             /** Slug */
             slug: string;
             /** State */
@@ -850,6 +922,104 @@ export interface components {
             amount: number;
             /** Candidate Id */
             candidate_id: string;
+        };
+        /**
+         * Reconciliation
+         * @description `gold.reconciliation`: a committee whose itemized total exceeds its reported total by more
+         *     than 1% (every-FEC-dollar spec §4.5). Never a build failure: reported totals lag amendments,
+         *     and a filer's line choice is not fundlens's to fix.
+         */
+        Reconciliation: {
+            /** Committee Id */
+            committee_id: string;
+            /** Cycle */
+            cycle: number;
+            /** Fundlens */
+            fundlens: number;
+            /** Measure */
+            measure: string;
+            /** Name */
+            name: string | null;
+            /** Ratio */
+            ratio: number | null;
+            /** Reported */
+            reported: number;
+        };
+        /**
+         * ReconciliationPage
+         * @description A page of a cycle's reconciliation rows, the largest excess (fundlens - reported) first;
+         *     `next_cursor` fetches the next, None on the last.
+         */
+        ReconciliationPage: {
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Rows */
+            rows: components["schemas"]["Reconciliation"][];
+        };
+        /** @enum {string} */
+        ReportedSourceFile: "committee_summary" | "committee_summary+webk" | "webk" | "weball";
+        /**
+         * ReportedTotals
+         * @description A committee's or candidate's reported totals for a cycle, as filed (CONTEXT.md;
+         *     every-FEC-dollar spec §4.1 to §4.4): never summed with itemized money, shown beside the
+         *     itemized total.
+         *
+         *     A measure the cycle's file lacks is None, never 0, while the rest stand: before 2008 there is
+         *     no `period_start`, `debts_owed_to`, itemized and unitemized split, `operating_expenditures` or
+         *     `federal_funds` (spec §4.7). A candidate's from 2008 are their credited committees' added up.
+         */
+        ReportedTotals: {
+            /** Candidate Contributions */
+            candidate_contributions: number | null;
+            /** Candidate Loan Repayments */
+            candidate_loan_repayments: number | null;
+            /** Candidate Loans */
+            candidate_loans: number | null;
+            /** Cash On Hand End */
+            cash_on_hand_end: number | null;
+            /** Cash On Hand Start */
+            cash_on_hand_start: number | null;
+            /** Debts Owed By */
+            debts_owed_by: number | null;
+            /** Debts Owed To */
+            debts_owed_to: number | null;
+            /** Disbursements */
+            disbursements: number | null;
+            /** Federal Funds */
+            federal_funds: number | null;
+            /** Independent Expenditures */
+            independent_expenditures: number | null;
+            /** Individual Itemized */
+            individual_itemized: number | null;
+            /** Individual Refunds */
+            individual_refunds: number | null;
+            /** Individual Total */
+            individual_total: number | null;
+            /** Individual Unitemized */
+            individual_unitemized: number | null;
+            /** Operating Expenditures */
+            operating_expenditures: number | null;
+            /** Other Committee Contributions */
+            other_committee_contributions: number | null;
+            /** Other Loan Repayments */
+            other_loan_repayments: number | null;
+            /** Other Loans */
+            other_loans: number | null;
+            /** Party Contributions */
+            party_contributions: number | null;
+            /** Party Coordinated */
+            party_coordinated: number | null;
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Receipts */
+            receipts: number | null;
+            source_file: components["schemas"]["ReportedSourceFile"];
+            /** Transfers In */
+            transfers_in: number | null;
+            /** Transfers Out */
+            transfers_out: number | null;
         };
         /** @enum {string} */
         SearchKind: "donor" | "candidate" | "committee" | "race";
@@ -945,6 +1115,8 @@ export type DatasetTable = components['schemas']['DatasetTable'];
 export type Donor = components['schemas']['Donor'];
 export type DonorCycle = components['schemas']['DonorCycle'];
 export type DonorTopRecipient = components['schemas']['DonorTopRecipient'];
+export type GiftSize = components['schemas']['GiftSize'];
+export type GiftSizeBucket = components['schemas']['GiftSizeBucket'];
 export type Health = components['schemas']['Health'];
 export type IndependentExpenditure = components['schemas']['IndependentExpenditure'];
 export type IndependentExpenditurePage = components['schemas']['IndependentExpenditurePage'];
@@ -954,10 +1126,15 @@ export type Office = components['schemas']['Office'];
 export type Problem = components['schemas']['Problem'];
 export type Race = components['schemas']['Race'];
 export type RaceCandidate = components['schemas']['RaceCandidate'];
+export type RaceCandidateReported = components['schemas']['RaceCandidateReported'];
 export type RaceSummary = components['schemas']['RaceSummary'];
 export type RaceTopCommittee = components['schemas']['RaceTopCommittee'];
 export type RaceTopDonor = components['schemas']['RaceTopDonor'];
 export type RaceTopDonorCandidate = components['schemas']['RaceTopDonorCandidate'];
+export type Reconciliation = components['schemas']['Reconciliation'];
+export type ReconciliationPage = components['schemas']['ReconciliationPage'];
+export type ReportedSourceFile = components['schemas']['ReportedSourceFile'];
+export type ReportedTotals = components['schemas']['ReportedTotals'];
 export type SearchKind = components['schemas']['SearchKind'];
 export type SearchResult = components['schemas']['SearchResult'];
 export type TopDonor = components['schemas']['TopDonor'];
@@ -1645,6 +1822,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Race"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_reconciliation_v1_reconciliation_get: {
+        parameters: {
+            query: {
+                cycle: number;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Not Found */

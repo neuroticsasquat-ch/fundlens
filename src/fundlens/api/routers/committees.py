@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 
 from fundlens.api.contributions import CursorParam, CycleParam, contributions_page, read_page
 from fundlens.api.deps import Conn, Itemized, PageSize
+from fundlens.api.reported import pop_reported, reported_columns
 from fundlens.api.schemas import (
     Committee,
     CommitteeCycle,
@@ -65,7 +66,8 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
         .execute(
             "SELECT cycle, total_individual, self_funding, total_from_committees,"
             " total_from_organizations, total_to_candidates, total_returned_by_candidates,"
-            " total_non_contribution_account, total_refunds, ie_total"
+            " total_non_contribution_account, total_refunds, ie_total,"
+            f" {reported_columns('committee_cycle')}, itemized_total, coverage"
             " FROM gold.committee_cycle WHERE committee_id = %s ORDER BY cycle DESC",
             (committee_id,),
         )
@@ -75,12 +77,15 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
         **committee,
         cycles=[
             CommitteeCycle(
+                reported=reported,
                 **row,
                 top_recipients=top_recipients[row["cycle"]],
                 top_donors=top_donors[row["cycle"]],
                 top_organizations=top_organizations[row["cycle"]],
             )
             for row in cycles
+            # Popped first, so `row` holds no `reported_*` column when it is spread.
+            for reported in [pop_reported(row)]
         ],
     )
 

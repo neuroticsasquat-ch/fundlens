@@ -4,11 +4,14 @@ module (spec §7.2, §12)."""
 import time
 from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString, cast
 
 import psycopg
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
 from typer.testing import CliRunner
@@ -16,6 +19,7 @@ from typer.testing import CliRunner
 from fundlens import cli
 from fundlens.api.app import create_app
 from fundlens.api.cache import CACHE_CONTROL
+from fundlens.api.deps import get_page_size
 from fundlens.api.problems import NO_GOLD
 from fundlens.fec.files import files_for
 from fundlens.publish import gold as gold_publish
@@ -403,6 +407,198 @@ def test_unknown_candidates_and_committees_are_404s(client: TestClient) -> None:
     assert_not_found(client.get("/v1/committees/C99999999"))
 
 
+REPORTED_COLUMNS = EXPECTED["reported_totals"]["columns"]
+GOLD_REPORTED = EXPECTED["gold_reported"]
+
+
+def as_json(value: object) -> object:
+    """A gold value as the API's JSON carries it: money a number, a date ISO 8601."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
+def expected_reported(row: list[Any] | None) -> dict[str, object] | None:
+    """An `expected.yaml` reported-totals row as the API's `reported` object."""
+    return None if row is None else dict(zip(REPORTED_COLUMNS, map(as_json, row), strict=True))
+
+
+def gold_reported(conninfo: str, candidate_id: str) -> tuple[dict[str, object] | None, list[Any]]:
+    """The candidate's 2024 `reported` object and gift sizes as gold holds them."""
+    columns = cast(LiteralString, ", ".join(f"reported_{column}" for column in REPORTED_COLUMNS))
+    with psycopg.connect(conninfo) as conn:
+        row = conn.execute(
+            "SELECT "
+            + columns
+            + " FROM gold.candidate_cycle WHERE candidate_id = %s AND cycle = %s",
+            (candidate_id, CYCLE),
+        ).fetchone()
+        gift_sizes = conn.execute(
+            "SELECT bucket, amount, donors FROM gold.candidate_gift_size"
+            " WHERE candidate_id = %s AND cycle = %s",
+            (candidate_id, CYCLE),
+        ).fetchall()
+    assert row is not None
+    reported = None if row[0] is None else expected_reported(list(row))
+    return reported, [
+        {"bucket": bucket, "amount": float(amount), "donors": donors}
+        for bucket, amount, donors in gift_sizes
+    ]
+
+
+@pytest.mark.parametrize("candidate_id", list(GOLD_REPORTED["candidates"]))
+def test_a_candidate_page_has_its_reported_totals_and_gift_sizes(
+    client: TestClient, gold_db: str, candidate_id: str
+) -> None:
+    """The reported totals of the candidate's credited committees, their itemized total and the
+    one over the other, as gold has them (every-FEC-dollar spec §4.3, §4.4); and, on a build loaded
+    before resolution, only the unitemized gift-size bucket (§4.6)."""
+    [cycle] = ok(client.get(f"/v1/candidates/{candidate_id}"))["cycles"]
+    receipts, cash, itemized_total, coverage, converted = GOLD_REPORTED["candidates"][candidate_id]
+    reported, gift_sizes = gold_reported(gold_db, candidate_id)
+
+    assert cycle["reported"] == reported
+    headline = cycle["reported"] and (
+        cycle["reported"]["receipts"],
+        cycle["reported"]["cash_on_hand_end"],
+    )
+    assert headline == (None if receipts is None else (receipts, cash))
+    assert cycle["itemized_total"] == itemized_total
+    assert (cycle["coverage"] and round(cycle["coverage"], 4)) == coverage
+    assert cycle["reported_includes_converted_committee"] is converted
+    assert sorted(cycle["gift_sizes"], key=lambda row: row["bucket"]) == sorted(
+        gift_sizes, key=lambda row: row["bucket"]
+    )
+    assert {row["bucket"] for row in cycle["gift_sizes"]} <= {"unitemized"}
+
+
+def test_a_handoffs_first_candidate_has_no_reported_figures(client: TestClient) -> None:
+    """BIDEN's committee is HARRIS's whole from the handoff (spec §4.3): no reported row, no
+    itemized figure, no unitemized bucket."""
+    [cycle] = ok(client.get("/v1/candidates/P80000722"))["cycles"]
+
+    assert (cycle["reported"], cycle["itemized_total"], cycle["coverage"]) == (None, None, None)
+    assert cycle["gift_sizes"] == []
+
+
+@pytest.mark.parametrize("committee_id", list(GOLD_REPORTED["committees"]))
+def test_a_committee_page_has_its_reported_totals_and_coverage(
+    client: TestClient, committee_id: str
+) -> None:
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+    itemized_total, individual_itemized, cash, coverage = GOLD_REPORTED["committees"][committee_id]
+
+    assert cycle["reported"] == expected_reported(
+        EXPECTED["reported_totals"]["reported_total"][CYCLE].get(committee_id)
+    )
+    assert cycle["reported"]["individual_itemized"] == individual_itemized
+    assert cycle["reported"]["cash_on_hand_end"] == cash
+    assert cycle["itemized_total"] == itemized_total
+    assert (cycle["coverage"] and round(cycle["coverage"], 4)) == coverage
+
+
+@pytest.mark.parametrize("race_id", list(GOLD_REPORTED["races"]))
+def test_a_race_has_its_reported_cash_on_hand_and_its_candidates_coverage(
+    client: TestClient, race_id: str
+) -> None:
+    race = ok(client.get(race_url(race_id)))
+    [listed] = [
+        summary
+        for summary in ok(client.get(f"/v1/cycles/{CYCLE}/races"))
+        if summary["race_id"] == race_id
+    ]
+
+    assert race["reported_cash_on_hand"] == GOLD_REPORTED["races"][race_id]
+    assert listed["reported_cash_on_hand"] == GOLD_REPORTED["races"][race_id]
+    for candidate in race["candidates"]:
+        receipts, cash, itemized_total, coverage, _ = GOLD_REPORTED["candidates"][
+            candidate["candidate_id"]
+        ]
+        reported = candidate["reported"]
+        assert (reported and (reported["receipts"], reported["cash_on_hand_end"])) == (
+            None if receipts is None else (receipts, cash)
+        ), candidate["candidate_id"]
+        assert candidate["itemized_total"] == itemized_total
+        assert (candidate["coverage"] and round(candidate["coverage"], 4)) == coverage
+
+
+def test_reconciliation_lists_the_committees_over_their_reported_figure(
+    client: TestClient,
+) -> None:
+    page = ok(client.get("/v1/reconciliation", params={"cycle": CYCLE}))
+
+    assert [
+        [
+            row["committee_id"],
+            row["measure"],
+            row["fundlens"],
+            row["reported"],
+            round(row["ratio"], 4),
+        ]
+        for row in page["rows"]
+    ] == [[committee_id, *row] for committee_id, row in GOLD_REPORTED["reconciliation"].items()]
+    assert [row["name"] for row in page["rows"]] == [
+        ok(client.get(f"/v1/committees/{row['committee_id']}"))["name"] for row in page["rows"]
+    ]
+    assert all(row["cycle"] == CYCLE for row in page["rows"])
+    assert page["next_cursor"] is None
+
+
+@contextmanager
+def planted_reconciliation(conninfo: str, rows: list[tuple[str, int, int]]) -> Generator[None]:
+    """`rows` (committee_id, fundlens, reported) in the live `gold.reconciliation` for the fixture
+    cycle, deleted again after: the session's gold is shared, and its one row cannot page."""
+    with psycopg.connect(conninfo, autocommit=True) as conn:
+        for committee_id, fundlens, reported in rows:
+            conn.execute(
+                "INSERT INTO gold.reconciliation VALUES"
+                " (%s, %s, 'individual_itemized', %s, %s, %s::numeric / %s)",
+                (committee_id, CYCLE, fundlens, reported, fundlens, reported),
+            )
+        try:
+            yield
+        finally:
+            conn.execute(
+                "DELETE FROM gold.reconciliation WHERE committee_id = ANY(%s) AND cycle = %s",
+                ([committee_id for committee_id, *_ in rows], CYCLE),
+            )
+
+
+def test_reconciliation_pages_by_excess_then_committee(client: TestClient, gold_db: str) -> None:
+    """One row a page: the largest excess first, a tie by committee id (C00800109's is $100)."""
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_page_size] = lambda: 1
+    seen: list[str] = []
+    try:
+        with planted_reconciliation(
+            gold_db, [("C00800101", 19725, 19625), ("C00800102", 35650, 35150)]
+        ):
+            cursor: str | None = None
+            while True:
+                params: dict[str, str | int] = {"cycle": CYCLE}
+                if cursor is not None:
+                    params["cursor"] = cursor
+                page = ok(client.get("/v1/reconciliation", params=params))
+                seen += [row["committee_id"] for row in page["rows"]]
+                cursor = page["next_cursor"]
+                if cursor is None:
+                    break
+    finally:
+        del app.dependency_overrides[get_page_size]
+
+    assert seen == ["C00800102", "C00800101", "C00800109"]
+
+
+def test_reconciliation_needs_a_known_cycle_and_its_own_cursor(client: TestClient) -> None:
+    assert_not_found(client.get("/v1/reconciliation", params={"cycle": 2022}))
+    assert client.get("/v1/reconciliation").status_code == 422
+    assert client.get("/v1/reconciliation", params={"cycle": 2023}).status_code == 422
+    bad = client.get("/v1/reconciliation", params={"cycle": CYCLE, "cursor": "not-a-cursor"})
+    assert bad.status_code == 400, bad.text
+
+
 def test_a_candidate_alias_is_a_cacheable_redirect_to_the_id_holding_the_money(
     client: TestClient,
 ) -> None:
@@ -494,6 +690,7 @@ def test_routes_are_cached_under_the_build(client: TestClient) -> None:
         "/v1/races/2024/senate/MD",
         "/v1/candidates/S4MD00103",
         "/v1/committees/C00800114",
+        f"/v1/reconciliation?cycle={CYCLE}",
         "/v1/search?q=calloway",
     ],
 )

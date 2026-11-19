@@ -13,10 +13,53 @@ import type {
   Race,
   RaceCandidate,
   RaceSummary,
+  ReportedTotals,
   SearchResult,
   TopDonor,
   TopOrganization,
 } from "../api/client";
+
+const REPORTED_MEASURES = [
+  "receipts",
+  "disbursements",
+  "cash_on_hand_start",
+  "cash_on_hand_end",
+  "debts_owed_by",
+  "debts_owed_to",
+  "individual_itemized",
+  "individual_unitemized",
+  "individual_total",
+  "individual_refunds",
+  "party_contributions",
+  "other_committee_contributions",
+  "candidate_contributions",
+  "candidate_loans",
+  "other_loans",
+  "candidate_loan_repayments",
+  "other_loan_repayments",
+  "transfers_in",
+  "transfers_out",
+  "independent_expenditures",
+  "party_coordinated",
+  "operating_expenditures",
+  "federal_funds",
+] as const;
+
+/**
+ * FEC's reported figures from one of expected.yaml's `reported_totals` rows, in its column order:
+ * the source file, the reporting period, then the 23 measures.
+ */
+const reported = (
+  source_file: ReportedTotals["source_file"],
+  measures: (number | null)[],
+): ReportedTotals => ({
+  source_file,
+  period_start: "2023-01-01",
+  period_end: "2024-12-31",
+  ...(Object.fromEntries(REPORTED_MEASURES.map((measure, i) => [measure, measures[i] ?? null])) as {
+    [measure in (typeof REPORTED_MEASURES)[number]]: number | null;
+  }),
+});
 
 // The fixture cycle as the API serves it, from tests/fixtures/fec/2024/expected.yaml.
 
@@ -47,6 +90,7 @@ const race = (
   total_jfc_transfers: 0,
   ie_support: 0,
   ie_oppose: 0,
+  reported_cash_on_hand: null,
   ...race,
 });
 
@@ -62,6 +106,7 @@ export const RACES: RaceSummary[] = [
     total_individual: 54775,
     total_committee: 5000,
     ie_support: 400000,
+    reported_cash_on_hand: 37975,
   }),
   race({
     race_id: "2024-S-MD-00",
@@ -75,6 +120,7 @@ export const RACES: RaceSummary[] = [
     total_jfc_transfers: 19500,
     ie_support: 150000,
     ie_oppose: 125000,
+    reported_cash_on_hand: 351600,
   }),
   race({
     race_id: "2024-S-NE-00-special",
@@ -95,6 +141,7 @@ export const RACES: RaceSummary[] = [
     total_committee: 12500,
     ie_support: 28000,
     ie_oppose: 15000,
+    reported_cash_on_hand: 28500,
   }),
   race({
     race_id: "2024-H-MD-08",
@@ -116,7 +163,32 @@ const candidate = (
   self_funding: 0,
   ie_support: 0,
   ie_oppose: 0,
+  reported: null,
+  itemized_total: null,
+  coverage: null,
   ...candidate,
+});
+
+/**
+ * A race candidate's reported figures, their credited committees' summed, and fundlens's
+ * itemized figure, which every fixture committee's reported one matches (coverage 1).
+ */
+const raceReported = (
+  receipts: number,
+  disbursements: number,
+  cash_on_hand_end: number,
+  debts_owed_by: number,
+  itemized_total: number,
+): Pick<RaceCandidate, "reported" | "itemized_total" | "coverage"> => ({
+  reported: {
+    source_file: "committee_summary",
+    receipts,
+    disbursements,
+    cash_on_hand_end,
+    debts_owed_by,
+  },
+  itemized_total,
+  coverage: 1,
 });
 
 // The resolved donors the fixture pages name, by `donor_id`. Gold numbers donors itself; these are
@@ -157,6 +229,7 @@ export const RACE_SENATE_MD: Race = {
       total_committee: 5000,
       self_funding: 1750000,
       ie_oppose: 80000,
+      ...raceReported(1942000, 1650700, 291300, 1250000, 31850),
     }),
     candidate({
       candidate_id: "S4MD00103",
@@ -169,6 +242,7 @@ export const RACE_SENATE_MD: Race = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
+      ...raceReported(131000, 98900, 57100, 3000, 50700),
     }),
     candidate({
       candidate_id: "S4MD00111",
@@ -176,6 +250,7 @@ export const RACE_SENATE_MD: Race = {
       party: "DEM",
       principal_committee_id: "C00800111",
       total_individual: 7175,
+      ...raceReported(9500, 7600, 1900, 0, 8175),
     }),
     candidate({
       candidate_id: "S4MD00105",
@@ -183,6 +258,7 @@ export const RACE_SENATE_MD: Race = {
       party: "LIB",
       principal_committee_id: "C00800105",
       total_individual: 3250,
+      ...raceReported(12200, 10900, 1300, 0, 11250),
     }),
   ],
   top_committees: [
@@ -306,7 +382,18 @@ export const CANDIDATE_OKAFOR: Candidate = {
       ie_support: 150000,
       ie_oppose: 45000,
       contributor_count: 61,
+      // OKAFOR FOR MARYLAND's and her authorized committee's (C00800113) rows added up.
+      reported: reported("committee_summary", [
+        131000, 98900, 25000, 57100, 3000, 0, 50700, 10300, 61000, 0, 0, 45500, 5000, 0, 0, 0, 0,
+        19500, 0, null, null, 98900, null,
+      ]),
+      reported_includes_converted_committee: false,
+      itemized_total: 50700,
+      coverage: 1,
       top_donors: OKAFOR_TOP_DONORS,
+      // FEC's unitemized lump, her reported individual_unitemized; the itemized buckets need
+      // donors told apart, which this fixture does not plant for her.
+      gift_sizes: [{ bucket: "unitemized", amount: 10300, donors: null }],
     },
   ],
 };
@@ -322,6 +409,9 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   total_non_contribution_account: 0,
   total_refunds: 0,
   ie_total: 0,
+  reported: null,
+  itemized_total: 0,
+  coverage: null,
   top_recipients: [],
   top_donors: [],
   top_organizations: [],
@@ -337,7 +427,16 @@ export const COMMITTEE_ACTBLUE: Committee = {
   party: null,
   connected_org: null,
   is_conduit: true,
-  cycles: [committeeCycle({})],
+  // Its reported itemized figure holds the earmarks fundlens counts at their recipients, so no
+  // coverage (every-FEC-dollar spec §4.4).
+  cycles: [
+    committeeCycle({
+      reported: reported("committee_summary", [
+        780, 700, 0, 80, 0, 0, 780, 0, 780, 55, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 645, null,
+      ]),
+      itemized_total: 5,
+    }),
+  ],
 };
 
 /** OKAFOR's principal campaign committee, where REYES's ActBlue earmark is counted. */
@@ -354,6 +453,12 @@ export const COMMITTEE_OKAFOR: Committee = {
       total_individual: 37550,
       self_funding: 5000,
       total_from_committees: 25000,
+      reported: reported("committee_summary", [
+        117000, 87700, 25000, 54300, 3000, 0, 38550, 8450, 47000, 0, 0, 45500, 5000, 0, 0, 0, 0,
+        19500, 0, null, null, 87700, null,
+      ]),
+      itemized_total: 38550,
+      coverage: 1,
       top_donors: OKAFOR_TOP_DONORS,
     }),
   ],
@@ -373,6 +478,12 @@ export const COMMITTEE_BRICKLAYERS: Committee = {
       total_individual: 4050,
       total_to_candidates: 17500,
       ie_total: 3000,
+      reported: reported("committee_summary", [
+        6000, 47000, 60000, 19000, 0, 0, 4550, 1450, 6000, 0, 0, 0, null, null, 0, null, 0, 0, 0,
+        24000, 0, 0, null,
+      ]),
+      itemized_total: 4550,
+      coverage: 1,
       top_recipients: [
         ["H4MD05106", "CALLOWAY, RUTH", 5000],
         ["P40000101", "HARGROVE, ELLEN", 5000],
@@ -416,6 +527,12 @@ export const COMMITTEE_MARYLAND_FORWARD: Committee = {
       total_from_organizations: 72500,
       total_refunds: -3200,
       ie_total: 670000,
+      reported: reported("committee_summary", [
+        760000, 722000, 150000, 188000, 0, 0, 544925, 35075, 580000, 1600, 0, 155000, null, null,
+        25000, null, 0, 0, 0, 670000, 0, 50400, null,
+      ]),
+      itemized_total: 544925,
+      coverage: 1,
       top_organizations: organizations([["CHESAPEAKE STEEL", "CHESAPEAKE STEEL, INC.", 72500]]),
     }),
   ],
@@ -434,6 +551,12 @@ export const COMMITTEE_PELL: Committee = {
     committeeCycle({
       total_individual: 3250,
       total_from_organizations: 8000,
+      reported: reported("committee_summary", [
+        12200, 10900, 0, 1300, 0, 0, 11250, 950, 12200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null,
+        10900, null,
+      ]),
+      itemized_total: 11250,
+      coverage: 1,
       top_organizations: organizations([
         ["ACME CONCRETE", "ACME CONCRETE LLC", 5000],
         ["ACME WIDGETS", "ACME WIDGETS INC", 3000],
@@ -459,6 +582,12 @@ export const COMMITTEE_TIDEWATER_FUND: Committee = {
       total_individual: 6250,
       total_from_organizations: 0,
       total_non_contribution_account: 4815000,
+      reported: reported("committee_summary", [
+        255000, 153000, 0, 102000, 0, 0, 4000, 251000, 255000, 5250, 0, 0, null, null, 0, null, 0,
+        0, 0, 0, 0, 147750, null,
+      ]),
+      itemized_total: 4000,
+      coverage: 1,
       top_organizations: organizations([["HARBOR HOLDINGS", "HARBOR HOLDINGS LLC", 1500000]]),
     }),
   ],

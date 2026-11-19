@@ -22,6 +22,7 @@ ROUTES = {
     "/v1/committees/{committee_id}/independent-expenditures",
     "/v1/donors/{donor_id}",
     "/v1/donors/{donor_id}/contributions",
+    "/v1/reconciliation",
     "/v1/search",
     "/v1/dataset",
 }

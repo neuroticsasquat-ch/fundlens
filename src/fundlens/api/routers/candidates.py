@@ -7,6 +7,7 @@ donor's id does. Every redirect resolves in one hop.
 """
 
 from collections import defaultdict
+from typing import get_args
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -15,15 +16,20 @@ from psycopg.rows import TupleRow, dict_row
 
 from fundlens.api.contributions import CursorParam, CycleParam, contributions_page
 from fundlens.api.deps import Conn, Itemized, PageSize
+from fundlens.api.reported import pop_reported, reported_columns
 from fundlens.api.schemas import (
     Candidate,
     CandidateCycle,
     ContributionPage,
+    GiftSize,
+    GiftSizeBucket,
     TopDonor,
     problem_responses,
 )
 
 router = APIRouter(prefix="/v1")
+
+GIFT_SIZE_BUCKETS: tuple[str, ...] = get_args(GiftSizeBucket.__value__)
 
 MOVED: dict[int | str, dict[str, object]] = {
     301: {
@@ -74,6 +80,15 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
     top_donors: defaultdict[int, list[TopDonor]] = defaultdict(list)
     for row in donors:
         top_donors[row.pop("cycle")].append(TopDonor(**row))
+    buckets = conn.cursor(row_factory=dict_row).execute(
+        "SELECT cycle, bucket, amount, donors FROM gold.candidate_gift_size"
+        " WHERE candidate_id = %s"
+        " ORDER BY cycle, array_position(%s::text[], bucket)",
+        (candidate_id, list(GIFT_SIZE_BUCKETS)),
+    )
+    gift_sizes: defaultdict[int, list[GiftSize]] = defaultdict(list)
+    for row in buckets:
+        gift_sizes[row.pop("cycle")].append(GiftSize(**row))
     cycles = (
         conn.cursor(row_factory=dict_row)
         .execute(
@@ -81,7 +96,10 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
             " candidate_cycle.total_individual, candidate_cycle.total_committee,"
             " candidate_cycle.total_jfc_transfers,"
             " candidate_cycle.self_funding, candidate_cycle.ie_support,"
-            " candidate_cycle.ie_oppose, candidate_cycle.contributor_count"
+            " candidate_cycle.ie_oppose, candidate_cycle.contributor_count,"
+            f" {reported_columns('candidate_cycle')},"
+            " candidate_cycle.reported_includes_converted_committee,"
+            " candidate_cycle.itemized_total, candidate_cycle.coverage"
             " FROM gold.candidate_cycle"
             " LEFT JOIN gold.race USING (race_id)"
             " WHERE candidate_cycle.candidate_id = %s"
@@ -92,7 +110,17 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
     )
     return Candidate(
         **candidate,
-        cycles=[CandidateCycle(**row, top_donors=top_donors[row["cycle"]]) for row in cycles],
+        cycles=[
+            CandidateCycle(
+                reported=reported,
+                **row,
+                top_donors=top_donors[row["cycle"]],
+                gift_sizes=gift_sizes[row["cycle"]],
+            )
+            for row in cycles
+            # Popped first, so `row` holds no `reported_*` column when it is spread.
+            for reported in [pop_reported(row)]
+        ],
     )
 
 

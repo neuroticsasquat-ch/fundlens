@@ -96,9 +96,27 @@
             ],
             "title": "Contributor Count"
           },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
           "cycle": {
             "title": "Cycle",
             "type": "integer"
+          },
+          "gift_sizes": {
+            "items": {
+              "$ref": "#/components/schemas/GiftSize"
+            },
+            "title": "Gift Sizes",
+            "type": "array"
           },
           "ie_oppose": {
             "title": "Ie Oppose",
@@ -107,6 +125,17 @@
           "ie_support": {
             "title": "Ie Support",
             "type": "number"
+          },
+          "itemized_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemized Total"
           },
           "race_id": {
             "anyOf": [
@@ -129,6 +158,20 @@
               }
             ],
             "title": "Race Slug"
+          },
+          "reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportedTotals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reported_includes_converted_committee": {
+            "title": "Reported Includes Converted Committee",
+            "type": "boolean"
           },
           "self_funding": {
             "title": "Self Funding",
@@ -165,7 +208,12 @@
           "ie_support",
           "ie_oppose",
           "contributor_count",
-          "top_donors"
+          "reported",
+          "reported_includes_converted_committee",
+          "itemized_total",
+          "coverage",
+          "top_donors",
+          "gift_sizes"
         ],
         "title": "CandidateCycle",
         "type": "object"
@@ -260,6 +308,17 @@
       "CommitteeCycle": {
         "description": "`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who\ngave most to it.",
         "properties": {
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
           "cycle": {
             "title": "Cycle",
             "type": "integer"
@@ -267,6 +326,20 @@
           "ie_total": {
             "title": "Ie Total",
             "type": "number"
+          },
+          "itemized_total": {
+            "title": "Itemized Total",
+            "type": "number"
+          },
+          "reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportedTotals"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "self_funding": {
             "title": "Self Funding",
@@ -333,6 +406,9 @@
           "total_non_contribution_account",
           "total_refunds",
           "ie_total",
+          "reported",
+          "itemized_total",
+          "coverage",
           "top_recipients",
           "top_donors",
           "top_organizations"
@@ -1032,6 +1108,47 @@
         "title": "DonorTopRecipient",
         "type": "object"
       },
+      "GiftSize": {
+        "description": "`gold.candidate_gift_size`: one bucket of a candidate's money in a cycle (spec \u00a74.6).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "bucket": {
+            "$ref": "#/components/schemas/GiftSizeBucket"
+          },
+          "donors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Donors"
+          }
+        },
+        "required": [
+          "bucket",
+          "amount",
+          "donors"
+        ],
+        "title": "GiftSize",
+        "type": "object"
+      },
+      "GiftSizeBucket": {
+        "enum": [
+          "unitemized",
+          "200_or_less",
+          "under_500",
+          "under_1000",
+          "under_2000",
+          "2000_or_more"
+        ],
+        "type": "string"
+      },
       "Health": {
         "properties": {
           "postgres": {
@@ -1420,6 +1537,17 @@
             "title": "Race Id",
             "type": "string"
           },
+          "reported_cash_on_hand": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Cash On Hand"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -1469,6 +1597,7 @@
           "total_jfc_transfers",
           "ie_support",
           "ie_oppose",
+          "reported_cash_on_hand",
           "candidates",
           "top_committees",
           "top_donors"
@@ -1482,6 +1611,17 @@
           "candidate_id": {
             "title": "Candidate Id",
             "type": "string"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
           },
           "ie_oppose": {
             "title": "Ie Oppose",
@@ -1501,6 +1641,17 @@
               }
             ],
             "title": "Incumbent Challenger Open"
+          },
+          "itemized_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemized Total"
           },
           "name": {
             "anyOf": [
@@ -1535,6 +1686,16 @@
             ],
             "title": "Principal Committee Id"
           },
+          "reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RaceCandidateReported"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "self_funding": {
             "title": "Self Funding",
             "type": "number"
@@ -1563,9 +1724,73 @@
           "total_jfc_transfers",
           "self_funding",
           "ie_support",
-          "ie_oppose"
+          "ie_oppose",
+          "reported",
+          "itemized_total",
+          "coverage"
         ],
         "title": "RaceCandidate",
+        "type": "object"
+      },
+      "RaceCandidateReported": {
+        "description": "A race candidate's headline reported figures, their `candidate_cycle` values (spec \u00a74.4).",
+        "properties": {
+          "cash_on_hand_end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash On Hand End"
+          },
+          "debts_owed_by": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debts Owed By"
+          },
+          "disbursements": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursements"
+          },
+          "receipts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipts"
+          },
+          "source_file": {
+            "$ref": "#/components/schemas/ReportedSourceFile"
+          }
+        },
+        "required": [
+          "source_file",
+          "receipts",
+          "disbursements",
+          "cash_on_hand_end",
+          "debts_owed_by"
+        ],
+        "title": "RaceCandidateReported",
         "type": "object"
       },
       "RaceSummary": {
@@ -1602,6 +1827,17 @@
             "title": "Race Id",
             "type": "string"
           },
+          "reported_cash_on_hand": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Cash On Hand"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -1636,7 +1872,8 @@
           "total_committee",
           "total_jfc_transfers",
           "ie_support",
-          "ie_oppose"
+          "ie_oppose",
+          "reported_cash_on_hand"
         ],
         "title": "RaceSummary",
         "type": "object"
@@ -1747,6 +1984,417 @@
           "amount"
         ],
         "title": "RaceTopDonorCandidate",
+        "type": "object"
+      },
+      "Reconciliation": {
+        "description": "`gold.reconciliation`: a committee whose itemized total exceeds its reported total by more\nthan 1% (every-FEC-dollar spec \u00a74.5). Never a build failure: reported totals lag amendments,\nand a filer's line choice is not fundlens's to fix.",
+        "properties": {
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "fundlens": {
+            "title": "Fundlens",
+            "type": "number"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          },
+          "reported": {
+            "title": "Reported",
+            "type": "number"
+          }
+        },
+        "required": [
+          "committee_id",
+          "name",
+          "cycle",
+          "measure",
+          "fundlens",
+          "reported",
+          "ratio"
+        ],
+        "title": "Reconciliation",
+        "type": "object"
+      },
+      "ReconciliationPage": {
+        "description": "A page of a cycle's reconciliation rows, the largest excess (fundlens - reported) first;\n`next_cursor` fetches the next, None on the last.",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/Reconciliation"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "next_cursor"
+        ],
+        "title": "ReconciliationPage",
+        "type": "object"
+      },
+      "ReportedSourceFile": {
+        "enum": [
+          "committee_summary",
+          "committee_summary+webk",
+          "webk",
+          "weball"
+        ],
+        "type": "string"
+      },
+      "ReportedTotals": {
+        "description": "A committee's or candidate's reported totals for a cycle, as filed (CONTEXT.md;\nevery-FEC-dollar spec \u00a74.1 to \u00a74.4): never summed with itemized money, shown beside the\nitemized total.\n\nA measure the cycle's file lacks is None, never 0, while the rest stand: before 2008 there is\nno `period_start`, `debts_owed_to`, itemized and unitemized split, `operating_expenditures` or\n`federal_funds` (spec \u00a74.7). A candidate's from 2008 are their credited committees' added up.",
+        "properties": {
+          "candidate_contributions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Contributions"
+          },
+          "candidate_loan_repayments": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Loan Repayments"
+          },
+          "candidate_loans": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Loans"
+          },
+          "cash_on_hand_end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash On Hand End"
+          },
+          "cash_on_hand_start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash On Hand Start"
+          },
+          "debts_owed_by": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debts Owed By"
+          },
+          "debts_owed_to": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debts Owed To"
+          },
+          "disbursements": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursements"
+          },
+          "federal_funds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Federal Funds"
+          },
+          "independent_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Independent Expenditures"
+          },
+          "individual_itemized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Individual Itemized"
+          },
+          "individual_refunds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Individual Refunds"
+          },
+          "individual_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Individual Total"
+          },
+          "individual_unitemized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Individual Unitemized"
+          },
+          "operating_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Expenditures"
+          },
+          "other_committee_contributions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Committee Contributions"
+          },
+          "other_loan_repayments": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Loan Repayments"
+          },
+          "other_loans": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Loans"
+          },
+          "party_contributions": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party Contributions"
+          },
+          "party_coordinated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party Coordinated"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "receipts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipts"
+          },
+          "source_file": {
+            "$ref": "#/components/schemas/ReportedSourceFile"
+          },
+          "transfers_in": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfers In"
+          },
+          "transfers_out": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfers Out"
+          }
+        },
+        "required": [
+          "source_file",
+          "period_start",
+          "period_end",
+          "receipts",
+          "disbursements",
+          "cash_on_hand_start",
+          "cash_on_hand_end",
+          "debts_owed_by",
+          "debts_owed_to",
+          "individual_itemized",
+          "individual_unitemized",
+          "individual_total",
+          "individual_refunds",
+          "party_contributions",
+          "other_committee_contributions",
+          "candidate_contributions",
+          "candidate_loans",
+          "other_loans",
+          "candidate_loan_repayments",
+          "other_loan_repayments",
+          "transfers_in",
+          "transfers_out",
+          "independent_expenditures",
+          "party_coordinated",
+          "operating_expenditures",
+          "federal_funds"
+        ],
+        "title": "ReportedTotals",
         "type": "object"
       },
       "SearchKind": {
@@ -3070,6 +3718,116 @@
           }
         },
         "summary": "Get Race"
+      }
+    },
+    "/v1/reconciliation": {
+      "get": {
+        "description": "A cycle's committees over FEC's reported figure by more than 1%, the largest excess first.\nEmpty before 2008, whose files have no itemized figure.",
+        "operationId": "list_reconciliation_v1_reconciliation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "minimum": 1980,
+              "multipleOf": 2,
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Reconciliation"
       }
     },
     "/v1/search": {
