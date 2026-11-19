@@ -25,7 +25,7 @@ def zip_of(members: dict[str, bytes]) -> zipfile.ZipFile:
 def copied(members: dict[str, bytes]) -> bytes:
     out = io.BytesIO()
     with zip_of(members) as archive:
-        copy_bulk(archive, INDIV, out, source="indiv.zip")
+        copy_bulk(archive, INDIV, out, cycle=2022, source="indiv.zip")
     return out.getvalue()
 
 
@@ -81,6 +81,6 @@ def test_a_file_without_a_split_dir_ignores_a_folder_of_the_same_name() -> None:
     cm = b"C001|X\n"
     out = io.BytesIO()
     with zip_of({"cm.txt": cm, "by_date/cm_2024.txt": b"C002|Y\n"}) as archive:
-        copy_bulk(archive, CATALOGUE["cm"], out, source="cm.zip")
+        copy_bulk(archive, CATALOGUE["cm"], out, cycle=2024, source="cm.zip")
 
     assert out.getvalue() == cm

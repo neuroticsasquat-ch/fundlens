@@ -19,7 +19,7 @@ from fundlens.fec.extract import (
     extract,
     extract_file,
 )
-from fundlens.fec.files import BulkFile, FecFile
+from fundlens.fec.files import CATALOGUE, BulkFile, FecFile
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
 from tests import fec_fixture
@@ -41,8 +41,12 @@ def fec() -> Iterator[FakeFec]:
 
 
 def publish_all(fec: FakeFec, cycle: int) -> None:
-    for name in FILES:
-        fec.serve(cycle, name)
+    """Every catalogued file at its URL: a zip of one line, a CSV of its header row alone."""
+    for bulk in CATALOGUE.values():
+        if bulk.format == "zip":
+            fec.serve(cycle, bulk.name)
+        else:
+            fec_fixture.publish(fec, bulk, cycle, fec_fixture.csv_text(bulk, ()).encode())
 
 
 def run_extract(
@@ -98,7 +102,7 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, fec: FakeFec, tmp_path: Path) -> It
     get_settings.cache_clear()
 
 
-def test_the_cli_extracts_six_files_once_and_a_second_run_uploads_nothing(
+def test_the_cli_extracts_every_file_once_and_a_second_run_uploads_nothing(
     fec: FakeFec, store: R2, cli_env: Path
 ) -> None:
     publish_all(fec, 2024)
@@ -108,11 +112,20 @@ def test_the_cli_extracts_six_files_once_and_a_second_run_uploads_nothing(
 
     assert first.exit_code == 0, first.output
     uploaded = bronze(store)
-    assert sorted(re.sub(r"/[^/]+\.zip$", "", key) for key in uploaded) == sorted(
+    assert sorted(re.sub(r"/[^/]+\.(zip|csv)$", "", key) for key in uploaded) == sorted(
         f"bronze/cycle=2024/{name}" for name in FILES
     )
-    assert all(re.search(r"/\d{4}-\d{2}-\d{2}\.zip$", key) for key in uploaded)
-    assert len(fec.gets()) == 6
+    # The summary files with the rest (NEU-2142): two zips, and a CSV kept as a CSV.
+    assert sorted(fec.gets()) == sorted(
+        [
+            *(f"/2024/{name}24.zip" for name in FILES if name != "committee_summary"),
+            "/2024/committee_summary_2024.csv",
+        ]
+    )
+    assert all(re.search(r"/\d{4}-\d{2}-\d{2}\.(zip|csv)$", key) for key in uploaded)
+    assert [key.rsplit("/", 1)[0] for key in uploaded if key.endswith(".csv")] == [
+        "bronze/cycle=2024/committee_summary"
+    ]
     assert markers.exists("extracted", store, cycle=2024, build_id=BUILD)
     # 2024 is a historical cycle: nothing of it stays on disk.
     assert local_files(cli_env) == []
@@ -122,9 +135,9 @@ def test_the_cli_extracts_six_files_once_and_a_second_run_uploads_nothing(
 
     assert second.exit_code == 0, second.output
     assert fec.gets() == []
-    assert [method for method, _ in fec.requests] == ["HEAD"] * 6
+    assert [method for method, _ in fec.requests] == ["HEAD"] * len(FILES)
     assert bronze(store) == uploaded
-    assert second.output.count("unchanged") == 6
+    assert second.output.count("unchanged") == len(FILES)
 
 
 def test_the_cli_rejects_a_file_the_catalogue_does_not_list(
@@ -220,15 +233,26 @@ def test_one_file_on_its_own_writes_no_marker(fec: FakeFec, store: R2, tmp_path:
     assert not markers.exists("extracted", store, cycle=2024, build_id=BUILD)
 
 
-def test_a_cycle_before_ccl_existed_extracts_the_other_five(
+def test_a_cycle_extracts_only_the_files_fec_published_for_it(
     fec: FakeFec, store: R2, tmp_path: Path
 ) -> None:
     publish_all(fec, 1998)
 
     results = run_extract(fec, store, tmp_path, cycle=1998)
 
-    assert [result.file for result in results] == ["cm", "cn", "indiv", "pas2", "oth"]
-    assert "/1998/ccl98.zip" not in [path for _, path in fec.requests]
+    # No `ccl` before 2000, no `committee_summary` before 2008 (spec §3.1).
+    assert [result.file for result in results] == [
+        "cm",
+        "cn",
+        "indiv",
+        "pas2",
+        "oth",
+        "weball",
+        "webk",
+    ]
+    requested = [path for _, path in fec.requests]
+    assert "/1998/ccl98.zip" not in requested
+    assert "/1998/committee_summary_1998.csv" not in requested
     with pytest.raises(ValueError, match="no ccl file before 2000"):
         run_extract(fec, store, tmp_path, cycle=1998, file="ccl")
 

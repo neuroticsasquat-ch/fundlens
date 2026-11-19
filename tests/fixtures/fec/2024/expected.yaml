@@ -91,6 +91,9 @@ rows:
   indiv: 383
   pas2: 30
   oth: 32
+  weball: 12
+  webk: 13
+  committee_summary: 26
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is

@@ -1,4 +1,4 @@
-"""The synthetic 2024 fixture cycle: its zips match FEC's layout and `expected.yaml` adds up.
+"""The synthetic 2024 fixture cycle: its files match FEC's layout and `expected.yaml` adds up.
 
 The tally here is an independent reading of the fixture CSVs under the spec §4 rules, written
 only to keep `expected.yaml` honest: edit a fixture row and this fails until the expected totals
@@ -27,7 +27,6 @@ from fundlens.transform.seats import Filing, races_for
 from tests import fec_fixture
 from tests.fec_fixture import (
     CYCLE,
-    MEMBERS,
     CandidateTotals,
     CommitteeTotals,
     RaceTotals,
@@ -35,6 +34,8 @@ from tests.fec_fixture import (
 )
 
 FILES: tuple[FecFile, ...] = get_args(FecFile)
+ZIPS = tuple(name for name in FILES if CATALOGUE[name].format == "zip")
+CSVS = tuple(name for name in FILES if CATALOGUE[name].format == "csv")
 DIME = fec_fixture.FIXTURES / "dime" / "contribDB_2024.csv"
 
 # The conduits by FEC id (ADR-0004), and the MEMO_TEXT that names one when OTHER_ID does not.
@@ -845,19 +846,105 @@ def tally_races(candidates: dict[str, CandidateTotals]) -> dict[str, RaceTotals]
     return races
 
 
-@pytest.mark.parametrize("file", FILES)
+@pytest.mark.parametrize("file", ZIPS)
 def test_each_zip_holds_one_pipe_delimited_member_with_the_vendored_column_count(
     file: FecFile,
 ) -> None:
     columns = CATALOGUE[file].header()
-    with zipfile.ZipFile(io.BytesIO(fec_fixture.zips()[file])) as archive:
-        assert archive.namelist() == [MEMBERS[file]]
-        lines = archive.read(MEMBERS[file]).decode().splitlines()
+    member = CATALOGUE[file].member_for(CYCLE)
+    with zipfile.ZipFile(io.BytesIO(fec_fixture.bodies()[file])) as archive:
+        assert archive.namelist() == [member]
+        lines = archive.read(member).decode().splitlines()
     assert lines
     assert len(lines) == EXPECTED["rows"][file]
     assert all(len(line.split("|")) == len(columns) for line in lines)
     # No header row: FEC's bulk files have none.
     assert lines[0].split("|")[0] != columns[0]
+
+
+@pytest.mark.parametrize("file", CSVS)
+def test_each_csv_has_the_catalogued_header_row_then_every_field_quoted(file: FecFile) -> None:
+    columns = list(CATALOGUE[file].columns)
+    header, *lines = fec_fixture.bodies()[file].decode().split("\n")[:-1]
+
+    assert header == ",".join(columns)
+    assert len(lines) == EXPECTED["rows"][file]
+    for line in lines:
+        assert line.startswith('"') and line.endswith('"')
+        assert len(next(csv.reader([line]))) == len(columns)
+
+
+def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() -> None:
+    files = fec_fixture.bodies(1998)
+
+    assert "committee_summary" not in files
+    summaries: tuple[tuple[FecFile, str], ...] = (
+        ("weball", "weball98.txt"),
+        ("webk", "webk98.txt"),
+    )
+    for name, member in summaries:
+        with zipfile.ZipFile(io.BytesIO(files[name])) as archive:
+            assert archive.namelist() == [member]
+
+
+def test_each_committees_indv_item_contb_is_its_itemized_total_so_coverage_is_1() -> None:
+    # `committee_summary`'s INDV_ITEM_CONTB is each committee's itemized_total (every-FEC-dollar
+    # spec §4.4: total_individual + total_from_organizations - total_refunds), and at a conduit
+    # every earmark it took, which fundlens counts at the recipient.
+    organizations = EXPECTED["organization_receipts"]["by_committee"]
+    refunds = EXPECTED["refunds"]["by_committee"]
+    itemized = {
+        committee_id: totals["total_individual"]
+        + organizations.get(committee_id, 0)
+        - refunds.get(committee_id, 0)
+        for committee_id, totals in EXPECTED["committees"].items()
+    }
+    for conduit_id in CONDUITS.values():
+        itemized[conduit_id] = sum(
+            amount(r)
+            for r in rows("indiv")
+            if r["CMTE_ID"] == conduit_id and not r["TRANSACTION_TP"].endswith("Y")
+        )
+    reported = {
+        r["CMTE_ID"]: int(r["INDV_ITEM_CONTB"])
+        for r in rows("committee_summary")
+        if r["CMTE_ID"] in committee_ids() and r["INDV_ITEM_CONTB"]
+    }
+
+    assert reported == {c: v for c, v in itemized.items() if c in reported}
+    # A Form 5 filer's row carries only INDT_EXP, and the electioneering committee's nothing.
+    assert set(itemized) - set(reported) == {"C90800206", "C90800207"}
+
+
+def test_committee_summary_repeats_a_committee_only_per_linked_candidate() -> None:
+    by_committee: dict[str, list[Row]] = defaultdict(list)
+    for r in rows("committee_summary"):
+        by_committee[r["CMTE_ID"]].append(r)
+
+    assert committee_ids() <= set(by_committee)
+    repeated = {c: rs for c, rs in by_committee.items() if len(rs) > 1}
+    assert {c: sorted(r["CAND_ID"] for r in rs) for c, rs in repeated.items()} == {
+        "C00703975": ["P00009423", "P80000722"],
+        "C00800107": ["H4MD05107", "H6MD05113"],
+    }
+    for rs in repeated.values():
+        assert len({tuple(v for k, v in r.items() if k != "CAND_ID") for r in rs}) == 1
+
+
+def test_a_weball_row_adds_up_its_candidates_principal_and_authorized_committees() -> None:
+    receipts = {r["CMTE_ID"]: int(r["TTL_RECEIPTS"] or 0) for r in rows("committee_summary")}
+    weball = {r["CAND_ID"]: int(r["TTL_RECEIPTS"]) for r in rows("weball")}
+
+    assert weball == {
+        candidate_id: sum(
+            receipts[r["CMTE_ID"]]
+            for r in rows("ccl")
+            if r["CAND_ID"] == candidate_id and r["CMTE_DSGN"] in ("P", "A")
+        )
+        for candidate_id in weball
+    }
+    # Every candidate `ccl` gives a principal or authorized committee, and no other.
+    assert set(weball) == {r["CAND_ID"] for r in rows("ccl") if r["CMTE_DSGN"] in ("P", "A")}
 
 
 def test_a_csv_whose_header_is_not_fecs_is_refused(tmp_path: Path) -> None:

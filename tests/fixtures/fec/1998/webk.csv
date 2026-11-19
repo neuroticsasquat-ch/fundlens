@@ -1,0 +1,10 @@
+# webk: FEC's PAC and party summary for 1998 (NEU-2142), committees' only reported figures before 2008
+# (every-FEC-dollar spec §4.1). Written pipe-delimited into webk98.txt inside webk98.zip by
+# tests/fec_fixture.py.
+# The builders' PAC and the party committee; the House campaigns have no row, as FEC's 1996-2006
+# files have none (Q8). The PAC's CONTRIB_TO_OTHER_CMTE is its $2,000 to CALDER (pas2.csv); the
+# party's INDV_CONTRIB includes the $500 MARLOWE gave it (indiv.csv). A blank is a line the party's
+# form does not have.
+CMTE_ID,CMTE_NM,CMTE_TP,CMTE_DSGN,CMTE_FILING_FREQ,TTL_RECEIPTS,TRANS_FROM_AFF,INDV_CONTRIB,OTHER_POL_CMTE_CONTRIB,CAND_CONTRIB,CAND_LOANS,TTL_LOANS_RECEIVED,TTL_DISB,TRANF_TO_AFF,INDV_REFUNDS,OTHER_POL_CMTE_REFUNDS,CAND_LOAN_REPAY,LOAN_REPAY,COH_BOP,COH_COP,DEBTS_OWED_BY,NONFED_TRANS_RECEIVED,CONTRIB_TO_OTHER_CMTE,IND_EXP,PTY_COORD_EXP,NONFED_SHARE_EXP,CVG_END_DT
+C00298003,MARYLAND BUILDERS PAC,Q,U,M,6000,0,6000,0,0,0,0,2500,0,0,0,0,0,4000,7500,0,0,2000,0,0,0,12/31/1998
+C00800203,OLD LINE REPUBLICAN CMTE,Y,U,M,3500,0,3500,0,,,0,3000,0,0,0,,0,2000,2500,0,0,0,0,1500,0,12/31/1998

@@ -1,0 +1,9 @@
+# weball: FEC's all-candidates summary for 1998 (NEU-2142), the only source of a candidate's reported
+# figures before 2008 (every-FEC-dollar spec §4.2). Written pipe-delimited into weball98.txt inside
+# weball98.zip by tests/fec_fixture.py.
+# Each candidate's figures include the itemized gifts in indiv.csv and pas2.csv (CALDER's $1,000 and
+# the builders' PAC's $2,000; PARRISH's $750) and unitemized money beside them. 1996-2006 files carry
+# the election results: both candidates ran in the general, CALDER won.
+CAND_ID,CAND_NAME,CAND_ICI,PTY_CD,CAND_PTY_AFFILIATION,TTL_RECEIPTS,TRANS_FROM_AUTH,TTL_DISB,TRANS_TO_AUTH,COH_BOP,COH_COP,CAND_CONTRIB,CAND_LOANS,OTHER_LOANS,CAND_LOAN_REPAY,OTHER_LOAN_REPAY,DEBTS_OWED_BY,TTL_INDIV_CONTRIB,CAND_OFFICE_ST,CAND_OFFICE_DISTRICT,SPEC_ELECTION,PRIM_ELECTION,RUN_ELECTION,GEN_ELECTION,GEN_ELECTION_PRECENT,OTHER_POL_CMTE_CONTRIB,POL_PTY_CONTRIB,CVG_END_DT,INDIV_REFUNDS,CMTE_REFUNDS
+H8MD05201,"CALDER, RUTH",C,1,DEM,9500,0,8200,0,0,1300,0,0,0,0,0,0,7500,MD,05,,W,,W,54.2,2000,0,12/31/1998,0,0
+H8MD05202,"PARRISH, OWEN",I,2,REP,4250,0,4000,0,1500,1750,0,0,0,0,0,0,4250,MD,05,,W,,L,45.8,0,0,12/31/1998,0,0
