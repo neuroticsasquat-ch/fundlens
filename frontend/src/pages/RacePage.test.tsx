@@ -41,6 +41,7 @@ describe("RacePage", () => {
         "$1,786,850",
         "$0",
         "$80,000",
+        "$291,300",
       ],
       [
         "OKAFOR, DIANA",
@@ -53,9 +54,22 @@ describe("RacePage", () => {
         "$79,200",
         "$150,000",
         "$45,000",
+        "$57,100",
       ],
-      ["BRANNIGAN, TESS", "DEM", "Open", "$7,175", "$0", "$0", "$0", "$7,175", "$0", "$0"],
-      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250", "$0", "$0"],
+      [
+        "BRANNIGAN, TESS",
+        "DEM",
+        "Open",
+        "$7,175",
+        "$0",
+        "$0",
+        "$0",
+        "$7,175",
+        "$0",
+        "$0",
+        "$1,900",
+      ],
+      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250", "$0", "$0", "$1,300"],
     ]);
     expect(
       screen.getByText("Independent expenditures: $150,000 for candidates, $125,000 against"),
@@ -73,6 +87,7 @@ describe("RacePage", () => {
       "Total ▼",
       "Independent expenditures for",
       "Independent expenditures against",
+      "Cash on hand",
     ]);
     const candidates = section("Candidates");
     expect(within(candidates).getByRole("columnheader", { name: /Total/ })).toHaveAttribute(
@@ -141,6 +156,41 @@ describe("RacePage", () => {
       RACE_SENATE_MD.candidates.reduce((total, candidate) => total + candidate[key], 0);
     expect(sum("ie_support")).toBe(RACE_SENATE_MD.ie_support);
     expect(sum("ie_oppose")).toBe(RACE_SENATE_MD.ie_oppose);
+  });
+
+  it("has a fixture whose candidates' cash on hand adds up to the race's", () => {
+    const cash = RACE_SENATE_MD.candidates.reduce(
+      (total, candidate) => total + (candidate.reported?.cash_on_hand_end ?? 0),
+      0,
+    );
+    expect(cash).toBe(RACE_SENATE_MD.reported_cash_on_hand);
+  });
+
+  it("shows a candidate FEC's files have no cash on hand for as not reported, sorted last", async () => {
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({
+            ...RACE_SENATE_MD,
+            candidates: RACE_SENATE_MD.candidates.map((candidate) =>
+              candidate.candidate_id === "S4MD00103"
+                ? { ...candidate, reported: null, coverage: null }
+                : candidate,
+            ),
+          }),
+        ),
+      ],
+    });
+    const candidates = await screen.findByRole("region", { name: "Candidates" });
+
+    fireEvent.click(within(candidates).getByRole("button", { name: /Cash on hand/ }));
+
+    expect(rows("Candidates").map((row) => [cells(row)[0], cells(row).at(-1)])).toEqual([
+      ["WHITLOCK, GORDON", "$291,300"],
+      ["BRANNIGAN, TESS", "$1,900"],
+      ["PELL, MARCUS", "$1,300"],
+      ["OKAFOR, DIANA", "not reported"],
+    ]);
   });
 
   it("sorts the candidates from a column header", async () => {

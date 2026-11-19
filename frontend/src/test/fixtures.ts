@@ -47,15 +47,16 @@ const REPORTED_MEASURES = [
 
 /**
  * FEC's reported figures from one of expected.yaml's `reported_totals` rows, in its column order:
- * the source file, the reporting period, then the 23 measures.
+ * the source file, the reporting period (the 2024 cycle's unless given), then the 23 measures.
  */
 const reported = (
   source_file: ReportedTotals["source_file"],
   measures: (number | null)[],
+  [period_start, period_end]: [string | null, string] = ["2023-01-01", "2024-12-31"],
 ): ReportedTotals => ({
   source_file,
-  period_start: "2023-01-01",
-  period_end: "2024-12-31",
+  period_start,
+  period_end,
   ...(Object.fromEntries(REPORTED_MEASURES.map((measure, i) => [measure, measures[i] ?? null])) as {
     [measure in (typeof REPORTED_MEASURES)[number]]: number | null;
   }),
@@ -590,6 +591,80 @@ export const COMMITTEE_TIDEWATER_FUND: Committee = {
       coverage: 1,
       top_organizations: organizations([["HARBOR HOLDINGS", "HARBOR HOLDINGS LLC", 1500000]]),
     }),
+  ],
+};
+
+// Before 2008 (tests/fixtures/fec/1998, expected.yaml's 1998 `reported_totals`): FEC's files give
+// no reporting period start, no itemized and unitemized split, and none of the measures only
+// committee_summary has, so those are null and there is no coverage (every-FEC-dollar spec §4.7).
+const PERIOD_1998: [null, string] = [null, "1998-12-31"];
+
+/** `/v1/committees/C00298003`: the builders' PAC in 1998, its reported totals webk's row. */
+export const COMMITTEE_BUILDERS_PAC_1998: Committee = {
+  committee_id: "C00298003",
+  name: "MARYLAND BUILDERS PAC",
+  type: "Q",
+  designation: "U",
+  party: null,
+  connected_org: "MARYLAND BUILDERS ASSOCIATION",
+  is_conduit: false,
+  cycles: [
+    committeeCycle({
+      cycle: 1998,
+      total_to_candidates: 2000,
+      reported: reported(
+        "webk",
+        [
+          6000, 2500, 4000, 7500, 0, null, null, null, 6000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          null, null,
+        ],
+        PERIOD_1998,
+      ),
+    }),
+  ],
+};
+
+/** `/v1/candidates/H8MD05201`: CALDER in 1998, her reported totals weball's row as filed. */
+export const CANDIDATE_CALDER_1998: Candidate = {
+  candidate_id: "H8MD05201",
+  name: "CALDER, RUTH",
+  party: "DEM",
+  office: "H",
+  state: "MD",
+  district: "05",
+  cycles: [
+    {
+      cycle: 1998,
+      race_id: "1998-H-MD-05",
+      race_slug: "1998/house/MD-05",
+      total_individual: 1000,
+      total_committee: 2000,
+      total_jfc_transfers: 0,
+      self_funding: 0,
+      ie_support: 0,
+      ie_oppose: 0,
+      contributor_count: 1,
+      reported: reported(
+        "weball",
+        [
+          9500, 8200, 0, 1300, 0, null, null, null, 7500, 0, 0, 2000, 0, 0, 0, 0, 0, 0, 0, null,
+          null, null, null,
+        ],
+        PERIOD_1998,
+      ),
+      reported_includes_converted_committee: false,
+      itemized_total: 1000,
+      coverage: null,
+      top_donors: [],
+      // The five itemized buckets only: no file before 2008 has an unitemized figure.
+      gift_sizes: [
+        { bucket: "200_or_less", amount: 0, donors: 0 },
+        { bucket: "under_500", amount: 0, donors: 0 },
+        { bucket: "under_1000", amount: 0, donors: 0 },
+        { bucket: "under_2000", amount: 1000, donors: 1 },
+        { bucket: "2000_or_more", amount: 0, donors: 0 },
+      ],
+    },
   ],
 };
 

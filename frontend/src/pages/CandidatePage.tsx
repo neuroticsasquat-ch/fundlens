@@ -18,6 +18,8 @@ import CycleHeading from "./CycleHeading";
 import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
 import { useScrollToHash, useShownCycle } from "./entityCycle";
+import GiftSizeChart from "./GiftSizeChart";
+import ReportedPanel from "./ReportedPanel";
 
 const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
   {
@@ -107,6 +109,28 @@ function seatLabel({ office, state, district }: Candidate): string | null {
   return `${officeLabel(office)} · ${seat}`;
 }
 
+// From 2008 a candidate's reported totals are their credited committees' added up; before it FEC's
+// own row for the candidate (every-FEC-dollar spec §4.3).
+const COMMITTEE_SUMMARIES_FROM = 2008;
+
+/**
+ * Why a cycle shows no reported totals: from 2008, no committee is credited to the candidate. The
+ * API names no handoff (CONTEXT.md: never inferred), so where the candidate still has individuals'
+ * money, as a handoff's first candidate does, the note gives the handoff rule as a possible cause
+ * rather than claiming it (spec §4.3).
+ */
+function missingReported(row: CandidateCycle): string {
+  if (row.cycle < COMMITTEE_SUMMARIES_FROM || row.itemized_total !== null) {
+    return `FEC's files have no reported totals for this candidate in ${row.cycle}.`;
+  }
+  const credited = `No committee's reported totals are credited to this candidate in ${row.cycle}.`;
+  if (row.total_individual === 0) return credited;
+  return (
+    `${credited} A campaign committee handed to another candidate during the cycle counts whole ` +
+    "as the second candidate's, what it raised before the handoff included."
+  );
+}
+
 /** `/candidate/:id`: a candidate's money in every cycle, and what they received in one. */
 function CandidatePage() {
   const id = useParams().id ?? "";
@@ -183,6 +207,33 @@ function CandidateDetail({ candidate }: { candidate: Candidate }) {
         <section aria-labelledby="in-cycle">
           <Stack gap="lg">
             <CycleHeading cycles={cycles} cycle={shown.cycle} onChange={showCycle} />
+            <ReportedPanel
+              cycle={shown.cycle}
+              reported={shown.reported}
+              itemizedTotal={shown.itemized_total}
+              coverage={shown.coverage}
+              filer="campaign"
+              missing={missingReported(shown)}
+              notes={
+                shown.reported_includes_converted_committee && (
+                  <Text size="sm" c="dimmed">
+                    Includes a campaign committee that became a PAC, counted whole with what it
+                    raised after converting, which FEC credits to no candidate; so these figures
+                    differ from FEC&apos;s for the candidate.
+                  </Text>
+                )
+              }
+            />
+            <section aria-labelledby="gift-sizes">
+              <Title order={3} id="gift-sizes" mb="sm">
+                Gift sizes
+              </Title>
+              <GiftSizeChart
+                sizes={shown.gift_sizes}
+                cycle={shown.cycle}
+                totalIndividual={shown.total_individual}
+              />
+            </section>
             <section aria-labelledby="top-donors">
               <Title order={3} id="top-donors" mb="sm">
                 Top donors

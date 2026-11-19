@@ -15,6 +15,9 @@ export type ChartTheme = {
   /** Independent expenditures for a candidate and against them: neither party's colour. */
   support: string;
   oppose: string;
+  /** A candidate's gift-size buckets: resolved donors' money, and FEC's unitemized lump. */
+  itemized: string;
+  unitemized: string;
 };
 
 // A `blue.6` token as the colour itself: a canvas cannot draw Mantine's CSS variables.
@@ -47,5 +50,7 @@ function chartTheme(theme: MantineTheme, dark: boolean): ChartTheme {
     },
     support: theme.colors.teal[dark ? 4 : 6],
     oppose: theme.colors.orange[dark ? 4 : 6],
+    itemized: theme.colors.violet[dark ? 4 : 6],
+    unitemized: theme.colors.gray[dark ? 5 : 4],
   };
 }
