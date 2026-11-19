@@ -57,6 +57,30 @@ _Avoid_: negative contribution, refund received, clawback
 A report a committee filed again as an amendment that changed its form, report type or coverage, so the regulator's bulk data keeps both. Its gifts are counted from the amendment alone, never from it, even where the regulator's own itemized figure adds the two. Told by the amendment repeating at least half of its gifts. Repeats within one filing are separate gifts, and count.
 _Avoid_: duplicate filing, stale report
 
+**Reported total**:
+A figure a committee reported to the regulator as its own total for a cycle, taken from the regulator's summary of its reports: what it raised, spent, holds and owes. Kept as filed: never corrected, netted or added to itemized money. A candidate's is the reported totals of the committees raising for them, added up (before 2008, the regulator's own figure for the candidate), and a handoff's committee's are the second candidate's alone.
+_Avoid_: FEC total, official total, actual total, summary figure
+
+**Itemized total**:
+What fundlens itself counts, from itemized rows, toward the line the regulator's itemized individual figure reports: individuals' contributions and organization receipts on line 11(a)(i), before refunds are taken off. The figure coverage sets against a reported total; shown beside it, never added to it. Not a committee's individual total, which is net of refunds and leaves organizations out.
+_Avoid_: fundlens total, computed total, our total, itemized individual total
+
+**Coverage**:
+The share of a committee's reported itemized individual money that fundlens itemizes: its itemized total over the regulator's itemized figure. A candidate's is taken over the committees raising for them. Undefined for a conduit, whose reported figure includes the earmarks it passes on; where the regulator gives no itemized figure; and before 2008, when its summaries did not split itemized money from unitemized. It can exceed 100%, and is shown as it is.
+_Avoid_: match rate, completeness, itemization rate, coverage dates (that is the reporting period)
+
+**Unitemized**:
+Individuals' gifts a committee reports only as one lump, because each giver's aggregate stayed at or under the regulator's itemization threshold ($200). A reported total, and the committee's alone: no donor's, in no itemized total and no donor figure.
+_Avoid_: small-dollar money (an itemized donor can be small, and twenty $50 gifts are not), small donors, under-$200 gifts
+
+**Reporting period**:
+The dates a committee's reported totals run from and to: the start of its first report of the cycle and the end of its latest. It says how current a reported total is.
+_Avoid_: coverage dates, coverage period, as-of date
+
+**Gift size**:
+A donor's net gifts to one candidate's committees in a cycle, the amount that places the donor in a bucket: twenty $50 gifts are one $1,000 donor. Never the amount of a single contribution. Unitemized money has no donors and is a bucket of its own.
+_Avoid_: contribution size, donation size, small-dollar donor
+
 ### Parties
 
 **Donor**:
