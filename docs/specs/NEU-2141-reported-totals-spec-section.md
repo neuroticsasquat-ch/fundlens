@@ -192,7 +192,7 @@ ADR-0011 is not edited: its "no candidate figure" is scoped to v1, and `itemized
 | Ticket | Text | Becomes |
 |---|---|---|
 | NEU-2143 | "candidate figures as spec §4 decided (summed … or `candidate_reported_total` from `weball`)" | Builds both tables: `reported_total` (§4.1) and `candidate_reported_total` from `weball`, 1980–2006, empty from 2008 (§4.2). Candidate sums are gold's (NEU-2144). |
-| NEU-2143 | `silver_reported_total_coverage.sql (coverage_end ≥ coverage_start …)` | `silver_reported_total_period.sql` (`period_end ≥ period_start` when both set); add the duplicate-row check (§4.1) and `candidate_reported_total`'s key and candidate checks. |
+| NEU-2143 | `silver_reported_total_coverage.sql (coverage_end ≥ coverage_start …)` | ~~`silver_reported_total_period.sql` (`period_end ≥ period_start` when both set);~~ dropped by NEU-2395: FEC files a reversed period (C00807263, 2024), and periods are stored as filed (project spec §4.1). Add the duplicate-row check (§4.1) and `candidate_reported_total`'s key and candidate checks. |
 | NEU-2143 | Fixture: "a pre-2008 cycle row from `webk`" | Also a pre-2008 `weball` row, and a `committee_summary+webk` row for a Form 5 filer. |
 | NEU-2144 | "coverage is NULL exactly when the reported denominator is 0 or NULL" | "… or the committee is a conduit" (§4.4). Adds `itemized_total` and `reported_includes_converted_committee`. |
 | NEU-2144 | `candidate_gift_size` "in spec §4's buckets … buckets sum to `total_individual + reported unitemized`" | Six buckets (§4.6); the five itemized ones sum to `total_individual`. Its definition-of-done donor, 20 × $50, is in `under_2000`. |
