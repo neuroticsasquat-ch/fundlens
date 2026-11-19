@@ -91,7 +91,131 @@ FEC's own summary figures for every candidate and committee: total receipts and 
 - Source precedence per cycle, as NEU-2140 measured it (`docs/measurements/summary-files-2024.md`, Decisions 1, 2 and 6, which hold the figures). 2008–: committee figures are `committee_summary`'s, one row per committee, with `webk` only for a measure it leaves blank (Form 5 and Form 7 filers); candidate figures are the sum of the committees fundlens credits to the candidate. 1996–2006: `webk` for committees, `weball` for candidates. 1980–1994: `weball` only, with no committee-grain file. `webl` and `candidate_summary` are not read (§3.2).
 - Unitemized individual money is a committee-level lump, never attributed to a donor.
 
-**Filled by** NEU-2141, from that measurement: `reported_total`'s columns, the gold fields, coverage and the gift-size buckets.
+The rules below were written by NEU-2141 (`docs/specs/NEU-2141-reported-totals-spec-section.md`, which holds each decision's rejected alternatives and Appendix A, the checks made for it). "Q" and "Decision" numbers are NEU-2140's measurement's (`docs/measurements/summary-files-2024.md`). A rule that rests on no measurement says "asserted, not measured" and names the ticket that checks it.
+
+### 4.1 Silver `reported_total`
+
+Key `(cycle, committee_id)`. Columns, in order: `cycle, source, jurisdiction, source_file, committee_id, period_start, period_end`, then the 23 measures below. `source` is `fec` and `jurisdiction` `US`, as every silver table's (v1 §4).
+
+Each measure is the file's figure as filed, `DECIMAL(14,2)`: a blank is NULL, a filed 0 is 0, and nothing is netted, corrected or derived from another measure except where the table says so. `INDV_CONTB = INDV_ITEM_CONTB + INDV_UNITEM_CONTB` fails for 166 committees in 2024, filers' arithmetic mostly (Q4c), so all three are stored as filed and no check enforces the identity. Dates are `DATE`: `committee_summary` writes `YYYYMMDD`, the zips `MM/DD/YYYY`. `period_start` and `period_end` are the committee's **reporting period** (`CONTEXT.md`).
+
+| Column | `committee_summary` (2008–) | `webk` (1996–2006; a blank measure's fill from 2008) | `weball` (`candidate_reported_total`, §4.2) |
+|---|---|---|---|
+| `period_start` | `CVG_START_DT` | — | — |
+| `period_end` | `CVG_END_DT` | `CVG_END_DT` | `CVG_END_DT` |
+| `receipts` | `TTL_RECEIPTS` | `TTL_RECEIPTS` | `TTL_RECEIPTS` |
+| `disbursements` | `TTL_DISB` | `TTL_DISB` | `TTL_DISB` |
+| `cash_on_hand_start` | `COH_BOP` | `COH_BOP` | `COH_BOP` |
+| `cash_on_hand_end` | `COH_COP` | `COH_COP` | `COH_COP` |
+| `debts_owed_by` | `DEBTS_OWED_BY_CMTE` | `DEBTS_OWED_BY` | `DEBTS_OWED_BY` |
+| `debts_owed_to` | `DEBTS_OWED_TO_CMTE` | — | — |
+| `individual_itemized` | `INDV_ITEM_CONTB` | — | — |
+| `individual_unitemized` | `INDV_UNITEM_CONTB` | — | — |
+| `individual_total` | `INDV_CONTB` | `INDV_CONTRIB` | `TTL_INDIV_CONTRIB` |
+| `individual_refunds` | `INDV_REF` | `INDV_REFUNDS` | `INDIV_REFUNDS` |
+| `party_contributions` | `PTY_CMTE_CONTB` | — | `POL_PTY_CONTRIB` |
+| `other_committee_contributions` | `OTH_CMTE_CONTB` | `OTHER_POL_CMTE_CONTRIB` | `OTHER_POL_CMTE_CONTRIB` |
+| `candidate_contributions` | `CAND_CNTB` | `CAND_CONTRIB` | `CAND_CONTRIB` |
+| `candidate_loans` | `CAND_LOAN` | `CAND_LOANS` | `CAND_LOANS` |
+| `other_loans` | `OTH_LOANS`; where that is blank, `TTL_LOANS` less `CAND_LOAN` (a blank as 0) | `TTL_LOANS_RECEIVED` less `CAND_LOANS` | `OTHER_LOANS` |
+| `candidate_loan_repayments` | `CAND_LOAN_REPYMNT` | `CAND_LOAN_REPAY` | `CAND_LOAN_REPAY` |
+| `other_loan_repayments` | `OTH_LOAN_REPYMTS` | `LOAN_REPAY` | `OTHER_LOAN_REPAY` |
+| `transfers_in` | `TRANF_FROM_OTHER_AUTH_CMTE` | `TRANS_FROM_AFF` | `TRANS_FROM_AUTH` |
+| `transfers_out` | `TRANF_TO_OTHER_AUTH_CMTE` | `TRANF_TO_AFF` | `TRANS_TO_AUTH` |
+| `independent_expenditures` | `INDT_EXP` | `IND_EXP` | — |
+| `party_coordinated` | `COORD_EXP_BY_PTY_CMTE` | `PTY_COORD_EXP` | — |
+| `operating_expenditures` | `OP_EXP + TTL_OP_EXP` (a blank as 0; NULL when both are blank) | — | — |
+| `federal_funds` | `FED_FUNDS` | — | — |
+
+- **What the mapping rests on.** `individual_total` holds itemized plus unitemized money in all three files (Decision 3; Q4). `committee_summary` and `webk` agree within $1 on receipts for 9,843 of 9,845 shared committees, and on debts, other committees' contributions, transfers in and refunds for every one (Q2a). The column names are `committee_summary_2024.csv`'s own header row, read 2026-11-18, and the zips' are FEC's file descriptions (the measurement's header-sources row). The loan, repayment and operating-expenditure rows rest on NEU-2141's Appendix A: `TTL_LOANS = CAND_LOAN + OTH_LOANS` at 911 of 912 candidate committees with loans, while other committees, whose Form 3X has one loans line, leave `OTH_LOANS` blank (103 of 109); `TTL_LOAN_REPYMTS` is the two repayment figures added at 586 of 588, and is not stored; Form 3 and 3P filers fill `OP_EXP` and Form 3X filers `TTL_OP_EXP`, and 78 committees fill both with different figures in 2024, the largest campaigns turned PACs, each column holding a different form's reports (the two together inside `TTL_DISB` at every one). **Asserted, not measured:** that `webk`'s `LOAN_REPAY` leaves out candidate loan repayments, and its `IND_EXP` and `PTY_COORD_EXP` against `committee_summary`'s; NEU-2143 compares each on 2024's shared committees and amends this table if one differs.
+- **Rows, 2008 on.** One row per `CMTE_ID` of `committee_summary` that is a committee of the cycle in silver `committee`. The file repeats a committee once per linked candidate (65 committees, 136 rows in 2024, Q1): the transform keeps one and fails if a committee's rows differ in anything but `CAND_ID` and `Link_Image`. Each measure is `committee_summary`'s, or `webk`'s where `committee_summary`'s is blank and `webk` holds the committee: Form 5 filers (type I), whose `committee_summary` rows carry only `INDT_EXP`, and Form 7 filers (type C), whose rows carry only a communication-cost figure this table does not hold (204 and 68 committees in 2024, Q2f2; NEU-2141 Appendix A). `source_file` is `committee_summary+webk` when any measure came from `webk`, else `committee_summary`. A committee only in `webk` gets no row: the 2,248 committees only in `webk24` carry no money but one bad Form 5 record (Q1). 2024: 13,995 committees, 13,994 of them silver committees (Q1i).
+- **Rows, 1996–2006.** One row per `webk` committee in silver `committee`, `source_file` `webk`. House and Senate campaign committees have none: `webk04` holds 54 candidate committees (Q8).
+- **Rows, 1980–1994.** None. The model still writes its partition, empty (§2, older builds).
+- A row whose every measure is blank is kept: FEC lists the committee and reports nothing.
+- **Not held:** FEC's `FED_CAND_CMTE_CONTB` (Form 3X line 23), which reconciles with neither the gross nor the net 24Ks (Decision 8), `OTHER_RECEIPTS`, and Form 7's `TTL_COMMUNICATION_COST`, which is M3's (§6). Adding a measure later is an additive dataset change.
+
+### 4.2 Silver `candidate_reported_total`
+
+Key `(cycle, candidate_id)`. Columns as `reported_total`'s with `candidate_id` in place of `committee_id`. Written from `weball`, the mapping's last column, for 1980–2006: one row per `CAND_ID` that is a candidate of the cycle in silver `candidate`, `source_file` `weball`. A measure `weball` lacks is NULL: `period_start`, `debts_owed_to`, the itemized and unitemized split, `independent_expenditures`, `party_coordinated`, `operating_expenditures`, `federal_funds`. From 2008 the partition is empty: candidate figures are summed from `reported_total` (§4.3), so the dataset never holds a 2008+ candidate figure the site contradicts.
+
+`weball`'s rows are not additive across candidates: it lists a committee's money under each candidate id linked to it (248 rows in 2024, $789.4M, Q3h3). Before 2008 that stands as filed. A candidate alias has no gold row (v1 §7.1), so its repeat is in no race; a person's ids for two different races each keep their row.
+
+`webl` and `candidate_summary` are not read (§3.2).
+
+### 4.3 Candidate figures
+
+- **2008 on: the sum of the candidate's credited committees' `reported_total` rows** (Decision 1). The credited committees are those `04_contribution.sql`'s `linked` rule gives the candidate (v1 §4): linked P or A, or the committee `candidate.principal_committee_id` names; a committee linked to two candidates is the principal link's, then the lower `candidate_id`'s; a candidate alias is credited none. Each committee has one candidate, so the figures add up across candidates as FEC's candidate files do not. Against `candidate_summary.Total_Receipt` the sum is within 1% for 2,235 of 2,255 candidates (99.11%; 99.95% of those with receipts), every mismatch explained (Q3g, Q3h).
+- A measure is the sum over the credited committees that have it, NULL when none does. `reported_period_start` is the earliest, `reported_period_end` the latest.
+- **Transfers between a candidate's own committees are not netted out**: each is in one committee's disbursements and another's receipts. FEC does not net them either: `weball` equals the committees' sum exactly for all 2,118 House and Senate candidates with a credited committee (Q2g, Q2h).
+- **A handoff's committee is the second candidate's alone** (`fec/handoffs.csv`'s `to_candidate_id`), whole, in the cycle of the handoff: a cycle-to-date row cannot be split at `handoff_date`. In 2024 `C00703975`'s $1,175,189,365 of receipts is Harris's, and Biden has no credited committee, so his reported fields, `itemized_total` and `coverage` are NULL beside $73,961,689 of itemized individual money (Q3k, Q3n). FEC's files list the row under both. Rejected: both candidates (the race counts $1.175B twice), neither (the largest campaign of 2024 shows no cash on hand), and apportioning by itemized share (fundlens's estimate, not FEC's figure).
+- **A campaign turned PAC counts whole.** A committee credited through `principal_committee_id` alone, which `ccl` no longer designates P or A, adds its whole cycle-to-date row, what it raised after converting included: ten candidates in 2024, $523.3M, $495.9M of it Trump's NEVER SURRENDER (`C00828541`) and $23.2M Kunce's Heartland Patriots (Q3h). Itemized money follows the same rule with no date cut, so coverage compares like with like. `candidate_cycle.reported_includes_converted_committee` is true for such a candidate, so a page can say why its figure differs from FEC's, which credits these committees to no one.
+- **Before 2008:** the candidate's `candidate_reported_total` row as filed. The flag is false.
+
+### 4.4 Gold fields
+
+The `reported_*` fields and `coverage` are NULL where there is no reported row, or the cycle's file lacks the measure, never 0. `itemized_total` is fundlens's own figure, and has its own rule below.
+
+| Table | Added |
+|---|---|
+| `committee_cycle` | `reported_<measure>` for each of the 23 measures; `reported_period_start`, `reported_period_end`, `reported_source_file`; `itemized_total`; `coverage` |
+| `candidate_cycle` | The same, by §4.3, and `reported_includes_converted_committee`. `reported_source_file` is `committee_summary` from 2008 and `weball` before |
+| `race_candidate` | `reported_receipts`, `reported_disbursements`, `reported_cash_on_hand_end`, `reported_debts_owed_by`, `coverage`: the candidate's `candidate_cycle` values |
+| `race` | `reported_cash_on_hand`: the sum of its candidates' `reported_cash_on_hand_end`, NULL when none has one |
+
+- **`itemized_total`** (`CONTEXT.md`). A committee's is `total_individual + total_from_organizations − total_refunds` (v1 §7.1; NEU-2265), never NULL: individuals' and organizations' money on line 11(a)(i), gross of refunds, which is what `INDV_ITEM_CONTB` counts. A candidate's is the sum of its credited committees' (§4.3), NULL when it has none. It is a comparison figure: it is in no race total and no top list, and `total_individual` is unchanged. It is the one candidate figure that includes organization money; it reads `committee_cycle`, not `organization_receipt`, so ADR-0011's "only gold readers" stands.
+- **`coverage`** (`CONTEXT.md`) = `itemized_total ÷ reported_individual_itemized`, a ratio (0.9412), not a percentage, stored as computed.
+  - The numerator is individual plus organization money (Decision 4): within 1% of FEC's itemized figure at 5,114 committees against 4,440 for individual money alone, and at super PACs 802 against 386 (Q5g). Those counts were taken net of refunds; the numerator is gross because `INDV_ITEM_CONTB` is (NEU-2265: VIVEK 2024 reads −2.06% net, −0.17% gross). **Asserted, not measured:** the counts on the gross basis; NEU-2147's runbook records them.
+  - NULL when `reported_individual_itemized` is NULL or 0; so NULL before 2008, whose files have no itemized figure (Q8), and for Form 4 and Form 5 filers.
+  - NULL at a conduit (`committee.is_conduit`): ActBlue's and WinRed's `INDV_ITEM_CONTB` ($3.76B and $1.61B in 2024) include the earmarks fundlens counts at the recipient (ADR-0004; Q5m).
+  - It can exceed 1. Where a filer put counted money on a line the bulk file does not show, fundlens is over (71 committees, $10,791,881, after NEU-2276; Q6 after NEU-2276); where FEC adds a superseded filing to its amendment, FEC is over (NEU-2196). Shown as it is. Rejected: capping at 1 (presents unmatched money as matched), and NULL above 1.01 (a committee flips between a figure and nothing as filings are amended).
+  - A candidate's is summed over its credited committees on both sides: their `itemized_total`s over their reported itemized figures, so Harris's spans the whole of `C00703975`. Candidate committees take ORG-typed gifts (812 within 1% of FEC with them, 728 without, Q5g).
+- A hybrid PAC's `total_individual` and `total_from_organizations` hold its contribution account alone (v1 §7.1), which is what its `INDV_ITEM_CONTB` counts, so its coverage needs no special rule.
+
+### 4.5 Reconciliation
+
+Gold `reconciliation (committee_id, cycle, measure, fundlens, reported, ratio)`, key `(committee_id, cycle, measure)`: the committees where fundlens's figure exceeds FEC's reported one by more than 1%. Built by every load, published, and **never failing the build**: FEC's figures lag amendments, and a filer's line choice is not fundlens's to fix.
+
+- M1 writes one measure, `individual_itemized`: `fundlens` is `itemized_total`, `reported` is `reported_individual_itemized`, `ratio` is `fundlens ÷ reported`. The `measure` column is there for later milestones.
+- A committee is listed when `reported` is not NULL, it is not a conduit, and `fundlens − reported > 0.01 × reported`. A reported 0 beside fundlens money is listed with `ratio` NULL: a 0 is a figure FEC gives. A blank reported figure is not listed.
+- No dollar floor, as the measurement's excess list had none. Over only: a shortfall is coverage below 1.
+- 2008 on, since no earlier file has the measure.
+- The measurement's list, on the net basis and before its bugs were fixed, was 725 committees and $1.94B (Q6); NEU-2192 to NEU-2199 and NEU-2276 took the diagnosed causes out, leaving 71 unexplained. **Asserted, not measured:** the table's row count on a current build; NEU-2147's runbook records it and dispositions its top ten.
+
+### 4.6 Gift sizes
+
+Gold `candidate_gift_size (candidate_id, cycle, bucket, amount, donors)`, key `(candidate_id, cycle, bucket)`.
+
+| `bucket` | Holds | `donors` |
+|---|---|---|
+| `unitemized` | The candidate's `reported_individual_unitemized`, as filed | NULL |
+| `200_or_less` | Donors whose gift size is $200 or less, those netting $0 or less among them | their count |
+| `under_500` | over $200 and under $500 | their count |
+| `under_1000` | $500 and under $1,000 | their count |
+| `under_2000` | $1,000 and under $2,000 | their count |
+| `2000_or_more` | $2,000 or more | their count |
+
+- **Gift size** (`CONTEXT.md`) is a donor's net gifts to one candidate in the cycle: the sum, per `donor_id`, of the rows `candidate_cycle.total_individual` counts for that candidate (v1 §4: not self-funding, not other-lines money, refunds netting). A donor's aggregate decides the bucket: 20 gifts of $50 are one `under_2000` donor. `amount` is the bucket's donors' gift sizes added up.
+- The five itemized buckets add up to `candidate_cycle.total_individual`, and a gold check fails the build if they do not. A candidate with a counted contribution has all five rows, a bucket with no donor at 0.
+- The `unitemized` row exists only where the candidate has a reported unitemized figure: 2008 on. It is FEC's lump as filed, beside the itemized buckets, never added to one (the milestone's contract). A handoff's first candidate has none.
+- A cycle loaded before `resolve` has no `donor_id`s and so no itemized bucket rows, as its `contributor_count` is NULL (v1 §7.1).
+- Organization money is in no bucket: an organization is not a donor.
+- Rejected: buckets by single gift (20 gifts of $50 are one $1,000 donor, not twenty $50 ones); the aggregate per committee, as FEC's itemization threshold is taken (one person in two buckets for one candidate); folding itemized donors at $200 or less into the unitemized bucket, as FEC's presidential `Contributions_by_Size.csv` does (**asserted, not measured**; §1 allows it as a check, never a source).
+
+### 4.7 What each cycle range has
+
+| | 2008– | 1996–2006 | 1980–1994 |
+|---|---|---|---|
+| Committee reported totals | every measure; Form 5 and Form 7 filers' from `webk` | `webk`'s measures; none for House and Senate campaign committees | none |
+| Candidate reported totals | credited committees' sum | `weball`'s measures | `weball`'s measures |
+| Missing measures | — | `period_start`, `debts_owed_to`, itemized and unitemized, `operating_expenditures`, `federal_funds`; and `party_contributions` (committees), `independent_expenditures` and `party_coordinated` (candidates) | as 1996–2006 |
+| `coverage`, `reconciliation` | yes | NULL, no rows | NULL, no rows |
+| Gift sizes | six buckets | five itemized | five itemized |
+
+A page shows a missing figure as "not reported", never 0 (NEU-2146).
+
+### 4.8 Dataset and older builds
+
+`reported_total` and `candidate_reported_total` join the public dataset (§8): NEU-2143 adds both to `DATASET_TABLES`, `columns.yaml`, the schemas, the changelog, the README and `paths.BACKFILL_PENDING` in the PR that builds them. Their README entry says a reported total is never to be added to `contribution` amounts.
 
 ## 5. Spending (M2)
 
