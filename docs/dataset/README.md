@@ -2,9 +2,9 @@
 
 Federal campaign-finance money for every cycle since 1980, from the FEC's bulk files, as open
 Parquet files: contributions, committees, candidates, races, committee transfers, organizations'
-gifts and independent expenditures, with **individual donors resolved** across the name,
-employer and address variants they are reported under. It is the data behind
-[fundlens.org](https://fundlens.org).
+gifts, independent expenditures and the totals committees report, with **individual donors
+resolved** across the name, employer and address variants they are reported under. It is the
+data behind [fundlens.org](https://fundlens.org).
 
 Served from `https://data.fundlens.org/v1/`. License: [CC BY 4.0](LICENSE). Read the
 [notice on contributor information](#notice-contributor-information-and-the-fec) before you use
@@ -25,6 +25,8 @@ it.
 | `committee_transfer` | committee's money to another committee or a candidate | `committee_transfer/cycle=<c>/*.parquet` |
 | `organization_receipt` | itemized gift to a committee from an organization | `organization_receipt/cycle=<c>/*.parquet` |
 | `independent_expenditure` | expenditure for or against a candidate | `independent_expenditure/cycle=<c>/*.parquet` |
+| `reported_total` | committee's own reported totals for a cycle (from 1996) | `reported_total/cycle=<c>/*.parquet` |
+| `candidate_reported_total` | candidate's own reported totals for a cycle, before 2008 | `candidate_reported_total/cycle=<c>/*.parquet` |
 
 Every column of every table is described in its JSON Schema, `schema/<table>.json` (for
 example [`schema/contribution.json`](schema/contribution.json)), and every change to them is in
@@ -44,6 +46,9 @@ A few things to know before you add anything up:
   and money filed on another line of the FEC form (`is_other_line`). They are kept, and the
   donors' own.
 - **`committee_transfer` holds both sides of many gifts.** Sum one `side` only.
+- **A reported total is never added to `contribution` amounts.** `reported_total` and
+  `candidate_reported_total` hold the FEC's own cycle-to-date figures, as filed: they already
+  include the itemized money the other tables itemize. Compare the two; don't sum them.
 - **Organizations are not resolved.** Their gifts are grouped by `organization_key`, the
   normalized name.
 - A `cycle=<c>` directory is a Hive partition. `contributor`'s files hold no cycle column of

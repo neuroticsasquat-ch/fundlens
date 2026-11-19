@@ -45,8 +45,10 @@ from tests.integration.test_dataset import DOCS, OVERRIDES
 from tests.integration.test_resolve import MEMORY_LIMIT, MODEL, resolve
 from tests.integration.test_transform import (
     BUILD,
+    local_silver,
     parquet_rows,
     put_bronze,
+    reported_rows,
     seats_report,
     transform,
 )
@@ -285,6 +287,21 @@ def test_a_load_with_no_manifest_keeps_every_cycle_live_gold_holds(
     with psycopg.connect(migrated_db) as conn:
         [(staged,)] = conn.execute("SELECT cycles FROM gold_build.meta").fetchall()
     assert staged == live
+
+
+def test_before_2008_reported_totals_are_webks_committees_and_weballs_candidates(
+    two_cycles: Snapshot,
+) -> None:
+    """1998 has no committee_summary: a committee's reported total is its webk row, a
+    candidate's its weball row, and the columns only committee_summary has are null
+    (every-FEC-dollar spec §4.1, §4.2)."""
+    expected = EXPECTED["reported_totals"]
+    committees = local_silver(two_cycles.data_dir, "reported_total", EARLY)
+    candidates = local_silver(two_cycles.data_dir, "candidate_reported_total", EARLY)
+
+    assert reported_rows(committees, "committee_id") == expected["reported_total"][EARLY]
+    assert reported_rows(candidates, "candidate_id") == expected["candidate_reported_total"][EARLY]
+    assert {row["cycle"] for row in [*committees, *candidates]} == {EARLY}
 
 
 # The stand-in backfill-pending table: a dataset table, not resolved, which the 2024 fixture has

@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/reported_total.json",
+  "title": "reported_total",
+  "description": "One committee's reported totals for a cycle: what it raised, spent, holds and owes, as the FEC's summary files give them, cycle to date. FEC's figures as filed: a blank is null, a filed 0 is 0, nothing is netted or corrected. Never add one to `contribution` amounts: a reported total already holds the itemized money those rows itemize. From 2008 from `committee_summary`, a Form 5 or Form 7 filer's blank figures from `webk`; 1996–2006 from `webk`, which holds no House or Senate campaign committee; none before 1996. A column a cycle's file lacks is null. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "committee_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_file": {
+      "description": "The FEC summary file the figures are from: `committee_summary`, `committee_summary+webk` (a figure `committee_summary` left blank is `webk`'s) or `webk`.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The committee's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "period_start": {
+      "description": "The start of the committee's first report of the cycle; null before 2008.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "period_end": {
+      "description": "The end of its latest report of the cycle, which says how current the figures are.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "receipts": {
+      "description": "Total receipts.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "disbursements": {
+      "description": "Total disbursements.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "cash_on_hand_start": {
+      "description": "Cash on hand at the start of the reporting period.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "cash_on_hand_end": {
+      "description": "Cash on hand at its end.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "debts_owed_by": {
+      "description": "Debts owed by the committee at the end of the reporting period.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "debts_owed_to": {
+      "description": "Debts owed to it; null before 2008.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_itemized": {
+      "description": "Contributions from individuals itemized on its reports; null before 2008.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_unitemized": {
+      "description": "Contributions from individuals of $200 or less a year, reported as one lump and never attributed to a donor; null before 2008.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_total": {
+      "description": "Contributions from individuals, itemized and unitemized. Filers' arithmetic is kept: it need not equal the two figures added.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_refunds": {
+      "description": "Refunds of contributions to individuals.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "party_contributions": {
+      "description": "Contributions from party committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_committee_contributions": {
+      "description": "Contributions from other political committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_contributions": {
+      "description": "Contributions from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_loans": {
+      "description": "Loans from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_loans": {
+      "description": "Loans from anyone else.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_loan_repayments": {
+      "description": "Repayments of loans from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_loan_repayments": {
+      "description": "Repayments of other loans.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "transfers_in": {
+      "description": "Transfers from affiliated or authorized committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "transfers_out": {
+      "description": "Transfers to affiliated or authorized committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "independent_expenditures": {
+      "description": "Independent expenditures made.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "party_coordinated": {
+      "description": "Coordinated expenditures made by a party committee.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "operating_expenditures": {
+      "description": "Operating expenditures, from whichever of the FEC's two lines its forms fill.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "federal_funds": {
+      "description": "Federal funds received (presidential public funding).",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "jurisdiction",
+    "source_file",
+    "committee_id",
+    "period_start",
+    "period_end",
+    "receipts",
+    "disbursements",
+    "cash_on_hand_start",
+    "cash_on_hand_end",
+    "debts_owed_by",
+    "debts_owed_to",
+    "individual_itemized",
+    "individual_unitemized",
+    "individual_total",
+    "individual_refunds",
+    "party_contributions",
+    "other_committee_contributions",
+    "candidate_contributions",
+    "candidate_loans",
+    "other_loans",
+    "candidate_loan_repayments",
+    "other_loan_repayments",
+    "transfers_in",
+    "transfers_out",
+    "independent_expenditures",
+    "party_coordinated",
+    "operating_expenditures",
+    "federal_funds"
+  ],
+  "additionalProperties": false
+}

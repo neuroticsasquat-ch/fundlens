@@ -411,7 +411,9 @@ def test_a_build_having_its_donor_ids_rewritten_is_not_snapshotted(
 def test_a_build_lacking_its_last_table_copies_nothing(
     published: Published, public: R2, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The last table of the manifest, so a check made table by table would have copied the others.
+    # The last table of the manifest, so a check made table by table would have copied the others;
+    # not backfill-pending here, so a build lacking it is not ready.
+    monkeypatch.setattr(paths, "BACKFILL_PENDING", frozenset[SilverTable]())
     last = DATASET_TABLES[-1]
     partition = paths.silver_partition(last, CYCLE, BUILD) + "/"
     list_objects = R2.list_objects
