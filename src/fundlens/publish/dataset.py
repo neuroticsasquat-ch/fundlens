@@ -71,6 +71,8 @@ DATASET_TABLES: tuple[SilverTable, ...] = (
     "independent_expenditure",
     "committee_transfer",
     "organization_receipt",
+    "reported_total",
+    "candidate_reported_total",
 )
 # How many snapshots the public bucket keeps (spec §9).
 KEEP = 8

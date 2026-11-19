@@ -116,6 +116,9 @@ silver:
   # §6.1, §6.11): more than the donors below, since a key is a spelling and a donor may have
   # several; fewer than the contributions.
   contributor: 132
+  # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
+  reported_total: 23
+  candidate_reported_total: 0
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T. And
@@ -855,3 +858,48 @@ validation:
   labelled_keys: 130
   overall: {precision: 1.0, recall: 1.0}
   top: {limit: 3, precision: 1.0, recall: 1.0}
+
+# Silver reported_total and candidate_reported_total (every-FEC-dollar spec §4.1, §4.2), for this
+# cycle and the 1998 fixture's, each row the values `columns` names, FEC's figures as filed.
+# - 2024: one row per `cm` committee with a committee_summary row (C00899998 is in no `cm`), the
+#   repeated committees once. ONE NATION (C90800206), a Form 5 filer, takes every figure its row
+#   leaves blank from webk; no other committee does, so a PAC's candidate lines stay null.
+#   MARYLAND FORWARD PAC's other_loans is its Form 3X TTL_LOANS; the electioneering committee
+#   (C90800207) reports nothing and keeps its row. No candidate row from 2008: gold sums them.
+# - 1998: webk's committees, and weball's candidates, with the columns only committee_summary
+#   has null.
+reported_totals:
+  columns: [source_file, period_start, period_end, receipts, disbursements, cash_on_hand_start, cash_on_hand_end, debts_owed_by, debts_owed_to, individual_itemized, individual_unitemized, individual_total, individual_refunds, party_contributions, other_committee_contributions, candidate_contributions, candidate_loans, other_loans, candidate_loan_repayments, other_loan_repayments, transfers_in, transfers_out, independent_expenditures, party_coordinated, operating_expenditures, federal_funds]
+  reported_total:
+    2024:
+      C00401224: [committee_summary, 2023-01-01, 2024-12-31, 780, 700, 0, 80, 0, 0, 780, 0, 780, 55, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 645, null]
+      C00694323: [committee_summary, 2023-01-01, 2024-12-31, 2950, 2900, 0, 50, 0, 0, 2950, 0, 2950, 2000, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 900, null]
+      C00800101: [committee_summary, 2023-01-01, 2024-12-31, 30825, 21500, 0, 9325, 0, 0, 19625, 6200, 25825, 0, 0, 5000, 0, 0, 0, 0, 0, 0, 0, null, null, 21500, 0]
+      C00800102: [committee_summary, 2023-01-01, 2024-12-31, 39250, 23500, 12000, 27750, 0, 0, 35150, 4100, 39250, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 23500, null]
+      C00800103: [committee_summary, 2023-01-01, 2024-12-31, 117000, 87700, 25000, 54300, 3000, 0, 38550, 8450, 47000, 0, 0, 45500, 5000, 0, 0, 0, 0, 19500, 0, null, null, 87700, null]
+      C00800113: [committee_summary, 2023-01-01, 2024-12-31, 14000, 11200, 0, 2800, 0, 0, 12150, 1850, 14000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 11200, null]
+      C00800115: [committee_summary, 2023-01-01, 2024-12-31, 19500, 19500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 19500, 0, 0, 0, null]
+      C00800104: [committee_summary, 2023-01-01, 2024-12-31, 1942000, 1650700, 0, 291300, 1250000, 0, 31850, 5150, 37000, 0, 0, 5000, 400000, 1500000, 0, 250000, 0, 0, 0, null, null, 1400700, null]
+      C00800105: [committee_summary, 2023-01-01, 2024-12-31, 12200, 10900, 0, 1300, 0, 0, 11250, 950, 12200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 10900, null]
+      C00800111: [committee_summary, 2023-01-01, 2024-12-31, 8500, 7600, 0, 900, 0, 0, 7175, 1325, 8500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, null]
+      C00800106: [committee_summary, 2023-01-01, 2024-12-31, 51000, 40800, 8000, 18200, 0, 500, 36825, 4175, 41000, 1000, 0, 10000, 0, 0, 0, 0, 0, 0, 0, null, null, 39800, null]
+      C00800114: [committee_summary, 2023-01-01, 2024-12-31, 4000, 5000, 6000, 5000, 0, 0, 4000, 0, 4000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
+      C00800107: [committee_summary, 2023-01-01, 2024-12-31, 44500, 35600, 0, 8900, 0, 0, 26325, 3675, 30000, 500, 0, 4500, 0, 0, 10000, 0, 4000, 0, 0, null, null, 31100, null]
+      C00800108: [committee_summary, 2023-01-01, 2024-12-31, 7000, 5600, 0, 1400, 0, 0, 6400, 600, 7000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 5600, null]
+      C00800109: [committee_summary, 2023-01-01, 2024-12-31, 6000, 4800, 0, 1200, 0, 0, 3800, 1200, 5000, 0, 0, 1000, 0, 0, 0, 0, 0, 0, 0, null, null, 4800, null]
+      C00800201: [committee_summary, 2023-01-01, 2024-12-31, 760000, 722000, 150000, 188000, 0, 0, 564925, 15075, 580000, 1600, 0, 155000, null, null, 25000, null, 0, 0, 0, 670000, 0, 50400, null]
+      C00800202: [committee_summary, 2023-01-01, 2024-12-31, 6000, 47000, 60000, 19000, 0, 0, 4550, 1450, 6000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 24000, 0, 0, null]
+      C00800203: [committee_summary, 2023-01-01, 2024-12-31, 81000, 73500, 40000, 47500, 0, 0, 57300, 6700, 64000, 2500, 0, 17000, null, null, 0, null, 0, 0, 0, 45000, 20000, 0, null]
+      C00800204: [committee_summary, 2023-01-01, 2024-12-31, 255000, 153000, 0, 102000, 0, 0, 253000, 2000, 255000, 5250, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 147750, null]
+      C00703975: [committee_summary, 2023-01-01, 2024-12-31, 8500, 7600, 0, 900, 0, 0, 3850, 2150, 6000, 0, 0, 2500, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, 0]
+      C00800205: [committee_summary, 2023-01-01, 2024-12-31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
+      C90800206: [committee_summary+webk, 2023-01-01, 2024-12-31, 35000, 30000, 0, 5000, 0, null, null, null, 35000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 30000, 0, null, null]
+      C90800207: [committee_summary, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+    1998:
+      C00298003: [webk, null, 1998-12-31, 6000, 2500, 4000, 7500, 0, null, null, null, 6000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null]
+      C00800203: [webk, null, 1998-12-31, 3500, 3000, 2000, 2500, 0, null, null, null, 3500, 0, null, 0, null, null, 0, null, 0, 0, 0, 0, 1500, null, null]
+  candidate_reported_total:
+    2024: {}
+    1998:
+      H8MD05201: [weball, null, 1998-12-31, 9500, 8200, 0, 1300, 0, null, null, null, 7500, 0, 0, 2000, 0, 0, 0, 0, 0, 0, 0, null, null, null, null]
+      H8MD05202: [weball, null, 1998-12-31, 4250, 4000, 1500, 1750, 0, null, null, null, 4250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, null, null]

@@ -947,6 +947,157 @@ def test_a_weball_row_adds_up_its_candidates_principal_and_authorized_committees
     assert set(weball) == {r["CAND_ID"] for r in rows("ccl") if r["CMTE_DSGN"] in ("P", "A")}
 
 
+# Silver reported_total's measures in column order (every-FEC-dollar spec §4.1, §4.2), each with the
+# column it is read from in committee_summary, webk and weball, None where the file has none. Two
+# are derived from two columns where a file has them (`summary_figures`): other_loans in
+# committee_summary (where OTH_LOANS is blank) and webk, and operating_expenditures.
+SUMMARY_FILES = ("committee_summary", "webk", "weball")
+MEASURES: dict[str, tuple[str | None, str | None, str | None]] = {
+    "receipts": ("TTL_RECEIPTS", "TTL_RECEIPTS", "TTL_RECEIPTS"),
+    "disbursements": ("TTL_DISB", "TTL_DISB", "TTL_DISB"),
+    "cash_on_hand_start": ("COH_BOP", "COH_BOP", "COH_BOP"),
+    "cash_on_hand_end": ("COH_COP", "COH_COP", "COH_COP"),
+    "debts_owed_by": ("DEBTS_OWED_BY_CMTE", "DEBTS_OWED_BY", "DEBTS_OWED_BY"),
+    "debts_owed_to": ("DEBTS_OWED_TO_CMTE", None, None),
+    "individual_itemized": ("INDV_ITEM_CONTB", None, None),
+    "individual_unitemized": ("INDV_UNITEM_CONTB", None, None),
+    "individual_total": ("INDV_CONTB", "INDV_CONTRIB", "TTL_INDIV_CONTRIB"),
+    "individual_refunds": ("INDV_REF", "INDV_REFUNDS", "INDIV_REFUNDS"),
+    "party_contributions": ("PTY_CMTE_CONTB", None, "POL_PTY_CONTRIB"),
+    "other_committee_contributions": (
+        "OTH_CMTE_CONTB",
+        "OTHER_POL_CMTE_CONTRIB",
+        "OTHER_POL_CMTE_CONTRIB",
+    ),
+    "candidate_contributions": ("CAND_CNTB", "CAND_CONTRIB", "CAND_CONTRIB"),
+    "candidate_loans": ("CAND_LOAN", "CAND_LOANS", "CAND_LOANS"),
+    "other_loans": ("OTH_LOANS", None, "OTHER_LOANS"),
+    "candidate_loan_repayments": ("CAND_LOAN_REPYMNT", "CAND_LOAN_REPAY", "CAND_LOAN_REPAY"),
+    "other_loan_repayments": ("OTH_LOAN_REPYMTS", "LOAN_REPAY", "OTHER_LOAN_REPAY"),
+    "transfers_in": ("TRANF_FROM_OTHER_AUTH_CMTE", "TRANS_FROM_AFF", "TRANS_FROM_AUTH"),
+    "transfers_out": ("TRANF_TO_OTHER_AUTH_CMTE", "TRANF_TO_AFF", "TRANS_TO_AUTH"),
+    "independent_expenditures": ("INDT_EXP", "IND_EXP", None),
+    "party_coordinated": ("COORD_EXP_BY_PTY_CMTE", "PTY_COORD_EXP", None),
+    "operating_expenditures": (None, None, None),
+    "federal_funds": ("FED_FUNDS", None, None),
+}
+REPORTED_COLUMNS = ("source_file", "period_start", "period_end", *MEASURES)
+# The committee types whose blank committee_summary measures are webk's (spec §4.1): Form 5 and
+# Form 7 filers.
+FILLED_FROM_WEBK = ("I", "C")
+# The cycles the fixture plants summary files for: one before 2008, one after.
+SUMMARY_CYCLES = (2024, 1998)
+
+
+def figure(row: Row, column: str) -> int | None:
+    """A summary file's figure as filed: a blank is None."""
+    if not row[column]:
+        return None
+    value = Decimal(row[column])
+    # Every fixture figure is whole dollars, as every fixture amount is.
+    assert value == value.to_integral_value(), (column, row[column])
+    return int(value)
+
+
+def summary_figures(row: Row, file: str) -> dict[str, date | int | None]:
+    """One summary-file row's reporting period and measures, by silver column name."""
+    index = SUMMARY_FILES.index(file)
+    date_format = "%Y%m%d" if file == "committee_summary" else "%m/%d/%Y"
+
+    def day(column: str) -> date | None:
+        return datetime.strptime(row[column], date_format).date() if row[column] else None
+
+    figures: dict[str, date | int | None] = {
+        "period_start": day("CVG_START_DT") if file == "committee_summary" else None,
+        "period_end": day("CVG_END_DT"),
+    }
+    for measure, columns in MEASURES.items():
+        column = columns[index]
+        figures[measure] = None if column is None else figure(row, column)
+    if file == "committee_summary":
+        if figures["other_loans"] is None and (loans := figure(row, "TTL_LOANS")) is not None:
+            figures["other_loans"] = loans - (figure(row, "CAND_LOAN") or 0)
+        parts = [figure(row, "OP_EXP"), figure(row, "TTL_OP_EXP")]
+        if parts != [None, None]:
+            figures["operating_expenditures"] = sum(part or 0 for part in parts)
+    if file == "webk" and (loans := figure(row, "TTL_LOANS_RECEIVED")) is not None:
+        figures["other_loans"] = loans - (figure(row, "CAND_LOANS") or 0)
+    return figures
+
+
+def reported_totals(cycle: int) -> dict[str, list[object]]:
+    """Silver reported_total's rows for `cycle` by committee: `REPORTED_COLUMNS`' values."""
+    directory = fec_fixture.fixture_dir(cycle)
+    committees = {r["CMTE_ID"] for r in fec_fixture.read_rows("cm", directory)}
+    webk = {r["CMTE_ID"]: r for r in fec_fixture.read_rows("webk", directory)}
+    if cycle < 2008:
+        return {
+            committee_id: ["webk", *summary_figures(row, "webk").values()]
+            for committee_id, row in webk.items()
+            if committee_id in committees
+        }
+    totals: dict[str, list[object]] = {}
+    for row in fec_fixture.read_rows("committee_summary", directory):
+        committee_id = row["CMTE_ID"]
+        if committee_id not in committees or committee_id in totals:
+            continue
+        figures, source_file = summary_figures(row, "committee_summary"), "committee_summary"
+        if row["CMTE_TP"] in FILLED_FROM_WEBK and committee_id in webk:
+            fill = summary_figures(webk[committee_id], "webk")
+            # The measures only: the reporting period stays committee_summary's.
+            for column, value in figures.items():
+                if column in MEASURES and value is None and fill[column] is not None:
+                    figures[column], source_file = fill[column], "committee_summary+webk"
+        totals[committee_id] = [source_file, *figures.values()]
+    return totals
+
+
+def candidate_reported_totals(cycle: int) -> dict[str, list[object]]:
+    """Silver candidate_reported_total's rows for `cycle` by candidate: none from 2008."""
+    if cycle >= 2008:
+        return {}
+    directory = fec_fixture.fixture_dir(cycle)
+    candidates = {r["CAND_ID"] for r in fec_fixture.read_rows("cn", directory)}
+    return {
+        row["CAND_ID"]: ["weball", *summary_figures(row, "weball").values()]
+        for row in fec_fixture.read_rows("weball", directory)
+        if row["CAND_ID"] in candidates
+    }
+
+
+def test_the_expected_reported_totals_are_the_summary_files_rows_by_precedence() -> None:
+    assert EXPECTED["reported_totals"] == {
+        "columns": list(REPORTED_COLUMNS),
+        "reported_total": {cycle: reported_totals(cycle) for cycle in SUMMARY_CYCLES},
+        "candidate_reported_total": {
+            cycle: candidate_reported_totals(cycle) for cycle in SUMMARY_CYCLES
+        },
+    }
+
+
+def test_the_summary_fixtures_plant_each_precedence_case() -> None:
+    committees = EXPECTED["reported_totals"]["reported_total"]
+    sources = {
+        cycle: Counter(row[0] for row in rows_by_id.values())
+        for cycle, rows_by_id in committees.items()
+    }
+    # Every 2024 committee's row is committee_summary's, the Form 5 filer's filled from webk; 1998
+    # has no committee_summary, so webk's.
+    assert sources == {
+        2024: {"committee_summary": len(committee_ids()) - 1, "committee_summary+webk": 1},
+        1998: {"webk": 2},
+    }
+    assert committees[2024]["C90800206"][0] == "committee_summary+webk"
+    # A pre-2008 row has none of the columns only committee_summary has.
+    only_2008 = ("period_start", "debts_owed_to", "individual_itemized", "individual_unitemized")
+    for row in committees[1998].values():
+        assert all(row[REPORTED_COLUMNS.index(column)] is None for column in only_2008)
+    assert set(EXPECTED["reported_totals"]["candidate_reported_total"][1998]) == {
+        "H8MD05201",
+        "H8MD05202",
+    }
+
+
 def test_a_csv_whose_header_is_not_fecs_is_refused(tmp_path: Path) -> None:
     text = (fec_fixture.fixture_dir() / "cm.csv").read_text()
     (tmp_path / "cm.csv").write_text(text.replace("CMTE_NM", "CMTE_NAME", 1))
@@ -1066,6 +1217,8 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "organization_receipt": len(organization_receipts()),
         "jfc_attribution": len(attributions()),
         "contributor": len({contributor_key(r) for r in [*contributions, *attributions()]}),
+        "reported_total": len(reported_totals(CYCLE)),
+        "candidate_reported_total": len(candidate_reported_totals(CYCLE)),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}

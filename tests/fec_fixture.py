@@ -252,6 +252,14 @@ class Validation(TypedDict):
     top: TopScores
 
 
+class ReportedTotals(TypedDict):
+    # The values each row lists, in silver column order after the key.
+    columns: list[str]
+    # By cycle, then committee or candidate id: one row of `columns`' values.
+    reported_total: dict[int, dict[str, list[Any]]]
+    candidate_reported_total: dict[int, dict[str, list[Any]]]
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
@@ -276,6 +284,7 @@ class Expected(TypedDict):
     distinct_donors: int
     attributions: Attributions
     validation: Validation
+    reported_totals: ReportedTotals
 
 
 @functools.cache

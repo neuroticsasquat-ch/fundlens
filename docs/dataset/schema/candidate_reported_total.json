@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/candidate_reported_total.json",
+  "title": "candidate_reported_total",
+  "description": "One candidate's reported totals for a cycle before 2008, as the FEC's `weball` file gives them: `reported_total`'s columns with `candidate_id` in place of `committee_id`, a figure `weball` lacks null. Empty from 2008, when a candidate's figures are the sum of the committees raising for them. FEC lists a committee's money under every candidate linked to it, so rows do not add up across candidates. Never add one to `contribution` amounts. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "candidate_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_file": {
+      "description": "The FEC summary file the figures are from, `weball`.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The candidate's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "period_start": {
+      "description": "Null; `weball` gives no start date.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "period_end": {
+      "description": "The end of the latest report of the cycle, which says how current the figures are.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "receipts": {
+      "description": "Total receipts.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "disbursements": {
+      "description": "Total disbursements.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "cash_on_hand_start": {
+      "description": "Cash on hand at the start of the reporting period.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "cash_on_hand_end": {
+      "description": "Cash on hand at the end of the reporting period.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "debts_owed_by": {
+      "description": "Debts owed by the candidate's committees at the end of the reporting period.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "debts_owed_to": {
+      "description": "Null; `weball` does not give it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_itemized": {
+      "description": "Null; `weball` does not split itemized from unitemized money.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_unitemized": {
+      "description": "Null; `weball` does not split itemized from unitemized money.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_total": {
+      "description": "Contributions from individuals, itemized and unitemized.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "individual_refunds": {
+      "description": "Refunds of contributions to individuals.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "party_contributions": {
+      "description": "Contributions from party committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_committee_contributions": {
+      "description": "Contributions from other political committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_contributions": {
+      "description": "Contributions from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_loans": {
+      "description": "Loans from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_loans": {
+      "description": "Loans from anyone else.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_loan_repayments": {
+      "description": "Repayments of loans from the candidate.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "other_loan_repayments": {
+      "description": "Repayments of other loans.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "transfers_in": {
+      "description": "Transfers from the candidate's other authorized committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "transfers_out": {
+      "description": "Transfers to the candidate's other authorized committees.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "independent_expenditures": {
+      "description": "Null; `weball` does not give it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "party_coordinated": {
+      "description": "Null; `weball` does not give it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "operating_expenditures": {
+      "description": "Null; `weball` does not give it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "federal_funds": {
+      "description": "Null; `weball` does not give it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "jurisdiction",
+    "source_file",
+    "candidate_id",
+    "period_start",
+    "period_end",
+    "receipts",
+    "disbursements",
+    "cash_on_hand_start",
+    "cash_on_hand_end",
+    "debts_owed_by",
+    "debts_owed_to",
+    "individual_itemized",
+    "individual_unitemized",
+    "individual_total",
+    "individual_refunds",
+    "party_contributions",
+    "other_committee_contributions",
+    "candidate_contributions",
+    "candidate_loans",
+    "other_loans",
+    "candidate_loan_repayments",
+    "other_loan_repayments",
+    "transfers_in",
+    "transfers_out",
+    "independent_expenditures",
+    "party_coordinated",
+    "operating_expenditures",
+    "federal_funds"
+  ],
+  "additionalProperties": false
+}

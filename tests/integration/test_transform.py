@@ -40,6 +40,8 @@ TABLES: tuple[SilverTable, ...] = (
     "jfc_attribution",
     "contributor",
     "independent_expenditure",
+    "reported_total",
+    "candidate_reported_total",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -1683,6 +1685,112 @@ def test_the_self_funding_checks_fail_on_an_unflagged_15c_and_an_earmark_of_anot
             (6, "C1", "CAN", "DOE, JANE"),
         ]
         assert failing_rows(con, "silver_contribution_self_funding.sql") == [(3, "C1", WINRED)]
+
+
+def reported_rows(rows: list[dict[str, object]], key: str) -> dict[str, list[object]]:
+    """Silver reported-total rows by `key`, each as `expected.yaml`'s `reported_totals` lists it:
+    its source file, reporting period and measures. The rows' columns are checked to be the
+    table's, in order."""
+    columns = fec_fixture.expected()["reported_totals"]["columns"]
+    for row in rows:
+        assert list(row) == ["cycle", "source", "jurisdiction", "source_file", key, *columns[1:]]
+        assert (row["source"], row["jurisdiction"]) == ("fec", "US")
+    return {str(row[key]): [row[column] for column in columns] for row in rows}
+
+
+def test_reported_totals_are_each_committees_summary_row_by_source_precedence(
+    fixture_silver: Path,
+) -> None:
+    """Every fixture committee with a summary row has one reported_total row, the file's figures
+    as filed: committee_summary's, the Form 5 filer's blanks filled from webk. No candidate has
+    one from 2008 (every-FEC-dollar spec §4.1, §4.2)."""
+    expected = fec_fixture.expected()["reported_totals"]
+    committees = local_silver(fixture_silver, "reported_total")
+    candidates = local_silver(fixture_silver, "candidate_reported_total")
+
+    assert {row["cycle"] for row in committees} == {2024}
+    assert reported_rows(committees, "committee_id") == expected["reported_total"][2024]
+    assert candidates == []
+
+
+def test_the_reported_total_key_check_fails_on_a_repeated_or_missing_committee() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE reported_total AS SELECT * FROM (VALUES"
+            " (2024, 'C1'), (2024, 'C1'), (2024, NULL), (2024, 'C2')"
+            ") AS t(cycle, committee_id)"
+        )
+
+        assert sorted(
+            failing_rows(con, "silver_reported_total_key.sql"), key=lambda r: str(r[1])
+        ) == [(2024, "C1", 2), (2024, None, 1)]
+
+
+def test_the_reported_total_committee_check_fails_on_a_committee_cm_lacks() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE committee AS SELECT * FROM (VALUES ('C1')) AS t(committee_id)")
+        con.execute(
+            "CREATE TABLE reported_total AS SELECT * FROM (VALUES"
+            " (2024, 'C1', 'committee_summary'), (2024, 'C9', 'committee_summary+webk')"
+            ") AS t(cycle, committee_id, source_file)"
+        )
+
+        assert failing_rows(con, "silver_reported_total_committee.sql") == [
+            (2024, "C9", "committee_summary+webk")
+        ]
+
+
+def test_the_reported_total_period_check_fails_on_a_period_ending_before_it_starts() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE reported_total AS SELECT * FROM (VALUES"
+            " (2024, 'C1', DATE '2023-01-01', DATE '2024-12-31'),"
+            " (2024, 'C2', DATE '2024-12-31', DATE '2024-12-31'),"
+            " (2024, 'C3', NULL, DATE '2024-12-31'),"
+            " (2024, 'C4', DATE '2024-12-31', DATE '2023-01-01')"
+            ") AS t(cycle, committee_id, period_start, period_end)"
+        )
+
+        assert failing_rows(con, "silver_reported_total_period.sql") == [
+            (2024, "C4", date(2024, 12, 31), date(2023, 1, 1))
+        ]
+
+
+def test_the_repeat_check_fails_on_a_committee_whose_summary_repeats_differ() -> None:
+    """A committee repeated per linked candidate passes while its rows differ only in CAND_ID
+    and Link_Image, and fails once a figure differs (every-FEC-dollar spec §4.1)."""
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee_summary AS SELECT * FROM (VALUES"
+            f" ('https://www.fec.gov/a', '{HANDED_OFF}', '{BIDEN}', 8500.00),"
+            f" ('https://www.fec.gov/b', '{HANDED_OFF}', '{HARRIS}', 8500.00),"
+            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL}', 44500.00),"
+            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL_ALIAS}', 44000.00),"
+            " ('https://www.fec.gov/d', 'C1', NULL, 100.00)"
+            ") AS t(Link_Image, CMTE_ID, CAND_ID, TTL_RECEIPTS)"
+        )
+
+        assert failing_rows(con, "silver_reported_total_repeat.sql") == [(DRISCOLL_COMMITTEE, 2)]
+
+
+def test_the_candidate_reported_total_checks_fail_on_a_repeated_or_unknown_candidate() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE candidate AS SELECT * FROM (VALUES ('H8MD05201')) AS t(candidate_id)"
+        )
+        con.execute(
+            "CREATE TABLE candidate_reported_total AS SELECT * FROM (VALUES"
+            " (1998, 'H8MD05201'), (1998, 'H8MD05201'), (1998, NULL), (1998, 'H8MD05299')"
+            ") AS t(cycle, candidate_id)"
+        )
+
+        assert sorted(
+            failing_rows(con, "silver_candidate_reported_total_key.sql"), key=lambda r: str(r[1])
+        ) == [(1998, "H8MD05201", 2), (1998, None, 1)]
+        assert sorted(
+            failing_rows(con, "silver_candidate_reported_total_candidate.sql"),
+            key=lambda r: str(r[1]),
+        ) == [(1998, "H8MD05299"), (1998, None)]
 
 
 def test_the_organization_receipt_key_check_fails_on_a_repeated_or_missing_key() -> None:

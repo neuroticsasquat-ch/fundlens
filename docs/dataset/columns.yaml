@@ -312,3 +312,92 @@ crosswalk:
     donor_id: The donor it is resolved to.
     assigned_at: When the key was last given its donor id.
     build_id: The build that last gave it, `YYYYMMDDTHHMMSSZ` of the run's start.
+
+reported_total:
+  description: >-
+    One committee's reported totals for a cycle: what it raised, spent, holds and owes, as the
+    FEC's summary files give them, cycle to date. FEC's figures as filed: a blank is null, a
+    filed 0 is 0, nothing is netted or corrected. Never add one to `contribution` amounts: a
+    reported total already holds the itemized money those rows itemize. From 2008 from
+    `committee_summary`, a Form 5 or Form 7 filer's blank figures from `webk`; 1996–2006 from
+    `webk`, which holds no House or Senate campaign committee; none before 1996. A column a
+    cycle's file lacks is null. Partitioned by cycle.
+  key: [cycle, committee_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    source_file: >-
+      The FEC summary file the figures are from: `committee_summary`, `committee_summary+webk`
+      (a figure `committee_summary` left blank is `webk`'s) or `webk`.
+    committee_id: The committee's FEC id.
+    period_start: The start of the committee's first report of the cycle; null before 2008.
+    period_end: The end of its latest report of the cycle, which says how current the figures are.
+    receipts: Total receipts.
+    disbursements: Total disbursements.
+    cash_on_hand_start: Cash on hand at the start of the reporting period.
+    cash_on_hand_end: Cash on hand at its end.
+    debts_owed_by: Debts owed by the committee at the end of the reporting period.
+    debts_owed_to: Debts owed to it; null before 2008.
+    individual_itemized: Contributions from individuals itemized on its reports; null before 2008.
+    individual_unitemized: >-
+      Contributions from individuals of $200 or less a year, reported as one lump and never
+      attributed to a donor; null before 2008.
+    individual_total: >-
+      Contributions from individuals, itemized and unitemized. Filers' arithmetic is kept: it
+      need not equal the two figures added.
+    individual_refunds: Refunds of contributions to individuals.
+    party_contributions: Contributions from party committees.
+    other_committee_contributions: Contributions from other political committees.
+    candidate_contributions: Contributions from the candidate.
+    candidate_loans: Loans from the candidate.
+    other_loans: Loans from anyone else.
+    candidate_loan_repayments: Repayments of loans from the candidate.
+    other_loan_repayments: Repayments of other loans.
+    transfers_in: Transfers from affiliated or authorized committees.
+    transfers_out: Transfers to affiliated or authorized committees.
+    independent_expenditures: Independent expenditures made.
+    party_coordinated: Coordinated expenditures made by a party committee.
+    operating_expenditures: Operating expenditures, from whichever of the FEC's two lines its forms fill.
+    federal_funds: Federal funds received (presidential public funding).
+
+candidate_reported_total:
+  description: >-
+    One candidate's reported totals for a cycle before 2008, as the FEC's `weball` file gives
+    them: `reported_total`'s columns with `candidate_id` in place of `committee_id`, a figure
+    `weball` lacks null. Empty from 2008, when a candidate's figures are the sum of the
+    committees raising for them. FEC lists a committee's money under every candidate linked to
+    it, so rows do not add up across candidates. Never add one to `contribution` amounts.
+    Partitioned by cycle.
+  key: [cycle, candidate_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    source_file: The FEC summary file the figures are from, `weball`.
+    candidate_id: The candidate's FEC id.
+    period_start: Null; `weball` gives no start date.
+    period_end: The end of the latest report of the cycle, which says how current the figures are.
+    receipts: Total receipts.
+    disbursements: Total disbursements.
+    cash_on_hand_start: Cash on hand at the start of the reporting period.
+    cash_on_hand_end: Cash on hand at the end of the reporting period.
+    debts_owed_by: Debts owed by the candidate's committees at the end of the reporting period.
+    debts_owed_to: Null; `weball` does not give it.
+    individual_itemized: Null; `weball` does not split itemized from unitemized money.
+    individual_unitemized: Null; `weball` does not split itemized from unitemized money.
+    individual_total: Contributions from individuals, itemized and unitemized.
+    individual_refunds: Refunds of contributions to individuals.
+    party_contributions: Contributions from party committees.
+    other_committee_contributions: Contributions from other political committees.
+    candidate_contributions: Contributions from the candidate.
+    candidate_loans: Loans from the candidate.
+    other_loans: Loans from anyone else.
+    candidate_loan_repayments: Repayments of loans from the candidate.
+    other_loan_repayments: Repayments of other loans.
+    transfers_in: Transfers from the candidate's other authorized committees.
+    transfers_out: Transfers to the candidate's other authorized committees.
+    independent_expenditures: Null; `weball` does not give it.
+    party_coordinated: Null; `weball` does not give it.
+    operating_expenditures: Null; `weball` does not give it.
+    federal_funds: Null; `weball` does not give it.
