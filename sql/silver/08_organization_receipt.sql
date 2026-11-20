@@ -219,8 +219,8 @@ SELECT
     nullif(trim(kept.ENTITY_TP), '') IS NULL AS classified,
     -- A hybrid PAC's non-contribution-account money, as in contribution (NEU-2192): a 10, 10J or
     -- 20Y to or from a committee typed V or W, or a 24I there whose memo begins
-    -- "* NON-CONTRIBUTION ACCOUNT" (NEU-2207), kept out of
-    -- committee_cycle.total_from_organizations.
+    -- "* NON-CONTRIBUTION ACCOUNT" (NEU-2207), or a 10 or 10J at any committee whose memo begins
+    -- with the account's name (NEU-2400), kept out of committee_cycle.total_from_organizations.
     coalesce(
         fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             = 'non-contribution account',

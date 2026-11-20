@@ -5514,6 +5514,432 @@ their `total_individual`. Keying on the committee type alone (W only) was reject
 $37,794; leaving every hybrid PAC's 24I in the account for the $5,740 and the $48,472; sending
 every 24I to 11(a)(i) for 2024's $22,920 on line 17. ADR-0004 carries the rule.
 
+### Q10k: a 10 whose memo names the account, at a committee `cm` does not type V or W (NEU-2400)
+
+Measured for [NEU-2400](https://linear.app/neuroticsasquatch/issue/NEU-2400) on 2026-11-20.
+DemocracyFirst PAC (`C00808998`) was fifth in 2024's reconciliation on build `20261119T212247Z`:
+$2,137,585 counted against FEC's $25,295 itemized. Most of it is 10s whose `MEMO_TEXT` says
+`NON-CONTRIBUTION ACCOUNT`, which `fec_line` put on 11(a)(i) because 2024's `cm` does not type
+the committee V or W. This lists every 2024 `indiv` and `oth` row whose memo names a
+non-contribution account, by the line `fec_line` puts it on, on `main` and under a rule that reads
+the memo for a 10 or 10J at any committee type. Then it compares each committee the rule moves
+with FEC's itemized figure.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-20 02:28–02:42 UTC, `app` container of the local dev stack, DuckDB 2.0.0. FEC's bulk files, not the live build, which this run could not reach: they are the build's inputs, two weeks newer than its 2026-10-31 source dates |
+| Code | branch `fix/NEU-2400-memo-named-non-contribution-account` off `main` at `dd386f9`. `line_now` is `main`'s `fec_line` (`git show main:src/fundlens/fec/lines.py`, its macros renamed `*_main`), `line_rule` the branch's |
+| `indiv24.zip`, `oth24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/…`, `Last-Modified: Sun, 15 Nov 2026 19:35:23 GMT` and `19:38:06 GMT`, downloaded 2026-11-20T02:24Z |
+| `cm24.zip` | `…/2024/cm24.zip`, `Last-Modified: Thu, 19 Nov 2026 06:47:09 GMT`, downloaded 2026-11-20T02:24Z |
+| `committee_summary_2024.csv` | `…/2024/committee_summary_2024.csv`, `Last-Modified: Thu, 19 Nov 2026 10:12:25 GMT`, downloaded 2026-11-20T02:38Z |
+| `cm26.zip` | `…/2026/cm26.zip`, `Last-Modified: Thu, 19 Nov 2026 06:47:10 GMT`: `C00808998` is `V` there |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec` for `1748864` (DemocracyFirst PAC, YE 2023), `1828491` (Vote Save America) and `1802408` (Food & Water Action PAC) |
+
+**Method.** `extract_nca.sh` keeps every `indiv` and `oth` row whose `MEMO_TEXT` holds
+`NON-CONTRIBUTION`, `NON CONTRIBUTION` or `NONCONTRIBUTION`, and every row at `C00808998`, each
+`SUB_ID` once. A row is counted as silver could count it: no memo line (`MEMO_CD` X); an
+individual's (IND, CAN or blank) in `contribution`, an organization's in `organization_receipt`, a
+committee's in neither (a `committee_transfer`, whose total the flag does not touch). Q10k9 reads
+every row at the committees the rule moves, and its figure is line-11(a)(i) money gross of
+refunds, as `itemized_total` is. It leaves out silver's other drops (repeated rows, memo-line
+attributions, a conduit's side), so it is the rule's effect, not gold's `itemized_total`. The
+filed line of a moved row comes from its raw filing, joined on `TRAN_ID`.
+
+```bash
+# Host, from the repository root, dev stack up. About 4.7 GB of downloads; ~10 minutes.
+R=$PWD; W=$(mktemp -d); S=$(mktemp -d); cd "$W"
+B=https://www.fec.gov/files/bulk-downloads/2024
+for f in cm24.zip oth24.zip indiv24.zip committee_summary_2024.csv; do curl -sSLO $B/$f; done
+# Save extract_nca.sh and q10k.py below in $S, chmod +x the first, then:
+"$S/extract_nca.sh" "$W"
+# Every row at the committees Q10k4 lists (a first run of q10k.py, stopped after it, gives them).
+IDS="C00808998 C00835587 C00768101 C00808733 C00801910 C00758219 C00884130"
+for f in indiv oth; do m=$([ $f = indiv ] && echo itcont.txt || echo itoth.txt)
+  unzip -p ${f}24.zip "$m" | LC_ALL=C awk -F'|' -v f=$f -v ids="$IDS" '
+    BEGIN { n = split(ids, a, " "); for (i = 1; i <= n; i++) h[a[i]] = 1 }
+    ($1 in h) && !seen[$21]++ { print f "|" $0 }'; done > moved.txt
+LC_ALL=C awk -F',' -v ids="$IDS" 'NR == 1 || index(ids, $2)' committee_summary_2024.csv > cs_moved.csv
+cd "$R" && git show main:src/fundlens/fec/lines.py > "$S/lines_main.py"
+docker compose exec -T app mkdir -p /tmp/m
+for f in "$W/cm.txt" "$W/nca.txt" "$W/moved.txt" "$W/cs_moved.csv" "$S/q10k.py" "$S/lines_main.py"; do
+    docker compose cp "$f" app:/tmp/m/; done
+docker compose exec -T app uv run python /tmp/m/q10k.py > "$S/q10k.out"
+docker compose exec -T app rm -rf /tmp/m && rm -rf "$W"
+```
+
+`extract_nca.sh`:
+
+```sh
+#!/bin/sh
+# Usage: extract_nca.sh <dir holding indiv24.zip, oth24.zip, cm24.zip>. Writes cm.txt, and nca.txt:
+# every indiv and oth row whose MEMO_TEXT names a non-contribution account in any spelling, or at
+# C00808998, as file|<the row's 21 columns>. Each SUB_ID once: indiv24.zip repeats itcont.txt
+# split by date, so only itcont.txt is read.
+set -e
+cd "$1"
+unzip -oq cm24.zip
+for f in indiv oth; do
+  case $f in indiv) m=itcont.txt;; oth) m=itoth.txt;; esac
+  unzip -p ${f}24.zip "$m" | LC_ALL=C awk -F'|' -v f=$f '
+    { t = toupper($20) }
+    (t ~ /NON[- ]?CONTRIBUTION/ || $1 == "C00808998") && !seen[$21]++ { print f "|" $0 }'
+done > nca.txt
+wc -l cm.txt nca.txt
+```
+
+`q10k.py`:
+
+```python
+# NEU-2400: every indiv and oth row whose memo names a non-contribution account, by the line
+# fec_line puts it on on main and under NEU-2400's rule (this branch's fec_line). setup: /tmp/m holds cm.txt and nca.txt.
+import sys
+import time
+from decimal import Decimal
+
+import duckdb
+
+from fundlens.fec import lines
+
+W = "/tmp/m"
+con = duckdb.connect()
+lines.register(con)
+
+# main's macros, renamed: the line each row is on before the rule (lines_main.py is
+# `git show main:src/fundlens/fec/lines.py`).
+sys.path.insert(0, W)
+import lines_main  # noqa: E402
+
+for macro in (lines_main.TYPE_LINE, lines_main.TRAN_ID_LINE, lines_main.FEC_LINE):
+    con.execute(
+        macro.replace("type_line(", "type_line_main(")
+        .replace("tran_id_line(", "tran_id_line_main(")
+        .replace("fec_line(", "fec_line_main(")
+    )
+
+
+def show(title: str, sql: str) -> None:
+    """Run `sql` and print its result as a Markdown table, with the seconds it took."""
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, Decimal)) and not isinstance(v, bool)
+            else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+BULK = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+        "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+        "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+        "MEMO_TEXT", "SUB_ID"]
+CM = ["CMTE_ID", "CMTE_NM", "TRES_NM", "CMTE_ST1", "CMTE_ST2", "CMTE_CITY", "CMTE_ST",
+      "CMTE_ZIP", "CMTE_DSGN", "CMTE_TP", "CMTE_PTY_AFFILIATION", "CMTE_FILING_FREQ",
+      "ORG_TP", "CONNECTED_ORG_NM", "CAND_ID"]
+
+
+def columns(names: list[str]) -> str:
+    return "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in names) + "}"
+
+
+con.execute(f"""
+CREATE TABLE nca AS
+SELECT *, CAST(TRANSACTION_AMT AS DECIMAL(16, 2)) AS amount
+FROM read_csv('{W}/nca.txt', delim = '|', quote = '', escape = '', header = false,
+    auto_detect = false, columns = {columns(["src", *BULK])});
+CREATE TABLE cm AS SELECT * FROM read_csv('{W}/cm.txt', delim = '|', quote = '', escape = '',
+    header = false, auto_detect = false, columns = {columns(CM)});
+
+-- Each row as silver could count it: no memo line; an individual's (IND, CAN or blank) in
+-- contribution, an organization's in organization_receipt, a committee's in neither.
+CREATE TABLE lined AS
+SELECT nca.*, cm.CMTE_NM, cm.CMTE_TP,
+    CASE WHEN coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN') THEN 'individual'
+        WHEN ENTITY_TP = 'ORG' THEN 'organization' ELSE 'committee' END AS giver,
+    regexp_matches(upper(MEMO_TEXT), '^[^A-Z]*NON[- ]?CONTRIBUTION ACCOUNT') AS memo_names_account,
+    fec_line_main(TRANSACTION_TP, cm.CMTE_TP, MEMO_TEXT, TRAN_ID) AS line_now,
+    fec_line(TRANSACTION_TP, cm.CMTE_TP, MEMO_TEXT, TRAN_ID) AS line_rule
+FROM nca LEFT JOIN cm USING (CMTE_ID)
+WHERE MEMO_CD IS DISTINCT FROM 'X';
+""")
+show("Q10k1: the memos, by how they begin (counted shape, every type and committee)", r"""
+SELECT regexp_extract(upper(MEMO_TEXT), '^[^A-Z]*NON[- ]?CONTRIBUTION ACCOUNT', 0) AS memo_begins,
+    memo_names_account, count(*) AS rows, sum(amount) AS dollars
+FROM lined GROUP BY ALL ORDER BY rows DESC LIMIT 25""")
+show("Q10k2: rows whose memo names the account, by type, committee type and line now", """
+SELECT TRANSACTION_TP AS type, CMTE_TP AS cmte_tp, giver, line_now, line_rule,
+    count(*) AS rows, count(DISTINCT CMTE_ID) AS committees, sum(amount) AS dollars
+FROM lined WHERE memo_names_account GROUP BY ALL ORDER BY type, cmte_tp, giver, line_now""")
+show("Q10k3: the rows the rule moves, by committee type and giver", """
+SELECT CMTE_TP AS cmte_tp, giver, line_now, count(*) AS rows,
+    count(DISTINCT CMTE_ID) AS committees, sum(amount) AS dollars
+FROM lined WHERE line_now IS DISTINCT FROM line_rule GROUP BY ALL ORDER BY dollars DESC""")
+show("Q10k4: the rows the rule moves, by committee", """
+SELECT CMTE_ID AS committee, CMTE_NM AS name, CMTE_TP AS cmte_tp, count(*) AS rows,
+    sum(amount) FILTER (WHERE giver = 'individual') AS individual,
+    sum(amount) FILTER (WHERE giver = 'organization') AS organization,
+    sum(amount) FILTER (WHERE giver = 'committee') AS committee
+FROM lined WHERE line_now IS DISTINCT FROM line_rule GROUP BY ALL ORDER BY sum(amount) DESC""")
+show("Q10k5: line-11(a)(i) rows now whose memo names the account and the rule leaves", """
+SELECT TRANSACTION_TP AS type, CMTE_TP AS cmte_tp, giver, count(*) AS rows,
+    count(DISTINCT CMTE_ID) AS committees, sum(amount) AS dollars
+FROM lined WHERE memo_names_account AND line_rule = '11(a)(i)' GROUP BY ALL ORDER BY dollars DESC""")
+show("Q10k6: memos that name the account other than at the start (counted shape)", """
+SELECT TRANSACTION_TP AS type, CMTE_TP AS cmte_tp, line_now, any_value(MEMO_TEXT) AS a_memo,
+    count(*) AS rows, sum(amount) AS dollars
+FROM lined WHERE NOT memo_names_account AND regexp_matches(upper(MEMO_TEXT), 'NON[- ]?CONTRIBUTION')
+    AND line_now IN ('11(a)(i)', '20 refunds')
+GROUP BY ALL ORDER BY dollars DESC LIMIT 20""")
+show("Q10k7: C00808998's counted-shape rows, by type, memo and line", """
+SELECT TRANSACTION_TP AS type, giver, coalesce(MEMO_TEXT, '') AS memo, line_now, line_rule,
+    count(*) AS rows, sum(amount) AS dollars
+FROM lined WHERE CMTE_ID = 'C00808998' GROUP BY ALL ORDER BY dollars DESC LIMIT 20""")
+show("Q10k8: C00808998 in cm24", "SELECT CMTE_ID, CMTE_NM, CMTE_TP, CMTE_DSGN FROM cm WHERE CMTE_ID = 'C00808998'")
+
+# Each moved committee's line-11(a)(i) money from individuals and organizations (no memo line,
+# gross of refunds, as itemized_total is), on main and under the rule, against FEC's
+# INDV_ITEM_CONTB. moved.txt is every indiv and oth row at those committees; it leaves out
+# silver's other drops (repeated rows, memo-line attributions, a conduit's side), so the figures
+# are the rule's effect, not gold's itemized_total.
+con.execute(f"""
+CREATE TABLE moved_rows AS
+SELECT m.*, CAST(TRANSACTION_AMT AS DECIMAL(16, 2)) AS amount, cm.CMTE_NM, cm.CMTE_TP,
+    fec_line_main(TRANSACTION_TP, cm.CMTE_TP, MEMO_TEXT, TRAN_ID) AS line_now,
+    fec_line(TRANSACTION_TP, cm.CMTE_TP, MEMO_TEXT, TRAN_ID) AS line_rule
+FROM read_csv('{W}/moved.txt', delim = '|', quote = '', escape = '', header = false,
+    auto_detect = false, columns = {columns(["src", *BULK])}) AS m
+LEFT JOIN cm USING (CMTE_ID)
+WHERE MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(nullif(trim(ENTITY_TP), ''), 'IND') IN ('IND', 'CAN', 'ORG');
+CREATE TABLE fec AS SELECT CMTE_ID, CAST(INDV_ITEM_CONTB AS DECIMAL(16, 2)) AS item
+FROM read_csv('{W}/cs_moved.csv', header = true, all_varchar = true);
+""")
+show("Q10k9: the moved committees' line-11(a)(i) money on main and under the rule, against FEC", """
+SELECT CMTE_ID AS committee, any_value(CMTE_NM) AS name, any_value(fec.item) AS fec_itemized,
+    sum(amount) FILTER (WHERE line_now = '11(a)(i)') AS main,
+    sum(amount) FILTER (WHERE line_rule = '11(a)(i)') AS rule,
+    round(sum(amount) FILTER (WHERE line_now = '11(a)(i)') / any_value(fec.item), 4) AS ratio_main,
+    round(sum(amount) FILTER (WHERE line_rule = '11(a)(i)') / any_value(fec.item), 4) AS ratio_rule
+FROM moved_rows LEFT JOIN fec USING (CMTE_ID) GROUP BY ALL ORDER BY main DESC""")
+show("Q10k10: C00808998's line-11(a)(i) money the rule leaves, by type and memo", """
+SELECT TRANSACTION_TP AS type, ENTITY_TP AS entity, coalesce(MEMO_TEXT, '') AS memo, TRAN_ID AS tran_id,
+    FILE_NUM AS file_num, count(*) AS rows, sum(amount) AS dollars
+FROM moved_rows WHERE CMTE_ID = 'C00808998' AND line_rule = '11(a)(i)' AND TRANSACTION_TP = '10'
+GROUP BY ALL ORDER BY dollars DESC""")
+```
+
+#### Results
+
+**Q10k1: the memos, by how they begin (counted shape, every type and committee)  (0 s)**
+
+| memo_begins | memo_names_account | rows | dollars |
+|---|---|---|---|
+| NON-CONTRIBUTION ACCOUNT | True | 306,270 | 1,264,115,319 |
+| NON CONTRIBUTION ACCOUNT | True | 231,670 | 633,597,743 |
+|  | False | 29,125 | 29,560,355 |
+| * NON-CONTRIBUTION ACCOUNT | True | 25,778 | 9,810,202 |
+|  |  | 53 | 1,101,676 |
+| , NON-CONTRIBUTION ACCOUNT | True | 3 | 1,625 |
+| NONCONTRIBUTION ACCOUNT | True | 2 | 10,105 |
+
+**Q10k2: rows whose memo names the account, by type, committee type and line now  (0 s)**
+
+| type | cmte_tp | giver | line_now | line_rule | rows | committees | dollars |
+|---|---|---|---|---|---|---|---|
+| 10 | N | individual | 11(a)(i) | non-contribution account | 319 | 1 | 48,728 |
+| 10 | O | individual | 11(a)(i) | non-contribution account | 19 | 2 | 19,987 |
+| 10 | O | organization | 11(a)(i) | non-contribution account | 1 | 1 | 1,208 |
+| 10 | Q | committee | 11(a)(i) | non-contribution account | 3 | 2 | 139,420 |
+| 10 | Q | individual | 11(a)(i) | non-contribution account | 14 | 2 | 1,920,000 |
+| 10 | Q | organization | 11(a)(i) | non-contribution account | 2 | 2 | 190,750 |
+| 10 | V | committee | non-contribution account | non-contribution account | 447 | 53 | 131,681,444 |
+| 10 | V | individual | non-contribution account | non-contribution account | 369,971 | 84 | 482,388,511 |
+| 10 | V | organization | non-contribution account | non-contribution account | 1,120 | 58 | 491,499,793 |
+| 10 | W | committee | non-contribution account | non-contribution account | 397 | 31 | 83,247,609 |
+| 10 | W | individual | non-contribution account | non-contribution account | 185,264 | 53 | 290,143,584 |
+| 10 | W | organization | non-contribution account | non-contribution account | 570 | 35 | 203,297,449 |
+| 10J | V | individual | non-contribution account | non-contribution account | 9 | 1 | 1,290 |
+| 11 | W | organization | 11(a)(i) | 11(a)(i) | 4 | 2 | 90,000 |
+| 15 | N | individual | 11(a)(i) | 11(a)(i) | 1 | 1 | 30 |
+| 15 | Q | individual | 11(a)(i) | 11(a)(i) | 1 | 1 | 300 |
+| 15 | V | individual | 11(a)(i) | 11(a)(i) | 2 | 1 | 50,000 |
+| 15 | W | individual | 11(a)(i) | 11(a)(i) | 3 | 2 | 35,000 |
+| 15E | Q | individual | 11(a)(i) | 11(a)(i) | 4 | 2 | 2,400 |
+| 15E | V | individual | 11(a)(i) | 11(a)(i) | 6 | 3 | 14,000 |
+| 15E | W | individual | 11(a)(i) | 11(a)(i) | 5 | 3 | 3,750 |
+| 15E | W | individual | 17 other receipts | 17 other receipts | 7 | 1 | 10,635 |
+| 15Z | V | committee | 11(a)(i) | 11(a)(i) | 1 | 1 | 3,273 |
+| 16G | W | individual | 13 loans | 13 loans | 1 | 1 | 30,000 |
+| 18G | V | committee | 12 transfers | 12 transfers | 3 | 1 | 500,000 |
+| 18G | W | committee | 12 transfers | 12 transfers | 3 | 2 | 32,491 |
+| 18G | W | organization | 12 transfers | 12 transfers | 1 | 1 | 25,000 |
+| 18K | V | committee | 12 transfers | 12 transfers | 1 | 1 | 30,000 |
+| 20Y | V | committee | non-contribution account | non-contribution account | 8 | 1 | 45,800 |
+| 20Y | V | individual | non-contribution account | non-contribution account | 384 | 8 | 977,920 |
+| 20Y | V | organization | non-contribution account | non-contribution account | 150 | 5 | 1,793,256 |
+| 20Y | W | individual | non-contribution account | non-contribution account | 774 | 7 | 930,579 |
+| 20Y | W | organization | non-contribution account | non-contribution account | 23 | 3 | 22,997 |
+| 22Y | V | individual | 20 refunds | 20 refunds | 449 | 6 | 187,870 |
+| 22Y | W | individual | 20 refunds | 20 refunds | 16 | 4 | 12,975 |
+| 22Y | W | organization | 20 refunds | 20 refunds | 3 | 1 | 4,731 |
+| 24A | V | organization |  |  | 922 | 7 | 84,807,892 |
+| 24A | W | committee |  |  | 1 | 1 | 5,396 |
+| 24A | W | organization |  |  | 165 | 7 | 11,563,524 |
+| 24E | O | organization |  |  | 4 | 1 | 122 |
+| 24E | Q | organization |  |  | 2 | 1 | 80,000 |
+| 24E | V | organization |  |  | 1,966 | 13 | 71,330,809 |
+| 24E | W | committee |  |  | 3 | 2 | 104,007 |
+| 24E | W | individual |  |  | 3 | 1 | 2,650 |
+| 24E | W | organization |  |  | 463 | 7 | 35,597,766 |
+| 24G | N | committee |  |  | 1 | 1 | 4,592 |
+| 24G | V | committee |  |  | 5 | 1 | 320,000 |
+| 24I | W | individual | non-contribution account | non-contribution account | 151 | 2 | 22,920 |
+| 24K | Q | committee |  |  | 5 | 2 | 140,000 |
+| 24K | V | committee |  |  | 16 | 9 | 1,920,874 |
+| 24K | V | organization |  |  | 1 | 1 | -28,484 |
+| 24K | W | committee |  |  | 28 | 7 | 12,279,396 |
+| 24T | W | individual |  |  | 1 | 1 | 750 |
+
+**Q10k3: the rows the rule moves, by committee type and giver  (0 s)**
+
+| cmte_tp | giver | line_now | rows | committees | dollars |
+|---|---|---|---|---|---|
+| Q | individual | 11(a)(i) | 14 | 2 | 1,920,000 |
+| Q | organization | 11(a)(i) | 2 | 2 | 190,750 |
+| Q | committee | 11(a)(i) | 3 | 2 | 139,420 |
+| N | individual | 11(a)(i) | 319 | 1 | 48,728 |
+| O | individual | 11(a)(i) | 19 | 2 | 19,987 |
+| O | organization | 11(a)(i) | 1 | 1 | 1,208 |
+
+**Q10k4: the rows the rule moves, by committee  (0 s)**
+
+| committee | name | cmte_tp | rows | individual | organization | committee |
+|---|---|---|---|---|---|---|
+| C00808998 | DEMOCRACYFIRST PAC | Q | 14 | 1,905,000 | 150,000 |  |
+| C00835587 | VOTE SAVE AMERICA | Q | 3 |  | 40,750 | 119,420 |
+| C00768101 | MISSION DEMOCRACY PAC | N | 319 | 48,728 |  |  |
+| C00808733 | STRONGER FAIRER FORWARD PAC | Q | 1 |  |  | 20,000 |
+| C00801910 | FOOD AND WATER ACTION PAC | O | 17 | 18,000 | 1,208 |  |
+| C00758219 | NO DEM LEFT BEHIND PAC | Q | 1 | 15,000 |  |  |
+| C00884130 | ROAD2RIGHTS | O | 3 | 1,987 |  |  |
+
+**Q10k5: line-11(a)(i) rows now whose memo names the account and the rule leaves  (0 s)**
+
+| type | cmte_tp | giver | rows | committees | dollars |
+|---|---|---|---|---|---|
+| 11 | W | organization | 4 | 2 | 90,000 |
+| 15 | V | individual | 2 | 1 | 50,000 |
+| 15 | W | individual | 3 | 2 | 35,000 |
+| 15E | V | individual | 6 | 3 | 14,000 |
+| 15E | W | individual | 5 | 3 | 3,750 |
+| 15Z | V | committee | 1 | 1 | 3,273 |
+| 15E | Q | individual | 4 | 2 | 2,400 |
+| 15 | Q | individual | 1 | 1 | 300 |
+| 15 | N | individual | 1 | 1 | 30 |
+
+**Q10k6: memos that name the account other than at the start (counted shape)  (0 s)**
+
+| type | cmte_tp | line_now | a_memo | rows | dollars |
+|---|---|---|---|---|---|
+| 15 | V | 11(a)(i) | CONTRIBUTION TO NON-CONTRIBUTION ACCOUNT. NO LIMITS AFFECTED. | 514 | 42,236 |
+| 15E | W | 11(a)(i) | * EARMARKED CONTRIBUTION: SEE BELOW NON-CONTRIBUTION ACCOUNT | 11 | 15,521 |
+| 15E | Q | 11(a)(i) | * EARMARKED CONTRIBUTION: SEE BELOW NON-CONTRIBUTION ACCOUNT | 3 | 600 |
+| 10 | Q | 11(a)(i) | * EARMARKED CONTRIBUTION: SEE BELOW NON-CONTRIBUTION ACCOUNT | 1 | 500 |
+| 15 | W | 11(a)(i) | TRANSFERRED TO NON-CONTRIBUTION ACCOUNT | 12 | -6,111 |
+
+**Q10k7: C00808998's counted-shape rows, by type, memo and line  (0 s)**
+
+| type | giver | memo | line_now | line_rule | rows | dollars |
+|---|---|---|---|---|---|---|
+| 10 | individual | NON-CONTRIBUTION ACCOUNT | 11(a)(i) | non-contribution account | 12 | 1,755,000 |
+| 24A | organization |  |  |  | 13 | 1,034,843 |
+| 10 | individual | NON CONTRIBUTION ACCOUNT | 11(a)(i) | non-contribution account | 1 | 150,000 |
+| 10 | organization | NON-CONTRIBUTION ACCOUNT | 11(a)(i) | non-contribution account | 1 | 150,000 |
+| 24K | committee | NON-CONTRIBUTION ACCOUNT |  |  | 3 | 100,000 |
+| 10 | organization | REFUNDED EXPENSE | 11(a)(i) | 11(a)(i) | 2 | 57,496 |
+| 24K | committee |  |  |  | 24 | 46,878 |
+| 15 | individual |  | 11(a)(i) | 11(a)(i) | 11 | 17,750 |
+| 15E | individual | * EARMARKED CONTRIBUTION: SEE BELOW | 11(a)(i) | 11(a)(i) | 59 | 7,339 |
+| 22Y | individual |  | 20 refunds | 20 refunds | 5 | 2,205 |
+
+**Q10k8: C00808998 in cm24  (0 s)**
+
+| CMTE_ID | CMTE_NM | CMTE_TP | CMTE_DSGN |
+|---|---|---|---|
+| C00808998 | DEMOCRACYFIRST PAC | Q | U |
+
+**Q10k9: the moved committees' line-11(a)(i) money on main and under the rule, against FEC  (0 s)**
+
+| committee | name | fec_itemized | main | rule | ratio_main | ratio_rule |
+|---|---|---|---|---|---|---|
+| C00835587 | VOTE SAVE AMERICA | 3,377,310 | 3,345,452 | 3,304,702 | 0.9906 | 0.9785 |
+| C00808998 | DEMOCRACYFIRST PAC | 25,295 | 2,137,585 | 82,585 | 84.5062 | 3.2649 |
+| C00758219 | NO DEM LEFT BEHIND PAC | 849,776 | 865,130 | 850,130 | 1.0181 | 1.0004 |
+| C00884130 | ROAD2RIGHTS | 0 | 281,162 | 279,175 | inf | inf |
+| C00768101 | MISSION DEMOCRACY PAC | 29,545 | 88,102 | 39,374 | 2.982 | 1.3327 |
+| C00808733 | STRONGER FAIRER FORWARD PAC | 38,950 | 23,950 | 23,950 | 0.6149 | 0.6149 |
+| C00801910 | FOOD AND WATER ACTION PAC | 1,000 | 20,697 | 1,489 | 20.697 | 1.489 |
+
+**Q10k10: C00808998's line-11(a)(i) money the rule leaves, by type and memo  (0 s)**
+
+| type | entity | memo | tran_id | file_num | rows | dollars |
+|---|---|---|---|---|---|---|
+| 10 | ORG | REFUNDED EXPENSE | 10284089 | 1748864 | 1 | 50,000 |
+| 10 | ORG | REFUNDED EXPENSE | 10455622 | 1748864 | 1 | 7,496 |
+
+#### Findings
+
+- **2024's `cm` types DemocracyFirst PAC Q, and 2026's V** (Q10k8; `cm26.zip`). The ticket's
+  assertion holds: its memo-named 10s landed on 11(a)(i) because the cycle's type is not V or W.
+- **The account has three spellings.** `NON-CONTRIBUTION ACCOUNT` (306,270 counted-shape rows,
+  $1.26B), `NON CONTRIBUTION ACCOUNT` (231,670, $634M), and, rarely, `NONCONTRIBUTION ACCOUNT` (2,
+  $10,105). Filers put `* ` or `, ` before it (25,781 rows). One of DemocracyFirst's own $150,000
+  gifts uses the second spelling, so a rule keyed on the hyphen alone would leave it on 11(a)(i).
+- **The rule moves 355 counted rows and $2,180,673 at six committees** typed Q, N or O (Q10k3):
+  individuals' $1,988,715 (352 rows) and organizations' $191,958 (3 rows). Three committees'
+  gifts ($139,420) are from committees, `committee_transfer` receipts, whose totals the flag does
+  not touch. That makes seven committees in Q10k4, and STRONGER FAIRER FORWARD PAC's only moved
+  row is a committee's. No V or W row moves: they were the account's already.
+- **Every moved row whose raw filing was read is on Schedule A line 17**, not 11(a)(i):
+  DemocracyFirst's (filing `1748864`: SCHUSTERMAN, LAWSON, MANDEL, HEISING, PIGOTT, STOLTE, and
+  its own ORG row), Vote Save America's in-kind e-mail list from CROOKED MEDIA ($40,750, `1828491`)
+  and Food & Water Action PAC's (`1802408`).
+- **Four committees move toward FEC's itemized figure** (Q10k9): DemocracyFirst from 84.5 times to
+  3.26, Mission Democracy PAC from 2.98 to 1.33, Food & Water Action PAC from 20.7 to 1.49, and No
+  Dem Left Behind PAC from 1.018 to 1.0004, inside 1%. ROAD2RIGHTS has an FEC figure of 0 either
+  way. **One moves away**: Vote Save America, from 0.9906 to 0.9785. The $40,750 it loses is on
+  line 17 in its raw filing, so it was never in FEC's figure. The committee was already under
+  FEC's figure for other reasons, and the rule takes it further under, correctly.
+- **DemocracyFirst stays over FEC's figure, by $57,290** (Q10k9, Q10k10): two ORG 10s from GPS
+  IMPACT under the memo `REFUNDED EXPENSE` ($50,000 and $7,496, filing `1748864`), also on line 17
+  in the raw filing. Neither their type, their memo nor their `TRAN_ID` names the line, so no
+  bulk-file rule places them: a filer's line choice, as spec §4.4 counts it. NEU-2400's target, an
+  excess under $10,000, is not reached by this rule alone.
+- **Line-11(a)(i) money that names the account and stays** (Q10k5, Q10k6): $199k of 11, 15, 15E
+  and 15Z rows at V, W, Q and N committees, plus 15s and 15Es whose memo names the account after
+  other text (514 15s at V committees, $42,236, under memos such as `CONTRIBUTION TO
+  NON-CONTRIBUTION ACCOUNT. NO LIMITS AFFECTED.`). Their type is the contribution account's. One
+  10, $500 at a Q committee under `* EARMARKED CONTRIBUTION: SEE BELOW NON-CONTRIBUTION ACCOUNT`,
+  stays on 11(a)(i) too: its memo names the account only after other text. None was read against
+  a raw filing, so whether any is on line 17 is not measured.
+- **No refund follows.** 2024 has no 20Y whose memo names the account at a committee not typed V
+  or W (Q10k2), so the rule leaves a 20Y's line as it was. Nor does any moved row carry a
+  `TRAN_ID` naming a line (each was on 11(a)(i) on `main`), so the memo outranking the `TRAN_ID`
+  moves nothing on 2024.
+
+**What changed (NEU-2400).** `fec_line` reads the memo for a 10 or 10J at any committee type: one
+whose `MEMO_TEXT` begins, after any characters that are not letters, with `NON-CONTRIBUTION ACCOUNT`,
+`NON CONTRIBUTION ACCOUNT` or `NONCONTRIBUTION ACCOUNT` (case-insensitive) is
+`non-contribution account`, and `is_non_contribution_account`. A 24I's rule (Q10j) is unchanged.
+Rejected: typing a committee by its latest cycle's `CMTE_TP`, which would put its money in the
+account in cycles before it was a hybrid PAC; keying on the hyphenated spelling alone, which would
+leave $150,000 of DemocracyFirst's on 11(a)(i).
+
 ## Q11: 24Ks that net below zero, and FEC's line 23 (NEU-2204)
 
 Measured for [NEU-2204](https://linear.app/neuroticsasquatch/issue/NEU-2204) on 2026-11-07. A

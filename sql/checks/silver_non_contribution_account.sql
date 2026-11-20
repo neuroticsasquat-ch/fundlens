@@ -1,9 +1,10 @@
 -- A row is marked non-contribution-account money exactly when it is a type 10, 10J or 20Y to or
 -- from a hybrid PAC (committee type V or W), or a 24I there whose memo begins
--- "* NON-CONTRIBUTION ACCOUNT", in contribution and in organization_receipt alike (NEU-2192,
--- NEU-2203, NEU-2207): an unmarked one would put the account's money back in total_individual or
--- total_from_organizations, a marked 22Y, or a 24I without that memo, take contribution-account
--- money out of it.
+-- "* NON-CONTRIBUTION ACCOUNT", or a 10 or 10J at any committee whose memo begins, after any
+-- punctuation, with the account's name in any filed spelling, in contribution and in
+-- organization_receipt alike (NEU-2192, NEU-2203, NEU-2207, NEU-2400): an unmarked one would put
+-- the account's money back in total_individual or total_from_organizations, a marked 22Y, or a 24I
+-- without that memo, take contribution-account money out of it.
 WITH marking AS (
     SELECT 'contribution' AS in_table, source_record_id, transaction_type,
         recipient_committee_id, memo_text, is_non_contribution_account
@@ -22,6 +23,8 @@ WHERE marking.is_non_contribution_account IS DISTINCT FROM coalesce(
         marking.transaction_type IN ('10', '10J', '20Y')
         OR marking.transaction_type = '24I'
             AND starts_with(upper(marking.memo_text), '* NON-CONTRIBUTION ACCOUNT')
-    ),
+    )
+    OR marking.transaction_type IN ('10', '10J')
+        AND regexp_matches(upper(marking.memo_text), '^[^A-Z]*NON[- ]?CONTRIBUTION ACCOUNT'),
     false
 );

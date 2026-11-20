@@ -659,7 +659,8 @@ SELECT
     -- name no one it holds a 10 from in the cycle (2024: $9.1M of the V and W committees' $9.7M),
     -- and a 22Y is a refund of an ordinary contribution even to someone who gave the other account
     -- too. At any other committee a 10 or a 20Y is ordinary money: a super PAC (O, U) reports its
-    -- 10s on line 11(a)(i) and refunds them as 20Ys.
+    -- 10s on line 11(a)(i) and refunds them as 20Ys. Unless a 10's or 10J's memo begins with the
+    -- account's name: the filer's mark, which the cycle's `cm` type can miss (NEU-2400).
     coalesce(
         fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             = 'non-contribution account',
