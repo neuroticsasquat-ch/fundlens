@@ -535,3 +535,8 @@ C00800111,N,YE,P2024,202400001906706821,15,IND,"THACKERAY, OPHELIA",CUMBERLAND,M
 # line 17 were. It is the account's money, marked is_non_contribution_account, in the committee's
 # total_non_contribution_account and not its total_from_organizations.
 C00800201,N,Q3,G2024,202400002454599865,10,ORG,CHOPTANK RIVER FOUNDATION,EASTON,MD,21601,,,08052024,30000,,A0404,1702014,,NON-CONTRIBUTION ACCOUNT,4240100000000000404
+# FEC's repeat of a transaction (NEU-2401): THACKERAY's last $50 gift to BRANNIGAN again, the same in
+# every column but SUB_ID, as FEC's 2024 file holds every row of Marianne Williamson's YE 2023
+# amendment twice. The filing lists it once, under one TRAN_ID, so it counts once, and every
+# expected figure but `indiv`'s row count and `dropped_fec_repeat` is as it was without it.
+C00800111,N,YE,P2024,202400001906706821,15,IND,"THACKERAY, OPHELIA",CUMBERLAND,MD,21502,ALLEGANY COLLEGE,LIBRARIAN,12212023,50,,SA11AI.00403,1701111,,,4240100000000000405

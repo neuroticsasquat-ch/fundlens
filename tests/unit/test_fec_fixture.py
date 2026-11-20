@@ -88,8 +88,30 @@ IE_CORRECTIONS = {
 EXPECTED = fec_fixture.expected()
 
 
+@functools.cache
 def rows(file: FecFile) -> tuple[Row, ...]:
-    return fec_fixture.read_rows(file)
+    """`file`'s rows as the transform reads them: an itemized file's without FEC's repeats."""
+    published, repeats = fec_fixture.read_rows(file), fec_repeats(file)
+    return tuple(row for row in published if not repeats or row["SUB_ID"] not in repeats)
+
+
+@functools.cache
+def fec_repeats(file: FecFile) -> frozenset[str]:
+    """The SUB_IDs of the rows FEC's file repeats (NEU-2401): of an itemized file's rows on one
+    electronic filing (FILE_NUM above 0) under one TRAN_ID, the same in every column but SUB_ID,
+    every one but the lowest SUB_ID. Rows with no TRAN_ID repeat none."""
+    if "TRAN_ID" not in CATALOGUE[file].columns:
+        return frozenset()
+    first: set[tuple[str, ...]] = set()
+    repeats: set[str] = set()
+    for row in sorted(fec_fixture.read_rows(file), key=lambda r: int(r["SUB_ID"])):
+        if int(row["FILE_NUM"] or 0) <= 0 or not row["TRAN_ID"].strip():
+            continue
+        transaction = tuple(value for column, value in row.items() if column != "SUB_ID")
+        if transaction in first:
+            repeats.add(row["SUB_ID"])
+        first.add(transaction)
+    return frozenset(repeats)
 
 
 @functools.cache
@@ -1369,7 +1391,7 @@ def contributor_key(row: Row) -> str:
 def test_the_expected_counts_match_the_fixture() -> None:
     indiv, pas2 = rows("indiv"), rows("pas2")
     contributions = counted()
-    assert EXPECTED["rows"] == {file: len(rows(file)) for file in FILES}
+    assert EXPECTED["rows"] == {file: len(fec_fixture.read_rows(file)) for file in FILES}
     assert EXPECTED["silver"] == {
         "committee": len(rows("cm")),
         "candidate": len(rows("cn")),
@@ -1399,6 +1421,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         ),
         "dropped_conduit_refund": sum(is_conduit_earmark_refund(r) for r in indiv),
         "dropped_superseded": sum(is_superseded(r) for r in indiv),
+        "dropped_fec_repeat": len(fec_repeats("indiv")),
         "dropped_unknown_recipient": sum(r["CMTE_ID"] not in committees for r in indiv),
         "dropped_not_individual": sum(not is_individual(r) for r in indiv),
         "self_funding": sum(is_self_funding(r) for r in contributions),

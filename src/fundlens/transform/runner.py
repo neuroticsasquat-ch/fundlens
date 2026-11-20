@@ -8,7 +8,10 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   header, and a CSV, whose header row must be the catalogue's columns, are both copied under
   `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
   deleted after it (`fetch_bulk`). An `indiv` text file that disagrees in size with the same rows
-  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321);
+  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321). The itemized
+  files, `indiv`, `oth` and `pas2`, read each transaction of a filing once: a row FEC's file
+  repeats, the same in every column but SUB_ID, is in `<file>_repeat` and not the view, which
+  reads `<file>_published` (`_drop_fec_repeats`, NEU-2401);
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
@@ -76,6 +79,9 @@ ROW_GROUP_ROWS = 488 * 2048
 CHUNK_BYTES = 1024 * 1024
 # Failing rows quoted per check in the error; the query itself finds the rest.
 SHOWN_ROWS = 5
+# A transaction's place in FEC's itemized files (`indiv`, `oth`, `pas2`): its filer, filing and
+# TRAN_ID there, and FEC's id for the row (NEU-2401).
+TRANSACTION_KEY = ("CMTE_ID", "FILE_NUM", "TRAN_ID", "SUB_ID")
 
 
 type DuckDBConfig = dict[str, str | bool | int | float | list[str]]
@@ -276,7 +282,8 @@ def fetch_bulk(store: R2, cycle: int, file: BulkFile, *, data_dir: Path, work: P
 def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) -> None:
     """The view `<file>`: the bulk file's rows under the catalogue's names, cast to their types.
 
-    `text` is `fetch_bulk`'s copy, UTF-8 throughout.
+    `text` is `fetch_bulk`'s copy, UTF-8 throughout. An itemized file's view reads each
+    transaction once, its rows as published being `<file>_published` (`_drop_fec_repeats`).
     """
     # A CSV's header row was checked by `fetch_bulk`; a zip's names are its vendored header.
     if file.format == "zip" and file.header() != list(file.columns):
@@ -295,17 +302,74 @@ def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) ->
     else:
         # Pipe-delimited and unquoted (a quote in a name is just a character), no header row.
         dialect = "delim = '|', quote = '', escape = '', header = false"
-    con.execute(
-        f"CREATE VIEW {file.name} AS SELECT {selected} FROM read_csv({literal(text)},"
+    source = (
+        f"SELECT {selected} FROM read_csv({literal(text)},"
         f" {dialect}, auto_detect = false, columns = {{{columns}}}, encoding = 'utf-8')"
     )
+    if not set(TRANSACTION_KEY) <= file.columns.keys():
+        con.execute(f"CREATE VIEW {file.name} AS {source}")
+        return
+    con.execute(f"CREATE VIEW {file.name}_published AS {source}")
+    _drop_fec_repeats(con, file)
+
+
+def _drop_fec_repeats(con: duckdb.DuckDBPyConnection, file: BulkFile) -> None:
+    """The view `<file>`: `<file>_published` less the rows FEC's file repeats (NEU-2401).
+
+    A filer gives each transaction on a filing its own TRAN_ID, and FEC's file sometimes holds one
+    transaction on two, three or four rows: the same in every column but SUB_ID. On 2024 every
+    such row checked against its raw filing (`docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec`) is
+    one transaction there. `indiv` holds 18,519 rows beyond a transaction's first, $2.5M on 14
+    filings at 11 committees, ten of the filings whole: Marianne Williamson's YE 2023 amendment
+    counted $1,221,546 of earmarks against the $611,208 it itemized. `oth` holds 227, $11.4M,
+    and `pas2` 37, $177,242 (docs/measurements/summary-files-2024.md Q16). So a row is read when it
+    is the first, by SUB_ID, of the rows of an electronic filing (FILE_NUM above 0) that share its
+    TRAN_ID and every other column; `<file>_repeat` holds the SUB_ID of each other. A copy under
+    the first's own SUB_ID is no repeat here: both are read, for the key checks to stop the build
+    on (2024's SUB_IDs are unique). Rows sharing a TRAN_ID that differ are all read: nothing says
+    which is the transaction (2024: 3 TRAN_IDs in `indiv`, 2 in `oth`, 1 in `pas2`). Nor is a row
+    with no TRAN_ID a repeat, as a paper filing's are: one donor's gifts of one size on one day
+    are separate gifts (Q13f). Every silver model reads the view, so each rule sees a filing as
+    filed. A row with no SUB_ID is read, for the key checks to stop the build on.
+
+    Built in two steps, so the whole file is never held: the transactions on more than one row, by
+    a hash of their filing and TRAN_ID, then those rows alone, each against the lowest SUB_ID of
+    the rows it equals.
+    """
+    published = f"{file.name}_published"
+    shared = f"hash({', '.join(TRANSACTION_KEY[:3])})"
+    columns = ", ".join(f'"{name}"' for name in file.columns if name != "SUB_ID")
+    con.execute(f"""
+        CREATE TEMP TABLE {file.name}_repeat AS
+        WITH shared AS (
+            SELECT {shared} AS filed_as
+            FROM {published}
+            WHERE FILE_NUM > 0 AND nullif(trim(TRAN_ID), '') IS NOT NULL
+            GROUP BY 1
+            HAVING count(*) > 1
+        )
+        SELECT SUB_ID
+        FROM {published}
+        JOIN shared ON shared.filed_as = {shared}
+        WHERE FILE_NUM > 0 AND nullif(trim(TRAN_ID), '') IS NOT NULL
+        QUALIFY SUB_ID > min(SUB_ID) OVER (PARTITION BY {columns})
+    """)
+    con.execute(f"""
+        CREATE VIEW {file.name} AS
+        SELECT *
+        FROM {published}
+        WHERE SUB_ID IS NULL OR SUB_ID NOT IN (SELECT SUB_ID FROM {file.name}_repeat)
+    """)
 
 
 def register_unpublished(con: duckdb.DuckDBPyConnection, file: BulkFile) -> None:
     """The table `<file>`, empty, with the bulk file's columns and types: a file FEC does not
-    publish for the cycle reads as one with no rows (`ccl` before 2000, spec §4)."""
+    publish for the cycle reads as one with no rows (`ccl` before 2000, spec §4). An itemized
+    file's `<file>_repeat` is empty too."""
     columns = ", ".join(f'"{name}" {kind}' for name, kind in file.columns.items())
     con.execute(f"CREATE TABLE {file.name} ({columns})")
+    if set(TRANSACTION_KEY) <= file.columns.keys():
+        con.execute(f"CREATE TEMP TABLE {file.name}_repeat (SUB_ID {file.columns['SUB_ID']})")
 
 
 def _register_conduits(con: duckdb.DuckDBPyConnection) -> None:

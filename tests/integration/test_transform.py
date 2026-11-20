@@ -855,6 +855,17 @@ def test_a_filing_a_later_amendment_supersedes_counts_nowhere(fixture_silver: Pa
     assert {4240100000000000362, 4240100000000000365} <= contributions
 
 
+def test_a_transaction_fec_repeats_counts_once(fixture_silver: Path) -> None:
+    # THACKERAY's last $50 gift to BRANNIGAN, and FEC's repeat of it under the same TRAN_ID, the
+    # same in every column but SUB_ID (NEU-2401): the first counts, and the repeat nowhere.
+    contributions = {
+        row["source_record_id"] for row in local_silver(fixture_silver, "contribution")
+    }
+
+    assert 4240100000000000403 in contributions
+    assert 4240100000000000405 not in contributions
+
+
 def test_a_memo_line_counts_only_when_it_is_the_only_record_of_a_gift(
     fixture_silver: Path,
 ) -> None:
@@ -1632,6 +1643,32 @@ def test_the_superseded_filing_check_fails_on_a_counted_row_of_one() -> None:
             ("committee_transfer", 3, 1001),
             ("contribution", 1, 1001),
             ("organization_receipt", 2, 1001),
+        ]
+
+
+def test_the_fec_repeat_check_fails_on_a_counted_repeat() -> None:
+    with duckdb.connect() as con:
+        # Repeats 1 to 5, one counted in each table built from the itemized files; 6, a repeat
+        # counted nowhere; 7, a row no file repeats.
+        con.execute(
+            "CREATE TABLE indiv_repeat AS SELECT * FROM (VALUES (1), (2), (6)) AS t(SUB_ID)"
+        )
+        con.execute("CREATE TABLE oth_repeat AS SELECT * FROM (VALUES (3), (4)) AS t(SUB_ID)")
+        con.execute("CREATE TABLE pas2_repeat AS SELECT 5 AS SUB_ID")
+        con.execute(
+            "CREATE TABLE contribution AS SELECT * FROM (VALUES (1), (7)) AS t(source_record_id)"
+        )
+        con.execute("CREATE TABLE organization_receipt AS SELECT 2 AS source_record_id")
+        con.execute("CREATE TABLE committee_transfer AS SELECT 3 AS source_record_id")
+        con.execute("CREATE TABLE jfc_attribution AS SELECT 4 AS source_record_id")
+        con.execute("CREATE TABLE independent_expenditure AS SELECT 5 AS source_record_id")
+
+        assert sorted(failing_rows(con, "silver_fec_repeat.sql")) == [
+            ("committee_transfer", "oth", 3),
+            ("contribution", "indiv", 1),
+            ("independent_expenditure", "pas2", 5),
+            ("jfc_attribution", "oth", 4),
+            ("organization_receipt", "indiv", 2),
         ]
 
 
