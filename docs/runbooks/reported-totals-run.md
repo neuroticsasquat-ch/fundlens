@@ -280,8 +280,8 @@ If it stops with exit 1 and a message, [weekly.md](weekly.md)'s *A run missed* s
 ## 6. Load
 
 ```bash
-# VM, in tmux
-time docker exec "$(fl pipeline)" fundlens load --cycle 2024 --build-id "$B" 2>&1 | grep -v '^{' | tee load.log
+# VM, in tmux. The open-file limit is raised for this command alone until NEU-2399 sets it on the container.
+time docker exec "$(fl pipeline)" sh -c 'ulimit -n 65536 && exec fundlens load --cycle 2024 --build-id "$1"' sh "$B" 2>&1 | grep -v '^{' | tee load.log
 mk loaded "$B" | jq '{step, duration_s}'
 ```
 
@@ -625,7 +625,9 @@ came from. Read each committee against the causes the measurement found:
 
 - **Two filings of one report counted.** A report type listed with more than one filing number, an `N` and an `A`
   both counted, or two `A`s, is an amendment fundlens counted beside the filing it replaced: a defect
-  (NEU-2192 to NEU-2199 fixed the patterns found so far). File it.
+  (NEU-2192 to NEU-2199 fixed the patterns found so far). File it. A two-year cycle has two of most report types,
+  though (M2 2023 and M2 2024, YE 2023 and YE 2024): before calling two filing numbers a double count, check each
+  one's `report_year` against FEC's `/v1/committee/<id>/reports/?cycle=2024`.
 - **Money on a line the bulk file does not show** (spec §4.4, Q6 after NEU-2276): fundlens counts it as 11(a)(i)
   where the filer reported it elsewhere. Explained; name the line.
 - **FEC's figure lags an amendment:** the excess is the rows of a filing newer than `reported_period_end`, or one FEC
@@ -651,7 +653,7 @@ and a coverage near 1.
 
 ```bash
 # VM, in tmux
-time docker exec "$(fl pipeline)" fundlens publish --cycle 2024 --build-id "$B" 2>&1 | grep -v '^{' | tee publish.log
+time docker exec "$(fl pipeline)" sh -c 'ulimit -n 65536 && exec fundlens publish --cycle 2024 --build-id "$1"' sh "$B" 2>&1 | grep -v '^{' | tee publish.log
 mk published "$B" | jq '{step, duration_s}'
 gmeta
 live
@@ -802,3 +804,98 @@ Open one PR, `docs(runbooks): log the 2024 reported totals run (NEU-2147)`, with
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-20 — 2024 with reported totals (NEU-2147)
+
+Run 2026-11-19 21:01 to 2026-11-20 01:35 UTC on `6e01035a11c171cef169de7c2477879b708f1178`. Build `20261119T212247Z`;
+live before: `20261116T005426Z`. `gold_prev` after publish: `20261117T030329Z`, which has NEU-2144's columns, so a
+rollback stays safe.
+
+**Bronze.** The v1 files were the live build's: `cm`, `cn`, `ccl` of 2026-11-15, `indiv`, `pas2`, `oth` of
+2026-11-16. The summary files, none in bronze before, were downloaded:
+`bronze/cycle=2024/weball/2026-11-19.zip`, `bronze/cycle=2024/webk/2026-11-19.zip`,
+`bronze/cycle=2024/committee_summary/2026-11-19.csv`.
+
+| Step | Time | Notes |
+| --- | ---: | --- |
+| seats | 5.5 s | 441 House, 35 Senate (2 special), 1 presidential race; 49 unmatched filings, all seats outside the calendar |
+| transform | 1926.8 s (32m12s) | `reported_total` 13,994 rows, `candidate_reported_total` 0; no other table's count moved |
+| resolve | 467.1 s (7m53s) | the first timed 2024 incremental resolve |
+| load | 1695.1 s (28m20s) | the second attempt, below; aggregates 852.4 s, copy 820.2 s |
+| publish | 158.9 s (2m50s) | pruned 2 silver builds (275 objects) |
+
+Resolve: `0 new contributor keys of 5504651, 0 pairs scored at or above the match threshold`, `crosswalk: 0 new
+donors, 0 keys re-pointed, 0 redirects`; overrides 1 merge, adjudications 130 verdicts (4 splits); live model
+`20261116T224205Z`, untrained. Load: `reconciliation: 163 rows`, `candidate_gift_size: 224686 rows`, quality
+precision 0.8122, recall 0.8993, as `/v1/meta` had. Disk free: 101 GB before, 97 after transform, 104 after load,
+118 at the end.
+
+**Load's first attempt failed** after 56m26s. Bugsink had a "too many open files" opening a parquet, and five minutes
+later the first CSV copy died with `IOException: Cannot open file
+"/data/fundlens/scratch/load-2024-20261119T212247Z/committee_cycle.csv": No such file or directory`. Every gold model
+and check had passed, and Postgres was untouched. The container's soft `nofile` limit is 1024 (hard 524288), and the
+local silver cache holds 7,062 parquet files. The retry, with the limit raised to 65536 inside the one command
+(§6 above), passed in half the time. A watcher sampling once a minute during the retry saw at most 454 open files,
+so the limit is the likely cause but not a proven one: NEU-2399 sets it on the containers before the next weekly run.
+Publish was wrapped the same way.
+
+**§7.1, fifteen figures against FEC** (`read bronze/cycle=2024/committee_summary/2026-11-19.csv`):
+
+| | Id | Name | Source | FEC's committees | Receipts | Equal | Differing (gold / FEC) |
+| --- | --- | --- | --- | --- | ---: | ---: | --- |
+| candidate | S4MD00327 | ALSOBROOKS, ANGELA | committee_summary | C00840017 | 31,077,805.53 | 12 of 12 |  |
+| candidate | S6OH00163 | BROWN, SHERROD | committee_summary | C00264697 | 96,530,240.72 | 12 of 12 |  |
+| candidate | S4TX00722 | ALLRED, COLIN | committee_summary | C00839597 | 94,674,182.67 | 12 of 12 |  |
+| candidate | S6MT00162 | TESTER, R. JON | committee_summary | C00412304 C00887521 | 93,570,122.72 | 12 of 12 |  |
+| candidate | S2TX00312 | CRUZ, RAFAEL EDWARD  TED | committee_summary | C00492785 | 74,050,030.94 | 12 of 12 |  |
+| candidate | S4AZ00139 | GALLEGO, RUBEN | committee_summary | C00558627 | 64,657,199.96 | 12 of 12 |  |
+| candidate | S4MD00319 | TRONE, DAVID | committee_summary | C00653196 | 63,833,136.59 | 12 of 12 |  |
+| candidate | S6PA00217 | CASEY, ROBERT P. JR. | committee_summary | C00431056 | 58,147,345.34 | 12 of 12 |  |
+| candidate | S4MI00470 | SLOTKIN, ELISSA | committee_summary | C00834218 | 51,937,060.20 | 12 of 12 |  |
+| candidate | S2WI00219 | BALDWIN, TAMMY | committee_summary | C00326801 | 50,228,545.14 | 12 of 12 |  |
+| committee | C00840017 | ALSOBROOKS FOR SENATE | committee_summary | C00840017 | 31,077,805.53 | 12 of 12 |  |
+| committee | C00835959 | FAIRSHAKE | committee_summary | C00835959 | 260,070,709.37 | 12 of 12 |  |
+| committee | C00571703 | SLF PAC | committee_summary | C00571703 | 298,859,706.60 | 12 of 12 |  |
+| committee | C00003418 | REPUBLICAN NATIONAL COMMITTEE | committee_summary | C00003418 | 475,764,008.28 | 12 of 12 |  |
+| committee | C00010603 | DNC SERVICES CORP / DEMOCRATIC NATIONAL COMMITTEE | committee_summary | C00010603 | 683,665,789.81 | 12 of 12 |  |
+
+`comparisons: 15; from committee_summary and equal on every measure: 15`. Tester's two committees are summed on both sides and equal.
+
+**§7.2, no itemized total moved:** `cycle`, `race`, `candidate_cycle`, `candidate_gift_size, itemized` and
+`committee_cycle` each with `missing` 0 and `moved` 0.
+
+**§7.3, coverage, 2024, gross basis:** 8,721 committees with a coverage, 6,525 within 1% (5,114 on the net basis),
+131 over 1%. Super PACs: 1,035 with a coverage, 893 within 1% (802 net). `committee.type` is a committee's latest
+type, so a committee that became a super PAC after 2024, or stopped being one, counts by its current type.
+
+**Reconciliation:** 163 rows, $55,349,367.42 over, 23 reported 0. Nine reported a negative figure: listed, with no
+coverage over 1.01, so `over_1pct` is 163 − 23 − 9 = 131. Each of the top ten was checked report by report against
+FEC's API (`/v1/committee/<id>/reports/?cycle=2024`): each one's line 11(a)(i) per report adds up to `reported`, and
+the excess sits on the filings named.
+
+| # | Committee | fundlens | reported | Excess | Disposition |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | C00835959 FAIRSHAKE | 242,219,082 | 217,419,084.11 | 24,799,997.89 | Explained: Coinbase's $25,000,000 (type 10) in M7 2024 (`1804981`), filed on line 15 |
+| 2 | C00627372 UNITE HERE PAC | 5,000,000 | 0.00 | 5,000,000.00 | Explained: UNITE HERE's type-10 gifts, filed on line 12 ($4M, 30G 2024) and line 15 ($1M, YE 2023) |
+| 3 | C00754051 WORKERS VOTE | 6,545,484 | 1,754,905.50 | 4,790,578.50 | Explained: line 15 on seven reports (12G 2024: $695,000, line 15 exactly), and 11(c) in MY 2023 |
+| 4 | C00887182 PLANNED PARENTHOOD VOTES NORTH CAROLINA | 3,678,228 | 0.00 | 3,678,228.00 | Explained: line 15 on every report (Q3 2024 $3.5M) |
+| 5 | C00808998 DEMOCRACYFIRST PAC | 2,137,585 | 25,295.00 | 2,112,290.00 | **NEU-2400**: type-10 gifts with memo `NON-CONTRIBUTION ACCOUNT` (MY and YE 2023, line 15) counted as 11(a)(i) |
+| 6 | C00620971 FOR OUR FUTURE | 4,228,896 | 2,147,547.69 | 2,081,348.31 | Explained: For Our Future Action Fund's type-10 gifts in the 30G amendment `1931997`, $2.01M of them in-kind, filed on line 13 ($2,081,349.79) |
+| 7 | C00804856 LF PAC | 40,563,770 | 39,216,319.73 | 1,347,450.27 | Explained: line 15 in Q3 and 12G 2024 (12G: $91,354 against line 15's $91,357) |
+| 8 | C00041269 GEORGIA FEDERAL ELECTIONS COMMITTEE | 3,684,047 | 2,681,478.34 | 1,002,568.66 | **NEU-2402**: $851,493 of IRS payroll-tax refunds from the Department of the Treasury, typed 15, in M8 2024 (`1812392`) |
+| 9 | C00834424 MARIANNE WILLIAMSON FOR PRESIDENT | 3,157,883 | 2,273,142.00 | 884,741.00 | **NEU-2401**: 16,510 `15E` rows ($1,221,546) in the YE 2023 amendment `1764677`, more than FEC's itemized and unitemized together ($1,078,175) |
+| 10 | C00693382 DEMOCRACY PAC | 70,740,507 | 70,002,500.00 | 738,007.00 | Explained: line 15 in Q1 and Q2 2024 ($238,033 and $493,925, exactly) |
+
+No report counted two filings of itself: every report type with two filing numbers is a two-year cycle's two
+reports (M2 2023 and M2 2024).
+
+**§7.4 and §9, the ticket's candidate.** `S4MD00327` 2024: `reported` from `committee_summary`, 2023-05-01 to
+2024-12-31, receipts $31,077,805.53; `itemized_total` $15,492,756 against $15,550,208.26, coverage 0.9963. Six gift
+sizes: `unitemized` $8,214,278.15 with no donor count, then $444,982 (4,470 donors), $2,061,587 (6,896), $2,476,685
+(4,256), $3,166,808 (2,768), $6,843,102 (2,016), the five adding up to `total_individual` $14,993,164.
+`/v1/meta` served `20261119T212247Z`; `/v1/reconciliation?cycle=2024` pages by 100, its first row Fairshake; Fairshake's
+committee read `committee_summary`, receipts $260,070,709.37, coverage 1.1141. `/candidate/S4MD00327` and
+`/committee/C00835959` showed the Reported to the FEC panel, the coverage line and (for the candidate) the six gift
+sizes as the API had them. Bugsink: nothing new but load's first attempt.
+
+**Deviations, each filed:** NEU-2399 (load's open-file limit), NEU-2400, NEU-2401, NEU-2402 (reconciliation).
