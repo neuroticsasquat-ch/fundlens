@@ -21,6 +21,12 @@ services:
     # and no certificate is requested (first run, 2026-10-30).
     expose:
       - "8000"
+    # Docker's default soft limit is 1,024 open files. The API's in-process DuckDB reads the same
+    # silver Parquet as `pipeline`'s load, so it gets the same limit (NEU-2399).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
     environment:
       # Built from the one password the database is initialised with, so the two cannot
       # disagree. The host is the service name below, which is unique on Coolify's shared
@@ -73,6 +79,14 @@ services:
     init: true
     # Spec §3.2: 40 GB of the box's 62 GB, with DuckDB held to 32 GB inside it (NEU-2060's backfill).
     mem_limit: 40g
+    # Docker's default soft limit is 1,024 open files. A load reads every cycle's live silver
+    # build plus DuckDB's spill files (the silver cache held 7,062 Parquet files on 2026-11-19).
+    # 2024's load failed with "too many open files" under 1,024 and passed under 65536, so the
+    # limit is the likely cause (NEU-2399). The hard limit is the one the box already gives.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
     environment:
       DATABASE_URL: "postgresql://fundlens:${POSTGRES_PASSWORD}@fundlens-postgres:5432/fundlens"
       R2_ENDPOINT: "${R2_ENDPOINT}"
