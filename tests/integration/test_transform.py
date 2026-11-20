@@ -196,6 +196,8 @@ SPENT_CORRECTED, SPENT_RECODED = 4111920241070657390, 4060220251204384159
 # SEVERN STATE LEADERSHIP FUND's 10 to the super PAC on 11(c) (SA11C), both off line 11(a)(i);
 # the presidential committee's gifts on Form 3P line 17(a) (SA17A), individuals' money.
 PARTY_OFFSET, OTHER_COMMITTEE_GIFT = 4240100000000000121, 4240100000000000378
+# DEPARTMENT OF THE TREASURY's payroll-tax refund to the party, a cost coming back (NEU-2402).
+PAYROLL_TAX_REFUND = 4240100000000000406
 # DRISCOLL's second id for MD-05, an alias of the one holding his money (NEU-2127).
 DRISCOLL, DRISCOLL_ALIAS = "H4MD05107", "H6MD05113"
 CHECKS = Path(__file__).resolve().parents[2] / "sql" / "checks"
@@ -503,6 +505,7 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "is_non_contribution_account",
         "fec_line",
         "is_other_line",
+        "is_returned_cost",
     ]
 
     attributions = read_silver(store, "jfc_attribution", tmp_path)
@@ -2228,6 +2231,19 @@ def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(fixture_silver: 
         receipts[OTHER_COMMITTEE_GIFT]["fec_line"],
         receipts[OTHER_COMMITTEE_GIFT]["is_other_line"],
     ) == (SUPER_PAC, "10", "11(c) other committees", True)
+
+    # A receipt whose memo names a cost coming back to the committee is on line 15 and marked,
+    # though its type is 15 (NEU-2402); every other receipt is no returned cost.
+    assert (
+        receipts[PAYROLL_TAX_REFUND]["recipient_committee_id"],
+        receipts[PAYROLL_TAX_REFUND]["transaction_type"],
+        receipts[PAYROLL_TAX_REFUND]["fec_line"],
+        receipts[PAYROLL_TAX_REFUND]["is_other_line"],
+        receipts[PAYROLL_TAX_REFUND]["is_returned_cost"],
+    ) == (PARTY, "15", "15 other receipts", True, True)
+    assert {s for s, row in receipts.items() if row["is_returned_cost"]} == set(
+        fec_fixture.expected()["returned_costs"]["organization_receipts"]
+    )
     assert {
         (contributions[s]["fec_line"], contributions[s]["is_other_line"])
         for s in (*BEFORE_HANDOFF, *FROM_HANDOFF, UNDATED)

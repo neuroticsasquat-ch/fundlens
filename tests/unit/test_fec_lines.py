@@ -195,3 +195,71 @@ def test_the_tran_id_places_only_rows_the_type_puts_on_a_counted_line_or_none(
     line: str,
 ) -> None:
     assert fec_line(transaction_type, committee_type, memo_text, "SA17.4313") == line
+
+
+@pytest.mark.parametrize(
+    ("transaction_type", "committee_type", "memo_text"),
+    [
+        # A cost coming back to the committee, no gift (NEU-2402): the IRS's payroll-tax refunds to
+        # the Georgia Federal Elections Committee, typed 15, and 2024's vendor and expense refunds,
+        # typed 10, as filed.
+        ("15", "Y", "PAYROLL TAX REFUND"),
+        ("15", "Y", "payroll tax refund."),
+        ("10", "O", "VENDOR REFUND"),
+        ("10", "O", "21-22 MEDIA REFUND"),
+        ("10", "Q", "REFUNDED EXPENSE"),
+        ("10", "O", "REIMBURSEMENT FOR DOMAIN PURCHASE"),
+        ("10", "O", "REFUND OF FEES CHARGED ON 9/30/24 TRANSACTION (2 OF 2)"),
+        ("10", "O", "THIS WAS A REFUND OF A 2024 CYCLE EXPENSE, AND SHOULD HAVE BEEN REPORTED"),
+        ("15", "Q", "REFUND OF DISBURSEMENT MADE IN ERROR FROM 04/17/2024"),
+        ("15", "Y", "STATE TAX REBATE"),
+        # A type the type rule does not place.
+        (None, "Y", "PAYROLL TAX REFUND"),
+    ],
+)
+def test_a_receipt_whose_memo_names_a_cost_coming_back_is_on_line_15(
+    con: duckdb.DuckDBPyConnection,
+    fec_line: FecLine,
+    transaction_type: str | None,
+    committee_type: str,
+    memo_text: str,
+) -> None:
+    assert fec_line(transaction_type, committee_type, memo_text) == "15 other receipts"
+    [(returned,)] = con.execute("SELECT returned_cost(?::VARCHAR)", [memo_text]).fetchall()
+    assert returned is True
+
+
+@pytest.mark.parametrize(
+    ("transaction_type", "committee_type", "memo_text", "line"),
+    [
+        # A gift the committee refunded later, or will: 2024's commonest refund memos.
+        ("15", "H", "CONTRIBUTION REFUNDED", "11(a)(i)"),
+        ("15", "P", "REFUND TO BE ISSUED", "11(a)(i)"),
+        ("15E", "P", "* EARMARKED CONTRIBUTION: SEE BELOW CONTRIBUTION REFUNDED", "11(a)(i)"),
+        ("15", "N", "REFUNDED $2900.00 ON 04/11/2023", "11(a)(i)"),
+        ("15", "Y", "SEE REFUND LINE 28", "11(a)(i)"),
+        # A fee or charge refunded to the giver is the giver's.
+        ("15E", "H", "REFUND OF PROCESSING FEE BY CONDUIT. TOTAL EARMARKED THROUGH", "11(a)(i)"),
+        ("15", "H", "REFUND OF INCORRECT CHARGE", "11(a)(i)"),
+        # A refund by the committee, a non-contribution account's row and a candidate's own money
+        # keep their lines.
+        ("22Y", "Y", "REFUND OF EXPENSE REIMBURSEMENT", "20 refunds"),
+        ("10", "V", "VENDOR REFUND", "non-contribution account"),
+        ("10", "O", "NON-CONTRIBUTION ACCOUNT: MEDIA REFUND", "non-contribution account"),
+        ("15C", "H", "TAX REFUND", "11(d) candidate"),
+        ("31", "Y", "VENDOR REFUND", "party account 31"),
+    ],
+)
+def test_a_memo_naming_a_refund_alone_leaves_the_types_line(
+    fec_line: FecLine,
+    transaction_type: str,
+    committee_type: str,
+    memo_text: str,
+    line: str,
+) -> None:
+    assert fec_line(transaction_type, committee_type, memo_text) == line
+
+
+def test_a_tran_id_naming_another_line_outranks_the_memo(fec_line: FecLine) -> None:
+    assert fec_line("15", "Y", "PAYROLL TAX REFUND", "SA17.4313") == "17 other receipts"
+    assert fec_line("15", "Y", "PAYROLL TAX REFUND", "SA11AI.0001") == "15 other receipts"

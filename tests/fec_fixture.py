@@ -230,6 +230,11 @@ class Donor(TypedDict):
     sub_ids: list[int]
 
 
+class ReturnedCosts(TypedDict):
+    # The organization receipts whose memo names a cost coming back to the committee (NEU-2402).
+    organization_receipts: list[int]
+
+
 class Attributions(TypedDict):
     jfc_committee: dict[int, str | None]
     attribution_only: list[int]
@@ -282,6 +287,7 @@ class Expected(TypedDict):
     organization_receipts: OrganizationReceipts
     non_contribution_account: NonContributionAccount
     other_lines: OtherLines
+    returned_costs: ReturnedCosts
     returned_by_candidates: ReturnedByCandidates
     refunds: Refunds
     name_matched: dict[int, str | None]

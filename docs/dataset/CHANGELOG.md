@@ -4,6 +4,14 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-20 — `organization_receipt.is_returned_cost` added
+
+One column, an additive change: `organization_receipt.is_returned_cost`, true when a receipt's
+memo names a cost coming back to the committee (a tax, vendor or expense refund, rebate or
+reimbursement), not a gift. Such a row's `fec_line` is now `15 other receipts`, and its
+`is_other_line` true, where its type had put it on `11(a)(i)`; a non-contribution account's keeps
+its line. The same rule moves a `contribution` row so. A cycle built before the change has no such column: read it as false.
+
 ## 2026-11-18 — `reported_total` and `candidate_reported_total` added
 
 Two tables, an additive change: `reported_total`, each committee's reported totals per cycle

@@ -88,7 +88,7 @@ rows:
   cm: 23
   cn: 15
   ccl: 15
-  indiv: 405
+  indiv: 406
   pas2: 30
   oth: 32
   weball: 12
@@ -109,7 +109,7 @@ silver:
   contribution: 347
   independent_expenditure: 15
   committee_transfer: 32
-  organization_receipt: 18
+  organization_receipt: 19
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -149,7 +149,7 @@ contributions:
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
-  dropped_not_individual: 22
+  dropped_not_individual: 23
   self_funding: 5
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
@@ -184,6 +184,7 @@ organization_receipts:
     4240100000000000381: PATAPSCO HOLDINGS # a 22Y and a 20Y for one refund moved between the accounts (NEU-2320)
     4240100000000000382: PATAPSCO HOLDINGS
     4240100000000000404: CHOPTANK RIVER FOUNDATION # a 10 to the super PAC under the account's memo (NEU-2400)
+    4240100000000000406: DEPARTMENT OF THE TREASURY # the IRS's payroll-tax refund to the party (NEU-2402)
   # Net amount by organization key, refunds subtracted.
   by_key:
     ACME CONCRETE: 5000
@@ -192,6 +193,7 @@ organization_receipts:
     CHESAPEAKE ELECTION LAW GROUP: 20000
     CHOPTANK RIVER FOUNDATION: 30000
     CHESAPEAKE STEEL: 72500
+    DEPARTMENT OF THE TREASURY: 8000
     IRONWORKERS LOCAL 16: 4000
     MAGOTHY HOLDINGS: 3000
     ONE NATION: 40000
@@ -204,9 +206,9 @@ organization_receipts:
   by_committee:
     C00800105: 8000
     C00800201: 172500
-    C00800203: 44000
+    C00800203: 52000
     C00800204: 248000
-  total_amount: 472500
+  total_amount: 480500
   # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
   # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
   # Ranked by amount, then key; an organization netting to $0 or less is on no list.
@@ -257,21 +259,32 @@ non_contribution_account:
 # to the party's accounts (NEU-2205): IRONWORKERS LOCAL 16's 31K and CHESAPEAKE ELECTION LAW GROUP's
 # 32J in `oth`, PISCATAWAY CONOY TRIBE's 31T in `indiv`. And the rows whose TRAN_ID names another
 # line (NEU-2276): DONNELLY's 15 to the party on line 15, SEVERN STATE LEADERSHIP FUND's 10 to the
-# super PAC on line 11(c). by_committee is their net amount,
+# super PAC on line 11(c). And DEPARTMENT OF THE TREASURY's payroll-tax refund to the party, on
+# line 15 by its memo (NEU-2402, `returned_costs` below). by_committee is their net amount,
 # individuals' and organizations' alike, gold's total_other_lines; 0 at every other committee.
 # organizations_by_committee is the organization receipts' part, in no total_from_organizations.
 other_lines:
   contributions:
     [4240100000000000121, 4240100000000000337, 4240100000000000338, 4240100000000000339]
   organization_receipts:
-    [4240100000000000346, 4240100000000000378, 4240300000000000026, 4240300000000000028]
+    - 4240100000000000346
+    - 4240100000000000378
+    - 4240100000000000406
+    - 4240300000000000026
+    - 4240300000000000028
   by_committee:
-    C00800203: 47500
+    C00800203: 55500
     C00800104: 1000
     C00800201: 20000
   organizations_by_committee:
-    C00800203: 39000
+    C00800203: 47000
     C00800201: 20000
+
+# The organization receipts whose memo names a cost coming back to the committee, not a gift
+# (NEU-2402), by SUB_ID: DEPARTMENT OF THE TREASURY's payroll-tax refund to the party. Kept, on
+# line 15 (`other_lines` above), and on no top-organization list (`top_by_committee`).
+returned_costs:
+  organization_receipts: [4240100000000000406]
 
 # The 24Ks of a giver->candidate pair netting below 0 for the cycle (NEU-2204), by SUB_ID: OLD LINE
 # REPUBLICAN COMMITTEE's 2023 void of a 2022 gift to CALLOWAY. Kept in committee_transfer, in no

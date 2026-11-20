@@ -307,7 +307,8 @@ def test_a_committee_page_has_its_organization_money(client: TestClient, committ
     # The super PAC's is CHESAPEAKE STEEL's gifts less its refund, once under its most-money
     # spelling; a committee no organization gave to has 0 and an empty list (ADR-0011). A hybrid
     # PAC's non-contribution account is in its top organizations but not its total (NEU-2192), and
-    # so are a party account's givers (NEU-2205).
+    # so are a party account's givers (NEU-2205). A cost coming back to the committee, the IRS's
+    # payroll-tax refund to the party, is in neither: no organization gave it (NEU-2402).
     organizations = EXPECTED["organization_receipts"]
     non_contribution = EXPECTED["non_contribution_account"]["organizations_by_committee"]
     other_lines = EXPECTED["other_lines"]["organizations_by_committee"]

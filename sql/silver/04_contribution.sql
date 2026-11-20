@@ -674,7 +674,9 @@ SELECT
     -- names another line (SA11C, SA17, not SA17A; NEU-2276) are among them: kept, since donors
     -- gave them, and marked, so committee and candidate totals compare with FEC's itemized figure
     -- (INDV_ITEM_CONTB). A type the rule does not place counts, as every type did before it:
-    -- `indiv` is individuals' contributions.
+    -- `indiv` is individuals' contributions. A row whose memo names a cost coming back to the
+    -- committee (a tax, vendor or expense refund; NEU-2402) is on line 15 and counts nowhere: no
+    -- gift.
     fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID) AS fec_line,
     coalesce(
         fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)

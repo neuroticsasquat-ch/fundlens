@@ -44,7 +44,8 @@ A few things to know before you add anything up:
 - **Some rows are outside a committee's individual total**: a candidate's own money
   (`is_self_funding`), a hybrid PAC's non-contribution account (`is_non_contribution_account`)
   and money filed on another line of the FEC form (`is_other_line`). They are kept, and the
-  donors' own.
+  donors' own. An organization receipt whose memo names a cost coming back to the committee, a
+  tax or vendor refund, is no gift at all (`is_returned_cost`), on another line too.
 - **`committee_transfer` holds both sides of many gifts.** Sum one `side` only.
 - **A reported total is never added to `contribution` amounts.** `reported_total` and
   `candidate_reported_total` hold the FEC's own cycle-to-date figures, as filed: they already
