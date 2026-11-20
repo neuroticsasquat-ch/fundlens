@@ -99,6 +99,9 @@ CONTRIBUTION_ACCOUNT, NON_CONTRIBUTION_ACCOUNT, PATAPSCO, SUPER_PAC_TYPE_10 = (
     4240100000000000333,
 )
 MARKED_REFUND, UNMARKED_REFUND = 4240100000000000334, 4240100000000000336
+# CHOPTANK RIVER FOUNDATION's 10 to the super PAC under a memo naming the non-contribution
+# account (NEU-2400).
+MEMO_NAMED_ACCOUNT = 4240100000000000404
 # Money on a line no total_individual counts (NEU-2193): GALLAGHER's gift to the party's
 # headquarters account, its refund, and her loan to WHITLOCK FOR SENATE.
 HEADQUARTERS_ACCOUNT, HEADQUARTERS_REFUND, INDIVIDUAL_LOAN = (
@@ -2101,6 +2104,14 @@ def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account
         HYBRID_PAC,
         250000,
     )
+    # A 10 to the super PAC, typed O, under a memo naming the account is the account's: the
+    # filer's mark, which the committee type misses (NEU-2400).
+    assert (
+        receipts[MEMO_NAMED_ACCOUNT]["recipient_committee_id"],
+        receipts[MEMO_NAMED_ACCOUNT]["transaction_type"],
+        receipts[MEMO_NAMED_ACCOUNT]["fec_line"],
+        receipts[MEMO_NAMED_ACCOUNT]["is_non_contribution_account"],
+    ) == (SUPER_PAC, "10", "non-contribution account", True)
 
 
 def test_rows_off_line_11ai_are_kept_with_their_line_and_marked(fixture_silver: Path) -> None:
@@ -2309,7 +2320,9 @@ def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts
             " (15, 'C2', '24I', '* NON-CONTRIBUTION ACCOUNT', true),"
             " (16, 'C1', '24I', '* NON-CONTRIBUTION ACCOUNT', false),"
             " (17, 'C2', '24I', 'EARMARKED', false), (18, 'C1', '24I', NULL, true),"
-            " (19, 'C3', '24I', '* NON-CONTRIBUTION ACCOUNT', false)"
+            " (19, 'C3', '24I', '* NON-CONTRIBUTION ACCOUNT', false),"
+            " (20, 'C3', '10', 'NON-CONTRIBUTION ACCOUNT', false),"
+            " (21, 'C3', '10J', '* NON-CONTRIBUTION ACCOUNT', true)"
             ") AS t(source_record_id, recipient_committee_id, transaction_type, memo_text,"
             " is_non_contribution_account)"
         )
@@ -2323,7 +2336,8 @@ def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts
 
         # An unmarked 10J to a W, a marked 10 to a super PAC, an unmarked 20Y and a marked 22Y at
         # a V, an unmarked 24I under the account's memo and a marked one without it (NEU-2207);
-        # an unmarked 10 to a W, and a marked 22Y at a V.
+        # an unmarked 10 to a W, and a marked 22Y at a V; and an unmarked 10 to a super PAC under
+        # the account's memo, which is the account's at any committee (NEU-2400).
         assert sorted(failing_rows(con, "silver_non_contribution_account.sql")) == [
             ("contribution", 3, "10J", "W", False),
             ("contribution", 4, "10", "O", True),
@@ -2331,6 +2345,7 @@ def test_the_non_contribution_account_check_fails_on_a_flag_its_type_contradicts
             ("contribution", 12, "22Y", "V", True),
             ("contribution", 16, "24I", "V", False),
             ("contribution", 18, "24I", "V", True),
+            ("contribution", 20, "10", "O", False),
             ("organization_receipt", 7, "10", "W", False),
             ("organization_receipt", 8, "22Y", "V", True),
         ]

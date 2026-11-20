@@ -63,6 +63,10 @@ CANDIDATE_TYPES = ("15C", *CANDIDATE_LOANS)
 HYBRID_PACS = ("V", "W")
 NON_CONTRIBUTION_ACCOUNT = ("10", "10J", "20Y")
 NON_CONTRIBUTION_MEMO = "* NON-CONTRIBUTION ACCOUNT"
+# A 10 or 10J under a memo beginning with the account's name, in any filed spelling, is the
+# account's at any committee: the filer's mark, which the cycle's `cm` type can miss (NEU-2400).
+ACCOUNT_RECEIPTS = ("10", "10J")
+NAMES_THE_ACCOUNT = r"[^A-Z]*NON[- ]?CONTRIBUTION ACCOUNT"
 # The transaction types FEC files on a line no total_individual counts (NEU-2193): loans, transfers
 # and other non-contribution receipts, Form 9 donations, and a national party's convention,
 # headquarters and recount accounts (30, 31, 32 and variants) and their refunds.
@@ -369,18 +373,25 @@ def non_contribution_account(table: Iterable[Row]) -> list[Row]:
     """The rows of one table, the counted contributions or the organization receipts, a hybrid PAC
     took into or refunded from its non-contribution account (NEU-2192): a 10, 10J or 20Y to or
     from a committee typed V or W, or a 24I there whose memo names the account (NEU-2207), whoever
-    the giver. At any other committee a 10 is an ordinary contribution."""
+    the giver; or a 10 or 10J at any committee whose memo begins with the account's name
+    (NEU-2400). At any other committee a 10 is an ordinary contribution."""
     types = {committee["CMTE_ID"]: committee["CMTE_TP"] for committee in rows("cm")}
     return [
         row
         for row in table
-        if types.get(row["CMTE_ID"]) in HYBRID_PACS
-        and (
-            row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
-            or (
-                row["TRANSACTION_TP"] == "24I"
-                and row["MEMO_TEXT"].upper().startswith(NON_CONTRIBUTION_MEMO)
+        if (
+            types.get(row["CMTE_ID"]) in HYBRID_PACS
+            and (
+                row["TRANSACTION_TP"] in NON_CONTRIBUTION_ACCOUNT
+                or (
+                    row["TRANSACTION_TP"] == "24I"
+                    and row["MEMO_TEXT"].upper().startswith(NON_CONTRIBUTION_MEMO)
+                )
             )
+        )
+        or (
+            row["TRANSACTION_TP"] in ACCOUNT_RECEIPTS
+            and re.match(NAMES_THE_ACCOUNT, row["MEMO_TEXT"].upper()) is not None
         )
     ]
 

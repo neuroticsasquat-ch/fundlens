@@ -88,7 +88,7 @@ rows:
   cm: 23
   cn: 15
   ccl: 15
-  indiv: 403
+  indiv: 404
   pas2: 30
   oth: 32
   weball: 12
@@ -109,7 +109,7 @@ silver:
   contribution: 347
   independent_expenditure: 15
   committee_transfer: 32
-  organization_receipt: 17
+  organization_receipt: 18
   # One row per `attributions` line below.
   jfc_attribution: 6
   # One row per contributor key among the counted contributions and the JFC attributions (spec
@@ -146,7 +146,7 @@ contributions:
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and
   # classified) and committees' (PAC), each counted elsewhere or dropped (`organization_receipts`,
   # `name_matched`).
-  dropped_not_individual: 21
+  dropped_not_individual: 22
   self_funding: 5
   # Counted contributions with conduit_committee_id, by conduit. One WinRed earmark names its
   # conduit only in MEMO_TEXT. Three of ActBlue's are filed 24I by their recipients.
@@ -180,12 +180,14 @@ organization_receipts:
     4240100000000000378: SEVERN STATE LEADERSHIP FUND # a 10 its TRAN_ID puts on line 11(c) (NEU-2276)
     4240100000000000381: PATAPSCO HOLDINGS # a 22Y and a 20Y for one refund moved between the accounts (NEU-2320)
     4240100000000000382: PATAPSCO HOLDINGS
+    4240100000000000404: CHOPTANK RIVER FOUNDATION # a 10 to the super PAC under the account's memo (NEU-2400)
   # Net amount by organization key, refunds subtracted.
   by_key:
     ACME CONCRETE: 5000
     ACME WIDGETS: 3000
     BALTIMORE HARBOR PILOTS: 5000
     CHESAPEAKE ELECTION LAW GROUP: 20000
+    CHOPTANK RIVER FOUNDATION: 30000
     CHESAPEAKE STEEL: 72500
     IRONWORKERS LOCAL 16: 4000
     MAGOTHY HOLDINGS: 3000
@@ -198,10 +200,10 @@ organization_receipts:
   # Net amount by receiving committee.
   by_committee:
     C00800105: 8000
-    C00800201: 142500
+    C00800201: 172500
     C00800203: 44000
     C00800204: 248000
-  total_amount: 442500
+  total_amount: 472500
   # Each receiving committee's organizations (NEU-2133), by rank: the organization key, its
   # spelling with the most money (CHESAPEAKE STEEL's $47,500 against $25,000), the net amount.
   # Ranked by amount, then key; an organization netting to $0 or less is on no list.
@@ -212,6 +214,7 @@ organization_receipts:
     C00800201:
       - [CHESAPEAKE STEEL, "CHESAPEAKE STEEL, INC.", 72500]
       - [ONE NATION, ONE NATION, 40000]
+      - [CHOPTANK RIVER FOUNDATION, CHOPTANK RIVER FOUNDATION, 30000]
       - [SEVERN STATE LEADERSHIP FUND, SEVERN STATE LEADERSHIP FUND, 20000]
       - [TIDEWATER MARINE SUPPLY, TIDEWATER MARINE SUPPLY LLC, 5000]
       - [MAGOTHY HOLDINGS, MAGOTHY HOLDINGS LLC, 3000]
@@ -230,17 +233,20 @@ organization_receipts:
 # receipts typed 10 or 10J to a committee typed V or W, or 24I there with a memo naming the
 # account (NEU-2203, NEU-2207), and the 20Y refunds there, by SUB_ID, each kept in its table and
 # marked (the 20Ys to HAYWARD and PATAPSCO HOLDINGS, not the 22Ys to them or TREVELYAN, nor his 24I
-# with no such memo).
+# with no such memo); and CHOPTANK RIVER FOUNDATION's 10 to the super PAC, under a memo naming the
+# account, which is the account's at any committee (NEU-2400).
 # by_committee is their net amount, individuals' and organizations' alike: gold's
 # total_non_contribution_account, in neither total_individual (`committees` below holds the
 # contribution account alone) nor total_from_organizations, which is `organization_receipts`'
 # by_committee less organizations_by_committee here and in `other_lines`.
 non_contribution_account:
   contributions: [4240100000000000331, 4240100000000000334, 4240100000000000380, 4240100000000000344]
-  organization_receipts: [4240100000000000332, 4240100000000000382]
+  organization_receipts: [4240100000000000332, 4240100000000000382, 4240100000000000404]
   by_committee:
+    C00800201: 30000
     C00800204: 269000
   organizations_by_committee:
+    C00800201: 30000
     C00800204: 249000
 
 # Money on a line no total_individual counts (NEU-2193), by SUB_ID: GALLAGHER's gift to the party's

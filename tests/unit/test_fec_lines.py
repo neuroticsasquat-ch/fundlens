@@ -103,8 +103,41 @@ def test_a_hybrid_pacs_24i_is_its_non_contribution_accounts_when_its_memo_says_s
     assert fec_line("24I", committee_type, memo_text) == line
 
 
-def test_the_memo_matters_only_for_a_24i(fec_line: FecLine) -> None:
+@pytest.mark.parametrize(
+    ("transaction_type", "committee_type", "memo_text", "line"),
+    [
+        # A 10 or 10J whose memo begins with the account's name, in any of its filed spellings, is
+        # the account's whatever the committee's type in the cycle's `cm` (NEU-2400): 2024's types
+        # DemocracyFirst PAC Q, and it filed its line-17 gifts so.
+        ("10", "O", "NON-CONTRIBUTION ACCOUNT", "non-contribution account"),
+        ("10", "O", NON_CONTRIBUTION_MEMO, "non-contribution account"),
+        ("10", "Q", "NON CONTRIBUTION ACCOUNT", "non-contribution account"),
+        (
+            "10",
+            "N",
+            "NONCONTRIBUTION ACCOUNT - EARMARKED THROUGH ACTBLUE",
+            "non-contribution account",
+        ),
+        ("10J", "Q", "non-contribution account", "non-contribution account"),
+        ("10", None, "NON-CONTRIBUTION ACCOUNT", "non-contribution account"),
+        # A memo that names the account later on is not the filer marking the row.
+        ("10", "Q", "* EARMARKED CONTRIBUTION: SEE BELOW NON-CONTRIBUTION ACCOUNT", "11(a)(i)"),
+        ("10", "O", None, "11(a)(i)"),
+    ],
+)
+def test_a_10_whose_memo_names_the_account_is_its_at_any_committee(
+    fec_line: FecLine,
+    transaction_type: str,
+    committee_type: str | None,
+    memo_text: str | None,
+    line: str,
+) -> None:
+    assert fec_line(transaction_type, committee_type, memo_text) == line
+
+
+def test_the_memo_matters_only_for_a_10_or_a_24i(fec_line: FecLine) -> None:
     assert fec_line("15", "W", NON_CONTRIBUTION_MEMO) == "11(a)(i)"
+    assert fec_line("15", "O", "NON-CONTRIBUTION ACCOUNT") == "11(a)(i)"
 
 
 @pytest.mark.parametrize(

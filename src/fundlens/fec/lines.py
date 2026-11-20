@@ -11,6 +11,18 @@ matters only there and for type 10, a hybrid PAC's (V, W) non-contribution accou
 11(a)(i) money anywhere else, and for type 24I, whose memo text decides it at a hybrid PAC
 (below). A type it does not place, a blank one among them, is NULL.
 
+A 10 or 10J whose `MEMO_TEXT` begins, after any characters that are not letters (`* `, `, `),
+`NON-CONTRIBUTION ACCOUNT`, `NON CONTRIBUTION ACCOUNT` or `NONCONTRIBUTION ACCOUNT` is the
+non-contribution account's at any committee type, whatever its `TRAN_ID` (NEU-2400). The filer
+marked it so, and the cycle's `cm` can type a committee that keeps the account otherwise: 2024's
+`cm` types DemocracyFirst PAC (C00808998) Q, and 2026's V. On 2024 the rule moves $2,180,673 of
+individuals' and organizations' money at six committees typed Q, N or O, all of it filed on
+Schedule A line 17 where the raw filing was read, and takes DemocracyFirst from 84.5 times FEC's
+itemized figure to 3.3 (`docs/measurements/summary-files-2024.md` Q10k). Such a 10's refunds stay
+`20 refunds`: 2024 has no 20Y naming the account at a committee not typed V or W. Rejected:
+typing a committee by its latest cycle's `CMTE_TP`, which would put its money in the account in
+cycles before it was a hybrid PAC.
+
 A 24I is FEC's earmarked-intermediary-out code, which Q6 called an earmark's conduit side. Filers
 write it on line 11(a)(i), mostly on their own receipts of earmarks through ActBlue, a hybrid
 PAC's among them, except where a hybrid PAC writes it on line 17 for its non-contribution
@@ -33,7 +45,8 @@ files individuals' contributions on it, and its `TRAN_ID`s say `SA17A`. Measured
 build's `indiv` rows, the rule moves 71 committees toward FEC's itemized figure ($52.1M) and 39
 away ($2.5M) (`docs/measurements/summary-files-2024.md` Q15g2); `oth` rows were not measured.
 Every other line a type names stands whatever the `TRAN_ID` says: a party account, a hybrid PAC's
-non-contribution account (whose 24Is are on line 17), a loan, a transfer. The match is
+non-contribution account (whose 24Is are on line 17) or a 10 its memo puts there, a loan, a
+transfer. The match is
 case-sensitive, as Q15 measured it.
 
 Only the 11(a)(i) lines, a candidate's 15C and the refunds of either are in a `total_individual`
@@ -47,7 +60,12 @@ TYPE_LINE = r"""
 CREATE MACRO type_line(transaction_type, committee_type, memo_text) AS CASE
     WHEN transaction_type IN ('15', '15E', '15I', '15T', '11', '11J', '15Z') THEN '11(a)(i)'
     WHEN transaction_type IN ('10', '10J') THEN
-        CASE WHEN committee_type IN ('V', 'W') THEN 'non-contribution account' ELSE '11(a)(i)' END
+        CASE
+            WHEN committee_type IN ('V', 'W')
+                OR regexp_matches(upper(memo_text), '^[^A-Z]*NON[- ]?CONTRIBUTION ACCOUNT')
+                THEN 'non-contribution account'
+            ELSE '11(a)(i)'
+        END
     WHEN transaction_type = '24I' THEN
         CASE
             WHEN committee_type IN ('V', 'W')
