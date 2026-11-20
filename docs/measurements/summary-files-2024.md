@@ -8329,6 +8329,464 @@ TO {literal(work / "q15_d9_files.csv")} (HEADER)
   Form 3X it is line 17. This is NEU-2276's rule at work, not a new measure of D8, which this
   ticket left alone.
 
+## Q16: rows FEC's file repeats under one `TRAN_ID` (NEU-2401)
+
+Measured for [NEU-2401](https://linear.app/neuroticsasquatch/issue/NEU-2401) on 2026-11-20.
+Marianne Williamson for President (`C00834424`) was ninth in 2024's reconciliation on build
+`20261119T212247Z`: $3,157,883 counted against FEC's $2,273,142 itemized. In its YE 2023
+amendment `1764677` fundlens counted 16,510 `15E` rows, $1,221,546, more than the $1,078,175 of
+individuals' money, itemized and unitemized, the filing reports. The ticket asked whether an
+earmark is counted twice there. It is not: FEC's file holds every row of that filing twice. This
+measures that filing and its M2 2024 twin against the raw filings, then every 2024 `indiv`, `oth`
+and `pas2` row FEC's file repeats.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-20 15:55–16:45 UTC, `app` container of the local dev stack, DuckDB 2.0.0. FEC's bulk files, not the live build, which this run could not reach |
+| Code | branch `fix/NEU-2401-fec-repeated-rows` off `main` at `083fe5c`; Q16l runs the branch's `register_bulk` |
+| `indiv24.zip`, `oth24.zip`, `pas224.zip` | `https://www.fec.gov/files/bulk-downloads/2024/…`, `Last-Modified: Sun, 15 Nov 2026 19:35:23 GMT`, `19:38:06 GMT` and `19:36:00 GMT`, downloaded 2026-11-20T15:56–16:14Z |
+| Raw filings | `https://docquery.fec.gov/dcdev/posted/<FILE_NUM>.fec`, 2026-11-20T15:55–16:20Z: `1752637` (Williamson's YE 2023 as first filed), `1764677` (its amendment), `1765783` (M2 2024, an amendment of `1758450`), `1780265` (`C00773820`), `1764266` (`C00833392`), `1817687` (`C00786830`) and `1779569` (`C00444752`) |
+
+**Method.** A raw filing's rows are tallied by form line (`SA17A`, `SB28A` …), memo code (field
+43) and, for an `SA17A` row, whether its `TRAN_ID` has an earmark line under it (the earmark's
+`TRAN_ID` plus `E`). A bulk row is *repeated* when another row of its file has the same committee,
+electronic filing (`FILE_NUM` above 0) and `TRAN_ID`. A repeat is *identical* when the two differ
+in nothing but `SUB_ID`. `itcont.txt` alone is read, since the zip repeats it split by date. Every
+`itcont.txt`, `itoth.txt` and `itpas2.txt` line is read: 58,210,201, 18,666,826 and 703,181, as
+`wc -l` counts them, each with its own `SUB_ID` (Q16a). Q16l reads the files through the branch's
+`register_bulk`, as the transform does, after `copy_as_utf8`.
+
+```bash
+# Host, from the repository root, dev stack up. About 4.8 GB of downloads and 30 GB of disk;
+# ~40 minutes, most of it Q16l's UTF-8 copy. data/ is gitignored; the container sees it as
+# /app/data.
+mkdir -p data/neu2401/tmp && cd data/neu2401
+B=https://www.fec.gov/files/bulk-downloads/2024
+for f in indiv24.zip oth24.zip pas224.zip; do curl -sSLO $B/$f; done
+unzip -p indiv24.zip itcont.txt > itcont.txt
+unzip -p oth24.zip itoth.txt > itoth.txt
+unzip -p pas224.zip itpas2.txt > itpas2.txt
+for n in 1752637 1764677 1765783 1780265 1764266 1817687 1779569; do
+    curl -sSL -o $n.fec https://docquery.fec.gov/dcdev/posted/$n.fec; done
+# Q16w: Williamson's two filings, raw (by form line, memo code and earmark) and bulk (by type).
+for n in 1764677 1765783; do LC_ALL=C awk -F'\034' -v n=$n '$1 ~ /^S[AB]/ {
+    k = n "|" $1 "|" ($43 == "X" ? "memo" : "") "|" ($1 == "SA17A" && $4 ~ /E$/ ? "earmarked" : "")
+    c[k]++; s[k] += $21 } END { for (k in c) printf "%s|%d|%.2f\n", k, c[k], s[k] }' $n.fec; done
+LC_ALL=C awk -F'|' '$1 == "C00834424" && ($18 == 1764677 || $18 == 1765783) {
+    k = $18 "|" $6 "|" $19; c[k]++; s[k] += $15 } END { for (k in c) print k "|" c[k] "|" s[k] }' itcont.txt
+# Q16r: each repeated TRAN_ID of a filing, how many rows FEC's file holds it on and how many the
+# raw filing does (fields: TRAN_ID is bulk column 17 in itcont/itoth, 18 in itpas2; raw field 3).
+check() { # <bulk file> <TRAN_ID column> <FILE_NUM column> <filing>
+    LC_ALL=C awk -F'|' -v t=$2 -v f=$3 -v n=$4 '$f == n { c[$t]++ } END { for (k in c) if (c[k] > 1) print k, c[k] }' $1 |
+    while read id copies; do
+        echo "$4 $id bulk $copies raw $(LC_ALL=C awk -F'\034' -v id=$id '$3 == id' $4.fec | wc -l)"; done; }
+check itcont.txt 17 18 1764266; check itpas2.txt 18 19 1817687; check itpas2.txt 18 19 1779569
+LC_ALL=C awk -F'\034' '$1 ~ /^S[AB]/ { c[$3]++ } END { for (k in c) h[c[k]]++; for (k in h) print k, h[k] }' 1780265.fec
+cd ../.. && for q in q16 q16o q16p q16l; do  # each saved from the blocks below
+    docker compose exec -T app uv run python /app/data/neu2401/$q.py; done
+```
+
+`q16.py` (`q16o.py` is the same over `itoth.txt`, Q16b–d only; `q16p.py` over `itpas2.txt`, with
+`CAND_ID` after `OTHER_ID` in `COLS`):
+
+```python
+# NEU-2401: rows FEC's 2024 indiv file holds more than once under one filing's TRAN_ID.
+import time
+from decimal import Decimal
+
+import duckdb
+
+con = duckdb.connect()
+con.execute("SET preserve_insertion_order = false")
+con.execute("SET memory_limit = '6GB'")
+con.execute("SET temp_directory = '/app/data/neu2401/tmp'")
+con.execute("SET threads = 4")
+
+COLS = ["CMTE_ID", "AMNDT_IND", "RPT_TP", "TRANSACTION_PGI", "IMAGE_NUM", "TRANSACTION_TP",
+        "ENTITY_TP", "NAME", "CITY", "STATE", "ZIP_CODE", "EMPLOYER", "OCCUPATION",
+        "TRANSACTION_DT", "TRANSACTION_AMT", "OTHER_ID", "TRAN_ID", "FILE_NUM", "MEMO_CD",
+        "MEMO_TEXT", "SUB_ID"]
+
+
+def show(title: str, sql: str) -> None:
+    start = time.monotonic()
+    rel = con.sql(sql)
+    rows = rel.fetchall()
+    print(f"\n**{title}  ({time.monotonic() - start:.0f} s)**\n")
+    print("| " + " | ".join(rel.columns) + " |")
+    print("|" + "---|" * len(rel.columns))
+    for row in rows:
+        cells = (
+            f"{v:,.0f}" if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool)
+            else "" if v is None else str(v)
+            for v in row
+        )
+        print("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+
+
+cols = ", ".join(f"'{c}': 'VARCHAR'" for c in COLS)
+con.execute(f"""
+CREATE TABLE r AS
+SELECT
+    CMTE_ID, FILE_NUM::BIGINT AS FILE_NUM, TRAN_ID, TRANSACTION_TP, MEMO_CD, AMNDT_IND, RPT_TP,
+    TRANSACTION_AMT::DECIMAL(14, 2) AS amt,
+    hash(CMTE_ID, AMNDT_IND, RPT_TP, TRANSACTION_PGI, IMAGE_NUM, TRANSACTION_TP, ENTITY_TP, NAME,
+        CITY, STATE, ZIP_CODE, EMPLOYER, OCCUPATION, TRANSACTION_DT, TRANSACTION_AMT, OTHER_ID,
+        TRAN_ID, FILE_NUM, MEMO_CD, MEMO_TEXT) AS body,
+    SUB_ID::BIGINT AS SUB_ID
+FROM read_csv('/app/data/neu2401/itcont.txt', delim = '|', header = false, quote = '',
+    escape = '', columns = {{{cols}}}, ignore_errors = true)
+""")
+show("Q16a: itcont.txt", "SELECT count(*) AS rows, count(DISTINCT SUB_ID) AS sub_ids FROM r")
+
+# Every (committee, filing, TRAN_ID) on more than one row, electronic filings with a TRAN_ID.
+con.execute("""
+CREATE TABLE k AS
+SELECT hash(CMTE_ID, FILE_NUM, TRAN_ID) AS key
+FROM r
+WHERE FILE_NUM > 0 AND nullif(trim(TRAN_ID), '') IS NOT NULL
+GROUP BY 1 HAVING count(*) > 1
+""")
+show("Q16k: keys", "SELECT count(*) FROM k")
+con.execute("""
+CREATE TABLE g AS
+SELECT CMTE_ID, FILE_NUM, TRAN_ID, count(*) AS n, count(DISTINCT body) AS bodies,
+    bool_or(MEMO_CD = 'X') AS any_memo, bool_and(MEMO_CD IS DISTINCT FROM 'X') AS no_memo,
+    min(amt) AS amt, list(DISTINCT TRANSACTION_TP) AS types,
+    max(SUB_ID) - min(SUB_ID) AS sub_span
+FROM r
+WHERE FILE_NUM > 0 AND nullif(trim(TRAN_ID), '') IS NOT NULL
+    AND hash(CMTE_ID, FILE_NUM, TRAN_ID) IN (SELECT key FROM k)
+GROUP BY ALL
+HAVING count(*) > 1
+""")
+show("Q16b: repeated TRAN_IDs within one filing, by whether the rows are identical but for SUB_ID",
+     """SELECT bodies = 1 AS identical, count(*) AS tran_ids, sum(n - 1) AS rows_beyond_first,
+        sum(CASE WHEN bodies = 1 THEN (n - 1) * amt END) AS dollars_beyond_first,
+        count(DISTINCT CMTE_ID) AS committees, count(DISTINCT FILE_NUM) AS filings
+     FROM g GROUP BY 1 ORDER BY 1 DESC""")
+show("Q16c: identical repeats, rows silver could count (no memo line, not 24T)",
+     """SELECT count(*) AS tran_ids, sum(n - 1) AS rows_beyond_first, sum((n - 1) * amt) AS dollars,
+        count(DISTINCT CMTE_ID) AS committees, count(DISTINCT FILE_NUM) AS filings,
+        max(n) AS max_copies, max(sub_span) AS max_sub_id_span
+     FROM g WHERE bodies = 1 AND no_memo AND NOT list_contains(types, '24T')""")
+show("Q16d: copies per identical TRAN_ID", """
+SELECT n AS copies, count(*) AS tran_ids, sum((n - 1) * amt) AS dollars_beyond_first
+FROM g WHERE bodies = 1 GROUP BY 1 ORDER BY 1""")
+
+# Filings: share of their rows in identical repeat groups.
+con.execute("""
+CREATE TABLE f AS
+WITH filing AS (
+    SELECT CMTE_ID, FILE_NUM, any_value(AMNDT_IND) AS amndt, any_value(RPT_TP) AS rpt,
+        count(*) AS rows, count(DISTINCT TRAN_ID) AS tran_ids
+    FROM r WHERE FILE_NUM IN (SELECT FILE_NUM FROM g WHERE bodies = 1) GROUP BY ALL
+)
+SELECT filing.*, sum(g.n - 1) AS extra_rows, sum((g.n - 1) * g.amt) AS extra_dollars
+FROM filing JOIN g USING (CMTE_ID, FILE_NUM)
+WHERE g.bodies = 1 AND g.no_memo
+GROUP BY ALL
+""")
+show("Q16e: filings with identical repeats, by the share of their TRAN_IDs repeated", """
+SELECT CASE WHEN extra_rows >= tran_ids THEN 'every row at least twice'
+            WHEN extra_rows * 2 >= tran_ids THEN 'half or more'
+            ELSE 'under half' END AS share,
+    count(*) AS filings, sum(extra_rows) AS extra_rows, sum(extra_dollars) AS extra_dollars,
+    count(DISTINCT CMTE_ID) AS committees
+FROM f GROUP BY 1 ORDER BY 1""")
+show("Q16f: the 25 filings with the most dollars repeated", """
+SELECT CMTE_ID, FILE_NUM, amndt, rpt, rows, tran_ids, extra_rows, extra_dollars
+FROM f ORDER BY extra_dollars DESC LIMIT 25""")
+show("Q16g: the 25 committees with the most dollars repeated", """
+SELECT CMTE_ID, count(*) AS filings, sum(extra_rows) AS extra_rows, sum(extra_dollars) AS extra_dollars
+FROM f GROUP BY 1 ORDER BY extra_dollars DESC LIMIT 25""")
+show("Q16h: non-identical repeats (one TRAN_ID, rows that differ), the 15 largest groups", """
+SELECT CMTE_ID, FILE_NUM, TRAN_ID, n, bodies, types, any_memo FROM g WHERE bodies > 1
+ORDER BY n DESC, CMTE_ID LIMIT 15""")
+show("Q16i: non-identical repeats by whether a memo line is among them", """
+SELECT any_memo, no_memo, count(*) AS tran_ids, sum(n) AS rows FROM g WHERE bodies > 1 GROUP BY ALL""")
+show("Q16j: C00834424 by filing", """
+SELECT FILE_NUM, rpt, rows, tran_ids, extra_rows, extra_dollars FROM f WHERE CMTE_ID = 'C00834424'""")
+```
+
+`q16l.py`:
+
+```python
+# NEU-2401: the shipped register_bulk over FEC's 2024 indiv and oth, and Williamson's filings as the views read them.
+import time
+from pathlib import Path
+
+import duckdb
+
+from fundlens.fec.files import CATALOGUE
+from fundlens.transform.runner import copy_as_utf8, register_bulk
+
+W = Path("/app/data/neu2401")
+con = duckdb.connect(config={"memory_limit": "6GB", "temp_directory": str(W / "tmp"), "threads": 4})
+for name, member in (("indiv", "itcont.txt"), ("oth", "itoth.txt"), ("pas2", "itpas2.txt")):
+    utf8 = W / f"{name}.utf8.txt"
+    if not utf8.exists():
+        with (W / member).open("rb") as src, utf8.open("wb") as out:
+            copy_as_utf8(src, out)
+    start = time.monotonic()
+    register_bulk(con, CATALOGUE[name], utf8)
+    [(n,)] = con.execute(f"SELECT count(*) FROM {name}_repeat").fetchall()
+    print(f"{name}: {n:,} repeats, {time.monotonic() - start:.0f} s")
+for name in ("indiv", "oth"):
+    print(name, "C00834424, by filing and type, published against read:")
+    print(con.sql(f"""
+        SELECT FILE_NUM, TRANSACTION_TP, count(*) AS published_rows, sum(TRANSACTION_AMT) AS published,
+            count(*) FILTER (WHERE SUB_ID NOT IN (SELECT SUB_ID FROM {name}_repeat)) AS read_rows,
+            sum(TRANSACTION_AMT) FILTER (WHERE SUB_ID NOT IN (SELECT SUB_ID FROM {name}_repeat)) AS read
+        FROM {name}_published
+        WHERE CMTE_ID = 'C00834424' AND FILE_NUM IN (1764677, 1765783) AND MEMO_CD IS DISTINCT FROM 'X'
+        GROUP BY ALL ORDER BY ALL"""))
+```
+
+### Results
+
+**Q16w: Williamson's two filings, the raw filing against FEC's `indiv` (memo lines left out)**
+
+| Filing | Raw line | Raw rows | Raw $ | Bulk type | Bulk rows | Bulk $ |
+| --- | --- | ---: | ---: | --- | ---: | ---: |
+| `1764677` YE 2023 | `SA17A`, earmarked | 8,263 | 611,207.69 | `15E` | 16,510 | 1,221,546 |
+| | `SA17A`, other | 480 | 41,810.65 | `15` | 958 | 83,194 |
+| | `SA17D` (candidate) | 1 | 1.00 | `15C` | 2 | 2 |
+| | `SB28A` (refunds) | 31 | 14,972.57 | `22Y` | 118 | 58,868 |
+| | `SA19A` (candidate loans, `oth`) | 2 | 250,000.00 | `16C` | 4 | 500,000 |
+| `1765783` M2 2024 | `SA17A`, earmarked | 3,407 | 225,936.87 | `15E` | 6,814 | 451,828 |
+| | `SA17A`, other | 128 | 10,187.09 | `15` | 254 | 20,136 |
+| | `SB28A` (refunds) | 19 | 20,573.39 | `22Y` | 74 | 82,084 |
+| | `SA19A` (candidate loans, `oth`) | 4 | 600,000.00 | `16C` | 8 | 1,200,000 |
+
+`1764677`'s summary (`F3PA`) reports line 17(a)(i) itemized $653,018.34, unitemized $425,157.49,
+total $1,078,175.83: the raw `SA17A` rows above, $611,207.69 + $41,810.65. Its 8,264 memo lines,
+$1,036,365.18, are ActBlue's conduit line under each earmark (8,263, entity `PAC`, `Conduit total
+listed in Agg. field`, each the amount of the earmark above it) and one `ORG` line carrying the
+unitemized total, $425,157.49. `1752637`, the YE 2023 report as first filed, holds the same rows
+under the same `TRAN_ID`s, and FEC's file holds none of it. In bulk, each copy of a row has the
+same `IMAGE_NUM`, `TRAN_ID` and amount, and consecutive `SUB_ID`s (ABBOTT, SHERRIE's $25 earmark,
+`TRAN_ID` 1186712, is `4032520241886321580` and `…581`); a refund has four. Bulk writes whole
+dollars, and holds 8,255 and 479 of the filing's 8,263 and 480 `SA17A` rows.
+
+**Q16a–j: `indiv`**
+
+
+**Q16a: itcont.txt  (2 s)**
+
+| rows | sub_ids |
+|---|---|
+| 58,210,201 | 58,210,201 |
+
+**Q16k: keys  (0 s)**
+
+| count_star() |
+|---|
+| 18,355 |
+
+**Q16b: repeated TRAN_IDs within one filing, by whether the rows are identical but for SUB_ID  (0 s)**
+
+| identical | tran_ids | rows_beyond_first | dollars_beyond_first | committees | filings |
+|---|---|---|---|---|---|
+| True | 18,352 | 18,519 | 2,527,307 | 11 | 14 |
+| False | 3 | 3 |  | 1 | 1 |
+
+**Q16c: identical repeats, rows silver could count (no memo line, not 24T)  (0 s)**
+
+| tran_ids | rows_beyond_first | dollars | committees | filings | max_copies | max_sub_id_span |
+|---|---|---|---|---|---|---|
+| 18,332 | 18,499 | 2,507,507 | 11 | 14 | 4 | 1,100,000,002,986,271 |
+
+**Q16d: copies per identical TRAN_ID  (0 s)**
+
+| copies | tran_ids | dollars_beyond_first |
+|---|---|---|
+| 2 | 18,244 | 2,058,430 |
+| 3 | 49 | 358,246 |
+| 4 | 59 | 110,631 |
+
+**Q16e: filings with identical repeats, by the share of their TRAN_IDs repeated  (0 s)**
+
+| share | filings | extra_rows | extra_dollars | committees |
+|---|---|---|---|---|
+| every row at least twice | 10 | 17,335 | 1,849,727 | 9 |
+| half or more | 3 | 1,066 | 299,534 | 2 |
+| under half | 1 | 98 | 358,246 | 1 |
+
+**Q16f: the 25 filings with the most dollars repeated  (0 s)**
+
+| CMTE_ID | FILE_NUM | amndt | rpt | rows | tran_ids | extra_rows | extra_dollars |
+|---|---|---|---|---|---|---|---|
+| C00834424 | 1,764,677 | A | YE | 17,588 | 8,765 | 8,823 | 696,522 |
+| C00833392 | 1,764,266 | A | YE | 69,709 | 69,611 | 98 | 358,246 |
+| C00773820 | 1,780,265 | A | YE | 1,486 | 743 | 743 | 339,499 |
+| C00834424 | 1,765,783 | A | M2 | 7,142 | 3,553 | 3,589 | 297,495 |
+| C00660795 | 1,764,419 | A | Q3 | 2,042 | 1,021 | 1,011 | 229,409 |
+| C00546119 | 1,774,129 | A | YE | 1,690 | 845 | 845 | 186,659 |
+| C00640300 | 1,764,264 | A | YE | 1,904 | 952 | 952 | 171,744 |
+| C00348540 | 1,777,595 | A | YE | 3,976 | 1,976 | 2,000 | 55,927 |
+| C00216614 | 1,810,736 | A | M6 | 448 | 224 | 224 | 43,764 |
+| C00532465 | 1,753,303 | A | Q1 | 68 | 34 | 26 | 42,600 |
+| C00532465 | 1,753,352 | A | Q3 | 62 | 31 | 29 | 27,525 |
+| C00804179 | 1,752,132 | A | MY | 184 | 92 | 92 | 26,217 |
+| C00408435 | 1,752,010 | A | MY | 110 | 55 | 55 | 24,375 |
+| C00532465 | 1,753,309 | A | Q2 | 24 | 12 | 12 | 7,525 |
+
+**Q16g: the 25 committees with the most dollars repeated  (0 s)**
+
+| CMTE_ID | filings | extra_rows | extra_dollars |
+|---|---|---|---|
+| C00834424 | 2 | 12,412 | 994,017 |
+| C00833392 | 1 | 98 | 358,246 |
+| C00773820 | 1 | 743 | 339,499 |
+| C00660795 | 1 | 1,011 | 229,409 |
+| C00546119 | 1 | 845 | 186,659 |
+| C00640300 | 1 | 952 | 171,744 |
+| C00532465 | 3 | 67 | 77,650 |
+| C00348540 | 1 | 2,000 | 55,927 |
+| C00216614 | 1 | 224 | 43,764 |
+| C00804179 | 1 | 92 | 26,217 |
+| C00408435 | 1 | 55 | 24,375 |
+
+**Q16h: non-identical repeats (one TRAN_ID, rows that differ), the 15 largest groups  (0 s)**
+
+| CMTE_ID | FILE_NUM | TRAN_ID | n | bodies | types | any_memo |
+|---|---|---|---|---|---|---|
+| C00778548 | 1,879,162 | SA03042536932 | 2 | 2 | ['15'] |  |
+| C00778548 | 1,879,162 | SA03042536931 | 2 | 2 | ['15'] |  |
+| C00778548 | 1,879,162 | SA03042536933 | 2 | 2 | ['15'] |  |
+
+**Q16i: non-identical repeats by whether a memo line is among them  (0 s)**
+
+| any_memo | no_memo | tran_ids | rows |
+|---|---|---|---|
+|  | True | 3 | 6 |
+
+**Q16j: C00834424 by filing  (0 s)**
+
+| FILE_NUM | rpt | rows | tran_ids | extra_rows | extra_dollars |
+|---|---|---|---|---|---|
+| 1,765,783 | M2 | 7,142 | 3,553 | 3,589 | 297,495 |
+| 1,764,677 | YE | 17,588 | 8,765 | 8,823 | 696,522 |
+
+**Q16o: `oth`, repeated `TRAN_ID`s within one filing**
+
+| identical | no memo line | `TRAN_ID`s | rows beyond the first | dollars | committees | filings |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| false | true | 2 | 3 | 49,382 | 2 | 2 |
+| true | false | 106 | 106 | 205,875 | 1 | 1 |
+| true | true | 82 | 120 | 11,144,985 | 9 | 10 |
+
+| Committee | Filing | Type | `TRAN_ID`s | Rows beyond the first | Dollars |
+| --- | --- | --- | ---: | ---: | ---: |
+| C00348540 | 1777595 | 24G | 2 | 6 | 8,828,742 |
+| C00833392 | 1764266 | 24K | 21 | 42 | 1,146,000 |
+| C00834424 | 1765783 | 16C | 4 | 4 | 600,000 |
+| C00834424 | 1764677 | 16C | 2 | 2 | 250,000 |
+| C00660795 | 1764419 | 15J | 105 | 105 | 204,875 |
+| C00786830 | 1817687 | 24E | 2 | 2 | 95,242 |
+| C00660795 | 1764419 | 18G | 2 | 2 | 81,151 |
+| C00408435 | 1752010 | 24K | 34 | 34 | 71,000 |
+| C00833392 | 1764266 | 24G | 2 | 4 | 30,000 |
+| C00444752 | 1779569 | 24K | 3 | 6 | 22,000 |
+| C00532465 | 1753309 | 22Z | 2 | 2 | 10,000 |
+| C00834424 | 1765783 | 24K | 3 | 9 | 7,500 |
+| C00532465 | 1753309 | 11J | 1 | 1 | 2,500 |
+| C00660795 | 1764419 | 18J | 1 | 1 | 1,000 |
+| C00660795 | 1764419 | 24K | 1 | 3 | 450 |
+| C00216614 | 1810736 | 18K | 3 | 3 | 400 |
+
+The `TRAN_ID`s that differ: `C00444752`'s `SB23.4824` on `1779569` (three rows, two bodies) and
+`C00786830`'s `500073362` on `1817687`.
+
+**Q16p: `pas2`, repeated `TRAN_ID`s within one filing**
+
+| identical | no memo line | `TRAN_ID`s | rows beyond the first | dollars | committees | filings |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| false | true | 1 | 1 | 47,382 | 1 | 1 |
+| true | true | 35 | 37 | 177,242 | 3 | 3 |
+
+| Committee | Filing | Type | `TRAN_ID`s | Rows beyond the first | Dollars |
+| --- | --- | --- | ---: | ---: | ---: |
+| C00786830 | 1817687 | 24E | 2 | 2 | 95,242 |
+| C00408435 | 1752010 | 24K | 31 | 31 | 65,000 |
+| C00444752 | 1779569 | 24K | 2 | 4 | 17,000 |
+
+**Q16r: repeated `TRAN_ID`s against the raw filing**
+
+| Filing | Committee | Form | Repeated `TRAN_ID`s read | Rows in FEC's file | Rows on the raw filing |
+| --- | --- | --- | ---: | --- | --- |
+| `1764677` | C00834424 | F3PA | every one (Q16w) | 2, refunds 4 | 1 |
+| `1765783` | C00834424 | F3PA | every one (Q16w) | 2, refunds 4 | 1 |
+| `1780265` | C00773820 | F3A | every one: 743 in `indiv` | 2 | 1 (each of the filing's 1,734 Schedule A and B `TRAN_ID`s once) |
+| `1764266` | C00833392 | F3PA | 49 in `indiv`, every one a `22Y` (`SB28A`) | 3 | 1 |
+| `1817687` | C00786830 | F3XN | 3 in `pas2`, `24E` | 2 | 1 |
+| `1779569` | C00444752 | F3XA | 2 in `pas2`, `24K` (`SB23`) | 3 | 1 |
+
+**Q16l: the branch's `register_bulk` over the 2024 files**
+
+| File | `<file>_repeat` rows | Seconds |
+| --- | ---: | ---: |
+| `indiv` | 18,519 | 42 |
+| `oth` | 227 | 13 |
+| `pas2` | 37 | 1 |
+
+`C00834424`'s two filings, memo lines left out, as published (`<file>_published`) and as the view
+reads them:
+
+| File | Filing | Type | Published rows | Published $ | Read rows | Read $ |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `indiv` | 1764677 | 15 | 958 | 83,194 | 479 | 41,597 |
+| | 1764677 | 15C | 2 | 2 | 1 | 1 |
+| | 1764677 | 15E | 16,510 | 1,221,546 | 8,255 | 610,773 |
+| | 1764677 | 22Y | 118 | 58,868 | 30 | 14,717 |
+| | 1765783 | 15 | 254 | 20,136 | 127 | 10,068 |
+| | 1765783 | 15E | 6,814 | 451,828 | 3,407 | 225,914 |
+| | 1765783 | 22Y | 74 | 82,084 | 19 | 20,571 |
+| `oth` | 1764677 | 16C | 4 | 500,000 | 2 | 250,000 |
+| | 1765783 | 16C | 8 | 1,200,000 | 4 | 600,000 |
+| | 1765783 | 24K | 12 | 10,000 | 3 | 2,500 |
+
+`oth`'s 227 is Q16o's 226 identical repeats and one more: `C00444752`'s `SB23.4824`, three rows of
+which two are identical, $1,000 each, reads as two rows, the differing one kept: $11,351,860 in all.
+
+### Findings
+
+- **The cause is FEC's file, not the filer and not an earmark rule.** `1764677` itemizes each
+  earmark once, its conduit line under it a memo line that silver drops (ADR-0004), and its
+  `SA17A` rows add up to its line 17(a)(i) figure to the cent. FEC's 2024 `indiv` holds every row
+  of the filing twice, and every refund four times, the copies identical but for `SUB_ID`
+  (Q16w). fundlens counted each copy: $1,304,740 of `15E` and `15` where the filing itemizes
+  $653,018. `1765783` is the same: $471,964 for $236,124. The two filings' repeated copies are
+  $888,352, against Williamson's $884,741 excess over FEC's itemized figure. Read once,
+  `1764677` counts $652,371 (Q16l), under the $1,078,175 of individuals' money it reports. The
+  earmark rule stands.
+- **It is a property of a few filings.** In `indiv`, 18,352 `TRAN_ID`s on 14 filings at 11
+  committees, 18,519 rows beyond the first, $2,527,307 gross; in ten of the filings every row is
+  repeated (Q16e). Every one of the 14 is an amendment (`AMNDT_IND` A). `oth` holds 227 rows
+  beyond the first on 10 filings, $11,351,860 (Q16l), of which 106 are a JFC's attribution lines
+  (`15J` memo lines at `C00660795`, which `jfc_attribution` reads), $8,828,742 a 24G pair at
+  `C00348540`, and $850,000 Williamson's loans; `pas2` 37, $177,242, on three filings, one of them
+  an original report (`1817687`, F3XN). Six of the filings were read raw, two of them whole, and
+  every repeated `TRAN_ID` read there is one row (Q16r): a repeat is FEC's, whatever the form,
+  file or type.
+- **Rows that share a `TRAN_ID` but differ are rare and left alone**: 3 `TRAN_ID`s in `indiv`
+  (`C00778548`'s three on `1879162`), 2 in `oth` and 1 in `pas2`. Nothing says which row is the
+  transaction.
+- **Not the same-file repeats of Q13f.** Those are one donor's gifts of one size on one day, each
+  with its own `TRAN_ID` on the raw filing, and they still count.
+
+**What changed (NEU-2401).** The transform runner registers `indiv`, `oth` and `pas2` as views
+that read each transaction of an electronic filing once, from its lowest `SUB_ID`
+(`_drop_fec_repeats`; the rows as published are `<file>_published`, the dropped `SUB_ID`s
+`<file>_repeat`). Every silver model reads the views, so the rules for earmarks, memo lines,
+refunds, JFC attributions, loans and superseded filings each see a filing as filed. The silver
+check `silver_fec_repeat` fails the build if a dropped row is counted in `contribution`,
+`committee_transfer`, `organization_receipt`, `jfc_attribution` or `independent_expenditure`.
+Rejected: a drop-list of repeats in each model, as `superseded_filing` is (seven models and the
+memo-line and refund rules read the files, and each would need it); and dropping every row that
+repeats another's gift, which would drop Q13f's separate gifts.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to

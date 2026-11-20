@@ -88,7 +88,7 @@ rows:
   cm: 23
   cn: 15
   ccl: 15
-  indiv: 404
+  indiv: 405
   pas2: 30
   oth: 32
   weball: 12
@@ -141,6 +141,9 @@ contributions:
   # The rows of a filing a later amendment supersedes (NEU-2196): the super PAC's Q2 filing,
   # CARVALHO's gift and TIDEWATER MARINE SUPPLY's, both restated by its 30S amendment.
   dropped_superseded: 2
+  # FEC's repeat of a transaction on its filing (NEU-2401): THACKERAY's last $50 gift to
+  # BRANNIGAN, a second time under its TRAN_ID.
+  dropped_fec_repeat: 1
   # A gift to a committee missing from `cm`.
   dropped_unknown_recipient: 1
   # Rows that are no individual's, by type or by the classifier: organizations' (ORG, or blank and

@@ -54,8 +54,12 @@ A committee's gifts to one candidate that net below zero in a cycle: voids and r
 _Avoid_: negative contribution, refund received, clawback
 
 **Superseded filing**:
-A report a committee filed again as an amendment that changed its form, report type or coverage, so the regulator's bulk data keeps both. Its gifts are counted from the amendment alone, never from it, even where the regulator's own itemized figure adds the two. Told by the amendment repeating at least half of its gifts. Repeats within one filing are separate gifts, and count.
+A report a committee filed again as an amendment that changed its form, report type or coverage, so the regulator's bulk data keeps both. Its gifts are counted from the amendment alone, never from it, even where the regulator's own itemized figure adds the two. Told by the amendment repeating at least half of its gifts. Repeats within one filing are separate gifts, and count, unless they are a repeated row.
 _Avoid_: duplicate filing, stale report
+
+**Repeated row**:
+A transaction the regulator's bulk data holds on two or more rows, the same in every field but the regulator's own row id, under the one transaction id (`TRAN_ID`) its filer gave it on an electronic filing. The filing lists it once, so it is read once, from its first row, by every table. Rows sharing a transaction id that differ elsewhere are all read, and so are a paper filing's identical rows, which carry no transaction id.
+_Avoid_: duplicate, double-count, FEC duplicate
 
 **Reported total**:
 A figure a committee reported to the regulator as its own total for a cycle, taken from the regulator's summary of its reports: what it raised, spent, holds and owes. Kept as filed: never corrected, netted or added to itemized money. A candidate's is the reported totals of the committees raising for them, added up (before 2008, the regulator's own figure for the candidate), and a handoff's committee's are the second candidate's alone.
