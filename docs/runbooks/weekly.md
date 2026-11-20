@@ -39,8 +39,8 @@ current one are built once, by [backfill.md](backfill.md), and rebuilt only by
 | Why 7 d + 12 h for both | A Sunday's push lands when the run ends, and that varies. A 7 d interval would alert on any Sunday that ended later than the one before. The 12 h grace means a Sunday that never finished alerts at about 15:00 UTC the same day |
 | A run's output | In Coolify's own database, `coolify-db`, table `scheduled_task_executions`, column `message`. Not in `docker logs`: a scheduled task is a `docker exec`, not the container's main process ([Reading a run's output](#reading-a-runs-output)) |
 | How long a run takes | About 45 min plus the incremental resolution: 2026's extract, seats and transform (7 + 5 + 981 s) and the load and publish of every cycle (1,402 + 157 s), `capacity.md`. Step 2 measures the incremental resolution for the first time. Then about 16 minutes for the dataset snapshot, `--dataset` (16m26s by hand on 2026-11-18, `capacity.md` → *Dataset snapshot*) |
-| What a merge does | Every merge to `main` redeploys `pipeline` and kills a running `docker exec`, the scheduled task's included. Don't merge on Sunday between 03:00 UTC and the run's end. Dependabot's auto-merge runs daily at 11:00 UTC and on Saturdays from 13:00 to 23:30 UTC (`.github/workflows/dependencies.yml`), so it never overlaps |
-| The nightly backup | `backup-postgres.sh` runs at 03:00 on the VM's clock, 02:00 UTC, and dumps the whole fundlens database, `gold` and `gold_prev` included (ops `backups/postgres.md`). While it dumps it holds a lock on every gold table, and `publish`'s swap gives up after three tries, each waiting up to 10 s for its locks with 5 s between them, about 40 s in all (`LOCK_TIMEOUT`, `SWAP_RETRY_SECONDS`, `src/fundlens/publish/gold.py`). So the dump must finish before the run reaches `publish`. Step 1.3 checks |
+| What a merge does | Every merge to `main` makes Coolify recreate the whole fundlens stack, `fundlens-postgres` included. It kills a running `docker exec` in `pipeline`, the scheduled task's included, and a running dump of the database (NEU-2405, Log). Don't merge between 02:00 and 02:30 UTC on any day (the nightly dump), or on Sunday between 03:00 UTC and the run's end. `/doit` merges as soon as CI passes, so check the clock before starting one near 02:00 UTC. Dependabot's auto-merge runs daily at 11:00 UTC and on Saturdays from 13:00 to 23:30 UTC (`.github/workflows/dependencies.yml`), so it never overlaps |
+| The nightly backup | `backup-postgres.sh` runs at 03:00 on the VM's clock, 02:00 UTC, and dumps the fundlens database without its `gold*` schemas (`--exclude-schema='gold*'`, spec §10.4: only `app` needs keeping; gold is rebuilt from silver), about 0.7 GB. A failed dump is retried once, 10 minutes later, before the night is marked failed (ops `backups/postgres.md`, NEU-2405). It takes no lock on a gold table, so it cannot hold up `publish`'s swap, which gives up after about 40 s of waiting for its locks (`SWAP_ATTEMPTS`, `LOCK_TIMEOUT`, `SWAP_RETRY_SECONDS`, `src/fundlens/publish/gold.py`). A script installed before NEU-2405 still dumps `gold*` and holds those locks until it ends. Step 1.3 checks which script is installed, and that it ran |
 
 ## 0. Session setup
 
@@ -132,26 +132,30 @@ free_gb
 **Expected:** `gold` with build `20261116T005426Z` and model `20261116T224205Z`, and a `gold_prev` line (the
 backfill's earlier publish); `markers/live.json` naming 2026's build `20261116T013416Z`; `builds 2026` listing
 that build last, with `extracted loaded published resolved transformed`; then `live model 20261116T224205Z`,
-`incremental ready`, a working file of about 102G, and at least 130 GB free.
+`incremental ready`, a working file of about 14G, and at least 130 GB free.
 
 `NOT READY` means the scheduled run would stop at `resolve` with exit 1 every Sunday. Find out why before going
 on: no live model, or no working file, is [re-resolving with `--full`](#re-resolving-with---full)'s case. A
 newer 2026 build than the live one in `builds 2026` means someone transformed after the backfill: find out who
 before step 2, because `run` refuses a build older than its cycle's newest transformed one.
 
-### 1.3 The backup finishes before `publish`
+### 1.3 The backup runs every night
 
 ```bash
 # VM
+grep -c "exclude-schema='gold\*'" /usr/local/bin/backup-postgres.sh
 ls -l --time-style=+%FT%T%z /var/backups/postgres/ | grep 'fundlens-postgres-' | tail -3
 sudo tail -20 /var/log/postgres-backup.log
 ```
 
-**Expected:** a dump a night, each file's time (the VM's clock, `+0100`) no later than 04:30, 03:30 UTC. A Sunday
-run reaches `publish` about 45 minutes after 03:00 UTC at the earliest. A dump finishing later than that can make
-`publish` fail with `LockNotAvailable` (Facts). If one does, stop: excluding `gold*` from the fundlens dump
-(`--exclude-schema='gold*'`, spec §10.4: only `app` needs keeping) is an ops change, and a ticket of its own.
-Write the latest finish time in the Log.
+**Expected:** `1` or more from the `grep`; a dump a night, each file named for the script's start, about 03:00 on
+the VM's clock (`+0100`); and `Backup complete` in the log. `0` from the `grep` means the installed script
+predates NEU-2405: it still dumps `gold*`, and a dump still running when the Sunday run reaches `publish` can fail
+it with `LockNotAvailable` (Facts). Stop, and install the script from the ops repo's `main` (ops
+`backups/postgres.md`, *Install on the VM*). With the script installed, the dump's finish time no longer matters
+to `publish`. A night with no fundlens dump means `app` has no backup for that day. If one is missing, stop: read the
+log's error for that night, and compare its time with the merges' (`gh pr list --state merged`). A merge during
+the dump is the known cause (Facts, *What a merge does*). Write the latest finish time in the Log.
 
 ## 2. A hand run of the current cycle
 
@@ -465,7 +469,7 @@ finished in 7 d + 12 h), or step 8's check found no `success`. Work down the lis
 | `no live model to resolve with`, `no working file to resolve against` or `the working file holds no clusters to resolve against` | Run by hand without `--scheduled`, which resolves in full by itself when it can: these come from `resolve` alone | As the row for the scheduled run's message above |
 | `build <B> of 2026 is older than its newest transformed build, <N>: resume <N> with --build-id <N>, or start a new build` | Someone transformed a newer build of the cycle since this one started | Don't resume `<B>`. Find out who made `<N>` and whether it is meant to go live; then resume `<N>`, or run a new build (`run --scheduled`, with no `--build-id`) |
 | `too many open files` (Bugsink, often opening a Parquet), then `IOException: Cannot open file "…/scratch/load-<C>-<B>/<table>.csv": No such file or directory` in `load` | Most likely the container's open-file soft limit: a load opens every cycle's live silver build plus DuckDB's spill files. 2024's load died this way under Docker's default 1,024 and passed with 65536 (NEU-2147's run, `reported-totals-run.md` Log), so `docker-compose.prod.yml` sets `nofile` to 65536 on `pipeline` and `api` (NEU-2399) | `docker exec "$(fl pipeline)" sh -c 'ulimit -Sn'; docker exec "$(fl api)" sh -c 'ulimit -Sn'`. `1024`: the deploy lacks the limit. Coolify → the `fundlens` resource → *Deploy* (not during a Sunday run, Facts), check it again, and if it still prints `1024`, a ticket: Coolify dropped `ulimits`. Once it prints `65536`, step 4 (it resumes at `load`). `65536` already: something else ran out of files, so a ticket, and step 4 once it is fixed |
-| `LockNotAvailable` in `publish` | The nightly backup still held the gold tables (Facts) | Step 4 (it resumes at `publish`). Then step 1.3's check, and the ops ticket if the dump has grown |
+| `LockNotAvailable` in `publish` | A session held a `gold_prev` table (the swap drops them) or `gold_build.meta` (it updates it) for the swap's 40 s. Not the nightly backup, which leaves out `gold*` since NEU-2405 (Facts), unless the VM's `/usr/local/bin/backup-postgres.sh` predates that change | `ps -o pid,lstart,args -C pg_dump` on the VM, and `grep -c exclude-schema /usr/local/bin/backup-postgres.sh` (0: reinstall it from the ops repo). Then step 4 (it resumes at `publish`) |
 | Nothing: killed by a deploy, or by the task's 6 h timeout | The process died without pushing | A deploy: step 4. The timeout: read SigNoz's logs for the step it was in before resuming, and log how long it had run |
 | `build <B> of <C> is having its donor ids rewritten: snapshot it once fundlens resolve has finished`, or `no crosswalk snapshot for the live build <B>`, exit 1 after `finished build` | `--dataset`'s snapshot: a resolve was still rewriting the live build, or its publish never took the crosswalk snapshot | The build is live; only the snapshot is missing. Once the resolve has finished (or after `fundlens publish --cycle <C> --build-id <B>` for the crosswalk), run `fundlens dataset --snapshot` |
 
@@ -661,3 +665,17 @@ Written from `main` at `be3084f` (NEU-2062 merged). Found while writing, against
   watching, not on the first Sunday, and it gives step 3 a build to roll back from.
 
 **Pending:** steps 1–8.
+
+### 2026-11-20 — Merges and the nightly backup (NEU-2405)
+
+- **A merge recreates `fundlens-postgres`, not just `pipeline`.** Merges at 02:01, 02:15 and 02:35 UTC killed the
+  fundlens dumps of 2026-11-19 and 2026-11-20, so the last good one was 2026-11-18's. An `app`-only dump taken by
+  hand on 2026-11-20 at 23:00 UTC covers the gap: `/var/backups/postgres/fundlens-app-manual-20261120T2300Z.dump`,
+  715 MB. Facts now name the 02:00–02:30 UTC window. The 02:35 merge killed a 3.6 GB dump, `gold*` included, that
+  was still running; the window assumes the 0.7 GB one below. If step 1.3's dumps finish after 03:30 on the VM's
+  clock, widen it.
+- **The dump leaves out `gold*` and retries once** (ops `backups/backup-postgres.sh`), so it shrinks from 3.6 GB to
+  about 0.7 GB and no longer locks the gold tables. Step 1.3 now checks that this script is installed and ran, not
+  that the dump ended before `publish`.
+- **`resolve.duckdb` was compacted** from 101.6 GiB (360,262 of 416,215 blocks free) to 13.5 GiB. Step 1.2 expects
+  about 14G.

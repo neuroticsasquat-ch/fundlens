@@ -312,7 +312,8 @@ Kuma's `backups/postgres` monitor up.
 
 **Before the backfill (M4):** the script dumps the whole cluster, `gold*` schemas included, and gold
 reaches 10–30 GB (spec §3.4) although only `app` needs keeping (spec §10.4). The fundlens cluster then
-needs dumping with `--exclude-schema='gold*'`; that is an ops change of its own.
+needs dumping with `--exclude-schema='gold*'`. NEU-2405 made that change in the ops repo, with a retry of a
+failed dump ([weekly.md](weekly.md), Facts).
 
 ## 14. Record what was built
 
