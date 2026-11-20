@@ -49,6 +49,24 @@ non-contribution account (whose 24Is are on line 17) or a 10 its memo puts there
 transfer. The match is
 case-sensitive, as Q15 measured it.
 
+A receipt whose `MEMO_TEXT` names a cost coming back to the committee is no gift: a tax, vendor,
+media, expense or fee refund, rebate or reimbursement (`PAYROLL TAX REFUND`, `VENDOR REFUND`), a
+`REFUNDED EXPENSE`, or a refund, rebate or reimbursement of or for an expense, fees, a purchase or
+a disbursement (`REFUND OF FEES`, `REIMBURSEMENT FOR DOMAIN PURCHASE`). `returned_cost(memo_text)`
+says so, and where the type puts the row on line 11(a)(i), or places it nowhere, and its
+`TRAN_ID` names no other line, it is on `15 other receipts`, the line a party files such money
+on (NEU-2402). The Georgia Federal Elections Committee (`C00041269`) typed
+two IRS payroll-tax refunds `15` from DEPARTMENT OF THE TREASURY, $853,654 with two smaller
+rows on the filing, and counted them as an organization's gift. A memo naming a refund alone
+says nothing: on 2024's counted 11(a)(i) rows it is almost always a gift the committee later
+refunded (`CONTRIBUTION REFUNDED`, `REFUND TO BE ISSUED`, 37,434 rows, $19.1M), and a fee
+refunded to a giver (`REFUND OF PROCESSING FEE BY CONDUIT`) is the giver's. On 2024 the rule
+places 14 rows, $944,498, at seven committees, every one a refund or reimbursement of what the
+committee paid (`docs/measurements/summary-files-2024.md` Q17). A non-contribution account's
+row keeps its line: the rule moves no money between a hybrid PAC's accounts. Rejected: the
+payer's name, which misses a state treasury and the IRS by name and would drop a real gift's
+spelling.
+
 Only the 11(a)(i) lines, a candidate's 15C and the refunds of either are in a `total_individual`
 or a `total_from_organizations`; `sql/silver/04_contribution.sql` and
 `sql/silver/08_organization_receipt.sql` mark the rest `is_other_line` (NEU-2205).
@@ -108,6 +126,20 @@ CREATE MACRO tran_id_line(tran_id) AS CASE
 END
 """
 
+# Whether a receipt's memo names a cost coming back to the committee, not a gift (NEU-2402).
+RETURNED_COST = r"""
+CREATE MACRO returned_cost(memo_text) AS coalesce(
+    regexp_matches(
+        upper(memo_text),
+        '(TAX|VENDOR|MEDIA|EXPENSE|FEES?) (REFUND|REBATE|REIMBURSEMENT)'
+            || '|REFUNDED (EXPENSE|FEES)'
+            || '|(REFUND|REBATE|REIMBURSEMENT)S? (OF|FOR) [^;.,]{0,40}'
+            || '(EXPENSE|FEES|PURCHASE|DISBURSEMENT)'
+    ),
+    false
+)
+"""
+
 FEC_LINE = r"""
 CREATE MACRO fec_line(transaction_type, committee_type, memo_text, tran_id) AS CASE
     -- A type the type rule does not place (NULL) counts, so its TRAN_ID may place it too.
@@ -115,12 +147,17 @@ CREATE MACRO fec_line(transaction_type, committee_type, memo_text, tran_id) AS C
         AND coalesce(type_line(transaction_type, committee_type, memo_text), '11(a)(i)')
             IN ('11(a)(i)', '11(d) candidate', '20 refunds')
         THEN tran_id_line(tran_id)
+    WHEN returned_cost(memo_text)
+        AND coalesce(type_line(transaction_type, committee_type, memo_text), '11(a)(i)')
+            = '11(a)(i)'
+        THEN '15 other receipts'
     ELSE type_line(transaction_type, committee_type, memo_text)
 END
 """
 
 
 def register(con: duckdb.DuckDBPyConnection) -> None:
-    """Make `fec_line`, and the `type_line` and `tran_id_line` it reads, macros on `con`."""
-    for macro in (TYPE_LINE, TRAN_ID_LINE, FEC_LINE):
+    """Make `fec_line`, `returned_cost`, and the `type_line` and `tran_id_line` `fec_line` reads,
+    macros on `con`."""
+    for macro in (TYPE_LINE, TRAN_ID_LINE, RETURNED_COST, FEC_LINE):
         con.execute(macro)

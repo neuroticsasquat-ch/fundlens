@@ -8787,6 +8787,292 @@ Rejected: a drop-list of repeats in each model, as `superseded_filing` is (seven
 memo-line and refund rules read the files, and each would need it); and dropping every row that
 repeats another's gift, which would drop Q13f's separate gifts.
 
+## Q17: receipts whose memo names a refund, rebate or reimbursement (NEU-2402)
+
+Measured for [NEU-2402](https://linear.app/neuroticsasquatch/issue/NEU-2402) on 2026-11-20. The
+Georgia Federal Elections Committee (`C00041269`, a party, `cm` type Y) listed DEPARTMENT OF THE
+TREASURY among the organizations that gave it most, eighth in 2024's reconciliation on build
+`20261119T212247Z`. Its M8 2024 filing `1812392` holds four `15` rows from the Treasury, every one
+`PAYROLL TAX REFUND`: IRS refunds of the party's payroll tax, which fundlens counted in
+`total_from_organizations`. This measures how many counted rows carry a memo naming a refund,
+rebate or reimbursement, and which of them are no gift.
+
+| What | Value |
+| --- | --- |
+| Run | 2026-11-20 19:15–20:30 UTC, `app` container of the local dev stack, DuckDB 2.0.0. FEC's bulk files, not the live build |
+| Code | branch `fix/NEU-2402-refund-memo-other-receipts` off `main` at `c26ebf4`: `register_bulk` as shipped there, and `fec_line` as `main` has it, before this ticket's rule (`lines_main.py`, below) |
+| `indiv24.zip`, `oth24.zip` | Q16's copies (`data/neu2401/`, `Last-Modified: Sun, 15 Nov 2026 19:35:23 GMT` and `19:38:06 GMT`), read through `register_bulk`, so each transaction once |
+| `cm24.zip` | `https://www.fec.gov/files/bulk-downloads/2024/cm24.zip`, `Last-Modified: Fri, 20 Nov 2026 06:48:18 GMT`, downloaded 2026-11-20T20:13Z, for each recipient's `CMTE_TP` |
+| Backfilled cycles | not measured: each cycle's `indiv` is a multi-GB download, and the run's disk had 30 GB free |
+
+**Method.** A row is *counted-shape* when it is no memo line (`MEMO_CD` not X) and not a 24T, and
+its memo (`upper(MEMO_TEXT)`) matches `REFUND|REBATE|REIMBURS`. Its line is `fec_line` at the
+recipient's 2024 `cm` type, as silver computes it. Q17a–e read `indiv`; Q17f applies the chosen
+rule to the same rows; Q17g reads `oth`'s organization receipts by `08_organization_receipt.sql`'s
+`other` filter; Q17h and Q17h2 read every organization's counted-shape `indiv` row. The block is
+the run's scripts in one; Q17h2 was run on its own, before the rest.
+
+```bash
+# Host, from the repository root, dev stack up, Q16's data/neu2401/ in place.
+mkdir -p data/neu2402/tmp && cd data/neu2402
+curl -sSLO https://www.fec.gov/files/bulk-downloads/2024/cm24.zip && unzip -o -q cm24.zip
+cd ../.. && git show c26ebf4:src/fundlens/fec/lines.py > data/neu2402/lines_main.py
+docker compose exec -T app uv run python /app/data/neu2402/q17.py
+```
+
+`q17.py`:
+
+```python
+# NEU-2402: counted-shape 2024 indiv rows whose memo names a refund, rebate or reimbursement.
+from pathlib import Path
+
+import duckdb
+
+import sys
+
+from fundlens.fec.files import CATALOGUE
+from fundlens.transform.runner import register_bulk
+
+sys.path.insert(0, "/app/data/neu2402")
+import lines_main as lines  # main's fec.lines (c26ebf4), before this ticket's rule
+
+W, B = Path("/app/data/neu2402"), Path("/app/data/neu2401")
+con = duckdb.connect(config={"memory_limit": "6GB", "temp_directory": str(W / "tmp"), "threads": 4})
+register_bulk(con, CATALOGUE["indiv"], B / "indiv.utf8.txt")
+register_bulk(con, CATALOGUE["oth"], B / "oth.utf8.txt")
+lines.register(con)
+con.execute(f"""CREATE TABLE cm AS SELECT column00 AS CMTE_ID, column09 AS CMTE_TP
+FROM read_csv('{W}/cm.txt', delim = '|', quote = '', escape = '', header = false, all_varchar = true)""")
+show = lambda sql: con.sql(sql).show(max_width=250, max_rows=200, max_col_width=90)
+
+con.execute("""
+CREATE TABLE m AS
+SELECT i.SUB_ID, i.CMTE_ID, cm.CMTE_TP, i.FILE_NUM, i.TRAN_ID, i.TRANSACTION_TP, i.ENTITY_TP,
+    i.NAME, i.TRANSACTION_AMT AS amt, upper(i.MEMO_TEXT) AS memo,
+    fec_line(i.TRANSACTION_TP, cm.CMTE_TP, i.MEMO_TEXT, i.TRAN_ID) AS line
+FROM indiv AS i LEFT JOIN cm USING (CMTE_ID)
+WHERE i.MEMO_CD IS DISTINCT FROM 'X' AND i.TRANSACTION_TP IS DISTINCT FROM '24T'
+    AND regexp_matches(upper(i.MEMO_TEXT), 'REFUND|REBATE|REIMBURS')
+""")
+# Q17a: by line.
+show("SELECT line, count(*) rows, sum(amt) dollars, count(DISTINCT CMTE_ID) cmtes FROM m GROUP BY 1 ORDER BY 3 DESC")
+# Q17b: line 11(a)(i), by whether the memo says the gift itself was or will be refunded.
+GIFT = (r"REFUNDED|REFUND(S)? (TO BE|WILL|ISSUED|OF (THE )?(EXCESS|CONTRIB|\$)|OR RE|REQUESTED|PENDING"
+        r"|MADE|DUE|SENT|PROCESSED|IN |ON |NEXT|SEE|LINE|ISSUED)|(TO BE|SEE|PENDING|WILL BE|FOR"
+        r"|AWAITING|AND|OR|PARTIAL|EXCESS(IVE)?|CONTRIBUTION|FULL|FULLY|DONOR) REFUND|REFUND/"
+        r"|/REFUND|EARMARK|CHARGED BACK|REATTRIB|REDESIG")
+show(f"""SELECT regexp_matches(memo, '{GIFT}') AS gift_refunded, count(*) rows, sum(amt) dollars,
+    count(DISTINCT CMTE_ID) cmtes FROM m WHERE line = '11(a)(i)' GROUP BY 1""")
+# Q17c: line 11(a)(i), the memos with the most dollars; Q17d: the rest, after Q17b's gift wordings.
+show("""SELECT memo, count(*) rows, sum(amt) dollars, count(DISTINCT CMTE_ID) cmtes FROM m
+WHERE line = '11(a)(i)' GROUP BY 1 ORDER BY dollars DESC LIMIT 25""")
+show(f"""SELECT memo, ENTITY_TP, TRANSACTION_TP, count(*) rows, sum(amt) dollars,
+    count(DISTINCT CMTE_ID) cmtes, any_value(NAME) name
+FROM m WHERE line = '11(a)(i)' AND NOT regexp_matches(memo, '{GIFT}')
+GROUP BY ALL ORDER BY dollars DESC""")
+# Q17e: line 11(a)(i), organizations' rows (ORG, PAC), whatever the wording.
+show("""SELECT memo, TRANSACTION_TP, ENTITY_TP, count(*) rows, sum(amt) dollars, any_value(NAME) name
+FROM m WHERE line = '11(a)(i)' AND coalesce(trim(ENTITY_TP), '') NOT IN ('IND', 'CAN', '')
+GROUP BY ALL ORDER BY dollars DESC""")
+# Q17f: the chosen rule (`returned_cost` in src/fundlens/fec/lines.py), by line and committee.
+RULE = (r"(TAX|VENDOR|MEDIA|EXPENSE|FEES?) (REFUND|REBATE|REIMBURSEMENT)|REFUNDED (EXPENSE|FEES)"
+        r"|(REFUND|REBATE|REIMBURSEMENT)S? (OF|FOR) [^;.,]{0,40}(EXPENSE|FEES|PURCHASE|DISBURSEMENT)")
+con.execute(f"CREATE TABLE r AS SELECT * FROM m WHERE regexp_matches(memo, '{RULE}')")
+show("SELECT line, count(*) rows, sum(amt) dollars, count(DISTINCT CMTE_ID) cmtes FROM r GROUP BY 1")
+show("""SELECT line, CMTE_ID, CMTE_TP, TRANSACTION_TP, ENTITY_TP, NAME, count(*) rows, sum(amt) dollars,
+    any_value(memo) memo FROM r GROUP BY ALL ORDER BY line, dollars DESC""")
+# Q17g: oth's organization receipts naming a refund, rebate or reimbursement.
+show("""SELECT count(*) rows, sum(TRANSACTION_AMT) dollars FROM oth
+WHERE trim(ENTITY_TP) = 'ORG' AND left(TRANSACTION_TP, 1) IN ('1', '3')
+    AND TRANSACTION_TP NOT IN ('15J', '16C', '16F', '16G') AND MEMO_CD IS DISTINCT FROM 'X'
+    AND coalesce(trim(OTHER_ID), '') NOT LIKE 'C%'
+    AND regexp_matches(upper(MEMO_TEXT), 'REFUND|REBATE|REIMBURS')""")
+# Q17h: organizations' counted-shape rows by line, whatever the memo: what a line filter would take.
+show("""SELECT fec_line(i.TRANSACTION_TP, cm.CMTE_TP, i.MEMO_TEXT, i.TRAN_ID) AS line, count(*) rows,
+    sum(i.TRANSACTION_AMT) dollars, count(DISTINCT i.CMTE_ID) cmtes
+FROM indiv AS i LEFT JOIN cm USING (CMTE_ID)
+WHERE trim(i.ENTITY_TP) = 'ORG' AND i.MEMO_CD IS DISTINCT FROM 'X'
+    AND i.TRANSACTION_TP IS DISTINCT FROM '24T'
+GROUP BY 1 ORDER BY dollars DESC""")
+# Q17h2: who gave on lines 14 to 16.
+show("""SELECT i.NAME, upper(i.MEMO_TEXT) memo, count(*) rows, sum(i.TRANSACTION_AMT) dollars
+FROM indiv AS i LEFT JOIN cm USING (CMTE_ID)
+WHERE trim(i.ENTITY_TP) = 'ORG' AND i.MEMO_CD IS DISTINCT FROM 'X'
+    AND i.TRANSACTION_TP IS DISTINCT FROM '24T'
+    AND fec_line(i.TRANSACTION_TP, cm.CMTE_TP, i.MEMO_TEXT, i.TRAN_ID)
+        IN ('14 other receipts', '15 other receipts', '16 other receipts')
+GROUP BY ALL ORDER BY dollars DESC""")
+```
+
+### Results
+
+**Q17a: counted-shape rows naming a refund, rebate or reimbursement, by line**
+
+| line | rows | dollars | committees |
+|---|---|---|---|
+| 11(a)(i) | 37,562 | 20,041,633 | 563 |
+| non-contribution account | 457 | 4,403,321 | 40 |
+| 20 refunds | 3,840 | 1,199,168 | 159 |
+| 11(c) other committees | 1 | 250,000 | 1 |
+| party account 32 | 9 | 229,555 | 1 |
+| 11(d) candidate | 5 | 19,267 | 2 |
+
+**Q17b: line 11(a)(i), by whether the memo says the gift was or will be refunded**
+
+| gift refunded | rows | dollars | committees |
+|---|---|---|---|
+| yes | 37,434 | 19,122,444 | 548 |
+| no | 128 | 919,189 | 31 |
+
+**Q17c: line 11(a)(i), the memos with the most dollars (first ten)**
+
+| memo | rows | dollars | committees |
+|---|---|---|---|
+| * EARMARKED CONTRIBUTION: SEE BELOW CONTRIBUTION REFUNDED | 6,383 | 1,924,190 | 77 |
+| REFUND TO BE ISSUED | 1,076 | 865,656 | 32 |
+| PAYROLL TAX REFUND | 3 | 679,395 | 1 |
+| * EARMARKED CONTRIBUTION: SEE BELOW CONTRIBUTION PARTIALLY REFUNDED | 135 | 520,219 | 22 |
+| CONTRIBUTION REFUNDED | 249 | 411,313 | 24 |
+| CONTRIBUTION REFUNDED IN NEXT REPORTING PERIOD | 6 | 363,900 | 3 |
+| * EARMARKED CONTRIBUTION: SEE BELOW REFUNDED OR REATTRIBUTED IN THE FOLLOWING PERIOD | 532 | 311,948 | 3 |
+| EXCESS TO BE REFUNDED | 10 | 309,600 | 2 |
+| CONTRIBUTION PARTIALLY REFUNDED | 69 | 302,153 | 18 |
+| REFUNDED $2900.00 ON 04/11/2023 | 2 | 271,100 | 1 |
+
+**Q17d: line 11(a)(i), the memos left after Q17b's gift wordings: 56 wordings, $919,189.** Those
+over $1,000, and those the rule below takes; the giver where one row.
+
+| memo | entity | type | rows | dollars | giver |
+|---|---|---|---|---|---|
+| PAYROLL TAX REFUND | ORG | 15 | 3 | 679,395 | DEPARTMENT OF THE TREASURY |
+| PAYROLL TAX REFUND. | ORG | 15 | 1 | 174,259 | DEPARTMENT OF THE TREASURY |
+| RETURN OF GENERAL 2024 REFUND - SEE DISGORGEMENT TO U.S. TREASURY ON 12-30-24 | IND | 15 | 4 | 13,200 | |
+| 21-22 MEDIA REFUND | ORG | 10 | 1 | 11,560 | WATERFRONT STRATEGIES |
+| REFUND OF OVER-LIMIT CONTRIBUTION AMOUNT REPORTED IN SUBSEQUENT PERIOD | IND | 15 | 1 | 10,000 | ENRIGHT, DENNIS J. |
+| OVER-CONTRIBUTION REMEDIED BY 2.20.24 $6600 PRIMARY REFUND; REDUCED NET TOTAL TO $6600 | IND | 15 | 1 | 6,600 | SMITH, BRAD |
+| REFUND OF NONFEDERAL CONTRIBUTION | ORG | 10 | 1 | 6,052 | JUSTICE & PUBLIC SAFETY PAC GEORGIA |
+| REIMBURSEMENT FOR DOMAIN PURCHASE | ORG | 10 | 1 | 5,477 | FAIR DEMOCRACY |
+| CONTRIBUTION EXCEEDED LIMITS BY $4,000. REFUND CHECK WRITTEN ON 2/5/2024 | IND | 15 | 1 | 5,000 | POWERS, JOHN P. |
+| REFUND REFLECTED ON LINE 20A | IND | 15 | 1 | 5,000 | LANDEGGGER, GEORGE F. |
+| $7,000; $800 PRIMARY,  $3,300 GENERAL, REFUND $2,900 | IND | 15 | 2 | 4,100 | |
+| EXCESSIVE PORTION REFUND 7/15/2024. | IND | 15 | 1 | 3,500 | GOLD, LESLIE F |
+| COMMITTEE WILL REFUND FOR LIMITS UPON CONFIRMATION WITH DONOR | IND | 15 | 1 | 3,300 | BISHOP, JACK L MR |
+| SEE 3.31 $3300 REFUND, TO ASSURE NET TOTAL $6600 CONTRIBUTION | IND | 15 | 1 | 3,300 | NORRIS, JOHN W. |
+| PAC REIMBURSEMENT | ORG | 10 | 1 | 2,712 | WORKER POWER |
+| REFUND DISCLOSED ON LINE 20A | IND | 15 | 1 | 2,500 | DURST, DOUGLAS |
+| EXCESSIVE CONTRIBUTION. EXCESSIVE PORTION REFUND OF 7/22/24. | IND | 15 | 1 | 2,500 | SHORE, STEVEN J. |
+| REQUESTED COPY OF PASSPORT, WILL REFUND IF WE DON'T RECEIVE IT. | IND | 15 | 1 | 2,500 | PETERSON, KEVIN LARS |
+| MEMO: ROOM RENTAL FEE TO BE REIMBURSED | IND | 15 | 1 | 2,000 | ENGLERT, PAYTON |
+| REFUND OF DISBURSEMENT MADE IN ERROR FROM 04/17/2024 | IND | 15 | 1 | 2,000 | ZAMANI, JASMINE |
+| REFUND OF OVERAGE ISSUED ON 10/18/24 | IND | 15 | 1 | 1,500 | RADY, PAUL |
+| MEMO: GIFT BASKET ITEMS TO BE REIMBURSED | IND | 15 | 2 | 1,028 | |
+| THIS WAS A REFUND OF A 2024 CYCLE EXPENSE, AND SHOULD HAVE BEEN REPORTED AS AN OFFSET ON LINE 15 VIC… | ORG | 10 | 2 | 720 | |
+| REIMBURSEMENT FOR NGP VAN | PAC | 10 | 1 | 323 | THE SOUTHERN STRATEGY |
+| REFUND OF FEES FROM 9/30/24 TRANSACTION (1 OF 2) | ORG | 10 | 1 | 150 | UNITED AIRLINES |
+| REFUND OF FEES CHARGED ON 9/30/24 TRANSACTION (2 OF 2) | ORG | 10 | 1 | 150 | UNITED AIRLINES |
+| CHARGEBACK FROM (or OF) PREVIOUSLY REPORTED CONTRIBUTION … REFUND BY CONDUIT … (15 wordings) | IND | 15, 15E | 75 | −19,400 | |
+| REFUND OF INCORRECT CHARGE | IND | 15 | 2 | −166 | |
+
+The other 14 wordings, 17 rows, are a gift's refund or chargeback in other words (`REFUND
+INITIATED ON APRIL 19`, −$6,550; `REFUND OF 10/8/24 CONTRIBUTION`, −$2,500; `REFUND`, −$1,000)
+or a giver's in-kind cost the committee will repay (`MEMO: RAFFLE PRIZE TO BE REIMBURSED`, $158),
+each under $1,000 either way but those three.
+
+**Q17e: line 11(a)(i), organizations' rows (ORG, PAC; 88 wordings).** Nearly all say a gift was
+refunded (`REFUNDED OCTOBER 2024`, TCAG INC., $121,000; `CONTRIBUTION REFUNDED ON 5/2/23`, P & S
+PAVING INC., $50,000; tribes' `CONTRIBUTION PARTIALLY REFUNDED`). The rest: the Treasury's
+`PAYROLL TAX REFUND` ($853,654), `REFUNDED EXPENSE` (GPS IMPACT, $57,496), `VENDOR REFUND`
+(CATALIST, $13,291), `21-22 MEDIA REFUND`, `REIMBURSEMENT FOR DOMAIN PURCHASE`, `PAC
+REIMBURSEMENT`, `REFUND OF A 2024 CYCLE EXPENSE` (HOTELS.COM, TARGET), `REFUND OF FEES` (UNITED
+AIRLINES) and `REIMBURSEMENT FOR NGP VAN`; `REFUND OF NONFEDERAL CONTRIBUTION` ($6,052), a PAC
+returning the committee's own gift; and `ERRONEOUS DEPOSIT, SEE 2/23 REFUND ON LINE 29`
+(CRAVENS FOUNDATION, $25,000), a deposit returned as an other disbursement.
+
+**Q17f: the chosen rule**
+
+| line before the rule | rows | dollars | committees |
+|---|---|---|---|
+| 11(a)(i) | 14 | 944,498 | 7 |
+| non-contribution account | 6 | 1,606,634 | 4 |
+
+| committee | type | rows | dollars | givers |
+|---|---|---|---|---|
+| C00041269 | Y | 4 | 853,654 | DEPARTMENT OF THE TREASURY (`PAYROLL TAX REFUND`, $677,234, $174,259, $2,159, $2) |
+| C00808998 | Q | 2 | 57,496 | GPS IMPACT (`REFUNDED EXPENSE`) |
+| C00695346 | O | 1 | 13,291 | CATALIST (`VENDOR REFUND`) |
+| C00473918 | O | 1 | 11,560 | WATERFRONT STRATEGIES (`21-22 MEDIA REFUND`) |
+| C00631549 | O | 1 | 5,477 | FAIR DEMOCRACY (`REIMBURSEMENT FOR DOMAIN PURCHASE`) |
+| C00765198 | Q | 1 | 2,000 | ZAMANI, JASMINE (`REFUND OF DISBURSEMENT MADE IN ERROR`) |
+| C00886093 | O | 4 | 1,020 | HOTELS.COM, TARGET (`REFUND OF A 2024 CYCLE EXPENSE`), UNITED AIRLINES (`REFUND OF FEES`) |
+| non-contribution account | | 6 | 1,606,634 | WATERFRONT STRATEGIES' `NON-CONTRIBUTION ACCOUNT: MEDIA REFUND` to `C00669259`, $1,556,422; a 527 account's (entity COM) `REIMBURSEMENT OF STAFF TIME AND OVERHEAD EXPENSES` to `C00654053`, $30,000; LC MEDIA LLC's, RISING TIDE INTERACTIVE LLC's and FACEBOOK's `VENDOR REFUND`s at `C00630665` and `C00495861`, four rows, $20,212 |
+
+**Q17g: `oth`.** No organization receipt names a refund, rebate or reimbursement.
+
+**Q17h: organizations' counted-shape rows by line**
+
+| line | rows | dollars | committees |
+|---|---|---|---|
+| 11(a)(i) | 13,570 | 1,365,901,072 | 1,898 |
+| non-contribution account | 3,218 | 781,663,364 | 275 |
+| 17 other receipts | 351 | 70,361,424 | 66 |
+| 11(c) other committees | 69 | 29,001,568 | 17 |
+| 20 refunds | 933 | 6,395,345 | 361 |
+| party account 31 | 28 | 1,349,773 | 4 |
+| 14 other receipts | 16 | 1,234,344 | 2 |
+| party account 32 | 24 | 1,010,124 | 6 |
+| 13 loans | 9 | 114,900 | 7 |
+| party account 30 | 2 | 78,089 | 2 |
+| 11(b) party committees | 5 | 65,913 | 3 |
+| 16 other receipts | 1 | 3,300 | 1 |
+| 15 other receipts | 1 | 2,500 | 1 |
+| Schedule L Levin funds | 1 | 250 | 1 |
+| 11(d) candidate | 2 | 80 | 1 |
+
+Lines 14 to 16 hold gifts (Q17h2): FOREST COUNTY POTAWATOMI's $1,000,000, HAROLD HAMM's $154,000
+`IN-KIND -PARTNER & DELEGATE GIFT BAG`, the MORONGO BAND's $75,000 earmarked from a JFC, the
+ALABAMA-COUSHATTA TRIBE's $3,300 and the TIGUA's $2,500.
+
+### Findings
+
+- **A memo naming a refund is almost always a gift refunded later.** Of the 37,562 counted 11(a)(i)
+  rows naming one, 37,434 ($19.1M at 548 committees) say the gift was, or will be, refunded,
+  reattributed or charged back (Q17b), and most of the rest are the same in other words (Q17d).
+  They are real gifts, refunded on a 2nY row of their own, and count. A rule over `REFUND` alone,
+  or over `TAX REFUND`, `REFUND`, `REBATE`, `REIMBURSEMENT` as the ticket first listed them, would
+  drop $20M of gifts.
+- **The receipts that are no gift name what came back.** The Treasury's payroll-tax refunds, and
+  vendors' and expense refunds and reimbursements: 14 rows, $944,498, at seven committees (Q17f),
+  $853,654 of it the Georgia party's. Each memo names a tax, vendor, media, expense or fee refund,
+  or a refund or reimbursement of or for an expense, fees, a purchase or a disbursement. The
+  ticket's $851,493 was the two large Treasury rows; the filing's other two, $2,159 and $2, are the
+  same refund.
+- **Two wordings that look like costs are the giver's.** `REFUND OF PROCESSING FEE BY CONDUIT`
+  (−$135) and `REFUND OF INCORRECT CHARGE` (−$166) are money paid back to a donor, netting their
+  gifts. The rule names `FEES`, not `FEE`, in its "of or for" branch, and no `CHARGE`, so both
+  stay counted.
+- **The non-contribution account holds the largest one.** Waterfront Strategies' $1,556,422 media
+  refund to `C00669259` is filed in the account, with five more rows (Q17f). It stays the account's
+  money, since the rule moves nothing between a hybrid PAC's accounts, but it is no organization's
+  gift either, so it leaves its committee's top-organization list.
+- **A line filter cannot take these out of the top lists.** Lines 14 to 16 by `TRAN_ID` hold real
+  gifts (Q17h), so `committee_top_organization` cannot drop `15 other receipts` rows. It reads a
+  flag instead.
+- **Not by name.** Among the organizations' 11(a)(i) rows naming a refund (Q17e), the Treasury
+  is the only tax authority; the payer's name would miss the next filer's spelling (the IRS, a
+  state treasury), and would drop a gift's if a treasury ever gave one.
+
+**What changed (NEU-2402).** `fec.lines` gains `returned_cost(memo_text)`, the rule above, and
+`fec_line` puts a row whose memo it matches on `15 other receipts` where the type puts it on
+11(a)(i) or nowhere and its `TRAN_ID` names no other line: `is_other_line`, so in
+`total_other_lines`, not `total_individual` or `total_from_organizations`, and out of
+`itemized_total`. `organization_receipt.is_returned_cost` marks such a receipt on any line, never a
+refund type (2nY, 4nY, 22Z), and `committee_top_organization` leaves it out. A build from before
+the column reads it NULL and lists as before: beside a newer build by `union_by_name`, and alone
+because the gold loader adds a committed column no partition has as NULL. On 2024 the rule takes `C00041269`'s `total_from_organizations`
+down by $853,654 and the Treasury off its list, and moves `contribution`'s one match, $2,000.
+Rejected: the payer's name (above), a line filter on the top lists (Q17h), and leaving the rows
+out of silver, which would put the money in no figure at all.
+
 ## Decisions
 
 1. **Candidate figures' source.** 2008 and later: the sum, over the committees fundlens credits to

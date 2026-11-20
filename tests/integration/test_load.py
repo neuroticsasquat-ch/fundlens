@@ -691,26 +691,37 @@ def test_the_top_organization_amount_check_fails_on_a_row_silver_does_not_add_up
         con.execute("CREATE SCHEMA silver")
         con.execute(
             "CREATE TABLE silver.organization_receipt AS SELECT * FROM (VALUES"
-            " (2024, 'C1', 'ACME', 'ACME INC', 500), (2024, 'C1', 'ACME', 'ACME, INC.', 250),"
-            " (2024, 'C1', 'BOLT', 'BOLT LLC', 100), (2024, 'C2', 'ACME', 'ACME INC', 75),"
-            " (1998, 'C4', 'ACME', 'ACME INC', 40), (2024, 'C4', 'ACME', 'ACME CO', 60)"
-            ") AS t(cycle, recipient_committee_id, organization_key, organization_name, amount)"
+            " (2024, 'C1', 'ACME', 'ACME INC', 500, false),"
+            " (2024, 'C1', 'ACME', 'ACME, INC.', 250, false),"
+            " (2024, 'C1', 'ACME', 'ACME INC', 300, true),"
+            " (2024, 'C1', 'BOLT', 'BOLT LLC', 100, false),"
+            " (2024, 'C2', 'ACME', 'ACME INC', 75, NULL),"
+            " (1998, 'C4', 'ACME', 'ACME INC', 40, false),"
+            " (2024, 'C4', 'ACME', 'ACME CO', 60, false),"
+            " (2024, 'C5', 'IRS', 'DEPARTMENT OF THE TREASURY', 800, true)"
+            ") AS t(cycle, recipient_committee_id, organization_key, organization_name, amount,"
+            " is_returned_cost)"
         )
         con.execute(
             "CREATE TABLE committee_top_organization AS SELECT * FROM (VALUES"
             " ('C1', 2024, 1, 'ACME', 'ACME INC', 750), ('C1', 2024, 2, 'BOLT', 'BOLT LLC', 90),"
             " ('C2', 2024, 1, 'ACME', 'ACME CORP', 75), ('C3', 2024, 1, 'ACME', 'ACME INC', 10),"
-            " ('C4', 1998, 1, 'ACME', 'ACME CO', 40)"
+            " ('C4', 1998, 1, 'ACME', 'ACME CO', 40),"
+            " ('C5', 2024, 1, 'IRS', 'DEPARTMENT OF THE TREASURY', 800)"
             ") AS t(committee_id, cycle, rank, organization_key, name, amount)"
         )
 
         # BOLT's amount is not its net receipts, ACME CORP is no spelling ACME reported, C3
-        # received nothing from ACME, and ACME CO is a spelling of 2024's only, not 1998's.
+        # received nothing from ACME, and ACME CO is a spelling of 2024's only, not 1998's. A cost
+        # coming back to the committee is no gift (NEU-2402): C1's ACME total leaves its $300 out,
+        # and C5's IRS refund is listed from no receipt. A build from before the flag (NULL) counts
+        # every receipt.
         assert sorted(failing_rows(con, "gold_committee_top_organization_amount.sql")) == [
             (1998, "C4", "ACME", "ACME CO", 40, 40),
             (2024, "C1", "BOLT", "BOLT LLC", 90, 100),
             (2024, "C2", "ACME", "ACME CORP", 75, 75),
             (2024, "C3", "ACME", "ACME INC", 10, None),
+            (2024, "C5", "IRS", "DEPARTMENT OF THE TREASURY", 800, None),
         ]
 
 

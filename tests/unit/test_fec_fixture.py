@@ -75,6 +75,12 @@ OTHER_LINES = r"16[CFGHJKLR]|18[GHJKLU]|19J?|3[012][A-Z]?|4[012]Y"
 # 11(c), 12 to 17 and Schedule L, not 11(a)(i), 11(d) or Form 3P's individuals' line 17(a).
 NAMED_LINE = r"SA(11AI|11A1|11B|11C|11D|12|13|14|15|16|17A|17|SL)"
 OTHER_NAMED_LINES = frozenset({"11B", "11C", "12", "13", "14", "15", "16", "17", "SL"})
+# A memo naming a cost coming back to the committee, not a gift (NEU-2402, `fec.lines`): on line 15
+# when its type puts it on 11(a)(i), and on no top-organization list.
+RETURNED_COST = (
+    r"(TAX|VENDOR|MEDIA|EXPENSE|FEES?) (REFUND|REBATE|REIMBURSEMENT)|REFUNDED (EXPENSE|FEES)"
+    r"|(REFUND|REBATE|REIMBURSEMENT)S? (OF|FOR) [^;.,]{0,40}(EXPENSE|FEES|PURCHASE|DISBURSEMENT)"
+)
 # The vendored handoff list (fec/handoffs.csv) as the tally reads it: a committee handed from one
 # candidate to another, the first's before the date and the second's on and after it (NEU-2126).
 HANDOFFS = {"C00703975": ("P80000722", "P00009423", date(2024, 7, 21))}
@@ -421,15 +427,25 @@ def non_contribution_account(table: Iterable[Row]) -> list[Row]:
 def is_other_line(row: Row) -> bool:
     """A counted row or organization receipt whose type FEC files on a line no total_individual
     or total_from_organizations counts (NEU-2193, NEU-2205), or whose TRAN_ID names one, outside a
-    hybrid PAC's non-contribution account (NEU-2276); a candidate's own money is self-funding
-    whatever its line."""
+    hybrid PAC's non-contribution account (NEU-2276), or whose memo names a cost coming back
+    there (NEU-2402); a candidate's own money is self-funding whatever its line."""
     if re.fullmatch(OTHER_LINES, row["TRANSACTION_TP"]) is not None:
         return True
+    if non_contribution_account([row]):
+        return False
     named = re.match(NAMED_LINE, row["TRAN_ID"])
+    if named is not None and named.group(1) in OTHER_NAMED_LINES:
+        return True
+    return row["TRANSACTION_TP"] not in CANDIDATE_TYPES and is_returned_cost(row)
+
+
+def is_returned_cost(row: Row) -> bool:
+    """An organization receipt or counted row, no refund, whose memo names a cost coming back to
+    the committee: a tax, vendor or expense refund (NEU-2402)."""
     return (
-        named is not None
-        and named.group(1) in OTHER_NAMED_LINES
-        and not non_contribution_account([row])
+        not is_refund(row)
+        and row["TRANSACTION_TP"] != "22Z"
+        and re.search(RETURNED_COST, row["MEMO_TEXT"].upper()) is not None
     )
 
 
@@ -1621,8 +1637,22 @@ def test_the_expected_refunds_are_the_counted_refunds_on_line_20() -> None:
     } >= {"20Y", "41Y"}
 
 
+def test_the_expected_returned_costs_are_the_receipts_whose_memo_names_one() -> None:
+    receipts = [r for r in organization_receipts() if is_returned_cost(r)]
+    assert EXPECTED["returned_costs"]["organization_receipts"] == [
+        int(r["SUB_ID"]) for r in receipts
+    ]
+    # Off line 11(a)(i), so in total_other_lines; a refund of a contribution is none.
+    assert all(is_other_line(r) for r in receipts)
+    assert any(
+        "REFUND" in r["MEMO_TEXT"].upper() and not is_returned_cost(r)
+        for r in [*counted(), *organization_receipts()]
+    )
+
+
 def test_the_expected_top_organizations_follow_the_net_money_by_key() -> None:
-    receipts = organization_receipts()
+    # A cost coming back to the committee is no organization's gift (NEU-2402).
+    receipts = [r for r in organization_receipts() if not is_returned_cost(r)]
     key_of = {r["SUB_ID"]: normalize.organization_key(r["NAME"]) or "" for r in receipts}
     # The spelling with the most money, then the most receipts, names the key, as
     # donor.display_name is chosen (spec §6.7).

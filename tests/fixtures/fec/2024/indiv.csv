@@ -540,3 +540,8 @@ C00800201,N,Q3,G2024,202400002454599865,10,ORG,CHOPTANK RIVER FOUNDATION,EASTON,
 # amendment twice. The filing lists it once, under one TRAN_ID, so it counts once, and every
 # expected figure but `indiv`'s row count and `dropped_fec_repeat` is as it was without it.
 C00800111,N,YE,P2024,202400001906706821,15,IND,"THACKERAY, OPHELIA",CUMBERLAND,MD,21502,ALLEGANY COLLEGE,LIBRARIAN,12212023,50,,SA11AI.00403,1701111,,,4240100000000000405
+# The IRS's payroll-tax refund to the party, typed 15 from DEPARTMENT OF THE TREASURY (NEU-2402),
+# as the Georgia Federal Elections Committee filed two in 2024: a cost coming back, no gift. Its
+# memo puts it on line 15, so is_other_line, in total_other_lines and not the party's
+# total_from_organizations or itemized_total, and on no top-organization list.
+C00800203,N,Q3,G2024,202400003166179406,15,ORG,DEPARTMENT OF THE TREASURY,KANSAS CITY,MO,64999,,,08142024,8000,,A0406,1702034,,PAYROLL TAX REFUND,4240100000000000406

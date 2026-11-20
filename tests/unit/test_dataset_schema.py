@@ -127,3 +127,40 @@ def test_a_committed_schemas_columns_type_an_empty_view_as_the_file_has_them(tab
 def test_a_table_with_no_committed_schema_raises_file_not_found(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         dataset_schema.committed_columns(tmp_path, "race")
+
+
+def test_a_column_no_build_of_the_load_has_reads_as_null(tmp_path: Path) -> None:
+    # Every build transformed before organization_receipt.is_returned_cost existed (NEU-2402):
+    # union_by_name cannot add a column no file has, so the view adds it from the committed schema.
+    # A table the dataset does not publish (jfc_attribution) is left as its files have it.
+    receipts, attributions = tmp_path / "organization_receipt", tmp_path / "jfc_attribution"
+    receipts.mkdir()
+    attributions.mkdir()
+    with duckdb.connect() as con:
+        con.execute(
+            f"COPY (SELECT 2024 AS cycle, 'C1' AS recipient_committee_id, 500 AS amount)"
+            f" TO {literal(receipts / 'part-0.parquet')}"
+        )
+        con.execute(f"COPY (SELECT 2024 AS cycle) TO {literal(attributions / 'part-0.parquet')}")
+        gold._register_silver(  # pyright: ignore[reportPrivateUsage]
+            con,
+            {"organization_receipt": [receipts], "jfc_attribution": [attributions]},
+            docs_dir=DATASET_DOCS,
+        )
+        [(amount, returned)] = con.execute(
+            "SELECT amount, is_returned_cost FROM silver.organization_receipt"
+        ).fetchall()
+        described = {
+            name: kind
+            for name, kind, *_ in con.execute("DESCRIBE silver.organization_receipt").fetchall()
+        }
+        attribution_columns = [
+            name for name, *_ in con.execute("DESCRIBE silver.jfc_attribution").fetchall()
+        ]
+
+    assert (amount, returned) == (500, None)
+    assert described["is_returned_cost"] == "BOOLEAN"
+    assert described.keys() >= {
+        name for name, _ in dataset_schema.committed_columns(DATASET_DOCS, "organization_receipt")
+    }
+    assert attribution_columns == ["cycle", "donor_id"]

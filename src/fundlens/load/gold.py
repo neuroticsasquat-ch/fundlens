@@ -230,6 +230,19 @@ def _empty_view(con: duckdb.DuckDBPyConnection, table: str, docs_dir: Path) -> N
     con.execute(f"CREATE VIEW silver.{table} AS SELECT {columns} WHERE false")
 
 
+def _absent_columns(
+    con: duckdb.DuckDBPyConnection, table: str, docs_dir: Path
+) -> list[tuple[str, str]]:
+    """The columns of `table`'s committed dataset schema that `silver.<table>` lacks, with their
+    DuckDB types; none for a table the dataset does not publish."""
+    try:
+        committed = committed_columns(docs_dir, table)
+    except FileNotFoundError:
+        return []
+    present = {row[0] for row in con.execute(f"DESCRIBE silver.{table}").fetchall()}
+    return [(name, kind) for name, kind in committed if name not in present]
+
+
 def _register_silver(
     con: duckdb.DuckDBPyConnection,
     local_dirs: Mapping[SilverTable, list[Path]],
@@ -238,7 +251,7 @@ def _register_silver(
 ) -> None:
     """The views `silver.<table>` over the Parquet parts of each cycle's partition that exists;
     a table with none, a backfill-pending one no build has, empty and typed from its schema in
-    `docs_dir`."""
+    `docs_dir`, and a column of that schema no partition has, NULL."""
     con.execute("CREATE SCHEMA silver")
     for table, partitions in local_dirs.items():
         if not partitions:
@@ -252,6 +265,11 @@ def _register_silver(
         globs = ", ".join(literal(local / "**" / "*.parquet") for local in partitions)
         source = f"read_parquet([{globs}], hive_partitioning = false, union_by_name = true)"
         con.execute(f"CREATE VIEW silver.{table} AS SELECT * FROM {source}")
+        if absent := _absent_columns(con, table, docs_dir):
+            # A column no partition has, every build of the load transformed before it existed:
+            # NULL, as `union_by_name` reads it beside a newer build (`is_returned_cost`, NEU-2402).
+            nulls = ", ".join(f'CAST(NULL AS {kind}) AS "{name}"' for name, kind in absent)
+            con.execute(f"CREATE OR REPLACE VIEW silver.{table} AS SELECT *, {nulls} FROM {source}")
         if (
             table in RESOLVED
             and not con.execute(

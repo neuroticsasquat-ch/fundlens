@@ -238,7 +238,19 @@ SELECT
         fec_line(kept.TRANSACTION_TP, recipient.type, kept.MEMO_TEXT, kept.TRAN_ID)
             NOT IN ('11(a)(i)', '11(d) candidate', '20 refunds', 'non-contribution account'),
         false
-    ) AS is_other_line
+    ) AS is_other_line,
+    -- A receipt whose memo names a cost coming back, not a gift (NEU-2402, `fec.lines`): a tax,
+    -- vendor or expense refund, rebate or reimbursement, the IRS's payroll-tax refund to a party
+    -- among them. On line 15 by fec_line, so is_other_line, where its type would put it on
+    -- 11(a)(i); any other line it keeps, a non-contribution account's among them. On no
+    -- top-organization list whatever its line, since the organization gave nothing. A refund
+    -- type (2nY, 4nY, 22Z, all `20 refunds` or an account's) is a refund by the committee, never
+    -- one. coalesce: a blank type is no refund.
+    returned_cost(kept.MEMO_TEXT)
+        AND NOT coalesce(
+            regexp_matches(kept.TRANSACTION_TP, '^[24][0-9]Y$') OR kept.TRANSACTION_TP = '22Z',
+            false
+        ) AS is_returned_cost
 FROM kept
 JOIN committee AS recipient ON recipient.committee_id = kept.CMTE_ID
 LEFT JOIN organization_name ON organization_name.raw = kept.NAME;

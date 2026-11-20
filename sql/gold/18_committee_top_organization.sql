@@ -2,7 +2,11 @@
 -- committee in the cycle, grouped by organization_key, net of refunds; an organization whose gifts
 -- net to nothing or less is left out, as top-donor lists leave such donors out, and so is a
 -- receipt filed with no name, which has no key (it counts in committee_cycle all the same). Ranked
--- by amount, then key. Each cycle is its own list (NEU-2059).
+-- by amount, then key. Each cycle is its own list (NEU-2059). A receipt whose memo names a cost
+-- coming back to the committee (organization_receipt.is_returned_cost, NEU-2402) is left out: the
+-- IRS refunding a party's payroll tax, or a vendor an expense, gave it nothing. It counts in
+-- committee_cycle all the same, in total_other_lines. IS NOT TRUE, not NOT: a build transformed
+-- before the column existed reads it as NULL, and lists every receipt as it did.
 --
 -- name is the key's reported spelling with the most money across the cycle's receipts (refunds
 -- net out), then the one the most receipts report, then the first in order, as donor.display_name
@@ -11,7 +15,7 @@ CREATE TABLE committee_top_organization AS
 WITH spelling AS (
     SELECT cycle, organization_key, organization_name AS name
     FROM silver.organization_receipt
-    WHERE organization_key IS NOT NULL
+    WHERE organization_key IS NOT NULL AND is_returned_cost IS NOT TRUE
     GROUP BY cycle, organization_key, organization_name
     QUALIFY row_number() OVER (
         PARTITION BY cycle, organization_key
@@ -21,7 +25,7 @@ WITH spelling AS (
 given AS (
     SELECT cycle, recipient_committee_id AS committee_id, organization_key, sum(amount) AS amount
     FROM silver.organization_receipt
-    WHERE organization_key IS NOT NULL
+    WHERE organization_key IS NOT NULL AND is_returned_cost IS NOT TRUE
     GROUP BY cycle, recipient_committee_id, organization_key
     HAVING sum(amount) > 0
 ),

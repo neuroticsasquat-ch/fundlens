@@ -281,6 +281,11 @@ organization_receipt:
       True when the row is filed on a line other than 11(a)(i), 11(d), refunds or a
       non-contribution account: a party account, a transfer. Outside a committee's organizations'
       total.
+    is_returned_cost: >-
+      True when the memo names a cost coming back to the committee, not a gift: a tax, vendor or
+      expense refund, rebate or reimbursement, such as the IRS refunding a party's payroll tax. On
+      no list of the organizations that gave most; on line 15 where its transaction type would
+      put it on 11(a)(i), and on its own line otherwise.
 
 donor:
   description: >-
