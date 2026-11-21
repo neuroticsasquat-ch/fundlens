@@ -143,7 +143,9 @@ def test_the_cli_extracts_every_file_once_and_a_second_run_uploads_nothing(
 def test_the_cli_rejects_a_file_the_catalogue_does_not_list(
     fec: FakeFec, store: R2, cli_env: Path
 ) -> None:
-    result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2024", "--file", "oppexp"])
+    # `webl`, FEC's House/Senate current campaigns, is a file fundlens never reads
+    # (every-FEC-dollar spec §3.2).
+    result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2024", "--file", "webl"])
 
     assert result.exit_code == 2
     assert fec.requests == []
@@ -261,6 +263,16 @@ def test_the_cli_rejects_a_file_fec_did_not_yet_publish_for_the_cycle(
     fec: FakeFec, store: R2, cli_env: Path
 ) -> None:
     result = CliRunner().invoke(cli.app, ["extract", "--cycle", "1998", "--file", "ccl"])
+
+    assert result.exit_code == 2
+    assert fec.requests == []
+
+
+def test_the_cli_rejects_oppexp_before_fec_published_it(
+    fec: FakeFec, store: R2, cli_env: Path
+) -> None:
+    # FEC publishes operating expenditures from 2004 (every-FEC-dollar spec §3.1).
+    result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2002", "--file", "oppexp"])
 
     assert result.exit_code == 2
     assert fec.requests == []

@@ -301,6 +301,9 @@ def register_bulk(con: duckdb.DuckDBPyConnection, file: BulkFile, text: Path) ->
         )
     else:
         # Pipe-delimited and unquoted (a quote in a name is just a character), no header row.
+        # A `trailing_delimiter` file's lines end in a `|`: DuckDB reads the empty field after the
+        # last column as nothing and refuses a non-empty one, which
+        # tests/unit/test_transform_trailing_delimiter.py holds it to.
         dialect = "delim = '|', quote = '', escape = '', header = false"
     source = (
         f"SELECT {selected} FROM read_csv({literal(text)},"

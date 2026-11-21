@@ -5,7 +5,8 @@ entry's columns (for a zip, the vendored FEC header), then the rows, with `#` co
 saying which case each block plants. `bulk_body` writes one in FEC's own layout for its format:
 
 - a zip: one member per zip, named as FEC names it for the cycle, pipe-delimited, unquoted, no
-  header row (`zips`);
+  header row, each line ending in a `|` after its last column where the entry has
+  `trailing_delimiter` (`pipe_text`);
 - a CSV: the header row unquoted, every data field double-quoted with `""` for a quote, LF line
   endings (`csv_text`), as FEC's CSVs were on 2026-11-18.
 
@@ -74,9 +75,11 @@ def read_rows(file: FecFile, directory: Path | None = None) -> tuple[Row, ...]:
 
 
 def pipe_text(bulk: BulkFile, rows: tuple[Row, ...]) -> str:
-    """`rows` as FEC writes a zip's text: pipe-delimited, unquoted, no header row."""
+    """`rows` as FEC writes a zip's text: pipe-delimited, unquoted, no header row, and a `|`
+    after the last column where `bulk` has `trailing_delimiter`."""
     columns = bulk.header()
-    return "".join("|".join(row[column] for column in columns) + "\n" for row in rows)
+    end = "|\n" if bulk.trailing_delimiter else "\n"
+    return "".join("|".join(row[column] for column in columns) + end for row in rows)
 
 
 def csv_text(bulk: BulkFile, rows: tuple[Row, ...]) -> str:
