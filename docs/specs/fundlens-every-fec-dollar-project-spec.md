@@ -61,6 +61,7 @@ Bulk files are catalogued only in `fundlens.fec.files`: a file outside the file 
 
 - The page links every file above for each cycle from its first to 2026, with no gap.
 - `weball` and `webk` have no header file on FEC's site: the page links one for `oppexp` and for each of v1's six, and `data_dictionaries/<file>_header_file.csv` was a 404 for both on 2026-11-05 (`docs/measurements/summary-files-2024.md`, its header-sources row). Their column lists are vendored from FEC's file descriptions (NEU-2142).
+- Every `oppexp` line, in every cycle, ends with a `|` after its last column, so it splits into 26 fields, the last empty: the entry is catalogued with `trailing_delimiter`, and `register_bulk` reads such a line under its 25 columns unchanged. The zip's one member is `oppexp.txt` in every cycle, and its dates are `MM/DD/YYYY`. Every cycle 2004 to 2026 was read through `register_bulk` on 2026-11-21 with no cast failing (`docs/specs/NEU-2151-oppexp-catalogue-extract-fixture.md` §5).
 - `ElectioneeringComm` starts in 2010, not 2008 as the Linear tickets said until this spec was written: the page links nine files, 2010 to 2026, and `2008/ElectioneeringComm_2008.csv` was a 404 on 2026-11-18.
 - `leadership` is linked for even years only. Whether a file exists for an odd year, and which cycles' rows each of the two undated files holds, is NEU-2173's to measure. This section states only what the page shows.
 

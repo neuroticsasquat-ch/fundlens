@@ -6,7 +6,8 @@ A bulk file comes in one of two formats (`Format`):
   from FEC's data dictionaries (`data_dictionaries/<name>_header_file.csv`), vendored under
   `headers/` and refreshed by `task fec:headers` (`fundlens.fec.refresh_headers`). FEC publishes
   no header file for `weball` or `webk` (a 404 on 2026-11-05): theirs are vendored by hand from
-  FEC's file descriptions, and the refresh leaves them alone (`header_from_fec`).
+  FEC's file descriptions, and the refresh leaves them alone (`header_from_fec`). A file whose
+  lines end with a `|` after their last column (`oppexp`) says so (`trailing_delimiter`).
 - `csv`: a comma-separated file, not zipped, whose first line is a header row. That row must be
   the entry's `columns` exactly, in order; extract and transform both check it
   (`read_csv_header`).
@@ -26,7 +27,9 @@ from importlib.resources import files as package_files
 from pathlib import Path
 from typing import Literal
 
-FecFile = Literal["cm", "cn", "ccl", "indiv", "pas2", "oth", "weball", "webk", "committee_summary"]
+FecFile = Literal[
+    "cm", "cn", "ccl", "indiv", "pas2", "oth", "weball", "webk", "committee_summary", "oppexp"
+]
 
 # How a bulk file is published: a zipped pipe-delimited text file, or a CSV with a header row.
 Format = Literal["zip", "csv"]
@@ -37,7 +40,8 @@ _CYCLE_FIELDS = frozenset({"yyyy", "yy"})
 CSV_HEADER_BYTES = 64 * 1024
 
 # The DuckDB type each column is cast to after it is read as VARCHAR (spec §5.3), from FEC's
-# data dictionaries. Dates stay VARCHAR: FEC writes them MMDDYYYY, and `sql/silver/` parses them.
+# data dictionaries. Dates stay VARCHAR: the itemized receipt files write them MMDDYYYY, `oppexp`
+# and the summary zips MM/DD/YYYY, and `sql/silver/` parses them.
 VARCHAR = "VARCHAR"
 YEAR = "SMALLINT"  # NUMBER(4)
 AMOUNT = "DECIMAL(14,2)"  # NUMBER(14,2)
@@ -114,11 +118,17 @@ class BulkFile:
     # Whether a zip's vendored header is FEC's own header file, which `task fec:headers`
     # refreshes; False where FEC publishes none and it was written from FEC's file description.
     header_from_fec: bool = True
+    # Whether each line ends with the delimiter after its last column, so that it splits into one
+    # field more than `columns`, the last one empty (`oppexp`). The reader takes such a line as it
+    # is (`transform.runner.register_bulk`); the fixture builder writes the delimiter.
+    trailing_delimiter: bool = False
 
     def __post_init__(self) -> None:
         if self.format == "zip" and self.member is None:
             raise ValueError(f"{self.name}: a zip needs the member it is read from")
         if self.format == "csv":
+            if self.trailing_delimiter:
+                raise ValueError(f"{self.name}: a CSV has no trailing delimiter")
             if self.member is not None or self.split_dir is not None:
                 raise ValueError(f"{self.name}: a CSV has no member or split folder")
             if not self.url_pattern:
@@ -406,6 +416,46 @@ CATALOGUE: dict[FecFile, BulkFile] = {
             | {"ORG_TP": VARCHAR},
             format="csv",
             url_pattern="{yyyy}/committee_summary_{yyyy}.csv",
+        ),
+        # Operating expenditures (every-FEC-dollar spec §3, §5). Not the itemized receipt files'
+        # layout, so none of `_ITEMIZED_HEAD` or `_ITEMIZED_TAIL` is reused: `ENTITY_TP` comes
+        # after the memo columns, and `SUB_ID` before `FILE_NUM` and `TRAN_ID`, not last; there
+        # is no `TRANSACTION_TP`, `EMPLOYER`, `OCCUPATION` or `OTHER_ID`, and `RPT_YR`, the
+        # form, schedule and line, `PURPOSE`, `CATEGORY` and `BACK_REF_TRAN_ID` are there
+        # instead. Dates are MM/DD/YYYY, not MMDDYYYY. Every line of every cycle, 2004 to 2026,
+        # ends with a `|` after `BACK_REF_TRAN_ID`. The zip's one member is `oppexp.txt` in
+        # every cycle.
+        BulkFile(
+            "oppexp",
+            2004,
+            "oppexp.txt",
+            _varchar("CMTE_ID", "AMNDT_IND")
+            | {"RPT_YR": YEAR}
+            | _varchar(
+                "RPT_TP",
+                "IMAGE_NUM",
+                "LINE_NUM",
+                "FORM_TP_CD",
+                "SCHED_TP_CD",
+                "NAME",
+                "CITY",
+                "STATE",
+                "ZIP_CODE",
+                "TRANSACTION_DT",
+            )
+            | {"TRANSACTION_AMT": AMOUNT}
+            | _varchar(
+                "TRANSACTION_PGI",
+                "PURPOSE",
+                "CATEGORY",
+                "CATEGORY_DESC",
+                "MEMO_CD",
+                "MEMO_TEXT",
+                "ENTITY_TP",
+            )
+            | {"SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM}
+            | _varchar("TRAN_ID", "BACK_REF_TRAN_ID"),
+            trailing_delimiter=True,
         ),
     )
 }

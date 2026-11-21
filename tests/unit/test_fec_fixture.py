@@ -899,14 +899,22 @@ def tally_races(candidates: dict[str, CandidateTotals]) -> dict[str, RaceTotals]
 def test_each_zip_holds_one_pipe_delimited_member_with_the_vendored_column_count(
     file: FecFile,
 ) -> None:
-    columns = CATALOGUE[file].header()
-    member = CATALOGUE[file].member_for(CYCLE)
+    bulk = CATALOGUE[file]
+    columns = bulk.header()
+    member = bulk.member_for(CYCLE)
     with zipfile.ZipFile(io.BytesIO(fec_fixture.bodies()[file])) as archive:
         assert archive.namelist() == [member]
         lines = archive.read(member).decode().splitlines()
     assert lines
     assert len(lines) == EXPECTED["rows"][file]
-    assert all(len(line.split("|")) == len(columns) for line in lines)
+    if bulk.trailing_delimiter:
+        # FEC's layout: a `|` after the last column, so one field more, the last empty.
+        assert all(line.endswith("|") for line in lines)
+        assert all(len(line.split("|")) == len(columns) + 1 for line in lines)
+        assert all(line.split("|")[-1] == "" for line in lines)
+    else:
+        # A line may still end in `|`: its last column is empty (a `cm` row with no CAND_ID).
+        assert all(len(line.split("|")) == len(columns) for line in lines)
     # No header row: FEC's bulk files have none.
     assert lines[0].split("|")[0] != columns[0]
 
@@ -921,6 +929,25 @@ def test_each_csv_has_the_catalogued_header_row_then_every_field_quoted(file: Fe
     for line in lines:
         assert line.startswith('"') and line.endswith('"')
         assert len(next(csv.reader([line]))) == len(columns)
+
+
+def test_oppexps_sub_ids_are_its_own() -> None:
+    # NEU-2152's no_contribution check needs no operating expenditure to share a receipt's SUB_ID.
+    sub_ids = [row["SUB_ID"] for row in fec_fixture.read_rows("oppexp")]
+    receipts = {row["SUB_ID"] for file in ("indiv", "pas2", "oth") for row in rows(file)}
+
+    assert len(sub_ids) == len(set(sub_ids))
+    assert not receipts & set(sub_ids)
+
+
+def test_oppexp_repeats_one_row() -> None:
+    assert fec_repeats("oppexp") == {"4240400000000000026"}
+
+
+def test_oppexp_has_one_row_on_a_superseded_filing() -> None:
+    superseded = [r for r in fec_fixture.read_rows("oppexp") if is_superseded(r)]
+
+    assert [(r["CMTE_ID"], r["FILE_NUM"]) for r in superseded] == [("C00800201", "1900211")]
 
 
 def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() -> None:

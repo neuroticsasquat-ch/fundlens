@@ -12,7 +12,10 @@ from fundlens.fec.files import (
     AMOUNT,
     CATALOGUE,
     CSV_HEADER_BYTES,
+    FILE_NUM,
+    SUB_ID,
     VARCHAR,
+    YEAR,
     BulkFile,
     FecFile,
     current_cycle,
@@ -61,6 +64,7 @@ def test_the_vendored_header_names_the_catalogued_columns(name: FecFile) -> None
         ("weball", 1980, f"{BASE}/1980/weball80.zip"),
         ("webk", 2024, f"{BASE}/2024/webk24.zip"),
         ("committee_summary", 2008, f"{BASE}/2008/committee_summary_2008.csv"),
+        ("oppexp", 2004, f"{BASE}/2004/oppexp04.zip"),
     ],
 )
 def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -> None:
@@ -81,6 +85,8 @@ def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -
         ("weball", 1980),
         ("webk", 1996),
         ("committee_summary", 2008),
+        # FEC publishes operating expenditures from 2004 (every-FEC-dollar spec §3.1).
+        ("oppexp", 2004),
     ],
 )
 def test_each_files_first_cycle_is_the_first_fec_publishes(name: FecFile, first_cycle: int) -> None:
@@ -100,7 +106,17 @@ def test_files_for_leaves_out_files_fec_did_not_yet_publish() -> None:
         "weball",
         "webk",
     ]
-    assert CATALOGUE["committee_summary"] not in files_for(2004)
+    assert [file.name for file in files_for(2004)] == [
+        "cm",
+        "cn",
+        "ccl",
+        "indiv",
+        "pas2",
+        "oth",
+        "weball",
+        "webk",
+        "oppexp",
+    ]
     assert [file.name for file in files_for(2008)] == list(get_args(FecFile))
 
 
@@ -112,12 +128,25 @@ def test_files_for_leaves_out_files_fec_did_not_yet_publish() -> None:
         ("weball", 1980, "weball80.txt"),
         ("weball", 2024, "weball24.txt"),
         ("webk", 2000, "webk00.txt"),
+        ("oppexp", 2024, "oppexp.txt"),
     ],
 )
 def test_a_zips_member_is_named_for_its_cycle_where_fecs_is(
     name: FecFile, cycle: int, member: str
 ) -> None:
     assert CATALOGUE[name].member_for(cycle) == member
+
+
+def test_oppexp_has_its_25_columns_four_of_them_typed() -> None:
+    columns = CATALOGUE["oppexp"].columns
+
+    assert len(columns) == 25
+    typed = {"RPT_YR": YEAR, "TRANSACTION_AMT": AMOUNT, "SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM}
+    assert {name: kind for name, kind in columns.items() if kind != VARCHAR} == typed
+
+
+def test_only_oppexp_has_a_trailing_delimiter() -> None:
+    assert [file.name for file in CATALOGUE.values() if file.trailing_delimiter] == ["oppexp"]
 
 
 def test_a_csv_has_no_member() -> None:
@@ -176,6 +205,7 @@ def test_a_zip_with_a_pattern_renders_it() -> None:
         ({"url_pattern": "{yy:03d}/sample.csv"}, "only"),
         ({"url_pattern": "{yyyy!r}/sample.csv"}, "only"),
         ({"header_from_fec": False}, "header row"),
+        ({"trailing_delimiter": True}, "no trailing delimiter"),
         ({"format": "zip", "member": "sample{cycle}.txt", "url_pattern": None}, "only"),
     ],
 )
