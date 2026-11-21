@@ -22,7 +22,7 @@ from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
 from fundlens.transform import seats
-from fundlens.transform.runner import ChecksFailed, fetch_bulk, register_bulk, render
+from fundlens.transform.runner import ChecksFailed, fetch_bulk, register_bulk, render, write_order
 from fundlens.transform.seats import Race
 from tests import fec_fixture
 from tests.fake_fec import FakeFec, zipped
@@ -42,6 +42,7 @@ TABLES: tuple[SilverTable, ...] = (
     "independent_expenditure",
     "reported_total",
     "candidate_reported_total",
+    "operating_expenditure",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -545,13 +546,25 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
     tables: list[SilverTable] = [cast(SilverTable, path.stem.partition("_")[2]) for path in models]
     logged = [record.getMessage() for record in caplog.records]
     last = logged.index(f"silver {tables[-1]} 2024: {models[-1].name}")
-    steps = [m for m in logged[last + 1 :] if m.startswith(("silver check ", "write ", "upload "))]
+    prefixes = ("silver check ", "operating_expenditure 2024: ", "write ", "upload ")
+    steps = [m for m in logged[last + 1 :] if m.startswith(prefixes)]
+    # The spending figures a real cycle's run is checked against (NEU-2152), from the log.
+    spending = fec_fixture.expected()["operating_expenditures"]
+    rows = fec_fixture.expected()["silver"]["operating_expenditure"]
+    counted = rows - len(spending["not_counted"])
+    # operating_expenditure is written, and dropped, before contribution's write, the peak.
+    assert write_order(tables)[0] == "operating_expenditure"
+    assert write_order(tables)[1:] == [
+        table for table in tables if table != "operating_expenditure"
+    ]
     assert steps == [
         *(f"silver check {path.name}" for path in sorted(CHECKS.glob("silver_*.sql"))),
-        *(f"write {table} 2024" for table in tables),
+        f"operating_expenditure 2024: {rows:,} rows, {counted:,} counted,"
+        f" ${Decimal(spending['total']):,} counted",
+        *(f"write {table} 2024" for table in write_order(tables)),
         *(
             f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
-            for table in tables
+            for table in write_order(tables)
         ),
     ]
 
@@ -1579,10 +1592,16 @@ def test_the_alias_checks_fail_on_an_alias_with_money_and_on_an_alias_of_an_alia
             f" (4, '{DRISCOLL}'), (5, 'H8MD05116')"
             ") AS t(source_record_id, candidate_id)"
         )
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES"
+            f" (6, '{DRISCOLL}'), (7, '{DRISCOLL_ALIAS}')"
+            ") AS t(source_record_id, candidate_id)"
+        )
 
         assert sorted(failing_rows(con, "silver_candidate_alias_no_money.sql")) == [
             ("committee_transfer", "H8MD05116", 1),
             ("contribution", DRISCOLL_ALIAS, 2),
+            ("operating_expenditure", DRISCOLL_ALIAS, 1),
         ]
         assert failing_rows(con, "silver_candidate_alias_canonical.sql") == [
             ("H8MD05116", DRISCOLL_ALIAS)
@@ -1651,13 +1670,18 @@ def test_the_superseded_filing_check_fails_on_a_counted_row_of_one() -> None:
 
 def test_the_fec_repeat_check_fails_on_a_counted_repeat() -> None:
     with duckdb.connect() as con:
-        # Repeats 1 to 5, one counted in each table built from the itemized files; 6, a repeat
-        # counted nowhere; 7, a row no file repeats.
+        # Repeats 1 to 5 and 8, one counted in each table built from the itemized files; 6, a
+        # repeat counted nowhere; 7, a row no file repeats.
         con.execute(
             "CREATE TABLE indiv_repeat AS SELECT * FROM (VALUES (1), (2), (6)) AS t(SUB_ID)"
         )
         con.execute("CREATE TABLE oth_repeat AS SELECT * FROM (VALUES (3), (4)) AS t(SUB_ID)")
         con.execute("CREATE TABLE pas2_repeat AS SELECT 5 AS SUB_ID")
+        con.execute("CREATE TABLE oppexp_repeat AS SELECT 8 AS SUB_ID")
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES (7), (8))"
+            " AS t(source_record_id)"
+        )
         con.execute(
             "CREATE TABLE contribution AS SELECT * FROM (VALUES (1), (7)) AS t(source_record_id)"
         )
@@ -1671,6 +1695,7 @@ def test_the_fec_repeat_check_fails_on_a_counted_repeat() -> None:
             ("contribution", "indiv", 1),
             ("independent_expenditure", "pas2", 5),
             ("jfc_attribution", "oth", 4),
+            ("operating_expenditure", "oppexp", 8),
             ("organization_receipt", "indiv", 2),
         ]
 
@@ -2097,6 +2122,177 @@ def test_organization_receipts_are_organizations_gifts_grouped_by_name_and_feed_
     contributors = local_silver(fixture_silver, "contributor")
     assert len(contributors) == expected["silver"]["contributor"]
     assert "CHESAPEAKE STEEL" not in {row["employer_norm"] for row in contributors}
+
+
+OPERATING_EXPENDITURE_COLUMNS = [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "committee_id",
+    "candidate_id",
+    "payee_name",
+    "payee_key",
+    "payee_city",
+    "payee_state",
+    "payee_zip",
+    "payee_is_person",
+    "amount",
+    "date",
+    "purpose",
+    "fec_category",
+    "spending_category",
+    "category_source",
+    "election_code",
+    "report_type",
+    "amendment_indicator",
+    "memo_code",
+    "memo_text",
+    "entity_type",
+    "tran_id",
+    "back_ref_tran_id",
+    "parent_source_record_id",
+    "image_num",
+    "file_num",
+    "is_in_kind",
+    "counted",
+]
+# The fixture's `oppexp` rows for a row naming its own TRAN_ID, an impossible year and no date.
+NAMES_ITSELF, YEAR_9201, UNDATED_SPENDING = (
+    4240400000000000017,
+    4240400000000000046,
+    4240400000000000050,
+)
+
+
+def test_operating_expenditures_count_a_sub_itemized_payment_once_and_net_as_filed(
+    fixture_silver: Path,
+) -> None:
+    """Every-FEC-dollar spec §5.1, §5.2 on the fixture's planted cases (oppexp.csv)."""
+    expected = fec_fixture.expected()["operating_expenditures"]
+    rows = local_silver(fixture_silver, "operating_expenditure")
+    by_id = {cast(int, row["source_record_id"]): row for row in rows}
+
+    assert list(rows[0]) == OPERATING_EXPENDITURE_COLUMNS
+    assert len(rows) == fec_fixture.expected()["silver"]["operating_expenditure"]
+    assert by_id.keys().isdisjoint(expected["dropped"])
+    assert {
+        sub_id: row["parent_source_record_id"]
+        for sub_id, row in by_id.items()
+        if row["parent_source_record_id"] is not None
+    } == expected["parents"]
+    assert (
+        sorted(sub_id for sub_id, row in by_id.items() if not row["counted"])
+        == (expected["not_counted"])
+    )
+
+    def dollars(key: str) -> dict[str, str]:
+        totals: dict[str, Decimal] = {}
+        for row in rows:
+            if row["counted"] and (value := cast(str | None, row[key])) is not None:
+                totals[value] = totals.get(value, Decimal(0)) + cast(Decimal, row["amount"])
+        return {value: f"{total:.2f}" for value, total in sorted(totals.items())}
+
+    assert dollars("committee_id") == expected["by_committee"]
+    assert dollars("candidate_id") == expected["by_candidate"]
+    assert dollars("source") == {"fec": expected["total"]}
+    assert (
+        sorted(sub_id for sub_id, row in by_id.items() if row["is_in_kind"])
+        == (expected["in_kind"])
+    )
+    assert {sub_id: by_id[sub_id]["payee_key"] for sub_id in expected["payee_keys"]} == (
+        expected["payee_keys"]
+    )
+    assert (
+        sorted(sub_id for sub_id, row in by_id.items() if row["payee_is_person"])
+        == (expected["persons"])
+    )
+    assert {
+        sub_id: row["fec_category"]
+        for sub_id, row in by_id.items()
+        if row["fec_category"] is not None
+    } == expected["fec_categories"]
+    # A row naming its own TRAN_ID is no sub-item and no in-kind outlay; it counts.
+    names_itself = by_id[NAMES_ITSELF]
+    assert names_itself["tran_id"] == names_itself["back_ref_tran_id"] == "SB17.0001"
+    assert (names_itself["parent_source_record_id"], names_itself["is_in_kind"]) == (None, False)
+    assert names_itself["counted"]
+    # A filer's impossible year is kept as filed, and a row with no date has none.
+    assert by_id[YEAR_9201]["date"] == date(9201, 11, 1)
+    assert by_id[UNDATED_SPENDING]["date"] is None
+    assert {row["spending_category"] for row in rows} == {row["category_source"] for row in rows}
+    assert {row["category_source"] for row in rows} == {None}
+    assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
+        ("fec", "US", 2024)
+    }
+
+
+def test_the_operating_expenditure_key_check_fails_on_a_repeated_or_missing_key() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES"
+            " (2024, 'fec', 1), (2024, 'fec', 1), (2024, 'fec', NULL), (2024, 'fec', 2)"
+            ") AS t(cycle, source, source_record_id)"
+        )
+
+        assert sorted(
+            failing_rows(con, "silver_operating_expenditure_key.sql"), key=lambda r: str(r[2])
+        ) == [(2024, "fec", 1, 2), (2024, "fec", None, 1)]
+
+
+def test_the_operating_expenditure_committee_check_fails_on_a_committee_cm_lacks() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE committee AS SELECT * FROM (VALUES ('C1')) AS t(committee_id)")
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES"
+            " (1, 'C1', 100), (2, 'C9', 200)"
+            ") AS t(source_record_id, committee_id, amount)"
+        )
+
+        assert failing_rows(con, "silver_operating_expenditure_committee.sql") == [(2, "C9", 200)]
+
+
+def test_the_counted_once_check_fails_on_a_counted_sub_item_or_a_parent_not_in_the_table() -> None:
+    with duckdb.connect() as con:
+        # Right: 1 a counted parent, 2 its sub-item not counted, 3 a row with none. Wrong: 4 a
+        # counted sub-item, 5 one naming a row the table lacks, 6 one naming itself.
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES"
+            " (1, NULL, true), (2, 1, false), (3, NULL, true), (4, 1, true), (5, 99, false),"
+            " (6, 6, false)"
+            ") AS t(source_record_id, parent_source_record_id, counted)"
+        )
+
+        assert sorted(failing_rows(con, "silver_operating_expenditure_counted_once.sql")) == [
+            (4, 1, "counted"),
+            (5, 99, "no such parent"),
+            (6, 6, "no such parent"),
+        ]
+
+
+def test_the_no_contribution_check_fails_on_spending_another_table_holds() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE operating_expenditure AS SELECT * FROM (VALUES (1), (2), (3), (4), (5))"
+            " AS t(source_record_id)"
+        )
+        for table, sub_id in (
+            ("contribution", 2),
+            ("organization_receipt", 3),
+            ("committee_transfer", 4),
+            ("independent_expenditure", 5),
+        ):
+            con.execute(
+                f"CREATE TABLE {table} AS SELECT * FROM (VALUES ({sub_id}), (9))"
+                " AS t(source_record_id)"
+            )
+
+        assert sorted(failing_rows(con, "silver_operating_expenditure_no_contribution.sql")) == [
+            (2, "contribution"),
+            (3, "organization_receipt"),
+            (4, "committee_transfer"),
+            (5, "independent_expenditure"),
+        ]
 
 
 def test_a_hybrid_pacs_type_10_rows_are_kept_and_marked_non_contribution_account_money(

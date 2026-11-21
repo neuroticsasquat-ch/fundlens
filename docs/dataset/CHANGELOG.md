@@ -4,6 +4,14 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-21 — `operating_expenditure` added
+
+One table, an additive change: `operating_expenditure`, every payment a committee itemized from
+2004 on, from the FEC's operating expenditures file, as `schema/operating_expenditure.json`
+describes it. Sum only rows where `counted` is true. `spending_category` and `category_source`
+are null until a later change fills them. A cycle built before the table existed has no files of
+it until the backfill rebuilds it: read a table's cycles from `manifest.json`.
+
 ## 2026-11-20 — `organization_receipt.is_returned_cost` added
 
 One column, an additive change: `organization_receipt.is_returned_cost`, true when a receipt's

@@ -120,6 +120,88 @@ silver:
   # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
   reported_total: 23
   candidate_reported_total: 0
+  # `operating_expenditures` below: every `oppexp` row but its three dropped ones.
+  operating_expenditure: 49
+
+# Operating expenditures (every-FEC-dollar spec §5, NEU-2152): silver operating_expenditure on
+# oppexp.csv, whose comments say which rule (§5.2) counts or leaves out each row. A sub-item
+# names its parent by BACK_REF_TRAN_ID on its own committee and filing, the lower SUB_ID where
+# the filing holds the TRAN_ID twice; a row naming its own TRAN_ID names none. Amounts are
+# dollars and cents, written as strings, summed as filed: a refund and a payment moved to
+# Schedule E net out.
+operating_expenditures:
+  # The `oppexp` rows silver leaves out: STRATTON's poll that FEC's file repeats, the payment on
+  # the superseded filing 1900211, and the row of the filer `cm` lacks.
+  dropped: [4240400000000000026, 4240400000000000027, 4240400000000000029]
+  # Each sub-item's parent: the card bills', the memo parent's, the chain's (whose middle row is
+  # both), the two filings sharing SB17.0200, and the filing holding SB17.0300 twice.
+  parents:
+    4240400000000000004: 4240400000000000003
+    4240400000000000005: 4240400000000000003
+    4240400000000000007: 4240400000000000006
+    4240400000000000008: 4240400000000000006
+    4240400000000000010: 4240400000000000009
+    4240400000000000012: 4240400000000000011
+    4240400000000000013: 4240400000000000012
+    4240400000000000019: 4240400000000000018
+    4240400000000000021: 4240400000000000020
+    4240400000000000024: 4240400000000000022
+  # The rows kept and not counted: every sub-item, and the memo row nothing names.
+  not_counted: [4240400000000000004, 4240400000000000005, 4240400000000000007, 4240400000000000008, 4240400000000000010, 4240400000000000012, 4240400000000000013, 4240400000000000014, 4240400000000000019, 4240400000000000021, 4240400000000000024]
+  # The counted rows' net amount by paying committee: gold's total_operating_expenditures.
+  by_committee:
+    C00703975: "76250.00"
+    C00800101: "20385.00"
+    C00800102: "8000.00"
+    C00800103: "11223.45"
+    C00800104: "3900.00"
+    C00800106: "12132.40"
+    C00800107: "2475.00"
+    C00800113: "1000.00"
+    C00800114: "180.00"
+    C00800115: "2500.00"
+    C00800201: "11200.00"
+    C00800203: "210.00"
+    C00800205: "5000.00"
+  # By the candidate each row is credited to: the paying committee's, by contribution's rule.
+  # OKAFOR's are her principal and authorized committees'; HARRIS FOR PRESIDENT's are BIDEN's
+  # before 2024-07-21 and HARRIS's on the day and undated. The leadership PAC, the joint
+  # fundraising committee, the PACs and the party credit no one.
+  by_candidate:
+    H4MD05106: "12132.40"
+    H4MD05107: "2475.00"
+    P00009423: "26250.00"
+    P40000101: "20385.00"
+    P40000102: "8000.00"
+    P80000722: "50000.00"
+    S4MD00103: "12223.45"
+    S4MD00104: "3900.00"
+  total: "154455.85"
+  # In-kind outlays: PELLEGRINO's, naming a receipt on its filing, and the IN-KIND purpose. The row
+  # naming itself is none.
+  in_kind: [4240400000000000015, 4240400000000000016]
+  # Payee keys of the spelling cases: two spellings sharing one, and two the rule leaves apart.
+  # The row with no name has none.
+  payee_keys:
+    4240400000000000001: CHESAPEAKE PRINT WORKS
+    4240400000000000032: BLUE HARBOR STRATEGIES
+    4240400000000000033: BLUE HARBOR STRATEGIES
+    4240400000000000034: CHESAPEAKE PRINTWORKS
+    4240400000000000036: null
+  # The rows whose payee is a person: typed IND or CAN, and DELGADO, MARIA filed with no type.
+  persons: [4240400000000000009, 4240400000000000015, 4240400000000000016, 4240400000000000037, 4240400000000000038, 4240400000000000039]
+  # FEC's category code, padded to three digits, on every row that has one.
+  fec_categories:
+    4240400000000000001: "006"
+    4240400000000000025: "005"
+    4240400000000000032: "001"
+    4240400000000000037: "001"
+    4240400000000000042: "004"
+    4240400000000000043: "001"
+    4240400000000000044: "001"
+    4240400000000000048: "004"
+    4240400000000000049: "005"
+    4240400000000000050: "002"
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T. And

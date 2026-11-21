@@ -268,6 +268,22 @@ class ReportedTotals(TypedDict):
     candidate_reported_total: dict[int, dict[str, list[Any]]]
 
 
+class OperatingExpenditures(TypedDict):
+    # By SUB_ID: the rows silver leaves out, each sub-item's parent, the rows kept and not
+    # counted, the in-kind outlays and the rows whose payee is a person.
+    dropped: list[int]
+    parents: dict[int, int]
+    not_counted: list[int]
+    # Counted dollars, as decimal strings, by paying committee and by credited candidate.
+    by_committee: dict[str, str]
+    by_candidate: dict[str, str]
+    total: str
+    in_kind: list[int]
+    payee_keys: dict[int, str | None]
+    persons: list[int]
+    fec_categories: dict[int, str]
+
+
 class GoldReported(TypedDict):
     # Per committee: [itemized_total, reported_individual_itemized, reported_cash_on_hand_end,
     # coverage]; per candidate: [reported_receipts, reported_cash_on_hand_end, itemized_total,
@@ -288,6 +304,7 @@ class Expected(TypedDict):
     silver: dict[str, int]
     contributions: dict[str, Any]
     organization_receipts: OrganizationReceipts
+    operating_expenditures: OperatingExpenditures
     non_contribution_account: NonContributionAccount
     other_lines: OtherLines
     returned_costs: ReturnedCosts

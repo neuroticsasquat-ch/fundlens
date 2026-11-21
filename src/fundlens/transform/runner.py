@@ -42,8 +42,9 @@ A model or check puts the larger input on the left of each join: DuckDB builds t
 right side as written (`connect`).
 Then it runs every `sql/checks/silver_*.sql`, each a query that must return no rows, and stops
 with `ChecksFailed` before anything is written if one returns any. Only then is each table
-written as one zstd Parquet part to the local silver path, uploaded to R2 (replacing whatever
-else the partition held), and the `transformed` marker written.
+written as one zstd Parquet part to the local silver path and dropped (`WRITTEN_FIRST` first,
+then the rest in model order), uploaded to R2 (replacing whatever else the partition held), and
+the `transformed` marker written.
 """
 
 import csv
@@ -82,6 +83,11 @@ SHOWN_ROWS = 5
 # A transaction's place in FEC's itemized files (`indiv`, `oth`, `pas2`): its filer, filing and
 # TRAN_ID there, and FEC's id for the row (NEU-2401).
 TRANSACTION_KEY = ("CMTE_ID", "FILE_NUM", "TRAN_ID", "SUB_ID")
+# The silver tables written before the rest. Each table is dropped once written, and the
+# transform's memory peak is `contribution`'s write, with every table not yet written still held:
+# `operating_expenditure` is 0.87 GiB of 2024's, so it goes first (every-FEC-dollar spec §5.1,
+# NEU-2152).
+WRITTEN_FIRST: tuple[SilverTable, ...] = ("operating_expenditure",)
 
 
 type DuckDBConfig = dict[str, str | bool | int | float | list[str]]
@@ -498,10 +504,32 @@ def check(
         raise ChecksFailed(f"{tier} checks failed, {consequence}:\n" + "\n".join(failures))
 
 
+def write_order(tables: list[SilverTable]) -> list[SilverTable]:
+    """`tables` in the order `transform` writes them: `WRITTEN_FIRST`'s, then the rest as given."""
+    return sorted(tables, key=lambda table: table not in WRITTEN_FIRST)
+
+
+def _log_spending(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log `operating_expenditure`'s rows, and its counted rows and dollars: the figures a cycle's
+    spending is checked against (every-FEC-dollar spec §5.1, NEU-2152)."""
+    [(rows, counted, dollars)] = con.execute(
+        "SELECT count(*), count(*) FILTER (WHERE counted),"
+        " coalesce(sum(amount) FILTER (WHERE counted), 0) FROM operating_expenditure"
+    ).fetchall()
+    log.info(
+        "operating_expenditure %d: %s rows, %s counted, $%s counted",
+        cycle,
+        f"{rows:,}",
+        f"{counted:,}",
+        f"{dollars:,}",
+    )
+
+
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
-    """Write `table` as one zstd Parquet part to the local silver path; its key, path and rows.
+    """Write `table` as one zstd Parquet part to the local silver path, then drop it, so memory
+    holds only the tables still to write; its key, path and rows.
 
     The local partition is replaced whole, so a build transformed again holds none of the parts
     a donor_id rewrite (`resolve.crosswalk`) put there.
@@ -516,6 +544,7 @@ def _write(
         f" (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE {ROW_GROUP_ROWS})"
     )
     [(rows,)] = con.execute(f"SELECT count(*) FROM {table}").fetchall()
+    con.execute(f"DROP TABLE {table}")
     return key, local, rows
 
 
@@ -568,13 +597,14 @@ def transform(
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))
             check(con, sql_dir, params, tier="silver", consequence="nothing uploaded")
-            written = [
-                _write(con, table, cycle=cycle, build_id=build_id, data_dir=data_dir)
-                for table, _ in models
-            ]
+            _log_spending(con, cycle)
+            written = {
+                table: _write(con, table, cycle=cycle, build_id=build_id, data_dir=data_dir)
+                for table in write_order([table for table, _ in models])
+            }
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    for key, local, _ in written:
+    for key, local, _ in written.values():
         log.info("upload %s", key)
         prefix = key.rsplit("/", 1)[0] + "/"
         stale = set(store.list_keys(prefix)) - {key}
@@ -582,7 +612,7 @@ def transform(
         # A build transformed again: whatever else its partition held is gone, the rewrite
         # sentinel of a donor_id rewrite that died among it.
         store.delete_keys(sorted(stale))
-    row_counts = {table: rows for (table, _), (_, _, rows) in zip(models, written, strict=True)}
+    row_counts = {table: rows for table, (_, _, rows) in written.items()}
     markers.write(
         "transformed",
         store,
@@ -592,4 +622,4 @@ def transform(
         finished_at=datetime.now(UTC),
         row_counts=row_counts,
     )
-    return Transformed(row_counts, [key for key, _, _ in written])
+    return Transformed(row_counts, [key for key, _, _ in written.values()])
