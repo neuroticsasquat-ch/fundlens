@@ -78,6 +78,8 @@ GoldTable = Literal[
     "committee_top_organization",
     "reconciliation",
     "candidate_gift_size",
+    "committee_spending_category",
+    "committee_top_payee",
 ]
 
 # `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
@@ -87,7 +89,8 @@ FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 # The silver tables the gold SQL reads, and the command that writes each one's partition.
 # `candidate_committee_link` credits a committee's reported figures to its candidate
 # (every-FEC-dollar spec §4.3): silver `contribution` carries the candidate of each row, not of a
-# committee with no counted money.
+# committee with no counted money. `operating_expenditure` is spending (every-FEC-dollar spec §5.5),
+# in no receipt figure.
 INPUTS: dict[SilverTable, str] = {
     "committee": "transform",
     "candidate": "transform",
@@ -100,6 +103,7 @@ INPUTS: dict[SilverTable, str] = {
     "independent_expenditure": "transform",
     "reported_total": "transform",
     "candidate_reported_total": "transform",
+    "operating_expenditure": "transform",
     "race": "seats",
 }
 

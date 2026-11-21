@@ -8,6 +8,7 @@ CREATE TABLE gold_build.candidate_cycle (
     self_funding numeric(16, 2) NOT NULL,
     ie_support numeric(16, 2) NOT NULL,
     ie_oppose numeric(16, 2) NOT NULL,
+    total_operating_expenditures numeric(16, 2),
     contributor_count integer,
     reported_source_file text,
     reported_period_start date,

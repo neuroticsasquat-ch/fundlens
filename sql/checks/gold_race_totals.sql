@@ -1,10 +1,12 @@
--- Every race's count and totals are the sums over its race_candidate rows.
+-- Every race's count and totals are the sums over its race_candidate rows; its
+-- total_operating_expenditures NULL where none of theirs is a figure (every-FEC-dollar spec §5.5).
 SELECT
     race.race_id,
     race.candidate_count,
     race.total_individual,
     race.total_committee,
-    race.total_jfc_transfers
+    race.total_jfc_transfers,
+    race.total_operating_expenditures
 FROM race
 LEFT JOIN (
     SELECT
@@ -14,7 +16,8 @@ LEFT JOIN (
         sum(total_committee) AS total_committee,
         sum(total_jfc_transfers) AS total_jfc_transfers,
         sum(ie_support) AS ie_support,
-        sum(ie_oppose) AS ie_oppose
+        sum(ie_oppose) AS ie_oppose,
+        sum(total_operating_expenditures) AS total_operating_expenditures
     FROM race_candidate
     GROUP BY race_id
 ) AS candidates USING (race_id)
@@ -23,4 +26,5 @@ WHERE race.candidate_count <> coalesce(candidates.candidate_count, 0)
     OR race.total_committee <> coalesce(candidates.total_committee, 0)
     OR race.total_jfc_transfers <> coalesce(candidates.total_jfc_transfers, 0)
     OR race.ie_support <> coalesce(candidates.ie_support, 0)
-    OR race.ie_oppose <> coalesce(candidates.ie_oppose, 0);
+    OR race.ie_oppose <> coalesce(candidates.ie_oppose, 0)
+    OR race.total_operating_expenditures IS DISTINCT FROM candidates.total_operating_expenditures;

@@ -1,6 +1,6 @@
-"""`GET /v1/reconciliation?cycle=`: the committees whose itemized total exceeds their reported
-total by more than 1% (every-FEC-dollar spec §4.5), for the methodology page and anyone auditing
-the data.
+"""`GET /v1/reconciliation?cycle=`: the committees whose fundlens figure exceeds FEC's reported one
+by more than 1%, a row per measure: itemized receipts (every-FEC-dollar spec §4.5) and operating
+expenditures (§5.6). For the methodology page and anyone auditing the data.
 
 Cursor-paginated, 100 rows a page, the largest excess (fundlens - reported) first. The cursor is
 the last row's excess and key, so a walk through the pages neither skips nor repeats a row of one
@@ -45,8 +45,8 @@ def decode_cursor(token: str) -> tuple[Decimal, str, str]:
 def list_reconciliation(
     conn: Conn, page_size: PageSize, cycle: CycleParam, cursor: CursorParam = None
 ) -> ReconciliationPage:
-    """A cycle's committees over FEC's reported figure by more than 1%, the largest excess first.
-    Empty before 2008, whose files have no itemized figure."""
+    """A cycle's committees over FEC's reported figure by more than 1%, on any measure, the largest
+    excess first. Empty before 2008, whose files have neither reported figure."""
     after = None if cursor is None else decode_cursor(cursor)
     rows = (
         conn.cursor(row_factory=dict_row)

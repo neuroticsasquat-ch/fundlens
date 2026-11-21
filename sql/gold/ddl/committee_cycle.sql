@@ -11,6 +11,7 @@ CREATE TABLE gold_build.committee_cycle (
     total_to_candidates numeric(16, 2) NOT NULL,
     total_returned_by_candidates numeric(16, 2) NOT NULL,
     ie_total numeric(16, 2) NOT NULL,
+    total_operating_expenditures numeric(16, 2),
     reported_source_file text,
     reported_period_start date,
     reported_period_end date,

@@ -260,6 +260,75 @@ operating_expenditures:
   # The counted dollars classified other, unclassified: the memo parent, the IN-KIND purpose, SEE
   # SCHEDULE E's -$15,000 and SEE MEMO, as filed.
   unclassified: "-13050.00"
+  # Gold's committee_spending_category (§5.5): each committee's counted dollars by category, as
+  # filed, adding up to `by_committee`. A card bill is counted once, at the parent: CALLOWAY's
+  # three bills are its credit_card $3,620 and none of their charges' travel. RESTORATION PAC's
+  # SEE SCHEDULE E nets its other below $0, and the row is kept.
+  by_committee_category:
+    C00703975: {media: "50000.00", polling_research: "25000.00", travel: "1250.00"}
+    C00800101: {administrative: "200.00", legal_compliance: "4500.00", media: "15000.00", other: "600.00", transfers_fees: "85.00"}
+    C00800102: {administrative: "3000.00", polling_research: "5000.00"}
+    C00800103: {consulting: "7500.00", credit_card: "2500.00", legal_compliance: "750.00", other: "350.00", transfers_fees: "123.45"}
+    C00800104: {consulting: "3000.00", credit_card: "900.00"}
+    C00800106: {credit_card: "3620.00", digital: "1800.00", field: "400.00", mail: "4000.00", payroll: "2500.00", transfers_fees: "-500.00", travel: "312.40"}
+    C00800107: {events: "275.00", mail: "2200.00"}
+    C00800113: {other: "1000.00"}
+    C00800114: {events: "180.00"}
+    C00800115: {events: "2500.00"}
+    C00800201: {digital: "10000.00", transfers_fees: "1200.00"}
+    C00800203: {administrative: "210.00"}
+    C00800205: {digital: "20000.00", other: "-15000.00"}
+  # Gold's committee_top_payee (§5.4, §5.5), by rank: [payee_key, name, amount, has_page]. Payee
+  # rows only: no in-kind outlay (PELLEGRINO's, VELASQUEZ's) and not the row with no name. Each
+  # name is the key's most-dollar spelling in the cycle, so BLUE HARBOR STRATEGIES is its LLC
+  # spelling at WHITLOCK too; OKAFOR's two $1,250 card issuers tie and go by key; a key netting
+  # above $0 is listed (CALLOWAY's print shop less its refund, RESTORATION PAC's agency less its
+  # SEE SCHEDULE E). A key whose payee dollars are mostly a person's has no page (has_page false,
+  # payee_id NULL). PETTY CASH has one until NEU-2155's no-page list names it.
+  top_payees:
+    C00703975:
+      - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "50000.00", true]
+      - [HARBOR LIGHT POLLING, HARBOR LIGHT POLLING, "25000.00", true]
+      - [SKYLINE AIR, SKYLINE AIR, "1250.00", true]
+    C00800101:
+      - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "15000.00", true]
+      - [STERLING PAGE LLP, STERLING & PAGE LLP, "4500.00", true]
+      - [BENNETT LOGAN, "BENNETT, LOGAN", "600.00", false]
+      - [PETTY CASH, PETTY CASH, "200.00", true]
+    C00800102:
+      - [HARBOR LIGHT POLLING, HARBOR LIGHT POLLING, "5000.00", true]
+      - [ANNAPOLIS OFFICE PARK, ANNAPOLIS OFFICE PARK LLC, "3000.00", true]
+    C00800103:
+      - [BLUE HARBOR STRATEGIES, BLUE HARBOR STRATEGIES LLC, "7500.00", true]
+      - [AMERICAN EXPRESS, AMERICAN EXPRESS, "1250.00", true]
+      - [FIRST MARINER CARD SERVICES, FIRST MARINER CARD SERVICES, "1250.00", true]
+      - [CAPITOL COMPLIANCE GROUP, CAPITOL COMPLIANCE GROUP, "750.00", true]
+      - [ACTBLUE, ACTBLUE, "123.45", true]
+    C00800104:
+      - [BLUE HARBOR STRATEGIES, BLUE HARBOR STRATEGIES LLC, "3000.00", true]
+      - [AMERICAN EXPRESS, AMERICAN EXPRESS, "900.00", true]
+    C00800106:
+      - [AMERICAN EXPRESS, AMERICAN EXPRESS, "3620.00", true]
+      - [CHESAPEAKE PRINT WORKS, CHESAPEAKE PRINT WORKS INC, "3500.00", true]
+      - [MORRISON AVERY, "MORRISON, AVERY", "2500.00", false]
+      - [HARBORVIEW DIGITAL, HARBORVIEW DIGITAL, "1800.00", true]
+      - [DELGADO MARIA, "DELGADO, MARIA", "400.00", false]
+      - [CALLOWAY RUTH, "CALLOWAY, RUTH", "312.40", false]
+    C00800107:
+      - [CHESAPEAKE PRINTWORKS, CHESAPEAKE PRINTWORKS, "2200.00", true]
+      - [BAYSIDE CATERING, BAYSIDE CATERING, "275.00", true]
+    C00800113:
+      - [PATUXENT EVENTS, PATUXENT EVENTS, "1000.00", true]
+    C00800114:
+      - [ANNE ARUNDEL GRILL, ANNE ARUNDEL GRILL, "180.00", true]
+    C00800115:
+      - [PATUXENT EVENTS, PATUXENT EVENTS, "2500.00", true]
+    C00800201:
+      - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "10000.00", true]
+    C00800203:
+      - [BGE, BGE, "210.00", true]
+    C00800205:
+      - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "5000.00", true]
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T. And
@@ -1158,10 +1227,21 @@ gold_reported:
     2024-H-MD-05: 28500
     2024-S-NE-00-special: null
     2024-H-MD-08: null
-  # Every committee fundlens's itemized_total exceeds the reported figure of by more than 1%, not a
-  # conduit: [measure, fundlens, reported, ratio], the ratio to four places.
+  # Every committee fundlens's figure exceeds the reported one of by more than 1%, by measure, then
+  # committee: [fundlens, reported, ratio], the ratio to four places (§4.5, §5.6). Itemized
+  # receipts: not a conduit. Operating expenditures, conduits included: HARRIS FOR PRESIDENT's
+  # counted spending over its reported figure, and four committees with counted spending beside a
+  # reported 0, listed with no ratio. Every other committee's counted spending is under its
+  # reported figure, which is not a row.
   reconciliation:
-    C00800109: [individual_itemized, 3800, 3700, 1.027]
+    individual_itemized:
+      C00800109: [3800, 3700, 1.027]
+    operating_expenditures:
+      C00703975: [76250, 7600, 10.0329]
+      C00800114: [180, 0, null]
+      C00800115: [2500, 0, null]
+      C00800203: [210, 0, null]
+      C00800205: [5000, 0, null]
   # A candidate's gift sizes on a resolved build, by bucket: [amount, donors]. Each donor's bucket
   # is their net gifts to the candidate (DIME's `bonica.cid` tells the donors apart): THACKERAY's
   # twenty $50 gifts are one $1,000 donor, in under_2000. unitemized is the candidate's

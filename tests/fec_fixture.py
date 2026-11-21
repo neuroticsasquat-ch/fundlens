@@ -285,6 +285,10 @@ class OperatingExpenditures(TypedDict):
     # Per row: [spending_category, category_source].
     categories: dict[int, list[str]]
     unclassified: str
+    # Gold (every-FEC-dollar spec §5.5): counted dollars by committee, then category; each
+    # committee's top payees by rank, [payee_key, name, amount, has_page].
+    by_committee_category: dict[str, dict[str, str]]
+    top_payees: dict[str, list[list[str | bool]]]
 
 
 class GoldReported(TypedDict):
@@ -295,8 +299,8 @@ class GoldReported(TypedDict):
     candidates: dict[str, list[Any]]
     # Per race: reported_cash_on_hand.
     races: dict[str, int | None]
-    # Per committee: [measure, fundlens, reported, ratio].
-    reconciliation: dict[str, list[Any]]
+    # Per measure, then committee: [fundlens, reported, ratio].
+    reconciliation: dict[str, dict[str, list[Any]]]
     # Per candidate, then bucket: [amount, donors].
     gift_sizes: dict[str, dict[str, list[int | None]]]
 

@@ -11,6 +11,7 @@ CREATE TABLE gold_build.race_candidate (
     self_funding numeric(16, 2) NOT NULL,
     ie_support numeric(16, 2) NOT NULL,
     ie_oppose numeric(16, 2) NOT NULL,
+    total_operating_expenditures numeric(16, 2),
     reported_receipts numeric(16, 2),
     reported_disbursements numeric(16, 2),
     reported_cash_on_hand_end numeric(16, 2),
