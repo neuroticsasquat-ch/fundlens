@@ -34,6 +34,22 @@ _Avoid_: JFC contribution
 One itemized gift from an organization to a committee, as reported to the regulator, held in `organization_receipt`. Organization money, never a contribution: in no individual total, no top-donor list and no race or candidate total; counted on the committee that received it. Loans (16C, 16F, 16G) and 15J memo lines are not receipts.
 _Avoid_: organization contribution, corporate donation, corporate money (unions and tribes give too)
 
+**Operating expenditure**:
+One itemized payment a committee made to run itself, for staff, advertising, rent, consultants or fees, as reported to the regulator. Spending, never a contribution: in no receipt total. One filed as a negative amount takes back or moves an earlier one, and nets against it.
+_Avoid_: spend, expense, disbursement (that is every dollar a committee pays out, a reported total), outside spending (that is spending on a race by someone other than the campaign)
+
+**Sub-item**:
+A row itemizing part of an operating expenditure the committee already reported whole: a card bill's charges, a reimbursement's receipts. Shown under its operating expenditure and never counted, since the whole is; the merchant it names is credited nothing.
+_Avoid_: memo child, child row, memo item, sub-itemization
+
+**In-kind outlay**:
+The spending-side record of a gift of goods or services: the regulator has the committee report the gift as a receipt and its use as an operating expenditure naming the giver. Counted in the committee's spending, as the regulator counts it; credited to no payee, since the giver was paid nothing.
+_Avoid_: in-kind payment, orphan child, in-kind contribution (that is the receipt)
+
+**Spending category**:
+What an operating expenditure bought, as one of a fixed list (media, digital, mail, payroll and the rest). fundlens's reading of the purpose the filer wrote and, where that says nothing, of the regulator's category code where filers use the code reliably; never the regulator's code as filed.
+_Avoid_: FEC category (the regulator's code), purpose (the filer's free text), expense type
+
 **Non-contribution account**:
 A hybrid PAC's (FEC committee type V or W) second account, outside the contribution limits, whose receipts the regulator types 10 (24I for an earmark through a conduit, when its memo names the account; a 24I without that memo is the contribution account's) and whose refunds it types 20Y. Individuals' and organizations' money to it is kept, as contributions and organization receipts, with its refunds, and counted in the committee's own figure, never in its individual or organization totals, which hold the contribution account the regulator's itemized figure counts. Its givers are in the committee's top-donor and top-organization lists. A committee's gift to it is counted as any committee's gift. A type 10 to any other committee is an ordinary contribution, unless its memo begins with the account's name: then the filer has marked it the account's, whatever the regulator's committee type for the cycle.
 _Avoid_: Carey account, soft money, super PAC account
@@ -92,7 +108,7 @@ _Avoid_: contribution size, donation size, small-dollar donor
 ### Parties
 
 **Donor**:
-A resolved individual: the persistent identity behind many contributor-name, employer and address variants. Only individuals need resolution; committees and candidates already carry regulator IDs, and organizations are grouped by organization key, not resolved.
+A resolved individual: the persistent identity behind many contributor-name, employer and address variants. Only individuals need resolution; committees and candidates already carry regulator IDs, and organizations and payees are grouped by organization key and payee key, not resolved.
 _Avoid_: contributor (that is the raw, unresolved name on a record), person, entity
 
 **Contributor**:
@@ -104,6 +120,10 @@ A regulator-registered fundraising entity (candidate committee, PAC, party commi
 **Organization**:
 A giver that is neither an individual nor a committee: a corporation, union, trade association, tribe, 527 or other group, identified only by the name it is reported under. It carries no regulator ID and is never resolved; its receipts are grouped by organization key.
 _Avoid_: corporate donor, entity (that is FEC's word for every giver type), business, non-individual
+
+**Payee**:
+Whoever an operating expenditure names as paid: a firm, a person, a card issuer or another committee, identified only by the name it is reported under. It carries no regulator ID and is never resolved; its operating expenditures are grouped by payee key. A payee that is a person, or a name that names nobody (petty cash), is listed under the committee that paid it and has no page of its own.
+_Avoid_: vendor (staff and card issuers are payees too), recipient (that is the committee a contribution goes to), contractor
 
 **Candidate**:
 A person seeking an office in a cycle, identified by their regulator ID.
@@ -148,6 +168,10 @@ The exact normalized tuple (name, ZIP5, employer, occupation) that identifies on
 **Organization key**:
 The normalized name that groups one organization's receipts: the reported name cleaned, its legal form stripped and its employer alias applied, by the same `normalize_employer` rule that normalizes a contributor's employer. Exact grouping, no linkage: two spellings share a key or they are two organizations.
 _Avoid_: organization id (there is none), resolved organization
+
+**Payee key**:
+The normalized name that groups one payee's operating expenditures across committees and cycles, made by the rule that makes an organization key. Exact grouping, no linkage: two spellings share a key or they are two payees.
+_Avoid_: payee id (that is a payee page's address, derived from the key), vendor id, resolved payee
 
 **Cluster**:
 The set of contributor keys that probabilistic linkage judges to be the same person in one resolution run.
