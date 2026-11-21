@@ -4,6 +4,14 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-21 — `operating_expenditure.spending_category` and `category_source` filled
+
+Two columns' meaning, a change to their values only: `spending_category` now holds what each
+payment bought, one of fifteen categories, read from the purpose the filer wrote, else from the
+FEC's category code where it is one of the six filers use reliably, else `other`;
+`category_source` says which (`purpose_rule`, `fec`, `unclassified`). A cycle built before the
+change has both null until the backfill rebuilds it.
+
 ## 2026-11-21 — `operating_expenditure` added
 
 One table, an additive change: `operating_expenditure`, every payment a committee itemized from

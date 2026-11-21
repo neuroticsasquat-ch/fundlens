@@ -282,6 +282,9 @@ class OperatingExpenditures(TypedDict):
     payee_keys: dict[int, str | None]
     persons: list[int]
     fec_categories: dict[int, str]
+    # Per row: [spending_category, category_source].
+    categories: dict[int, list[str]]
+    unclassified: str
 
 
 class GoldReported(TypedDict):

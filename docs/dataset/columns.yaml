@@ -450,8 +450,16 @@ operating_expenditure:
       The FEC's category code for the payment as a three-digit string (`001` … `107`), a code filed
       without its leading zeros padded to them; any other value as filed; null when none was
       filed.
-    spending_category: Null until fundlens classifies spending.
-    category_source: Null until fundlens classifies spending.
+    spending_category: >-
+      What the payment bought, one of `media`, `digital`, `mail`, `fundraising`, `payroll`,
+      `consulting`, `field`, `polling_research`, `travel`, `events`, `administrative`,
+      `legal_compliance`, `transfers_fees`, `credit_card` and `other`: fundlens's reading of the
+      purpose, else of the FEC's category code where filers use the code reliably. Null in a
+      build made before fundlens classified spending.
+    category_source: >-
+      Where `spending_category` came from: `purpose_rule` (fundlens's rule over the purpose),
+      `fec` (the FEC's category code, one of the six fundlens trusts) or `unclassified` (neither,
+      so `other`). Null in a build made before fundlens classified spending.
     election_code: The FEC election code of the payment (`P2024`, `G2024` …).
     report_type: The FEC report the row was filed on (`Q1`, `M4`, `YE` …).
     amendment_indicator: The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).

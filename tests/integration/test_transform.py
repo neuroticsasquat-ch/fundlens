@@ -560,7 +560,8 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
     assert steps == [
         *(f"silver check {path.name}" for path in sorted(CHECKS.glob("silver_*.sql"))),
         f"operating_expenditure 2024: {rows:,} rows, {counted:,} counted,"
-        f" ${Decimal(spending['total']):,} counted",
+        f" ${Decimal(spending['total']):,} counted, ${Decimal(spending['unclassified']):,}"
+        f" ({Decimal(spending['unclassified']) / Decimal(spending['total']):.2%}) unclassified",
         *(f"write {table} 2024" for table in write_order(tables)),
         *(
             f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
@@ -2220,8 +2221,9 @@ def test_operating_expenditures_count_a_sub_itemized_payment_once_and_net_as_fil
     # A filer's impossible year is kept as filed, and a row with no date has none.
     assert by_id[YEAR_9201]["date"] == date(9201, 11, 1)
     assert by_id[UNDATED_SPENDING]["date"] is None
-    assert {row["spending_category"] for row in rows} == {row["category_source"] for row in rows}
-    assert {row["category_source"] for row in rows} == {None}
+    assert {
+        sub_id: [row["spending_category"], row["category_source"]] for sub_id, row in by_id.items()
+    } == expected["categories"]
     assert {(row["source"], row["jurisdiction"], row["cycle"]) for row in rows} == {
         ("fec", "US", 2024)
     }

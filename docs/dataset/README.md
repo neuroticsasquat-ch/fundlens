@@ -57,8 +57,9 @@ A few things to know before you add anything up:
   or a reimbursement's receipt, is shown under the payment it itemizes
   (`parent_source_record_id`) and never added to it. `payee_key` is a normalized name, not an id:
   payees are grouped by it, never resolved. Spending is never to be added to `contribution`
-  amounts, nor to any other receipt. `spending_category` and `category_source` are null in a
-  build made before fundlens classifies spending.
+  amounts, nor to any other receipt. `spending_category` is fundlens's reading of the purpose,
+  not the FEC's code (`fec_category` holds that, as filed); `category_source` says which rule
+  gave it. Both are null in a build made before fundlens classified spending.
 - A `cycle=<c>` directory is a Hive partition. `contributor`'s files hold no cycle column of
   their own: read it from the path, as DuckDB does, adding a `cycle` column.
 

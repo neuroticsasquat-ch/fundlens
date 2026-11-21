@@ -202,6 +202,64 @@ operating_expenditures:
     4240400000000000048: "004"
     4240400000000000049: "005"
     4240400000000000050: "002"
+  # Every row's spending category and its source (§5.3, NEU-2153): the purpose rule's, FEC's code
+  # where the purpose names nothing bought and the code is trusted (case 23's 004 on SEE BELOW),
+  # else other, unclassified (the memo parent's REIMBURSEMENT: SEE BELOW, the IN-KIND purpose, SEE
+  # SCHEDULE E and SEE MEMO). Untrusted codes (006 on PRINTING, 001 on pay, rent and consulting)
+  # are never read. PELLEGRINO's in-kind outlay by structure takes its purpose's, STOCK TRANSFER's.
+  categories:
+    4240400000000000001: [mail, purpose_rule]
+    4240400000000000002: [transfers_fees, purpose_rule]
+    4240400000000000003: [credit_card, purpose_rule]
+    4240400000000000004: [travel, purpose_rule]
+    4240400000000000005: [travel, purpose_rule]
+    4240400000000000006: [credit_card, purpose_rule]
+    4240400000000000007: [travel, purpose_rule]
+    4240400000000000008: [travel, purpose_rule]
+    4240400000000000009: [other, unclassified]
+    4240400000000000010: [travel, purpose_rule]
+    4240400000000000011: [credit_card, purpose_rule]
+    4240400000000000012: [digital, purpose_rule]
+    4240400000000000013: [digital, purpose_rule]
+    4240400000000000014: [mail, purpose_rule]
+    4240400000000000015: [transfers_fees, purpose_rule]
+    4240400000000000016: [other, unclassified]
+    4240400000000000017: [events, purpose_rule]
+    4240400000000000018: [credit_card, purpose_rule]
+    4240400000000000019: [travel, purpose_rule]
+    4240400000000000020: [credit_card, purpose_rule]
+    4240400000000000021: [travel, purpose_rule]
+    4240400000000000022: [credit_card, purpose_rule]
+    4240400000000000023: [credit_card, purpose_rule]
+    4240400000000000024: [travel, purpose_rule]
+    4240400000000000025: [polling_research, purpose_rule]
+    4240400000000000028: [digital, purpose_rule]
+    4240400000000000030: [digital, purpose_rule]
+    4240400000000000031: [other, unclassified]
+    4240400000000000032: [consulting, purpose_rule]
+    4240400000000000033: [consulting, purpose_rule]
+    4240400000000000034: [mail, purpose_rule]
+    4240400000000000035: [transfers_fees, purpose_rule]
+    4240400000000000036: [transfers_fees, purpose_rule]
+    4240400000000000037: [payroll, purpose_rule]
+    4240400000000000038: [travel, purpose_rule]
+    4240400000000000039: [field, purpose_rule]
+    4240400000000000040: [digital, purpose_rule]
+    4240400000000000041: [administrative, purpose_rule]
+    4240400000000000042: [media, fec]
+    4240400000000000043: [administrative, purpose_rule]
+    4240400000000000044: [administrative, purpose_rule]
+    4240400000000000045: [other, unclassified]
+    4240400000000000046: [events, purpose_rule]
+    4240400000000000047: [events, purpose_rule]
+    4240400000000000048: [media, purpose_rule]
+    4240400000000000049: [polling_research, purpose_rule]
+    4240400000000000050: [travel, purpose_rule]
+    4240400000000000051: [legal_compliance, purpose_rule]
+    4240400000000000052: [legal_compliance, purpose_rule]
+  # The counted dollars classified other, unclassified: the memo parent, the IN-KIND purpose, SEE
+  # SCHEDULE E's -$15,000 and SEE MEMO, as filed.
+  unclassified: "-13050.00"
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T. And

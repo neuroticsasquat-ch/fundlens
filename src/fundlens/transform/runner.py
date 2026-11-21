@@ -31,7 +31,9 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
   `normalize_employer`, `normalize_occupation`), from which the contributor key is built, and
   `organization_key`, which groups organization receipts (ADR-0011);
-- `fec_line`, the Form 3/3X line FEC files a transaction type on (`fec.lines`, NEU-2193).
+- `fec_line`, the Form 3/3X line FEC files a transaction type on (`fec.lines`, NEU-2193);
+- `spending_category`, an operating expenditure's category and its source (`transform.spending`,
+  NEU-2153).
 
 It runs `sql/silver/*.sql` in filename order. `NN_<table>.sql` creates the silver table
 `<table>`, may leave temporary tables a later file reads, and may fill in a column of an earlier
@@ -70,7 +72,7 @@ from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
 from fundlens.settings import Settings
-from fundlens.transform import seats
+from fundlens.transform import seats, spending
 
 log = logging.getLogger(__name__)
 
@@ -510,18 +512,24 @@ def write_order(tables: list[SilverTable]) -> list[SilverTable]:
 
 
 def _log_spending(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
-    """Log `operating_expenditure`'s rows, and its counted rows and dollars: the figures a cycle's
-    spending is checked against (every-FEC-dollar spec §5.1, NEU-2152)."""
-    [(rows, counted, dollars)] = con.execute(
+    """Log `operating_expenditure`'s rows, its counted rows and dollars, and the counted dollars
+    no rule or trusted code classifies, with their share: the figures a cycle's spending is
+    checked against (every-FEC-dollar spec §5.1, §5.3; NEU-2152, NEU-2153)."""
+    [(rows, counted, dollars, unclassified)] = con.execute(
         "SELECT count(*), count(*) FILTER (WHERE counted),"
-        " coalesce(sum(amount) FILTER (WHERE counted), 0) FROM operating_expenditure"
+        " coalesce(sum(amount) FILTER (WHERE counted), 0),"
+        " coalesce(sum(amount) FILTER (WHERE counted AND category_source = 'unclassified'), 0)"
+        " FROM operating_expenditure"
     ).fetchall()
+    share = f"{unclassified / dollars:.2%}" if dollars else "n/a"
     log.info(
-        "operating_expenditure %d: %s rows, %s counted, $%s counted",
+        "operating_expenditure %d: %s rows, %s counted, $%s counted, $%s (%s) unclassified",
         cycle,
         f"{rows:,}",
         f"{counted:,}",
         f"{dollars:,}",
+        f"{unclassified:,}",
+        share,
     )
 
 
@@ -593,6 +601,7 @@ def transform(
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
             lines.register(con)
+            spending.register(con)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))

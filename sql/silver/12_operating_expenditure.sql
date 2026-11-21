@@ -42,7 +42,9 @@
 -- filing holds (most name a receipt on it, Q7c), or a purpose saying IN-KIND; it keeps its
 -- `counted`, and is in no payee figure.
 --
--- spending_category and category_source are NULL until NEU-2153's classifier fills them.
+-- spending_category and category_source (§5.3, NEU-2153): transform.spending's rule over the
+-- purpose, else FEC's code where it is one of the six filers use reliably, else other. The
+-- function is Python, so it runs once per distinct (code, purpose) pair, not per row.
 CREATE TABLE operating_expenditure AS
 WITH spending AS (
     SELECT
@@ -52,7 +54,13 @@ WITH spending AS (
         nullif(nullif(trim(BACK_REF_TRAN_ID), ''), nullif(trim(TRAN_ID), '')) AS named_tran_id,
         -- FEC writes MM/DD/YYYY; a malformed date is null rather than a failed build. An
         -- impossible year (1201 to 9201 appear in every cycle) is kept as filed.
-        CAST(try_strptime(TRANSACTION_DT, '%m/%d/%Y') AS DATE) AS spent_on
+        CAST(try_strptime(TRANSACTION_DT, '%m/%d/%Y') AS DATE) AS spent_on,
+        -- FEC's three-digit code, one written without its leading zeros ('1', '01') padded to it.
+        CASE
+            WHEN regexp_matches(trim(CATEGORY), '^[0-9]{{1,2}}$')
+                THEN lpad(trim(CATEGORY), 3, '0')
+            ELSE CATEGORY
+        END AS fec_category
     FROM oppexp
     WHERE CMTE_ID IN (SELECT committee_id FROM committee)
         AND coalesce(FILE_NUM, 0) NOT IN (SELECT FILE_NUM FROM superseded_filing)
@@ -107,6 +115,10 @@ payee_class AS (
         FROM spending
         WHERE NAME IS NOT NULL AND nullif(trim(ENTITY_TP), '') IS NULL
     )
+),
+category AS (
+    SELECT fec_category, PURPOSE AS purpose, spending_category(fec_category, PURPOSE) AS classified
+    FROM (SELECT DISTINCT fec_category, PURPOSE FROM spending)
 )
 SELECT
     CAST({cycle} AS INTEGER) AS cycle,
@@ -128,14 +140,9 @@ SELECT
     spending.TRANSACTION_AMT AS amount,
     spending.spent_on AS date,
     spending.PURPOSE AS purpose,
-    -- FEC's three-digit code, one written without its leading zeros ('1', '01') padded to it.
-    CASE
-        WHEN regexp_matches(trim(spending.CATEGORY), '^[0-9]{{1,2}}$')
-            THEN lpad(trim(spending.CATEGORY), 3, '0')
-        ELSE spending.CATEGORY
-    END AS fec_category,
-    NULL::VARCHAR AS spending_category,
-    NULL::VARCHAR AS category_source,
+    spending.fec_category,
+    category.classified.category AS spending_category,
+    category.classified.source AS category_source,
     spending.TRANSACTION_PGI AS election_code,
     spending.RPT_TP AS report_type,
     spending.AMNDT_IND AS amendment_indicator,
@@ -165,4 +172,7 @@ LEFT JOIN linked
         OR spending.spent_on >= linked.valid_from)
     AND (linked.valid_until IS NULL OR spending.spent_on < linked.valid_until)
 LEFT JOIN payee_name ON payee_name.raw = spending.NAME
-LEFT JOIN payee_class ON payee_class.raw = spending.NAME;
+LEFT JOIN payee_class ON payee_class.raw = spending.NAME
+LEFT JOIN category
+    ON category.fec_category IS NOT DISTINCT FROM spending.fec_category
+    AND category.purpose IS NOT DISTINCT FROM spending.PURPOSE;
