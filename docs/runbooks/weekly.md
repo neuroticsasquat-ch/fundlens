@@ -560,7 +560,7 @@ ran.
    ```
 
    **Expected:** a line per cycle, 1980 to the current cycle, each `live`, and at least 130 GB free (the run
-   deletes the old working file first, which frees about 102 GB more). A `NOT LIVE` line means resolution would
+   deletes the old working file first, which frees about 14 GB more). A `NOT LIVE` line means resolution would
    write donor_ids onto a build that step 5 would not load: stop, and find where that build came from. The one
    exception is the current cycle's build of a run that stopped at `resolve`, from [A run missed](#a-run-missed):
    that is the build step 5 resumes.
@@ -599,6 +599,20 @@ ran.
    redirects. If it fails after its `resolve model:` log line, the model is saved: rerun with `--model "$M"` in
    place of `--build-id "$M"`, which skips the 14 min of training. If it fails before, rerun the same command.
    [backfill.md](backfill.md) step 5.2 has the failures seen at this scale.
+
+   The run ends by compacting the working file, its `compact` phase (NEU-2406): Splink's dropped tables leave
+   most of the file free, and DuckDB never shrinks a file by itself. Check that it did:
+
+   ```bash
+   # VM, in tmux
+   docker exec "$(fl pipeline)" du -sh /data/fundlens/resolution/resolve.duckdb
+   grep -o 'resolve: [a-z]* the working file[^"]*' resolve-full.log
+   ```
+
+   **Expected:** about 14G, and `resolve: compacted the working file from <about 100> GiB to <about 14> GiB`.
+   `resolve: left the working file uncompacted at <n> GiB, the copy failed: <error>` means the copy did not fit
+   (most likely the disk): the run still finished and the working file is valid, only large. Go on, and file a
+   ticket with the error and `free_gb`'s output.
 4. **Validate 2024,** so `/v1/meta` and the methodology page keep resolution's quality figures under the new
    model ([refreshing-dime.md](refreshing-dime.md) §5):
 

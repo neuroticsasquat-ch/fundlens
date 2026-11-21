@@ -163,6 +163,7 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
         "save",
         "crosswalk",
         "silver",
+        "compact",
     )
     for phase in phases:
         assert any(message.startswith(f"resolve {phase}: ") for message in logged), phase
@@ -175,6 +176,56 @@ def test_resolve_full_marks_the_cycle_resolved_and_logs_each_phase(
     # The run's connection had the limit, and kept to it: DuckDB fails a query that exceeds it.
     assert "DuckDB memory limit: 244.1 MiB" in result.output
     assert "priors (too few keys to train on)" in result.output
+
+
+def free_share(database: Path) -> float:
+    """The share of the DuckDB file `database`'s blocks that are free."""
+    with duckdb.connect(database, read_only=True) as con:
+        [(total, free)] = con.execute(
+            "SELECT total_blocks, free_blocks FROM pragma_database_size()"
+            " WHERE database_name = current_database()"
+        ).fetchall()
+    return free / total
+
+
+def test_resolve_full_leaves_its_working_file_without_the_blocks_its_dropped_tables_freed(
+    fixture_resolved: Path,
+) -> None:
+    # Splink's tables, dropped once used, left most of the file free until NEU-2406.
+    assert free_share(paths.resolution_database(fixture_resolved)) <= 0.1
+
+
+def test_a_compaction_that_fails_leaves_the_working_file_as_it_was_and_the_run_finishes(
+    store: R2,
+    transformed: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="fundlens.resolve")
+    database = paths.resolution_database(transformed)
+    compacted = database.with_name("resolve.compact.duckdb")
+
+    def fails(source: Path, target: Path, **_: Any) -> None:
+        target.write_bytes(b"part of a copy")
+        raise duckdb.IOException("No space left on device")
+
+    monkeypatch.setattr(runner, "_copy_database", fails)
+    result = resolve("--full", "--build-id", MODEL)
+
+    assert result.exit_code == 0, result.output
+    assert markers.read("resolved", store, cycle=2024, build_id=BUILD) is not None
+    assert store.exists(paths.resolution_run(MODEL))
+    assert not compacted.exists()
+    assert runner.incremental_ready(store, transformed)
+    # Left as the run built it: what the compaction would have shrunk.
+    assert free_share(database) > 0.1
+    logged = [record.getMessage() for record in caplog.records]
+    assert any(
+        message.startswith("resolve: left the working file uncompacted at ")
+        and message.endswith("No space left on device")
+        for message in logged
+    )
+    assert any(message.startswith("resolve compact: ") for message in logged)
 
 
 # The scratch `resolve --full` drops as soon as it has used it (NEU-2325).
