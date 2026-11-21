@@ -24,6 +24,9 @@ step, then its two halves (DuckDB aggregates and CSV, then `COPY`, indexes and `
 | 2024 | 2026-11-01 | `20261031T202003Z` | `a4c82b8` | — | 6 | — | 169 (73.08 + 93.51) | 91 | — | 2.03 | 2.61 | 24.54 GiB | First resolved build: donor tables live ([first-resolved-run.md](runbooks/first-resolved-run.md), NEU-2079). Resolved, loaded and published NEU-2078's build; `seats` ran only to add the `race` partition its transform-only run lacked. Silver is after resolution's bucketed rewrite. Peak memory is resolve's; load and publish stayed below it. |
 | 2024 | 2026-11-02 | `20261102T031624Z` | `22e56ce` | — | — | — | 170 (71.34 + 91.29) | 104 | — | — | — | — | Load and publish after re-clustering (NEU-2122, [refreshing-dime.md](runbooks/refreshing-dime.md) §8); both times are `time`'s `real`. 3,822,946 donors, 6,968,328 `donor_top_recipient` rows, 1 `donor_redirect`. |
 | 1980–2026 | 2026-11-17 | `20261116T005426Z` | `dbe2ffd` | — | — | — | 1402 (684.82 + 696.97) | 157 | — | — | — | — | The backfill's last load and publish, of every cycle with its donors ([backfill.md](runbooks/backfill.md) step 6, NEU-2060): `fundlens run --cycle 2024 --from load` on 2024's rebuild. `gold donor` alone took 6 min. 12,564,451 donors, 26,835,891 `donor_cycle`, 34,127,960 `donor_top_recipient`, 70,635 `donor_redirect` rows. The whole database is 23.11 GB after it, against 7.6 GB before; gold alone was not measured. `real` 26m10s. |
+| 2024 | 2026-11-21 | `20261121T183242Z` | `adbca96` | — | — | 1924 | — | — | — | — | — | 26.91 GiB | Transform only, with `operating_expenditure` (NEU-2152). Peak at 19:05:21Z, near the run's end; no step was named, since nothing logged one. |
+| 2024 | 2026-11-21 | `20261121T193655Z` | `2e86f5f` | — | — | 1912 | — | — | — | — | — | 28.64 GiB | Transform only, with the spending classifier (NEU-2153). Peak at 20:08:18Z, near the run's end; no step was named, since nothing logged one. |
+| 2024 | 2026-11-21 | `20261121T211606Z` | `e4125a6` | — | — | 1851 | — | — | — | — | — | 26.6 GiB | Transform only, the first to log `memory after <step>` (NEU-2408). The sampler's peak, at 21:45:20Z, is under the process's own, 27.44 GiB, set in `write contribution 2024`, where DuckDB first spilled (0.21 GiB). `real` 30m56s. |
 
 The weekly run (M5) adds its own figures here. The backfill's are under [Backfill](#backfill), apart from its last
 load and publish of every cycle together, which gets a row here.
@@ -289,6 +292,20 @@ writes nothing to `app.resolution_quality`; its Notes give the cap.
   went from 7.6 GB to 23.11 GB, and load from 192–241 s per cycle to 1,402 s, about 6 minutes of it `gold donor`.
 - **The working file stays between runs.** `resolve.duckdb`, 102 GiB, is about 70% of the steady-state disk
   (Triggers). Every weekly `resolve --full` starts from it until NEU-2062.
+- **The classifier holds no memory into `contribution`'s write; 2024's transform peak moves 2 GiB between runs of the
+  same code (NEU-2408).** Build `20261121T211606Z` logged memory after every step. The process peaked at 27.44 GiB
+  (`VmHWM`) in `write contribution 2024`, the first step at which DuckDB had spilled (0.21 GiB). The 10-s sampler read
+  26.6 GiB, under the process: it missed the write's brief top, so the sampler peaks of the rows before it may read
+  low too. DuckDB held 19.44 GiB after `11_candidate_reported_total.sql`, 20.12 GiB after
+  `12_operating_expenditure.sql`, and 19.44 GiB again once `operating_expenditure` was written and dropped: the table,
+  0.68 GiB in DuckDB, leaves nothing behind. Memory outside DuckDB (resident less DuckDB's) went from −0.10 GiB after
+  model 11 to +0.40 after model 12, back to +0.02 by the last check, then +1.86 after `operating_expenditure`'s Parquet
+  write, and was +1.71 as `contribution`'s write began. The NEU-2408 spec's rule (§6.3, its second arm) reads that
+  growth as held, but the checks alone, which create no tables, moved it between −0.35 and +0.88 GiB: it is memory the
+  allocator keeps after a query or a write, not a table, and NEU-2152's run made the same write first. The same
+  classifier code peaked at 28.64 GiB on `20261121T193655Z` and 26.6 GiB here, so the 1.73 GiB over NEU-2152's
+  26.91 GiB is run-to-run spread. A new silver table is measured by DuckDB's own figure across its model in these
+  lines, not by the run's peak.
 
 ## Dataset snapshot
 
