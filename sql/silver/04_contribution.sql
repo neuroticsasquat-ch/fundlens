@@ -45,8 +45,9 @@
 -- 2024 campaign, Harris's since he withdrew, to both, so neither candidate alone holds its money:
 -- each contribution, transfer and JFC attribution is the candidate's whose dates hold its own.
 -- One with no date is the committee's current holder's, the candidate it was handed to. The
--- three `linked` CTEs, here and in 05_committee_transfer.sql and 06_jfc_attribution.sql, take
--- these rows for a handed-off committee in place of its single undated link.
+-- four `linked` CTEs, here and in 05_committee_transfer.sql, 06_jfc_attribution.sql and
+-- 12_operating_expenditure.sql, take these rows for a handed-off committee in place of its
+-- single undated link.
 CREATE TEMP VIEW handoff_link AS
 SELECT committee_id, from_candidate_id AS candidate_id, NULL::DATE AS valid_from,
     handoff_date AS valid_until

@@ -2,9 +2,9 @@
 
 Federal campaign-finance money for every cycle since 1980, from the FEC's bulk files, as open
 Parquet files: contributions, committees, candidates, races, committee transfers, organizations'
-gifts, independent expenditures and the totals committees report, with **individual donors
-resolved** across the name, employer and address variants they are reported under. It is the
-data behind [fundlens.org](https://fundlens.org).
+gifts, independent expenditures, committees' spending and the totals committees report, with
+**individual donors resolved** across the name, employer and address variants they are reported
+under. It is the data behind [fundlens.org](https://fundlens.org).
 
 Served from `https://data.fundlens.org/v1/`. License: [CC BY 4.0](LICENSE). Read the
 [notice on contributor information](#notice-contributor-information-and-the-fec) before you use
@@ -27,6 +27,7 @@ it.
 | `independent_expenditure` | expenditure for or against a candidate | `independent_expenditure/cycle=<c>/*.parquet` |
 | `reported_total` | committee's own reported totals for a cycle (from 1996) | `reported_total/cycle=<c>/*.parquet` |
 | `candidate_reported_total` | candidate's own reported totals for a cycle, before 2008 | `candidate_reported_total/cycle=<c>/*.parquet` |
+| `operating_expenditure` | payment a committee itemized as spending (from 2004), counted or not | `operating_expenditure/cycle=<c>/*.parquet` |
 
 Every column of every table is described in its JSON Schema, `schema/<table>.json` (for
 example [`schema/contribution.json`](schema/contribution.json)), and every change to them is in
@@ -52,6 +53,12 @@ A few things to know before you add anything up:
   include the itemized money the other tables itemize. Compare the two; don't sum them.
 - **Organizations are not resolved.** Their gifts are grouped by `organization_key`, the
   normalized name.
+- **Sum `operating_expenditure` only where `counted` is true.** A sub-item, a card bill's charge
+  or a reimbursement's receipt, is shown under the payment it itemizes
+  (`parent_source_record_id`) and never added to it. `payee_key` is a normalized name, not an id:
+  payees are grouped by it, never resolved. Spending is never to be added to `contribution`
+  amounts, nor to any other receipt. `spending_category` and `category_source` are null in a
+  build made before fundlens classifies spending.
 - A `cycle=<c>` directory is a Hive partition. `contributor`'s files hold no cycle column of
   their own: read it from the path, as DuckDB does, adding a `cycle` column.
 

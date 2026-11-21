@@ -950,6 +950,123 @@ def test_oppexp_has_one_row_on_a_superseded_filing() -> None:
     assert [(r["CMTE_ID"], r["FILE_NUM"]) for r in superseded] == [("C00800201", "1900211")]
 
 
+@functools.cache
+def operating_expenditures() -> tuple[Row, ...]:
+    """The `oppexp` rows silver keeps (every-FEC-dollar spec §5.1): read once, filed by a committee
+    of the cycle, on no filing a later amendment supersedes by the receipt side's rule."""
+    return tuple(
+        row
+        for row in rows("oppexp")
+        if row["CMTE_ID"] in committee_ids() and not is_superseded(row)
+    )
+
+
+def named_tran_id(row: Row) -> str | None:
+    """The TRAN_ID `row` names as its parent's: BACK_REF_TRAN_ID, unless blank or its own."""
+    named = row["BACK_REF_TRAN_ID"].strip()
+    return named if named and named != row["TRAN_ID"].strip() else None
+
+
+@functools.cache
+def spending_parents() -> Mapping[str, str]:
+    """Sub-item SUB_ID → its parent's (spec §5.1): the row on the sub-item's committee and filing
+    whose TRAN_ID it names, the lowest SUB_ID of them. A row with no FILE_NUM is on no filing."""
+    holders: dict[tuple[str, str, str], int] = {}
+    for row in operating_expenditures():
+        if not row["FILE_NUM"]:
+            continue
+        held = (row["CMTE_ID"], row["FILE_NUM"], row["TRAN_ID"].strip())
+        holders[held] = min(holders.get(held, int(row["SUB_ID"])), int(row["SUB_ID"]))
+    return MappingProxyType(
+        {
+            row["SUB_ID"]: str(holders[named])
+            for row in operating_expenditures()
+            if (tran_id := named_tran_id(row))
+            and (named := (row["CMTE_ID"], row["FILE_NUM"], tran_id)) in holders
+        }
+    )
+
+
+def spending_counts(row: Row) -> bool:
+    """Spec §5.2: a sub-item never counts, a parent always does, any other row unless a memo."""
+    if row["SUB_ID"] in spending_parents():
+        return False
+    return row["SUB_ID"] in spending_parents().values() or row["MEMO_CD"] != "X"
+
+
+def spending_candidate(row: Row) -> str | None:
+    """The candidate an operating expenditure is credited to: its committee's, by contribution's
+    rule; on a handed-off committee by the row's date, an undated one the later candidate's."""
+    committee_id = row["CMTE_ID"]
+    if committee_id not in HANDOFFS:
+        return linked_candidates().get(committee_id)
+    before, after, handoff = HANDOFFS[committee_id]
+    try:
+        spent_on = datetime.strptime(row["TRANSACTION_DT"], "%m/%d/%Y").date()
+    except ValueError:
+        return after
+    return before if spent_on < handoff else after
+
+
+def test_the_expected_operating_expenditures_match_the_fixture() -> None:
+    expected = EXPECTED["operating_expenditures"]
+    kept = operating_expenditures()
+    counted_rows = [row for row in kept if spending_counts(row)]
+
+    def dollars(pairs: Iterable[tuple[str, Decimal]]) -> dict[str, str]:
+        totals: defaultdict[str, Decimal] = defaultdict(Decimal)
+        for key, value in pairs:
+            totals[key] += value
+        return {key: f"{total:.2f}" for key, total in sorted(totals.items())}
+
+    assert EXPECTED["silver"]["operating_expenditure"] == len(kept)
+    kept_ids = {row["SUB_ID"] for row in kept}
+    assert expected["dropped"] == sorted(
+        int(row["SUB_ID"])
+        for row in fec_fixture.read_rows("oppexp")
+        if row["SUB_ID"] not in kept_ids
+    )
+    assert expected["parents"] == {int(k): int(v) for k, v in spending_parents().items()}
+    assert expected["not_counted"] == sorted(
+        int(r["SUB_ID"]) for r in kept if not spending_counts(r)
+    )
+    amounts = [(row, Decimal(row["TRANSACTION_AMT"])) for row in counted_rows]
+    assert expected["by_committee"] == dollars((row["CMTE_ID"], value) for row, value in amounts)
+    assert expected["by_candidate"] == dollars(
+        (candidate, value) for row, value in amounts if (candidate := spending_candidate(row))
+    )
+    assert expected["total"] == f"{sum(value for _, value in amounts):.2f}"
+    assert expected["in_kind"] == sorted(
+        int(row["SUB_ID"])
+        for row in kept
+        if (named_tran_id(row) and row["SUB_ID"] not in spending_parents())
+        or re.search(r"IN[- ]?KIND", row["PURPOSE"].upper())
+    )
+    for sub_id, key in expected["payee_keys"].items():
+        [row] = [r for r in kept if r["SUB_ID"] == str(sub_id)]
+        assert normalize.organization_key(row["NAME"] or None) == key
+    assert expected["persons"] == sorted(
+        int(row["SUB_ID"])
+        for row in kept
+        if row["ENTITY_TP"] in ("IND", "CAN")
+        or (
+            not row["ENTITY_TP"] and row["NAME"] and not normalize.is_organization_name(row["NAME"])
+        )
+    )
+    assert expected["fec_categories"] == {
+        int(row["SUB_ID"]): row["CATEGORY"].zfill(3) for row in kept if row["CATEGORY"]
+    }
+    # The cases the rules are for are planted: a memo parent counted, a chain's middle row not, a
+    # parentless reference counted, refunds netting, two spellings sharing a key.
+    parents = set(spending_parents().values())
+    assert any(r["MEMO_CD"] == "X" and r["SUB_ID"] in parents for r in counted_rows)
+    assert any(r["SUB_ID"] in parents and r["SUB_ID"] in spending_parents() for r in kept)
+    assert any(named_tran_id(r) and r["SUB_ID"] not in spending_parents() for r in counted_rows)
+    assert any(value < 0 for _, value in amounts)
+    keys = [key for key in expected["payee_keys"].values() if key]
+    assert len(set(keys)) < len(keys)
+
+
 def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() -> None:
     files = fec_fixture.bodies(1998)
 
@@ -1449,6 +1566,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "contributor": len({contributor_key(r) for r in [*contributions, *attributions()]}),
         "reported_total": len(reported_totals(CYCLE)),
         "candidate_reported_total": len(candidate_reported_totals(CYCLE)),
+        "operating_expenditure": len(operating_expenditures()),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}

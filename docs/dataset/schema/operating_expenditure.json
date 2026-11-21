@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/operating_expenditure.json",
+  "title": "operating_expenditure",
+  "description": "One operating expenditure: a payment a committee itemized on its FEC report (Schedule B), from the FEC's operating expenditures file (`oppexp`, from 2004), counted or not. Sum only rows where `counted` is true: a sub-item (a card bill's charges, a reimbursement's receipts) is kept beside the payment it itemizes and never added to it. Spending, never a contribution: never add it to `contribution` or any other receipt amount. Payees are grouped by `payee_key`, a normalized name, never resolved. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The FEC's id of the row (`SUB_ID`), unique within a source.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The FEC id of the committee that paid.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the paying committee raises for, by the rule that credits a contribution: a principal or authorized committee's candidate, or the one whose filing names it principal; null for any other committee. A committee handed from one candidate to another (Biden's 2024 campaign, Harris's from 2024-07-21) credits the first before the handoff date and the second on and after it, and an undated row the second.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_name": {
+      "description": "The payee's name as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_key": {
+      "description": "The payee's name normalized as an organization's is, its legal form stripped and its alias applied: rows sharing it are one payee's. A normalized name, not an id. Null for a row with no name.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_city": {
+      "description": "The payee's city as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_state": {
+      "description": "Its state as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_zip": {
+      "description": "Its ZIP code as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "payee_is_person": {
+      "description": "True when the payee is a person: the entity type is `IND` or `CAN`, or it is blank and fundlens does not judge the name an organization's.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "amount": {
+      "description": "The amount in dollars, as filed. A refund or correction may be negative and nets out in any sum.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "date": {
+      "description": "The date of the payment as filed, an impossible year included; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "purpose": {
+      "description": "The purpose of the payment as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "fec_category": {
+      "description": "The FEC's category code for the payment as a three-digit string (`001` … `107`), a code filed without its leading zeros padded to them; any other value as filed; null when none was filed.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "spending_category": {
+      "description": "Null until fundlens classifies spending.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "category_source": {
+      "description": "Null until fundlens classifies spending.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "election_code": {
+      "description": "The FEC election code of the payment (`P2024`, `G2024` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "report_type": {
+      "description": "The FEC report the row was filed on (`Q1`, `M4`, `YE` …).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amendment_indicator": {
+      "description": "The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "memo_code": {
+      "description": "`X` for a memo entry, as filed; null otherwise.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "memo_text": {
+      "description": "The filer's memo text, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "entity_type": {
+      "description": "The FEC entity type of the payee (`ORG`, `IND`, `CAN` …), or null when the filing left it blank.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "tran_id": {
+      "description": "The filer's transaction id for the row.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "back_ref_tran_id": {
+      "description": "The filer's transaction id of the row this one refers back to, as filed.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "parent_source_record_id": {
+      "description": "For a sub-item, the `source_record_id` of the payment it itemizes: the row on the same committee and filing whose `tran_id` is this row's `back_ref_tran_id`. Null for any other row, one referring back to itself among them.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "UBIGINT"
+    },
+    "image_num": {
+      "description": "The FEC image number of the page the row is on.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "file_num": {
+      "description": "The FEC filing number of the report the row is on.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "BIGINT"
+    },
+    "is_in_kind": {
+      "description": "True for an in-kind outlay: the spending side of a gift of goods or services, which the committee reports both as a receipt and as spending naming the giver. It refers back to a row this file does not hold, or its purpose says in-kind. Counted in the committee's spending, but the payee was paid nothing.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "counted": {
+      "description": "True for a row every total counts: not a sub-item, and either a payment some sub-item itemizes, whatever its memo code, or not a memo entry. Sum only these.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "committee_id",
+    "candidate_id",
+    "payee_name",
+    "payee_key",
+    "payee_city",
+    "payee_state",
+    "payee_zip",
+    "payee_is_person",
+    "amount",
+    "date",
+    "purpose",
+    "fec_category",
+    "spending_category",
+    "category_source",
+    "election_code",
+    "report_type",
+    "amendment_indicator",
+    "memo_code",
+    "memo_text",
+    "entity_type",
+    "tran_id",
+    "back_ref_tran_id",
+    "parent_source_record_id",
+    "image_num",
+    "file_num",
+    "is_in_kind",
+    "counted"
+  ],
+  "additionalProperties": false
+}

@@ -406,3 +406,71 @@ candidate_reported_total:
     party_coordinated: Null; `weball` does not give it.
     operating_expenditures: Null; `weball` does not give it.
     federal_funds: Null; `weball` does not give it.
+
+operating_expenditure:
+  description: >-
+    One operating expenditure: a payment a committee itemized on its FEC report (Schedule B), from
+    the FEC's operating expenditures file (`oppexp`, from 2004), counted or not. Sum only rows
+    where `counted` is true: a sub-item (a card bill's charges, a reimbursement's receipts) is
+    kept beside the payment it itemizes and never added to it. Spending, never a contribution:
+    never add it to `contribution` or any other receipt amount. Payees are grouped by
+    `payee_key`, a normalized name, never resolved. Partitioned by cycle.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    committee_id: The FEC id of the committee that paid.
+    candidate_id: >-
+      The FEC id of the candidate the paying committee raises for, by the rule that credits a
+      contribution: a principal or authorized committee's candidate, or the one whose filing names
+      it principal; null for any other committee. A committee handed from one candidate to another
+      (Biden's 2024 campaign, Harris's from 2024-07-21) credits the first before the handoff date
+      and the second on and after it, and an undated row the second.
+    payee_name: The payee's name as reported.
+    payee_key: >-
+      The payee's name normalized as an organization's is, its legal form stripped and its alias
+      applied: rows sharing it are one payee's. A normalized name, not an id. Null for a row with
+      no name.
+    payee_city: The payee's city as reported.
+    payee_state: Its state as reported.
+    payee_zip: Its ZIP code as reported.
+    payee_is_person: >-
+      True when the payee is a person: the entity type is `IND` or `CAN`, or it is blank and
+      fundlens does not judge the name an organization's.
+    amount: >-
+      The amount in dollars, as filed. A refund or correction may be negative and nets out
+      in any sum.
+    date: >-
+      The date of the payment as filed, an impossible year included; null when the filer gave
+      none.
+    purpose: The purpose of the payment as reported.
+    fec_category: >-
+      The FEC's category code for the payment as a three-digit string (`001` … `107`), a code filed
+      without its leading zeros padded to them; any other value as filed; null when none was
+      filed.
+    spending_category: Null until fundlens classifies spending.
+    category_source: Null until fundlens classifies spending.
+    election_code: The FEC election code of the payment (`P2024`, `G2024` …).
+    report_type: The FEC report the row was filed on (`Q1`, `M4`, `YE` …).
+    amendment_indicator: The FEC amendment indicator of the filing (`N` new, `A` amendment, `T` termination).
+    memo_code: '`X` for a memo entry, as filed; null otherwise.'
+    memo_text: The filer's memo text, as reported.
+    entity_type: The FEC entity type of the payee (`ORG`, `IND`, `CAN` …), or null when the filing left it blank.
+    tran_id: The filer's transaction id for the row.
+    back_ref_tran_id: The filer's transaction id of the row this one refers back to, as filed.
+    parent_source_record_id: >-
+      For a sub-item, the `source_record_id` of the payment it itemizes: the row on the same
+      committee and filing whose `tran_id` is this row's `back_ref_tran_id`. Null for any other
+      row, one referring back to itself among them.
+    image_num: The FEC image number of the page the row is on.
+    file_num: The FEC filing number of the report the row is on.
+    is_in_kind: >-
+      True for an in-kind outlay: the spending side of a gift of goods or services, which the
+      committee reports both as a receipt and as spending naming the giver. It refers back to a
+      row this file does not hold, or its purpose says in-kind. Counted in the committee's
+      spending, but the payee was paid nothing.
+    counted: >-
+      True for a row every total counts: not a sub-item, and either a payment some sub-item
+      itemizes, whatever its memo code, or not a memo entry. Sum only these.
