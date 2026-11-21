@@ -47,6 +47,10 @@ with `ChecksFailed` before anything is written if one returns any. Only then is 
 written as one zstd Parquet part to the local silver path and dropped (`WRITTEN_FIRST` first,
 then the rest in model order), uploaded to R2 (replacing whatever else the partition held), and
 the `transformed` marker written.
+A `memory after <step>` line follows the views and each model, check, write and upload: the
+process's peak resident memory and its resident memory now (`fundlens.memory`), and DuckDB's own
+bytes in memory and spilled (`duckdb_memory()`), which an upload's line, the connection closed,
+leaves out (NEU-2408).
 """
 
 import csv
@@ -54,7 +58,7 @@ import io
 import logging
 import shutil
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from importlib.resources import files as package_files
@@ -68,6 +72,7 @@ from psycopg.rows import TupleRow
 from fundlens import markers, paths
 from fundlens.fec import lines
 from fundlens.fec.files import CATALOGUE, VARCHAR, BulkFile, files_for, read_csv_header
+from fundlens.memory import resident_and_peak_gib
 from fundlens.paths import SilverTable
 from fundlens.r2 import R2
 from fundlens.resolve import normalize
@@ -488,16 +493,20 @@ def check(
     *,
     tier: Literal["silver", "gold"],
     consequence: str,
+    after: Callable[[str], None] | None = None,
 ) -> None:
     """Run every `sql/checks/<tier>_*.sql`; raise `ChecksFailed` naming each that returned rows.
 
     `consequence` says what the failure spared ("nothing uploaded"); the gold loader reuses this
-    with its own.
+    with its own. `after`, when given, is called with each check's step name (`<tier> check
+    <file>`) once its rows are fetched.
     """
     failures: list[str] = []
     for path in sorted((sql_dir / "checks").glob(f"{tier}_*.sql")):
         log.info("%s check %s", tier, path.name)
         rows = con.execute(render(path, params)).fetchmany(SHOWN_ROWS + 1)
+        if after is not None:
+            after(f"{tier} check {path.name}")
         if rows:
             shown = "; ".join(str(row) for row in rows[:SHOWN_ROWS])
             more = ", …" if len(rows) > SHOWN_ROWS else ""
@@ -509,6 +518,28 @@ def check(
 def write_order(tables: list[SilverTable]) -> list[SilverTable]:
     """`tables` in the order `transform` writes them: `WRITTEN_FIRST`'s, then the rest as given."""
     return sorted(tables, key=lambda table: table not in WRITTEN_FIRST)
+
+
+def _log_memory(step: str, con: duckdb.DuckDBPyConnection | None = None) -> None:
+    """Log `memory after <step>`: the process's peak resident memory and its resident memory now,
+    then, given `con`, what DuckDB holds in memory and has spilled, all in GiB (NEU-2408)."""
+    resident, peak = resident_and_peak_gib()
+    if con is None:
+        log.info("memory after %s: peak resident %.2f GiB, resident %.2f GiB", step, peak, resident)
+        return
+    [(in_memory, spilled)] = con.execute(
+        "SELECT coalesce(sum(memory_usage_bytes), 0), coalesce(sum(temporary_storage_bytes), 0)"
+        " FROM duckdb_memory()"
+    ).fetchall()
+    log.info(
+        "memory after %s: peak resident %.2f GiB, resident %.2f GiB,"
+        " DuckDB %.2f GiB in memory, %.2f GiB spilled",
+        step,
+        peak,
+        resident,
+        in_memory / 2**30,
+        spilled / 2**30,
+    )
 
 
 def _log_spending(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
@@ -602,15 +633,26 @@ def transform(
             normalize.register(con)
             lines.register(con)
             spending.register(con)
+            _log_memory(f"views {cycle}", con)
             for table, path in models:
                 log.info("silver %s %d: %s", table, cycle, path.name)
                 con.execute(render(path, params))
-            check(con, sql_dir, params, tier="silver", consequence="nothing uploaded")
+                _log_memory(f"silver {table} {cycle}", con)
+            check(
+                con,
+                sql_dir,
+                params,
+                tier="silver",
+                consequence="nothing uploaded",
+                after=lambda step: _log_memory(step, con),
+            )
             _log_spending(con, cycle)
-            written = {
-                table: _write(con, table, cycle=cycle, build_id=build_id, data_dir=data_dir)
-                for table in write_order([table for table, _ in models])
-            }
+            written: dict[SilverTable, tuple[str, Path, int]] = {}
+            for table in write_order([table for table, _ in models]):
+                written[table] = _write(
+                    con, table, cycle=cycle, build_id=build_id, data_dir=data_dir
+                )
+                _log_memory(f"write {table} {cycle}", con)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     for key, local, _ in written.values():
@@ -621,6 +663,7 @@ def transform(
         # A build transformed again: whatever else its partition held is gone, the rewrite
         # sentinel of a donor_id rewrite that died among it.
         store.delete_keys(sorted(stale))
+        _log_memory(f"upload {key}")
     row_counts = {table: rows for table, (_, _, rows) in written.items()}
     markers.write(
         "transformed",
