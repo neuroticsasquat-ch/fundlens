@@ -140,7 +140,7 @@
       "x-duckdb-type": "VARCHAR"
     },
     "spending_category": {
-      "description": "Null until fundlens classifies spending.",
+      "description": "What the payment bought, one of `media`, `digital`, `mail`, `fundraising`, `payroll`, `consulting`, `field`, `polling_research`, `travel`, `events`, `administrative`, `legal_compliance`, `transfers_fees`, `credit_card` and `other`: fundlens's reading of the purpose, else of the FEC's category code where filers use the code reliably. Null in a build made before fundlens classified spending.",
       "type": [
         "string",
         "null"
@@ -148,7 +148,7 @@
       "x-duckdb-type": "VARCHAR"
     },
     "category_source": {
-      "description": "Null until fundlens classifies spending.",
+      "description": "Where `spending_category` came from: `purpose_rule` (fundlens's rule over the purpose), `fec` (the FEC's category code, one of the six fundlens trusts) or `unclassified` (neither, so `other`). Null in a build made before fundlens classified spending.",
       "type": [
         "string",
         "null"
