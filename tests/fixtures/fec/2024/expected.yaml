@@ -284,7 +284,7 @@ operating_expenditures:
   # spelling at WHITLOCK too; OKAFOR's two $1,250 card issuers tie and go by key; a key netting
   # above $0 is listed (CALLOWAY's print shop less its refund, RESTORATION PAC's agency less its
   # SEE SCHEDULE E). A key whose payee dollars are mostly a person's has no page (has_page false,
-  # payee_id NULL). PETTY CASH has one until NEU-2155's no-page list names it.
+  # payee_id NULL), and nor has PETTY CASH, which the hand-kept fec/payee_no_page.csv names.
   top_payees:
     C00703975:
       - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "50000.00", true]
@@ -294,7 +294,7 @@ operating_expenditures:
       - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "15000.00", true]
       - [STERLING PAGE LLP, STERLING & PAGE LLP, "4500.00", true]
       - [BENNETT LOGAN, "BENNETT, LOGAN", "600.00", false]
-      - [PETTY CASH, PETTY CASH, "200.00", true]
+      - [PETTY CASH, PETTY CASH, "200.00", false]
     C00800102:
       - [HARBOR LIGHT POLLING, HARBOR LIGHT POLLING, "5000.00", true]
       - [ANNAPOLIS OFFICE PARK, ANNAPOLIS OFFICE PARK LLC, "3000.00", true]
@@ -329,6 +329,31 @@ operating_expenditures:
       - [BGE, BGE, "210.00", true]
     C00800205:
       - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "5000.00", true]
+  # Gold's payee, payee_cycle and payee_top_payer (§5.4, §5.5): every key with a page, by key. Each
+  # display column is its value with the most payee dollars, so BLUE HARBOR STRATEGIES is its LLC
+  # spelling, $7,500 to the L.L.C. one's $3,000; total is its payee dollars and committees how
+  # many committees paid it, one cycle's here. payers are the committees that paid it, by rank:
+  # [committee_id, candidate_id, amount], the candidate the rows are credited to, null where none
+  # is (the leadership PAC, the JFC, the PACs and the party). HARRIS FOR PRESIDENT's poll, on the
+  # handoff's day, is HARRIS's; its ad, before it, BIDEN's. No person's key and no PETTY CASH.
+  payees:
+    ACTBLUE: {name: ACTBLUE, city: SOMERVILLE, state: MA, total: "123.45", committees: 1, payers: [[C00800103, S4MD00103, "123.45"]]}
+    AMERICAN EXPRESS: {name: AMERICAN EXPRESS, city: NEW YORK, state: NY, total: "5770.00", committees: 3, payers: [[C00800106, H4MD05106, "3620.00"], [C00800103, S4MD00103, "1250.00"], [C00800104, S4MD00104, "900.00"]]}
+    ANNAPOLIS OFFICE PARK: {name: ANNAPOLIS OFFICE PARK LLC, city: ANNAPOLIS, state: MD, total: "3000.00", committees: 1, payers: [[C00800102, P40000102, "3000.00"]]}
+    ANNE ARUNDEL GRILL: {name: ANNE ARUNDEL GRILL, city: ANNAPOLIS, state: MD, total: "180.00", committees: 1, payers: [[C00800114, null, "180.00"]]}
+    BAYSIDE CATERING: {name: BAYSIDE CATERING, city: WALDORF, state: MD, total: "275.00", committees: 1, payers: [[C00800107, H4MD05107, "275.00"]]}
+    BGE: {name: BGE, city: BALTIMORE, state: MD, total: "210.00", committees: 1, payers: [[C00800203, null, "210.00"]]}
+    BLUE HARBOR STRATEGIES: {name: BLUE HARBOR STRATEGIES LLC, city: BALTIMORE, state: MD, total: "10500.00", committees: 2, payers: [[C00800103, S4MD00103, "7500.00"], [C00800104, S4MD00104, "3000.00"]]}
+    CAPITOL COMPLIANCE GROUP: {name: CAPITOL COMPLIANCE GROUP, city: ARLINGTON, state: VA, total: "750.00", committees: 1, payers: [[C00800103, S4MD00103, "750.00"]]}
+    CHESAPEAKE PRINT WORKS: {name: CHESAPEAKE PRINT WORKS INC, city: BALTIMORE, state: MD, total: "3500.00", committees: 1, payers: [[C00800106, H4MD05106, "3500.00"]]}
+    CHESAPEAKE PRINTWORKS: {name: CHESAPEAKE PRINTWORKS, city: BALTIMORE, state: MD, total: "2200.00", committees: 1, payers: [[C00800107, H4MD05107, "2200.00"]]}
+    FIRST MARINER CARD SERVICES: {name: FIRST MARINER CARD SERVICES, city: BALTIMORE, state: MD, total: "1250.00", committees: 1, payers: [[C00800103, S4MD00103, "1250.00"]]}
+    HARBOR LIGHT POLLING: {name: HARBOR LIGHT POLLING, city: ALEXANDRIA, state: VA, total: "30000.00", committees: 2, payers: [[C00703975, P00009423, "25000.00"], [C00800102, P40000102, "5000.00"]]}
+    HARBORVIEW DIGITAL: {name: HARBORVIEW DIGITAL, city: BALTIMORE, state: MD, total: "1800.00", committees: 1, payers: [[C00800106, H4MD05106, "1800.00"]]}
+    PATUXENT EVENTS: {name: PATUXENT EVENTS, city: LAUREL, state: MD, total: "3500.00", committees: 2, payers: [[C00800115, null, "2500.00"], [C00800113, S4MD00103, "1000.00"]]}
+    SKYLINE AIR: {name: SKYLINE AIR, city: ARLINGTON, state: VA, total: "1250.00", committees: 1, payers: [[C00703975, P00009423, "1250.00"]]}
+    STERLING PAGE LLP: {name: "STERLING & PAGE LLP", city: WASHINGTON, state: DC, total: "4500.00", committees: 1, payers: [[C00800101, P40000101, "4500.00"]]}
+    TIDEMARK MEDIA GROUP: {name: TIDEMARK MEDIA GROUP, city: WASHINGTON, state: DC, total: "80000.00", committees: 4, payers: [[C00703975, P80000722, "50000.00"], [C00800101, P40000101, "15000.00"], [C00800201, null, "10000.00"], [C00800205, null, "5000.00"]]}
 
 contributions:
   # Twelve earmark triples (two planted, ten ordinary): each drops its memo line and its 24T. And

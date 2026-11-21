@@ -34,6 +34,11 @@ FROM committee_top_payee
 GROUP BY committee_id, cycle
 HAVING min(rank) <> 1 OR max(rank) <> count(*) OR count(DISTINCT rank) <> count(*)
 UNION ALL
+SELECT 'payee_top_payer', payee_id || '/' || cycle, count(*), min(rank), max(rank)
+FROM payee_top_payer
+GROUP BY payee_id, cycle
+HAVING min(rank) <> 1 OR max(rank) <> count(*) OR count(DISTINCT rank) <> count(*)
+UNION ALL
 SELECT 'donor_top_recipient', CAST(donor_id AS VARCHAR), count(*), min(rank), max(rank)
 FROM donor_top_recipient
 GROUP BY donor_id

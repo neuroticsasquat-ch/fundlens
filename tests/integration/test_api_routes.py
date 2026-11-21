@@ -1,6 +1,7 @@
 """The gold-backed routes against the fixture cycle, built, loaded and swapped in once for the
 module (spec §7.2, §12)."""
 
+import hashlib
 import time
 from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
@@ -21,6 +22,7 @@ from fundlens.api.app import create_app
 from fundlens.api.cache import CACHE_CONTROL
 from fundlens.api.deps import get_page_size
 from fundlens.api.problems import NO_GOLD
+from fundlens.api.routers import search
 from fundlens.fec.files import files_for
 from fundlens.publish import gold as gold_publish
 from fundlens.settings import get_settings
@@ -691,6 +693,33 @@ def test_search_matches_aliases_and_filters_by_kind(client: TestClient) -> None:
     assert races[0]["aliases"] == "2024/senate/MD"
     assert {r["kind"] for r in races} == {"race"}
     assert {r["kind"] for r in committees} == {"committee"}
+
+
+def test_gold_finds_a_payee_by_part_of_its_name(gold_db: str) -> None:
+    """`/v1/search`'s own trigram match over gold's payee rows (every-FEC-dollar spec §5.5) finds
+    BLUE HARBOR STRATEGIES by part of its name: one payee under its most-money spelling, the
+    other its alias."""
+    with psycopg.connect(gold_db) as conn:
+        found = conn.execute(
+            search.QUERY, {"q": "blue harbor", "kinds": ["payee"], "limit": search.LIMIT}
+        ).fetchall()
+
+    assert found
+    kind, payee_id, name, aliases, _ = found[0]
+    assert (kind, name, aliases) == (
+        "payee",
+        "BLUE HARBOR STRATEGIES LLC",
+        "BLUE HARBOR STRATEGIES, L.L.C.",
+    )
+    assert payee_id == hashlib.sha256(b"BLUE HARBOR STRATEGIES").hexdigest()[:16]
+
+
+def test_search_returns_no_payee_until_a_route_serves_them(client: TestClient) -> None:
+    # Gold holds payee rows, which SearchResult has no kind for until NEU-2157: the route leaves
+    # them out rather than fail to serialize them.
+    results = ok(client.get("/v1/search", params={"q": "blue harbor strategies"}))
+
+    assert "payee" not in {r["kind"] for r in results}
 
 
 def test_search_needs_a_query(client: TestClient) -> None:

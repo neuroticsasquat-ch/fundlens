@@ -7,7 +7,7 @@
 -- Taken as the newest row, it would blank the name, type and designation an earlier cycle gave
 -- the committee, so a row with a name wins over a newer one without (a NULL name is the test); a skeleton still counts in
 -- cycles. A committee that is a skeleton in every cycle it is in keeps a NULL name, and
--- 16_search_entity.sql leaves it out.
+-- 26_search_entity.sql leaves it out.
 CREATE TABLE committee AS
 WITH filed AS (
     SELECT

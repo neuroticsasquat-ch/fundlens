@@ -22,6 +22,7 @@ from typing import Any, get_args
 import pytest
 
 from fundlens.fec.files import CATALOGUE, FecFile
+from fundlens.load import gold
 from fundlens.resolve import normalize
 from fundlens.transform.seats import Filing, races_for
 from tests import fec_fixture
@@ -1073,6 +1074,39 @@ def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     assert len(set(keys)) < len(keys)
 
 
+# The hand-kept list of payee keys with no page (spec §5.4), read once.
+NO_PAGE = frozenset(gold.payee_no_page())
+
+
+@functools.cache
+def payee_rows() -> tuple[tuple[Row, str, Decimal], ...]:
+    """Spec §5.4's payee rows of the fixture, each with its payee key and amount: counted, named,
+    no in-kind outlay."""
+    rows_: list[tuple[Row, str, Decimal]] = []
+    for row in operating_expenditures():
+        if not spending_counts(row) or not row["NAME"] or spending_in_kind(row):
+            continue
+        key = normalize.organization_key(row["NAME"])
+        assert key is not None
+        rows_.append((row, key, Decimal(row["TRANSACTION_AMT"])))
+    return tuple(rows_)
+
+
+@functools.cache
+def has_page(key: str) -> bool:
+    """Spec §5.4: a key has a page unless more than half its payee dollars are a person's, or the
+    hand-kept list names it."""
+    keyed = [(row, amount) for row, k, amount in payee_rows() if k == key]
+    person = sum((amount for row, amount in keyed if payee_is_person(row)), Decimal(0))
+    total = sum((amount for _, amount in keyed), Decimal(0))
+    return key not in NO_PAGE and not (person > total / 2 and person > 0)
+
+
+def most(amounts: Mapping[str, Decimal], rows_: Mapping[str, int]) -> str:
+    """The value with the most payee dollars, then the most rows, then the first in order."""
+    return min(amounts, key=lambda value: (-amounts[value], -rows_[value], value))
+
+
 def test_the_expected_gold_spending_tables_match_the_fixture() -> None:
     """committee_spending_category and committee_top_payee (spec §5.5), derived from oppexp.csv:
     each committee's counted dollars by the category expected.yaml gives each row, and its payee
@@ -1099,37 +1133,98 @@ def test_the_expected_gold_spending_tables_match_the_fixture() -> None:
     spellings: defaultdict[str, defaultdict[str, Decimal]] = defaultdict(
         lambda: defaultdict(Decimal)
     )
-    person: defaultdict[str, Decimal] = defaultdict(Decimal)
-    total: defaultdict[str, Decimal] = defaultdict(Decimal)
-    for row in counted:
-        if not row["NAME"] or spending_in_kind(row):
-            continue
-        key = normalize.organization_key(row["NAME"])
-        assert key is not None
-        amount = Decimal(row["TRANSACTION_AMT"])
+    for row, key, amount in payee_rows():
         paid[row["CMTE_ID"]][key] += amount
         spellings[key][row["NAME"]] += amount
-        total[key] += amount
-        if payee_is_person(row):
-            person[key] += amount
     assert expected["top_payees"] == {
         committee_id: [
             [
                 key,
                 max(spellings[key], key=spellings[key].__getitem__),
                 f"{amount:.2f}",
-                person[key] <= total[key] / 2,
+                has_page(key),
             ]
             for key, amount in sorted(keys.items(), key=lambda item: (-item[1], item[0]))
             if amount > 0
         ]
         for committee_id, keys in sorted(paid.items())
     }
-    # The planted cases: a key in two spellings, a tie broken by key, a person's key with no page.
+    # The planted cases: a key in two spellings, a tie broken by key, a person's key with no page,
+    # and one the hand-kept list gives none.
     assert any(len(names) > 1 for names in spellings.values())
     okafor = [row[2] for row in expected["top_payees"]["C00800103"]]
     assert len(set(okafor)) < len(okafor)
     assert not all(row[3] for rows_ in expected["top_payees"].values() for row in rows_)
+    assert "PETTY CASH" in NO_PAGE and not has_page("PETTY CASH")
+
+
+def test_the_expected_gold_payee_tables_match_the_fixture() -> None:
+    """payee and payee_top_payer (spec §5.5), derived from oppexp.csv: every key with a page, each
+    display column its value with the most payee dollars, and the committees that paid it, ranked,
+    each with the candidate its rows are credited to."""
+    keyed: defaultdict[str, list[tuple[Row, Decimal]]] = defaultdict(list)
+    for row, key, amount in payee_rows():
+        keyed[key].append((row, amount))
+
+    def display(rows_: list[tuple[Row, Decimal]], column: str) -> str | None:
+        amounts: defaultdict[str, Decimal] = defaultdict(Decimal)
+        counts: Counter[str] = Counter()
+        for row, amount in rows_:
+            if row[column]:
+                amounts[row[column]] += amount
+                counts[row[column]] += 1
+        return most(amounts, counts) if amounts else None
+
+    def payers(rows_: list[tuple[Row, Decimal]]) -> list[list[str | None]]:
+        by_committee: defaultdict[str, Decimal] = defaultdict(Decimal)
+        credited: defaultdict[str, defaultdict[str, Decimal]] = defaultdict(
+            lambda: defaultdict(Decimal)
+        )
+        for row, amount in rows_:
+            by_committee[row["CMTE_ID"]] += amount
+            if candidate := spending_candidate(row):
+                credited[row["CMTE_ID"]][candidate] += amount
+        return [
+            [
+                committee_id,
+                min(credited[committee_id], key=lambda c: (-credited[committee_id][c], c))
+                if credited[committee_id]
+                else None,
+                f"{amount:.2f}",
+            ]
+            for committee_id, amount in sorted(by_committee.items(), key=lambda i: (-i[1], i[0]))
+            if amount > 0
+        ]
+
+    assert EXPECTED["operating_expenditures"]["payees"] == {
+        key: {
+            "name": display(rows_, "NAME"),
+            "city": display(rows_, "CITY"),
+            "state": display(rows_, "STATE"),
+            "total": f"{sum(amount for _, amount in rows_):.2f}",
+            "committees": len({row["CMTE_ID"] for row, _ in rows_}),
+            "payers": payers(rows_),
+        }
+        for key, rows_ in sorted(keyed.items())
+        if has_page(key)
+    }
+    # The planted case: one payee under two spellings, paid by two committees.
+    blue_harbor = EXPECTED["operating_expenditures"]["payees"]["BLUE HARBOR STRATEGIES"]
+    assert len({row["NAME"] for row, _ in keyed["BLUE HARBOR STRATEGIES"]}) == 2
+    assert len(blue_harbor["payers"]) == 2
+
+
+def test_every_key_the_no_page_list_names_is_a_payee_key_with_a_reason() -> None:
+    """`fec/payee_no_page.csv` (spec §5.4) lists keys as organization_key writes them, each once,
+    each with why it names nobody."""
+    text = package_files("fundlens.fec").joinpath("payee_no_page.csv").read_text()
+    listed = list(csv.DictReader(io.StringIO(text)))
+
+    assert listed
+    assert all(row["reason"] for row in listed)
+    keys = [row["payee_key"] for row in listed]
+    assert len(set(keys)) == len(keys)
+    assert all(normalize.organization_key(key) == key for key in keys)
 
 
 def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() -> None:

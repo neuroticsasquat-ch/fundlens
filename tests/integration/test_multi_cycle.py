@@ -310,8 +310,8 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     """A 1998 candidate's reported figures are their weball row as filed, not their committees'
     sum; no file before 2008 has an itemized figure, so no coverage, reconciliation or unitemized
     gift-size row (every-FEC-dollar spec §4.3 to §4.7). `oppexp` starts in 2004, so a 1998
-    committee, candidate and race has a NULL total_operating_expenditures, never 0, and no category
-    or top-payee row (§5.5); 2024's beside it keep theirs."""
+    committee, candidate and race has a NULL total_operating_expenditures, never 0, and no category,
+    top-payee, payee-cycle or top-payer row (§5.5); 2024's beside it keep theirs."""
     columns = EXPECTED["reported_totals"]["columns"]
     weball = EXPECTED["reported_totals"]["candidate_reported_total"][EARLY]
     webk = EXPECTED["reported_totals"]["reported_total"][EARLY]
@@ -345,6 +345,8 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
             " + (SELECT count(total_operating_expenditures) FROM gold.race WHERE cycle = c.cycle)"
             " + (SELECT count(*) FROM gold.committee_spending_category WHERE cycle = c.cycle)"
             " + (SELECT count(*) FROM gold.committee_top_payee WHERE cycle = c.cycle)"
+            " + (SELECT count(*) FROM gold.payee_cycle WHERE cycle = c.cycle)"
+            " + (SELECT count(*) FROM gold.payee_top_payer WHERE cycle = c.cycle)"
             " FROM (VALUES (%s), (2024)) AS c(cycle) ORDER BY c.cycle",
             (EARLY,),
         ).fetchall()
