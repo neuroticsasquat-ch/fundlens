@@ -289,6 +289,9 @@ class OperatingExpenditures(TypedDict):
     # committee's top payees by rank, [payee_key, name, amount, has_page].
     by_committee_category: dict[str, dict[str, str]]
     top_payees: dict[str, list[list[str | bool]]]
+    # By payee key, every key with a page: its display columns, payee dollars, how many committees
+    # paid it, and those committees by rank, [committee_id, candidate_id, amount].
+    payees: dict[str, dict[str, Any]]
 
 
 class GoldReported(TypedDict):

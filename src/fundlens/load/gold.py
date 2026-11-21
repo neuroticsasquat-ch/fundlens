@@ -5,8 +5,8 @@ Gold holds every cycle, so a load of one cycle's build rebuilds all of gold: the
 from that build, every other cycle from the build it is live from (`markers/live.json`, which
 `publish` rewrites, or, before any publish has written it, the live `gold.meta.cycles`). DuckDB
 computes every gold table from those silver partitions (`sql/gold/NN_<table>.sql`, in filename
-order, reading the views `silver.<table>`, each over every cycle's partition, and `handoff`, the
-vendored handoffs), runs
+order, reading the views `silver.<table>`, each over every cycle's partition, `handoff`, the
+vendored handoffs, and `payee_no_page`, the payee keys with no page), runs
 `sql/checks/gold_*.sql` (each a query that must return no rows), and writes each table as a CSV
 file under `scratch/`. Then, in one Postgres transaction, `gold_build` is dropped and
 recreated, each table gets its hand-written DDL (`sql/gold/ddl/`), its CSV streamed in with
@@ -26,6 +26,8 @@ committed dataset schema (`docs/dataset/schema/<table>.json`), so the gold SQL n
 cycles have it. Any other table a build lacks fails the load.
 """
 
+import csv
+import io
 import logging
 import shutil
 import time
@@ -33,6 +35,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from importlib.resources import files as package_files
 from pathlib import Path
 from typing import Any, Literal, get_args
 
@@ -80,6 +83,9 @@ GoldTable = Literal[
     "candidate_gift_size",
     "committee_spending_category",
     "committee_top_payee",
+    "payee",
+    "payee_cycle",
+    "payee_top_payer",
 ]
 
 # `meta`'s one row is inserted from Python; `donor_redirect` is copied from `app`, which only
@@ -305,6 +311,20 @@ def _register_handoffs(con: duckdb.DuckDBPyConnection) -> None:
         con.executemany("INSERT INTO handoff VALUES (?, ?, ?, ?, ?)", rows)
 
 
+def payee_no_page() -> list[str]:
+    """Every payee key the hand-kept list (`fec/payee_no_page.csv`, every-FEC-dollar spec §5.4)
+    gives no page: a name that names nobody, such as `PETTY CASH`."""
+    text = package_files("fundlens.fec").joinpath("payee_no_page.csv").read_text()
+    return [row["payee_key"] for row in csv.DictReader(io.StringIO(text))]
+
+
+def _register_payee_no_page(con: duckdb.DuckDBPyConnection) -> None:
+    """`payee_no_page`: the payee keys the hand-kept list gives no page, which no `payee` row, no
+    `payee_id` and no search row may have (every-FEC-dollar spec §5.4)."""
+    con.execute("CREATE TABLE payee_no_page (payee_key VARCHAR PRIMARY KEY)")
+    con.executemany("INSERT INTO payee_no_page VALUES (?)", [(key,) for key in payee_no_page()])
+
+
 def _source_dates(store: R2, cycle: int) -> dict[str, str]:
     """The download date of the newest bronze file of each of the cycle's files.
 
@@ -499,6 +519,7 @@ def load(
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
             _register_silver(con, local_dirs, docs_dir=docs_dir)
             _register_handoffs(con)
+            _register_payee_no_page(con)
             for table, path in models:
                 log.info("gold %s (%s): %s", table, ", ".join(map(str, sorted(builds))), path.name)
                 con.execute(render(path, params))

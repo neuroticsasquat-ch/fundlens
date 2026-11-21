@@ -81,6 +81,11 @@ def ranked(lists: dict[str, list[list[str | int]]]) -> dict[str, list[tuple[str 
     return {key: [tuple(row) for row in rows] for key, rows in lists.items()}
 
 
+def page(key: str) -> str:
+    """A payee key's payee_id: the first 16 hexadecimal characters of its SHA-256 (spec §5.4)."""
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
 def test_load_builds_every_gold_table_to_the_expected_totals(
     store: R2, transformed: Path, migrated_db: str
 ) -> None:
@@ -314,12 +319,38 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         rows(migrated_db, "committee_top_payee"), key=lambda row: (row["committee_id"], row["rank"])
     ):
         assert row["cycle"] == 2024
-        page = hashlib.sha256(row["payee_key"].encode()).hexdigest()[:16]
-        assert row["payee_id"] in (page, None), row
+        assert row["payee_id"] in (page(row["payee_key"]), None), row
         top_payees[row["committee_id"]].append(
             [row["payee_key"], row["name"], f"{row['amount']:.2f}", row["payee_id"] is not None]
         )
     assert top_payees == spending["top_payees"]
+    # Every payee with a page (§5.4, §5.5): BLUE HARBOR STRATEGIES once, under its most-money
+    # spelling, with both committees that paid it among its top payers.
+    payee_cycles = {row["payee_id"]: row for row in rows(migrated_db, "payee_cycle")}
+    payers: dict[str, list[list[str | None]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "payee_top_payer"), key=lambda row: (row["payee_id"], row["rank"])
+    ):
+        assert row["cycle"] == 2024
+        payers[row["payee_id"]].append(
+            [row["committee_id"], row["candidate_id"], f"{row['amount']:.2f}"]
+        )
+    payees: dict[str, dict[str, Any]] = {}
+    for row in rows(migrated_db, "payee"):
+        assert row["payee_id"] == page(row["payee_key"]), row
+        assert (row["first_cycle"], row["last_cycle"]) == (2024, 2024), row
+        cycle_row = payee_cycles.pop(row["payee_id"])
+        assert (cycle_row["cycle"], cycle_row["total"]) == (2024, row["total_all_cycles"]), row
+        payees[row["payee_key"]] = {
+            "name": row["display_name"],
+            "city": row["city"],
+            "state": row["state"],
+            "total": f"{row['total_all_cycles']:.2f}",
+            "committees": cycle_row["committee_count"],
+            "payers": payers.pop(row["payee_id"], []),
+        }
+    assert payees == spending["payees"]
+    assert not payee_cycles and not payers
 
     [cycle] = rows(migrated_db, "cycle")
     assert cycle["cycle"] == 2024
@@ -405,7 +436,18 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     assert search[("candidate", "S4MD00103")]["aliases"] == "OKAFOR FOR MARYLAND"
     assert dollars(search[("candidate", "S4MD00103")]["weight"]) == 50700 + 5000
     assert dollars(search[("committee", "C00800103")]["weight"]) == 38550 + 45500
-    assert {kind for kind, _ in search} == {"candidate", "committee", "race"}
+    # A payee with a page is searched by its display name, its other spellings its aliases (§5.5);
+    # an unresolved build has no donors.
+    assert {kind for kind, _ in search} == {"candidate", "committee", "race", "payee"}
+    assert {id_ for kind, id_ in search if kind == "payee"} == {
+        page(key) for key in spending["payees"]
+    }
+    blue_harbor = search[("payee", page("BLUE HARBOR STRATEGIES"))]
+    assert (blue_harbor["name"], blue_harbor["aliases"]) == (
+        "BLUE HARBOR STRATEGIES LLC",
+        "BLUE HARBOR STRATEGIES, L.L.C.",
+    )
+    assert f"{blue_harbor['weight']:.2f}" == spending["payees"]["BLUE HARBOR STRATEGIES"]["total"]
 
     [meta] = rows(migrated_db, "meta")
     assert meta["build_id"] == BUILD
@@ -653,6 +695,9 @@ def test_a_file_with_no_bronze_has_no_source_date(store: R2) -> None:
 def test_load_without_a_build_id_takes_the_newest_transformed_build(
     store: R2, transformed: Path, migrated_db: str
 ) -> None:
+    """…and a payee keeps its payee_id in it: the id is its key's, not the build's (spec §5.4).
+    The expected-totals test finds the first build's ids are the same keys', so the two builds
+    agree without loading both here."""
     assert run("seats", "--cycle", "2024", build_id=NEWER).exit_code == 0
     assert run("transform", "--cycle", "2024", build_id=NEWER).exit_code == 0
 
@@ -663,6 +708,9 @@ def test_load_without_a_build_id_takes_the_newest_transformed_build(
     assert meta["build_id"] == NEWER
     assert markers.exists("loaded", store, cycle=2024, build_id=NEWER)
     assert not markers.exists("loaded", store, cycle=2024, build_id=BUILD)
+    assert {row["payee_key"]: row["payee_id"] for row in rows(migrated_db, "payee")} == {
+        key: page(key) for key in fec_fixture.expected()["operating_expenditures"]["payees"]
+    }
 
 
 def test_load_with_nothing_transformed_says_to_transform(store: R2, cli_env: Path) -> None:
@@ -819,7 +867,7 @@ def test_the_top_payee_amount_check_fails_on_a_row_silver_does_not_add_up_to() -
                 " (2024, 'C2', 'ACME', 'ACME INC', false, false, true, 75)"
             )
         )
-        acme = hashlib.sha256(b"ACME").hexdigest()[:16]
+        acme = page("ACME")
         con.execute(
             "CREATE TABLE committee_top_payee AS SELECT * FROM (VALUES"
             f" ('C1', 2024, 1, 'ACME', '{acme}', 'ACME INC', 750),"
@@ -841,6 +889,29 @@ def test_the_top_payee_amount_check_fails_on_a_row_silver_does_not_add_up_to() -
         ]
 
 
+PAYEE_MODELS = ("22_payee", "23_committee_top_payee", "24_payee_cycle", "25_payee_top_payer")
+PAYEES = (
+    "CREATE TABLE silver.operating_expenditure AS SELECT * FROM (VALUES {rows})"
+    " AS t(cycle, committee_id, candidate_id, payee_key, payee_name, payee_city, payee_state,"
+    " payee_is_person, is_in_kind, counted, amount)"
+)
+
+
+def build_payees(con: duckdb.DuckDBPyConnection, *, no_page: tuple[str, ...] = ()) -> None:
+    """The payee models over `silver.operating_expenditure`, as the loader runs them: the no-page
+    list registered, `payee` first. A test table without the display and credit columns has them
+    NULL."""
+    for column in ("candidate_id", "payee_city", "payee_state"):
+        con.execute(
+            f"ALTER TABLE silver.operating_expenditure ADD COLUMN IF NOT EXISTS {column} VARCHAR"
+        )
+    con.execute("CREATE TABLE payee_no_page (payee_key VARCHAR PRIMARY KEY)")
+    if no_page:
+        con.executemany("INSERT INTO payee_no_page VALUES (?)", [(key,) for key in no_page])
+    for model in PAYEE_MODELS:
+        con.execute(render(REPO_ROOT / "sql" / "gold" / f"{model}.sql", {}))
+
+
 def test_a_top_payee_list_holds_payee_rows_netting_above_0_and_a_persons_key_has_no_page() -> None:
     with duckdb.connect() as con:
         con.execute("CREATE SCHEMA silver")
@@ -859,24 +930,22 @@ def test_a_top_payee_list_holds_payee_rows_netting_above_0_and_a_persons_key_has
                 " (2024, 'C1', 'VOID', 'VOID', false, false, true, -100),"
                 " (2024, 'C1', 'REFUNDS', 'REFUNDS INC', false, false, true, 50),"
                 " (2022, 'C2', 'REFUNDS', 'REFUNDS INC', false, false, true, -400),"
+                " (2024, 'C1', 'PETTY CASH', 'PETTY CASH', false, false, true, 70),"
                 " (2024, 'C1', NULL, NULL, false, false, true, 9000)"
             )
         )
-        con.execute(render(REPO_ROOT / "sql" / "gold" / "22_committee_top_payee.sql", {}))
+        build_payees(con, no_page=("PETTY CASH",))
 
         listed = con.execute(
             "SELECT committee_id, cycle, rank, payee_key, payee_id, name, amount"
             " FROM committee_top_payee ORDER BY committee_id, cycle, rank"
         ).fetchall()
 
-    def page(key: str) -> str:
-        return hashlib.sha256(key.encode()).hexdigest()[:16]
-
     # ACME and BOLT tie at C1 and go by key; ACME is named by its most-dollar spelling, C2's. DOE
     # JANE is a person on 300 of her 500 dollars over both cycles, so no page; ROE RAY on 200 of
     # 600, so one. REFUNDS nets below $0 over both cycles with no person row: a firm's key, with a
-    # page. An in-kind outlay, an uncounted row, a key netting to $0 and a row with no key are in
-    # no list.
+    # page. PETTY CASH is on the no-page list, so it has none. An in-kind outlay, an uncounted
+    # row, a key netting to $0 and a row with no key are in no list.
     assert listed == [
         ("C1", 2022, 1, "ROE RAY", page("ROE RAY"), "ROE RAY", Decimal("400.00")),
         ("C1", 2022, 2, "DOE JANE", None, "DOE JANE", Decimal("200.00")),
@@ -884,9 +953,147 @@ def test_a_top_payee_list_holds_payee_rows_netting_above_0_and_a_persons_key_has
         ("C1", 2024, 2, "BOLT", page("BOLT"), "BOLT LLC", Decimal("500.00")),
         ("C1", 2024, 3, "DOE JANE", None, "DOE, JANE", Decimal("300.00")),
         ("C1", 2024, 4, "ROE RAY", page("ROE RAY"), "ROE, RAY", Decimal("200.00")),
-        ("C1", 2024, 5, "REFUNDS", page("REFUNDS"), "REFUNDS INC", Decimal("50.00")),
+        ("C1", 2024, 5, "PETTY CASH", None, "PETTY CASH", Decimal("70.00")),
+        ("C1", 2024, 6, "REFUNDS", page("REFUNDS"), "REFUNDS INC", Decimal("50.00")),
         ("C2", 2024, 1, "ACME", page("ACME"), "ACME, INC.", Decimal("900.00")),
     ]
+
+
+# ACME over two cycles and three spellings, BOLT credited by a handoff to two candidates, a
+# person, a key on the no-page list and a key netting below $0.
+PAYEE_PAGE_ROWS = (
+    "(2024, 'C1', 'H1', 'ACME', 'ACME INC', 'ESSEX', 'MD', false, false, true, 500),"
+    " (2022, 'C1', 'H1', 'ACME', 'ACME CORP', 'ESSEX', 'MD', false, false, true, 600),"
+    " (2024, 'C2', NULL, 'ACME', 'ACME, INC.', 'BOWIE', 'MD', false, false, true, 900),"
+    " (2024, 'C2', NULL, 'ACME', 'ACME', 'LAUREL', 'MD', false, true, true, 9000),"
+    " (2024, 'C2', NULL, 'ACME', 'ACME', 'LAUREL', 'MD', false, false, false, 9000),"
+    " (2024, 'C9', 'P1', 'BOLT', 'BOLT LLC', NULL, 'DE', false, false, true, 300),"
+    " (2024, 'C9', 'P2', 'BOLT', 'BOLT LLC', NULL, 'DE', false, false, true, 700),"
+    " (2024, 'C9', NULL, 'BOLT', 'BOLT LLC', NULL, 'DE', false, false, true, 50),"
+    " (2024, 'C8', NULL, 'BOLT', 'BOLT LLC', NULL, 'DE', false, false, true, 100),"
+    " (2024, 'C8', NULL, 'BOLT', 'BOLT LLC', NULL, 'DE', false, false, true, -100),"
+    " (2024, 'C1', 'H1', 'DOE JANE', 'DOE, JANE', 'ELK', 'MD', true, false, true, 300),"
+    " (2024, 'C1', 'H1', 'PETTY CASH', 'PETTY CASH', NULL, NULL, false, false, true, 70),"
+    " (2024, 'C1', 'H1', 'REFUNDS', 'REFUNDS INC', NULL, NULL, false, false, true, -400)"
+)
+
+
+def test_a_payee_page_holds_its_payee_rows_over_every_cycle_and_its_top_payers() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(PAYEES.format(rows=PAYEE_PAGE_ROWS))
+        build_payees(con, no_page=("PETTY CASH",))
+
+        payees = con.execute("SELECT * FROM payee ORDER BY payee_key").fetchall()
+        cycles = con.execute("SELECT * FROM payee_cycle ORDER BY payee_id, cycle").fetchall()
+        payers = con.execute(
+            "SELECT * FROM payee_top_payer ORDER BY payee_id, cycle, rank"
+        ).fetchall()
+        checks = [
+            failing_rows(con, "gold_payee_page.sql"),
+            failing_rows(con, "gold_payee_top_payer_amount.sql"),
+        ]
+
+    # ACME's name is its most-dollar spelling over both cycles, ACME, INC.'s $900, and its city,
+    # chosen alone, ESSEX's $1,100 over two spellings. Its gift and its uncounted row are in
+    # no figure. BOLT's C9 rows a handoff credits to P1 and P2 are P2's, who has more of them; C8's
+    # net to $0, so C8 is no top payer but is one of the 2 committees that paid it. No row gives
+    # BOLT a city. REFUNDS nets below $0 and keeps its page, with no top payer. DOE JANE, a
+    # person, and PETTY CASH, on the no-page list, have no page and no figure.
+    acme, bolt, refunds = page("ACME"), page("BOLT"), page("REFUNDS")
+    assert payees == [
+        (acme, "ACME", "ACME, INC.", "ESSEX", "MD", Decimal("2000.00"), 2022, 2024),
+        (bolt, "BOLT", "BOLT LLC", None, "DE", Decimal("1050.00"), 2024, 2024),
+        (refunds, "REFUNDS", "REFUNDS INC", None, None, Decimal("-400.00"), 2024, 2024),
+    ]
+    assert sorted(cycles) == sorted(
+        [
+            (acme, 2022, Decimal("600.00"), 1),
+            (acme, 2024, Decimal("1400.00"), 2),
+            (bolt, 2024, Decimal("1050.00"), 2),
+            (refunds, 2024, Decimal("-400.00"), 1),
+        ]
+    )
+    assert sorted(payers) == sorted(
+        [
+            (acme, 2022, 1, "C1", "H1", Decimal("600.00")),
+            (acme, 2024, 1, "C2", None, Decimal("900.00")),
+            (acme, 2024, 2, "C1", "H1", Decimal("500.00")),
+            (bolt, 2024, 1, "C9", "P2", Decimal("1050.00")),
+        ]
+    )
+    assert checks == [[], []]
+
+
+def test_the_payee_page_check_fails_on_a_duplicate_a_foreign_id_or_a_listed_key() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE payee_no_page AS SELECT 'PETTY CASH' AS payee_key")
+        con.execute(
+            "CREATE TABLE payee AS SELECT * FROM (VALUES"
+            f" ('{page('ACME')}', 'ACME'), ('{page('ACME')}', 'ACME CORP'),"
+            " ('bolt', 'BOLT'),"
+            f" ('{page('PETTY CASH')}', 'PETTY CASH')"
+            ") AS t(payee_id, payee_key)"
+        )
+        con.execute(
+            "CREATE TABLE committee_top_payee AS SELECT * FROM (VALUES"
+            f" ('ACME', '{page('ACME')}'), ('ACME', NULL), ('ROE', '{page('ROE')}'),"
+            " ('DOE JANE', NULL)"
+            ") AS t(payee_key, payee_id)"
+        )
+
+        # ACME CORP shares ACME's payee_id, which is not its own; BOLT's is no key's; PETTY CASH
+        # is listed. One of C's ACME rows links to no page though ACME has one; ROE's links to a
+        # page no payee has. DOE JANE, with no page, links to none, as it should.
+        assert sorted(failing_rows(con, "gold_payee_page.sql"), key=str) == sorted(
+            [
+                ("payee", page("ACME"), None, "payee_id not unique"),
+                ("payee", page("ACME"), "ACME CORP", "payee_id is not the key's"),
+                ("payee", "bolt", "BOLT", "payee_id is not the key's"),
+                ("payee", page("PETTY CASH"), "PETTY CASH", "listed in payee_no_page"),
+                ("committee_top_payee", None, "ACME", "not its key's page"),
+                ("committee_top_payee", page("ROE"), "ROE", "not its key's page"),
+            ],
+            key=str,
+        )
+
+
+def test_the_top_payer_check_fails_on_an_amount_or_candidate_silver_does_not_give() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            PAYEES.format(
+                rows="(2024, 'C1', 'H1', 'ACME', 'ACME INC', NULL, NULL, false, false, true, 500),"
+                " (2024, 'C1', 'H1', 'ACME', 'ACME INC', NULL, NULL, false, true, true, 40),"
+                " (2024, 'C2', 'H2', 'ACME', 'ACME INC', NULL, NULL, false, false, true, 300),"
+                " (2024, 'C3', NULL, 'ACME', 'ACME INC', NULL, NULL, false, false, true, 200),"
+                " (2024, 'C4', 'H4', 'ACME', 'ACME INC', NULL, NULL, false, false, true, 100)"
+            )
+        )
+        acme = page("ACME")
+        con.execute(f"CREATE TABLE payee AS SELECT '{acme}' AS payee_id, 'ACME' AS payee_key")
+        con.execute(
+            "CREATE TABLE payee_top_payer AS SELECT * FROM (VALUES"
+            f" ('{acme}', 2024, 1, 'C1', 'H1', 540.00),"
+            f" ('{acme}', 2024, 2, 'C2', 'H9', 300.00),"
+            f" ('{acme}', 2024, 3, 'C3', NULL, 200.00),"
+            f" ('{acme}', 2024, 4, 'C4', NULL, 100.00),"
+            " ('nobody', 2024, 1, 'C1', 'H1', 500.00)"
+            ") AS t(payee_id, cycle, rank, committee_id, candidate_id, amount)"
+        )
+
+        # C1's amount takes in its in-kind outlay; H9 is no candidate C2's rows are credited to;
+        # C4's rows are H4's, so a NULL candidate is wrong; `nobody` is no payee's id. C3's rows
+        # are credited to no one, so its NULL is right.
+        assert sorted(failing_rows(con, "gold_payee_top_payer_amount.sql"), key=str) == sorted(
+            [
+                (acme, 2024, "C1", "H1", Decimal("540.00"), Decimal("500")),
+                (acme, 2024, "C2", "H9", Decimal("300.00"), Decimal("300")),
+                (acme, 2024, "C4", None, Decimal("100.00"), Decimal("100")),
+                ("nobody", 2024, "C1", "H1", Decimal("500.00"), None),
+            ],
+            key=str,
+        )
 
 
 def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
@@ -1100,9 +1307,16 @@ def test_a_committee_cm_lists_as_a_skeleton_keeps_the_name_an_earlier_cycle_gave
             "CREATE TABLE donor_variant (donor_id BIGINT, field VARCHAR, value VARCHAR,"
             " amount DECIMAL(16, 2), contributions INTEGER)"
         )
+        con.execute(
+            "CREATE TABLE payee (payee_id VARCHAR, payee_key VARCHAR, display_name VARCHAR,"
+            " total_all_cycles DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE payee_row (payee_key VARCHAR, payee_name VARCHAR, amount DECIMAL(14, 2))"
+        )
 
         con.execute(render(gold / "06_committee.sql", {}))
-        con.execute(render(gold / "16_search_entity.sql", {}))
+        con.execute(render(gold / "26_search_entity.sql", {}))
 
         committees = con.execute(
             "SELECT committee_id, name, type, designation, party, cycles FROM committee"
@@ -1166,9 +1380,16 @@ def test_a_candidate_cn_lists_as_a_skeleton_keeps_an_earlier_name_or_is_not_sear
             "CREATE TABLE donor_variant (donor_id BIGINT, field VARCHAR, value VARCHAR,"
             " amount DECIMAL(16, 2), contributions INTEGER)"
         )
+        con.execute(
+            "CREATE TABLE payee (payee_id VARCHAR, payee_key VARCHAR, display_name VARCHAR,"
+            " total_all_cycles DECIMAL(16, 2))"
+        )
+        con.execute(
+            "CREATE TABLE payee_row (payee_key VARCHAR, payee_name VARCHAR, amount DECIMAL(14, 2))"
+        )
 
         con.execute(render(gold / "05_candidate.sql", {}))
-        con.execute(render(gold / "16_search_entity.sql", {}))
+        con.execute(render(gold / "26_search_entity.sql", {}))
 
         candidates = con.execute(
             "SELECT candidate_id, name, party, office, state, district, cycles FROM candidate"

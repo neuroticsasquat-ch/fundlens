@@ -355,7 +355,7 @@ stop. Then:
 - the table list, now with `donor`, `donor_cycle`, `donor_top_recipient`, `race_top_donor`,
   `candidate_top_donor` and `committee_top_donor` among the largest;
 - `donors` `<C>`: every cluster holds at least one 2024 key, so every one is a donor. `donor_search_rows`
-  `<C>` or a few fewer: a donor with no display name gets no search row (`16_search_entity.sql`). `redirects` `0`; the three top-donor counts above 0; `null_contributor_counts` `0`.
+  `<C>` or a few fewer: a donor with no display name gets no search row (`26_search_entity.sql`). `redirects` `0`; the three top-donor counts above 0; `null_contributor_counts` `0`.
 
 NEU-2046's load took 4 s without donors. Donor tables over 5.6M keys take longer, and this run measures it.
 

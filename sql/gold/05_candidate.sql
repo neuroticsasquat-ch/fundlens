@@ -9,7 +9,7 @@
 -- among cn26's 8,931 rows). As 06_committee.sql does for `cm`'s skeletons (NEU-2296), a row with
 -- a name wins over a newer one without (a NULL name is the test); a skeleton still counts in
 -- cycles. A candidate that is a skeleton in every cycle it stands in keeps a NULL name, and
--- 16_search_entity.sql leaves it out.
+-- 26_search_entity.sql leaves it out.
 CREATE TABLE candidate AS
 WITH stood AS (
     SELECT
