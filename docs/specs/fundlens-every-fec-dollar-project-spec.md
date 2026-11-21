@@ -27,7 +27,7 @@ The first four were locked on 2026-11-02, the last two on 2026-11-18. v1 §2 sta
 |---|---|---|
 | Project boundary | A separate project from v1. M3.5 Organization money stayed in v1. | v1 ships on its own scope and Done line; M3.5 fixed a v1 bug ahead of v1's backfill. Rejected: amending the v1 spec, which would blur what v1 ships. |
 | Lobbyist files | FEC's lobbyist bundling and lobbyist/registrant PAC files are in scope. | v1's "lobbying data" non-goal means Lobbying Disclosure Act data, not FEC disclosures. |
-| Payees and organizations | Grouped by normalized name, never resolved with Splink, no industry coding. | ADR-0011: the hard cases are corporate structure, not spelling, and industry coding is a project of its own. The payee ADR (NEU-2150) will be 0012. |
+| Payees and organizations | Grouped by normalized name, never resolved with Splink, no industry coding. | ADR-0011: the hard cases are corporate structure, not spelling, and industry coding is a project of its own. Payees: ADR-0012. |
 | Public dataset | Every silver table this project adds joins the dataset snapshot (§8). | The resolved dataset is the product (v1 §1). |
 | Files read | The file catalogue (§3) is the only list of what fundlens reads. Every file on FEC's bulk-data page is in it or in §3's not-read table with a reason. | So "every FEC dollar" can be checked against FEC's own page. |
 | Older builds | A live build transformed before one of this project's tables existed may lack it: gold and the snapshot read that cycle as having no rows of the table. A silver model always writes its partition, empty for a cycle before its source's first cycle. The tables are the backfill-pending tables (`CONTEXT.md`), listed in `BACKFILL_PENDING` in `fundlens/paths.py` (NEU-2352); a silver ticket adds its table there. When no build of a load has one, its `silver.<table>` view is empty, typed from the table's committed dataset schema (`docs/dataset/schema/<table>.json`). NEU-2180's backfill rebuilds every cycle and then empties the list. | `load` rebuilds gold from every cycle's live build and the snapshot copies every one, and both refuse a build that lacks a table they read (v1 §3.4, §9), so without this the first new gold input breaks the weekly run. Rejected: writing a table into a published build in place, which changes a published build as nothing does today; a full backfill per milestone, which is four backfills. |
@@ -223,13 +223,170 @@ Where committees' money goes: `oppexp` operating expenditures (2004–) as silve
 
 **Shared contracts:**
 
-- A sub-itemized payment (credit card, reimbursement: `BACK_REF_TRAN_ID` to a parent) counts once: the parent or its children, never both, as NEU-2149's measurement decides. `MEMO_CD = 'X'` rows are not counted.
-- Refunds and offsets net out, as receipts' refunds do in v1 (NEU-2073).
-- Payees are grouped by `payee_key`, the normalizer organizations use (`normalize_employer`, ADR-0011), never resolved with Splink. A payee page lists who paid it, by cycle. The payee ADR will be 0012.
-- `spending_category` is one of a fixed list (media, digital, fundraising, payroll, consulting, travel, events, administrative, legal/compliance, transfers/fees, other), from FEC's `CATEGORY` when filled, else a measured purpose-text rule.
+- A sub-itemized payment counts once, at its parent, in every cycle: the parent counts whatever its memo code, and a sub-item never does. Every other `MEMO_CD = 'X'` row is not counted.
+- Refunds and offsets net out: amounts are summed as filed.
+- Payees are grouped by `payee_key`, the rule that makes an organization key (`organization_key`, ADR-0011), never resolved with Splink. A payee page lists who paid it, by cycle. A person, or a name that names nobody, has no page (ADR-0012).
+- `spending_category` is one of a fixed list of 15, from a measured purpose-text rule, else from FEC's `CATEGORY` where the code is one filers use reliably, else `other`.
 - Spending is never a contribution and never in any receipt total.
 
-**Filled by** NEU-2150, from NEU-2149's measurement.
+The rules below were written by NEU-2150 (`docs/specs/NEU-2150-spending-spec-section.md`, which holds each decision's rejected alternatives). "Q" and "Decision" numbers are NEU-2149's measurement's (`docs/measurements/oppexp-2024.md`). A rule that rests on no measurement says "asserted, not measured" and names the ticket that checks it.
+
+### 5.1 Silver `operating_expenditure`
+
+`sql/silver/12_operating_expenditure.sql` (NEU-2152), from `oppexp`. Key `(cycle, source, source_record_id)`. `source` is `fec` and `jurisdiction` `US`, as every silver table's (v1 §4).
+
+Columns, in order:
+
+| Column | From | Notes |
+|---|---|---|
+| `cycle`, `source`, `source_record_id`, `jurisdiction` | `SUB_ID` | Unique in the file (Q1a) |
+| `committee_id` | `CMTE_ID` | The committee that paid |
+| `candidate_id` | — | Nullable. `04_contribution.sql`'s credit rule applied to `committee_id` and `date` (v1 §4; project spec §4.3): linked P or A, or the committee `candidate.principal_committee_id` names; a handoff's committee by the row's date; a candidate alias is credited none |
+| `payee_name` | `NAME` | As reported |
+| `payee_key` | — | `organization_key(NAME)`, evaluated once per distinct name. NULL only for a row with no name (91 counted rows, $34,042, Q9c) |
+| `payee_city`, `payee_state`, `payee_zip` | `CITY`, `STATE`, `ZIP_CODE` | As reported |
+| `payee_is_person` | — | §5.4 |
+| `amount` | `TRANSACTION_AMT` | `DECIMAL(14,2)`, as filed, negative amounts included (§5.2) |
+| `date` | `TRANSACTION_DT` | `DATE` from `MM/DD/YYYY`. A filer's impossible year is kept as filed (years 1201 to 9201 appear in every cycle, Q2) |
+| `purpose` | `PURPOSE` | As reported |
+| `fec_category` | `CATEGORY` | FEC's code as a three-character string: one written without its leading zeros (`1`, `01`) is the code it pads to. Any other value is kept as filed |
+| `spending_category`, `category_source` | — | §5.3. NULL until NEU-2153 |
+| `election_code` | `TRANSACTION_PGI` | |
+| `report_type`, `amendment_indicator` | `RPT_TP`, `AMNDT_IND` | |
+| `memo_code`, `memo_text` | `MEMO_CD`, `MEMO_TEXT` | |
+| `entity_type` | `ENTITY_TP` | As filed, blank as NULL |
+| `tran_id`, `back_ref_tran_id` | `TRAN_ID`, `BACK_REF_TRAN_ID` | |
+| `parent_source_record_id` | — | Nullable. The `source_record_id` of the row on the same committee and filing whose `TRAN_ID` is this row's `BACK_REF_TRAN_ID`, other than the row itself: a row naming its own `TRAN_ID` is no sub-item (4 rows in 2024, the measurement's setup). Set, the row is a sub-item (`CONTEXT.md`). Where a filing holds that `TRAN_ID` on two rows, the lower `SUB_ID` (none does in 2024 once repeated rows are read once, Q5d) |
+| `image_num`, `file_num` | `IMAGE_NUM`, `FILE_NUM` | |
+| `is_in_kind` | — | §5.4 |
+| `counted` | — | §5.2 |
+
+Not held: `RPT_YR`, `LINE_NUM`, `FORM_TP_CD`, `SCHED_TP_CD`, `CATEGORY_DESC`. The file holds three lines and nothing else, Form 3 line 17, Form 3P line 23 and Form 3X line 21(b), plus 47 rows on a line written `21` (Q1d). Adding a column later is an additive dataset change.
+
+**Rows.** Every `oppexp` row whose committee is a committee of the cycle in silver `committee`, except:
+
+- A **repeated row** (`CONTEXT.md`) is read once: `register_bulk` drops the copies, since `oppexp` has all four `TRANSACTION_KEY` columns. 2,943 rows, $3,238,816, on 11 filings in 2024; the raw filings hold each transaction once (Q5).
+- A row on a **superseded filing** is dropped, as `contribution` drops it: `FILE_NUM` in `04_contribution.sql`'s `superseded_filing` set, the receipt side's, alone (Decision 2). 47 filings in 2024, 26 of them with `oppexp` rows, $15,117,610 of counted spending (Q6). The model must run where that set is in scope, or build it from the same three statements. A payment-side rule would add 23 filings and $124,469, of which 10 filings and $105,184 are a different report repeating payments, not an amendment; neither it nor its same-report variant (13 filings, $19,286) is adopted (Q6e, Q6e2).
+- A row whose filer `cm` lacks is dropped, as `independent_expenditure`'s is: 3 filers, 18 rows, $121,715,789 in 2024, $121.2M of it one filer's four rows paid to itself (Q1h, Q9b).
+
+No row is dropped as an overlap: no `oppexp` row shares a `SUB_ID`, or a filing, `TRAN_ID` and amount, with `pas2`, `oth` or `indiv`, and none is a silver `committee_transfer` or `independent_expenditure` row (Q7, Decision 3). There is no paper row to treat differently: no cycle has more than 4 rows without a `TRAN_ID` (Q4c).
+
+Every sub-item and every memo row is kept, with `counted` false, so the itemized list can show a card bill's charges without counting them twice. Rejected: dropping them, and a second table for them.
+
+**2024 on this contract.** The measurement counted 1,550,230 rows and $9,715,514,602 (R4, every filer). Of those, 5 rows and $121,230,310 are at filers `cm` lacks (Q8a, Q11e). So silver's 2024 partition should count **1,550,225 rows and $9,594,284,292**. This spec derived both by subtraction; NEU-2152's definition of done is within 1% of them.
+
+**Checks** (NEU-2152): `silver_operating_expenditure_key.sql` (key unique); `..._committee.sql` (committee in `committee`); `..._counted_once.sql` (no row with `parent_source_record_id` set is counted); `..._no_contribution.sql` (no `source_record_id` is in `contribution`, `committee_transfer`, `organization_receipt` or `independent_expenditure`; the measurement found none, Q7).
+
+**Memory.** The table holds about 0.87 GiB for 2024, which puts the transform's peak at about 27.35 GiB under the 29.80 GiB limit. NEU-2152 writes the table and drops it before `contribution`'s write, the transform's peak, if it can (Q1, Decision 7).
+
+### 5.2 What counts
+
+`counted` is the one flag every total reads:
+
+1. A row with `parent_source_record_id` set, a **sub-item**, is not counted. This includes a row that is both a sub-item and a parent, the middle of a chain: chains are 8 rows, $10,804, in 2024, and none of a chain counts but its top parent (Q3f).
+2. Otherwise, a row that some sub-item names as its parent is counted, **whatever its memo code**. 30 parents are memo rows in 2024, $164,432 (Q3m). This is the one exception to "memo rows are not counted".
+3. Otherwise, a row is counted when `MEMO_CD` is not `X`. That covers an ordinary payment, and a row with `BACK_REF_TRAN_ID` filled whose parent is not in the file (7,284 in 2024, 5,552 of them naming a receipt on their filing: in-kind outlays, §5.4; Q3a, Q7c).
+
+This is the measurement's R2, "parent always" (Decision 1), applied in every cycle FEC publishes the file for.
+
+- **Why the parent.** 80,249 parents carry 670,054 sub-items in 2024. A parent is fully itemized when its sub-items add up to it within $1.00. Fully itemized parents hold $250,483,113 of the $524,208,828 parents carry, 47.78%: under the 50% bar NEU-2149's spec set for counting sub-items instead (Q3j). Card bills are what does not add up: 28.27% of card parents' dollars are fully itemized, against 71.25% of other parents' (Q3b).
+- **One rule for every cycle.** The bar is met in ten of the twelve cycles, from 51.09% (2022) to 84.68% (2008), and fails in 2016 (47.73%) and 2024 (Q2c). It is not applied per cycle: a payee's totals would be built by different rules from one cycle to the next, and the current cycle could change rules as filings arrive.
+- **What it costs.** No sub-item reaches a payee: $503.0M in 2024, $250.5M of it under fully itemized parents. Card issuers keep $192,903,671 of card bills that are not fully itemized (Q3j). A payee's total is what committees reported paying that name directly.
+- **Against FEC's own rule** (non-memo rows), parent always differs by $194,596 in 2024 (Q3l, Q3m).
+- **Sign: as filed** (Decision 4). A negative row subtracts, and nothing is negated or dropped for its purpose. Negative rows net −$191.5M of 2024's counted spending, $109.1M of it super PACs moving a payment to Schedule E, which then counts once, in `independent_expenditure`. Counting every amount positive would add $383.1M, and dropping the negatives $191.5M (Q10g). This is the contract's "refunds and offsets net out".
+- **Against FEC's reported figure.** At the 9,909 committees with a reported figure above $0, counted spending is $9,594,311,329 against $9,916,558,902 reported: the median committee is at 98.76%, and 63 are more than 1% over, by $1.09M (Q11). Itemized spending sits below the reported figure by design: payments of $200 or less in a year are unitemized. Parties are at 83.83%: the file has no row on Form 3X line 21(a), their shared federal and nonfederal spending (Q1d, Q11b).
+
+### 5.3 Spending category
+
+Every row has one `spending_category` (`CONTEXT.md`), counted or not, from this list:
+
+| Slug | Holds |
+|---|---|
+| `media` | Paid advertising in broadcast, cable, satellite, radio, print and out of home, its production and placement; an ad or "media" buy whose medium is unnamed |
+| `digital` | Online advertising, text and email messaging, websites and hosting, digital organizing and consulting, campaign data and voter-file services |
+| `mail` | Direct mail and printed material: design, printing, postage and lettershop, whether it persuades voters or asks them for money |
+| `fundraising` | The cost of raising money: fundraising consultants and commissions, online fundraising, list rental and acquisition, telemarketing, merchandise, a fundraising event's costs where the purpose names fundraising |
+| `payroll` | Pay to staff and its costs: salary, payroll taxes and withholding, benefits, payroll processors |
+| `consulting` | General, political, strategic, management and communications consulting whose purpose names no other category |
+| `field` | Voter contact in person and by phone: canvassing, field and relational organizing, voter registration, paid calls to voters |
+| `polling_research` | Polling, surveys and focus groups, and opposition and policy research |
+| `travel` | Air and ground travel, lodging, mileage, meals while travelling |
+| `events` | Putting on an event: venue, production and staging, audio-visual, catering, advance |
+| `administrative` | Running an office: rent, utilities, software, equipment, supplies, insurance other than staff's, taxes other than payroll's, security |
+| `legal_compliance` | Legal services, compliance, accounting and FEC reporting |
+| `transfers_fees` | Money passed on (transfers, contributions, donations, refunds, loan repayments) and fees charged per payment processed: merchant, card-processing, conduit and bank fees |
+| `credit_card` | A card bill, counted as the bill: what it bought is itemized, if at all, only in sub-items |
+| `other` | Anything else, and a purpose that names nothing bought (`SEE MEMO`, `OPERATING EXPENDITURE`) |
+
+The milestone's 11 became 15 by the 2% bar NEU-2149's spec set: `mail` (7.39% of the labelled set's dollars), `field` (2.62%), `polling_research` (2.62%) and `credit_card` (2.38%) (Q8f). The definitions and the eleven tie-breaks (T1 to T11) are the measurement's Q8; the classifier follows them.
+
+**Precedence**, first that applies:
+
+1. **The purpose rule** (NEU-2153): an ordered list of patterns over the purpose, upper-cased, trimmed and with runs of whitespace made one space; the first match wins. `category_source = 'purpose_rule'`.
+2. **A trusted FEC code**: 002 `travel`, 004 `media`, 005 `polling_research`, 011 `transfers_fees`, 102 `media`, 106 `polling_research`. `category_source = 'fec'`.
+3. `other`, with `category_source = 'unclassified'`.
+
+- **Why the purpose first.** `CATEGORY` is filled on 28.94% of counted rows and 16.20% of counted dollars (Q8a), and code 001 is a catch-all: filers write it on payroll ($121.1M), media ($65.8M), digital, mail, fundraising, consulting and legal work alike, so the labels agree with it on 3.57% of its $511,096,243 (Q8g, Q8h). The six trusted codes agree with the labels on 84.98% to 100% of their dollars. Even 004 cannot tell `digital` from `media`, which the purpose can.
+- **Codes not trusted**, read by purpose alone: 001 (3.57%), 003 (64.58%), 006 (74.95%), 007 (51.75%), 101, 104 (6.82%), 107 (16.58%), and 008, 009, 010, 012, 103 and 105, which have too few labelled dollars to judge (Q8g). Trusting another code is a measured change.
+- `fec_category` keeps FEC's code whatever the precedence did with it. FEC's 19 codes and what each means are the measurement's Decision 5 table.
+- The test set is `tests/fixtures/spending/purpose_labels_2024.csv`: 200 purposes holding 76.75% of counted dollars, 35 of them judgement calls with reasons. **Asserted, not measured:** that the purpose rule and the six codes leave under 10% of counted dollars `unclassified`; NEU-2153's definition of done measures it.
+- NEU-2153 adds its method note for the methodology page here.
+
+### 5.4 Payees
+
+- **Payee key** (`CONTEXT.md`, ADR-0012). `payee_key = organization_key(payee_name)`, the function organizations use: `normalize_employer`, falling back on the cleaned name. Exact grouping, no linkage, across committees and cycles. 105,313 raw names become 98,975 keys in 2024; the top 100 keys hold 52.37% of counted dollars and the top 1,000 hold 80.26% (Q9a). Read by eye, the top 100 hold no wrong merge and three split firms (`AX MEDIA` and `AXMEDIA`; `TEAM DIRECT` and `TEAMDIRECT`; `MISSIONWIRED`, `ANNE LEWIS STRATEGIES` and `ANNE LEWIS STRATEGIES LLC DBA MISSIONWIRED`), each joined by an alias in `resolve/aliases.yaml`, filed as a Bug from NEU-2160's payee review (Q9b).
+- **Payee rows.** The rows payee figures read: `counted`, `payee_key` not NULL, `is_in_kind` false. "Payee dollars" below are their net amount.
+- **A person** (`payee_is_person`, per row): `entity_type` is `IND` or `CAN`; or it is blank, the row has a name, and `is_organization_name` (v1 §4, NEU-2132) does not call the name an organization. 37,072 keys and $547.3M are `IND` in 2024 (Q9f). `ENTITY_TP` is filled on 99.98% of dollars from 2020 and blank on 9.6–29.5% in 2006–2018 (Q2d). **Asserted, not measured:** that the classifier, measured on `indiv`'s names, reads payee names as well; NEU-2180's backfill measures it on a 2006–2018 cycle before publishing one.
+- **A key with no page.** A payee key has no `payee` row, no `payee_id` and no search entity when more than half of its payee dollars, over every cycle in gold, are on person rows, or when it is listed in `fec/payee_no_page.csv`. Its rows are counted and listed on the committee that paid them like any other. The list is vendored and hand-kept, one `payee_key` per row with a `reason`, seeded from Q9e's sixteen candidates (`UNITEMIZED …`, `PAYROLL`, `PETTY CASH`, `CASH`, `ATM`, `CASH WITHDRAWAL` and their variants: about $270,000 in 2024), each read before it is listed: `VARIOUS PRESSURES` may be a firm. NEU-2155 creates it; NEU-2160's review adds to it.
+- **An in-kind outlay** (`CONTEXT.md`; `is_in_kind`): a row with `BACK_REF_TRAN_ID` filled and no parent in the file, or a row whose purpose, upper-cased, matches `IN[- ]?KIND`. It keeps its `counted` and its category, and is in no payee figure: its payee is the gift's giver. 5,552 of 2024's 7,284 parentless sub-items ($18,833,378) name a receipt on their own filing, mostly `indiv` 15 and 10 and `oth` 15Z and 18G (Q7c); the other 1,732 ($1,327,593) are flagged on the same structure. On ordinary rows, 'IN-KIND CONTRIBUTION' is 458 rows and $53.3M, and two single rows hold $23.0M in bitcoin and $15.5M in USDC (the labelled set). **Asserted, not measured:** the pattern's precision, and that a purpose avoiding the words ('24,999,995 USDC RECEIVED, NOT LIQUIDATED') is rare; NEU-2160's payee review checks both.
+- **A card issuer is a payee like any other.** `AMERICAN EXPRESS` is 2024's third-largest key, $195.2M from 632 committees (Q9b). Its total is bills, not purchases, and the methodology page says so.
+- **A conduit as payee.** ActBlue is paid $136.0M and WinRed $115.8M, nearly all fees per contribution processed, `transfers_fees` (Q10a, Q10b). They are payees by name, as any committee that appears as one is (four of the top 100 keys): no link to a committee page.
+- **`payee_id`**: the first 16 hexadecimal characters, lower case, of the SHA-256 of `payee_key` (UTF-8). It is a page's address and nothing else. It changes when the key does (ADR-0012).
+
+### 5.5 Gold
+
+Adds to v1 §7.1. Every amount is net: counted rows' amounts added as filed.
+
+| Table | Added or new | Built by |
+|---|---|---|
+| `committee_cycle` | `total_operating_expenditures`: the committee's counted rows, in-kind outlays included | NEU-2154 |
+| `committee_spending_category` | `(committee_id, cycle, category, amount)`, key the first three: the committee's counted rows by `spending_category`. A category with no counted row has no row; one netting to $0 or less is kept, so the rows add up to `total_operating_expenditures` | NEU-2154 |
+| `committee_top_payee` | `(committee_id, cycle, rank ≤ 100, payee_key, payee_id, name, amount)`: payee rows grouped by key, ranked by amount then key; a key netting to $0 or less is left out. `name` is the key's reported spelling with the most payee dollars in the cycle, chosen as `committee_top_organization.name` is. `payee_id` is NULL for a key with no page (§5.4) | NEU-2154 |
+| `candidate_cycle` | `total_operating_expenditures`: counted rows by silver's `candidate_id` | NEU-2154 |
+| `race_candidate` | `total_operating_expenditures`: the candidate's `candidate_cycle` value | NEU-2154 |
+| `race` | `total_operating_expenditures`: the sum over its candidates | NEU-2154 |
+| `payee` | `(payee_id, payee_key, display_name, city, state, total_all_cycles, first_cycle, last_cycle)`, key `payee_id`, `payee_key` unique: one row per key with a page and at least one payee row. Each display column is chosen on its own by most payee dollars over every cycle, as `donor`'s are (v1 §6.7) | NEU-2155 |
+| `payee_cycle` | `(payee_id, cycle, total, committee_count)`, key the first two | NEU-2155 |
+| `payee_top_payer` | `(payee_id, cycle, rank ≤ 100, committee_id, candidate_id, amount)`: the committees that paid the payee most in the cycle, ranked by amount then `committee_id`; one netting to $0 or less is left out. `candidate_id` is the rows' silver `candidate_id`, the one with more of the amount where a handoff gives two, NULL when none | NEU-2155 |
+| `search_entity` | `kind = 'payee'`: `id` is `payee_id`, `name` is `display_name`, `aliases` the key's other reported spellings, most payee dollars first, `weight` is `total_all_cycles` | NEU-2155 |
+
+- **NULL, never 0, where there is no counted row.** `total_operating_expenditures` is NULL for a committee or candidate with no counted row in the cycle, and for a race none of whose candidates has one. So a cycle before 2004, and one whose live build lacks the table (§2, older builds), reads as "not available", not as nothing spent (NEU-2158 shows it so). A committee whose counted rows net to $0 has 0.
+- **The handoff.** `candidate_cycle` follows silver's dated credit: of `C00703975`'s 2024 spending, what is dated before 2024-07-21 is Biden's and the rest Harris's. `reported_operating_expenditures` is whole Harris's (§4.3), so the two are not comparable for either candidate, and no ratio of them is stored. **Asserted, not measured:** how `04_contribution.sql`'s rule credits an undated row; `oppexp` has none in 2024 (Q1a), and NEU-2152 follows the rule as written.
+- **A campaign turned PAC** counts whole, as its itemized receipts do (§4.3).
+- Spending is in no receipt total, no `cycle.total_amount`, no donor figure and no top-donor, top-organization or top-committee list.
+- The three split firms and a firm paid under a person's name are known gaps, not bugs of the gold tickets.
+- **Checks** (gold): a committee's `committee_spending_category` rows add up to its `total_operating_expenditures`; every `committee_top_payee` and `payee_top_payer` amount equals its silver sum; ranks are contiguous (`gold_rank_contiguous.sql`); `payee_id` is unique and `payee_key` is unique in `payee`; no `payee` row's key is in `fec/payee_no_page.csv`.
+
+### 5.6 Reconciliation
+
+Adds a second `measure` to §4.5's table: `operating_expenditures`. `fundlens` is `committee_cycle.total_operating_expenditures`, `reported` is `reported_operating_expenditures`, `ratio` is `fundlens ÷ reported`. A committee is listed by §4.5's rule: `reported` not NULL and `fundlens − reported > 0.01 × reported`; a reported 0 beside counted spending is listed with `ratio` NULL; no dollar floor; over only. Conduits are not left out: the exclusion is the receipt measure's. 2008 on, since no earlier file has the measure (§4.7). Never failing the build. Built by NEU-2154.
+
+On the measurement's figures, 2024 would list 63 committees over by $1.09M, and 12 with a reported $0 beside counted money: Q11c's 16 less the 4 with no reported figure at all, which are not listed (Q11a, Q11c, Q11e). No shortfall is listed: itemized spending sits below the reported figure by design (§5.2).
+
+### 5.7 What each cycle range has
+
+| | 2020– | 2006–2018 | 2004 | 1980–2002 |
+|---|---|---|---|---|
+| `operating_expenditure` | yes | yes | yes | an empty partition (§2) |
+| Counting rules (§5.2) | as written | as written | as written | — |
+| A person by `ENTITY_TP` | filled on 99.98% of dollars | blank on 9.6–29.5% of dollars: the name classifier decides | blank on 2.6% | — |
+| `reconciliation` measure | yes | from 2008 | no | — |
+
+Every cycle has the same three lines, the same parent and sub-item links (92–99% of rows with `BACK_REF_TRAN_ID` have their parent in the file) and no paper rows (Q2, Q4c). Memo dollars are 21.22% of 2004's file against 5–8% later; its parents are fully itemized for 79.71% of their dollars, so its memo rows mostly restate their parents (Q2b, Q2c). Senate campaigns filed on paper until 2018 and their operating expenditures are not in the file at all (Q4): a gap in FEC's bulk data, §9's to recover.
+
+### 5.8 Dataset and older builds
+
+`operating_expenditure` joins the public dataset (§8): NEU-2152 adds it to `DATASET_TABLES`, `columns.yaml`, the schema, the changelog, the README and `paths.BACKFILL_PENDING` in the PR that builds it. Its README entry says: sum only rows where `counted` is true; a sub-item is shown under its parent and never added to it; `payee_key` is a normalized name, not an id (ADR-0012); and spending is never to be added to `contribution` amounts. `spending_category` and `category_source` are NULL in a build made before NEU-2153.
 
 ## 6. Outside spending (M3)
 

@@ -352,7 +352,7 @@ Routes mirror the API: `/`, `/cycles/{cycle}` (race index by office and state), 
 Produced by `fundlens dataset --snapshot` from the live build. Layout on the public bucket:
 
 ```
-v1/<snapshot-date>/<table>/cycle=<cycle>/*.parquet    tables: contribution (with donor_id), contributor, committee, candidate, candidate_committee_link, race, independent_expenditure, committee_transfer, organization_receipt, reported_total, candidate_reported_total
+v1/<snapshot-date>/<table>/cycle=<cycle>/*.parquet    tables: contribution (with donor_id), contributor, committee, candidate, candidate_committee_link, race, independent_expenditure, committee_transfer, organization_receipt, reported_total, candidate_reported_total, operating_expenditure
 v1/<snapshot-date>/donor.parquet  crosswalk.parquet  overrides.yaml  manifest.json  (build_id, row counts, sha256 per file, precision/recall)
 v1/latest/ → copy of the newest snapshot (R2 has no symlinks; copy within the bucket)
 v1/README.md  LICENSE (CC BY 4.0)  CHANGELOG.md  schema/<table>.json (JSON Schema)  (from docs/dataset/)
