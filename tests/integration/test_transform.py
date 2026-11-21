@@ -568,6 +568,48 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
             for table in write_order(tables)
         ),
     ]
+    # A memory line after the views and after each step, each between its step's start line and
+    # the next's (NEU-2408): every step, by name, beside the line that starts it.
+    checks = sorted(CHECKS.glob("silver_*.sql"))
+    keys = [
+        f"{paths.silver_partition(t, 2024, BUILD)}/{paths.part(0)}" for t in write_order(tables)
+    ]
+    paired = [
+        *(
+            (f"silver {t} 2024: {path.name}", f"silver {t} 2024")
+            for t, path in zip(tables, models, strict=True)
+        ),
+        *((f"silver check {path.name}",) * 2 for path in checks),
+        *((f"write {table} 2024",) * 2 for table in write_order(tables)),
+        *((f"upload {key}",) * 2 for key in keys),
+    ]
+    starts = {start for start, _ in paired}
+    memory = [m for m in logged if m.startswith("memory after ")]
+    named = [
+        ("memory", m.removeprefix("memory after ").partition(":")[0])
+        if m.startswith("memory after ")
+        else ("start", m)
+        for m in logged
+        if m.startswith("memory after ") or m in starts
+    ]
+    assert named == [
+        ("memory", "views 2024"),
+        *(entry for start, step in paired for entry in (("start", start), ("memory", step))),
+    ]
+    # The four figures up to the last write, two after it, the connection closed; peak resident
+    # never falls, and resident memory is never above it.
+    figures = r"peak resident (\d+\.\d\d) GiB, resident (\d+\.\d\d) GiB"
+    four = re.compile(
+        rf"memory after .+?: {figures}, DuckDB \d+\.\d\d GiB in memory, \d+\.\d\d GiB spilled"
+    )
+    two = re.compile(rf"memory after upload .+?: {figures}")
+    matches = [four.fullmatch(m) for m in memory[: -len(keys)]] + [
+        two.fullmatch(m) for m in memory[-len(keys) :]
+    ]
+    assert all(matches), memory
+    readings = [(float(m.group(1)), float(m.group(2))) for m in matches if m]
+    assert all(resident <= peak for peak, resident in readings)
+    assert [peak for peak, _ in readings] == sorted(peak for peak, _ in readings)
 
 
 def sum_by(rows: list[dict[str, object]], key: str) -> dict[object, int]:

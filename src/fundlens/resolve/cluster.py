@@ -17,7 +17,6 @@ each group they connect the same way, with those clusters fixed.
 
 import hashlib
 import logging
-import resource
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ from typing import Literal
 import duckdb
 from splink import Linker
 
+from fundlens.memory import peak_resident_gib
 from fundlens.resolve.model import FIRST_NAME_VETO_JW, initial_pair_sql, nickname_pair_sql
 
 log = logging.getLogger(__name__)
@@ -481,9 +481,7 @@ def recluster(
         keys_moved=keys_moved,
     )
     log.info("resolve recluster: %s", result.summary())
-    # Linux reports the peak resident set in KiB.
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
-    log.info("resolve recluster: peak resident memory %.2f GiB", peak)
+    log.info("resolve recluster: peak resident memory %.2f GiB", peak_resident_gib())
     return result
 
 
