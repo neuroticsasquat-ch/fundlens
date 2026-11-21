@@ -255,8 +255,8 @@ export interface paths {
         };
         /**
          * List Reconciliation
-         * @description A cycle's committees over FEC's reported figure by more than 1%, the largest excess first.
-         *     Empty before 2008, whose files have no itemized figure.
+         * @description A cycle's committees over FEC's reported figure by more than 1%, on any measure, the largest
+         *     excess first. Empty before 2008, whose files have neither reported figure.
          */
         get: operations["list_reconciliation_v1_reconciliation_get"];
         put?: never;
@@ -925,9 +925,9 @@ export interface components {
         };
         /**
          * Reconciliation
-         * @description `gold.reconciliation`: a committee whose itemized total exceeds its reported total by more
-         *     than 1% (every-FEC-dollar spec §4.5). Never a build failure: reported totals lag amendments,
-         *     and a filer's line choice is not fundlens's to fix.
+         * @description `gold.reconciliation`: a committee whose fundlens figure exceeds its reported one by more
+         *     than 1% on a measure (every-FEC-dollar spec §4.5, §5.6). Never a build failure: reported totals
+         *     lag amendments, and a filer's line choice is not fundlens's to fix.
          */
         Reconciliation: {
             /** Committee Id */

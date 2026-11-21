@@ -543,17 +543,18 @@ class ContributionPage(BaseModel):
 
 
 class Reconciliation(BaseModel):
-    """`gold.reconciliation`: a committee whose itemized total exceeds its reported total by more
-    than 1% (every-FEC-dollar spec §4.5). Never a build failure: reported totals lag amendments,
-    and a filer's line choice is not fundlens's to fix."""
+    """`gold.reconciliation`: a committee whose fundlens figure exceeds its reported one by more
+    than 1% on a measure (every-FEC-dollar spec §4.5, §5.6). Never a build failure: reported totals
+    lag amendments, and a filer's line choice is not fundlens's to fix."""
 
     committee_id: str
     name: str | None
     cycle: int
     # The measure compared: `individual_itemized`, the itemized total against the reported
-    # itemized individual figure.
+    # itemized individual figure; `operating_expenditures`, counted spending against the reported
+    # operating expenditures.
     measure: str
-    # fundlens's figure (the itemized total) and the reported one, as gold's columns name them.
+    # fundlens's figure and the reported one, as gold's columns name them.
     fundlens: float
     reported: float
     # fundlens over reported; None where FEC reported 0.

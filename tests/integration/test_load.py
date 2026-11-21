@@ -1,6 +1,7 @@
 """`fundlens load` on the fixture cycle: silver in MinIO to `gold_build` in a Postgres database
 of its own (spec §5.5, NEU-2039 §4.1, §6)."""
 
+import hashlib
 import shutil
 from collections import defaultdict
 from datetime import date
@@ -240,17 +241,17 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         race_id: whole(races[race_id]["reported_cash_on_hand"]) for race_id in reported["races"]
     } == reported["races"]
     # FENWICK FOR CONGRESS, its itemized figure filed more than 1% under fundlens's; not YANG FOR
-    # MARYLAND's, under by less (§4.5).
-    assert {
-        row["committee_id"]: [
-            row["measure"],
+    # MARYLAND's, under by less (§4.5). HARRIS FOR PRESIDENT's counted spending over its reported
+    # figure, and four committees' beside a reported 0 (§5.6).
+    reconciled: dict[str, dict[str, list[Any]]] = defaultdict(dict)
+    for row in rows(migrated_db, "reconciliation"):
+        assert row["cycle"] == 2024
+        reconciled[row["measure"]][row["committee_id"]] = [
             dollars(row["fundlens"]),
             dollars(row["reported"]),
             ratio(row["ratio"]),
         ]
-        for row in rows(migrated_db, "reconciliation")
-        if row["cycle"] == 2024
-    } == reported["reconciliation"]
+    assert reconciled == reported["reconciliation"]
     # An unresolved build has no donors, so no itemized gift-size bucket: only FEC's unitemized
     # lump, where a candidate has one (BIDEN, whose committee is HARRIS's, has none).
     gift_sizes = rows(migrated_db, "candidate_gift_size")
@@ -273,6 +274,52 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
             [row["organization_key"], row["name"], dollars(row["amount"])]
         )
     assert top_organizations == organizations["top_by_committee"]
+
+    # Spending (every-FEC-dollar spec §5.5): each committee's and candidate's counted operating
+    # expenditures, NULL where it has none, never 0; a race's its candidates' added up. A card
+    # bill counts once, at the parent. No receipt figure above moved for it.
+    spending = expected["operating_expenditures"]
+    assert {
+        committee_id: f"{row['total_operating_expenditures']:.2f}"
+        for committee_id, row in committee_cycles.items()
+        if row["total_operating_expenditures"] is not None
+    } == spending["by_committee"]
+    assert {
+        candidate_id: f"{row['total_operating_expenditures']:.2f}"
+        for candidate_id, row in candidate_cycles.items()
+        if row["total_operating_expenditures"] is not None
+    } == spending["by_candidate"]
+    for candidate_id, row in race_candidates.items():
+        assert (
+            row["total_operating_expenditures"]
+            == candidate_cycles[candidate_id]["total_operating_expenditures"]
+        ), candidate_id
+    by_race: dict[str, list[Decimal]] = defaultdict(list)
+    for row in race_candidates.values():
+        if row["total_operating_expenditures"] is not None:
+            by_race[row["race_id"]].append(row["total_operating_expenditures"])
+    assert {
+        race_id: race["total_operating_expenditures"]
+        for race_id, race in races.items()
+        if race["total_operating_expenditures"] is not None
+    } == {race_id: sum(amounts, Decimal(0)) for race_id, amounts in by_race.items()}
+    categories: dict[str, dict[str, str]] = defaultdict(dict)
+    for row in rows(migrated_db, "committee_spending_category"):
+        assert row["cycle"] == 2024
+        categories[row["committee_id"]][row["category"]] = f"{row['amount']:.2f}"
+    assert categories == spending["by_committee_category"]
+    # Each committee's payees by rank, a person's key with no page (§5.4).
+    top_payees: dict[str, list[list[str | bool]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "committee_top_payee"), key=lambda row: (row["committee_id"], row["rank"])
+    ):
+        assert row["cycle"] == 2024
+        page = hashlib.sha256(row["payee_key"].encode()).hexdigest()[:16]
+        assert row["payee_id"] in (page, None), row
+        top_payees[row["committee_id"]].append(
+            [row["payee_key"], row["name"], f"{row['amount']:.2f}", row["payee_id"] is not None]
+        )
+    assert top_payees == spending["top_payees"]
 
     [cycle] = rows(migrated_db, "cycle")
     assert cycle["cycle"] == 2024
@@ -725,6 +772,123 @@ def test_the_top_organization_amount_check_fails_on_a_row_silver_does_not_add_up
         ]
 
 
+def test_the_spending_category_check_fails_on_categories_not_adding_up_to_the_total() -> None:
+    with duckdb.connect() as con:
+        con.execute(
+            "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
+            " ('C1', 2024, 1500.00), ('C2', 2024, 900.00), ('C3', 2024, NULL),"
+            " ('C4', 2024, NULL), ('C5', 2024, 0.00)"
+            ") AS t(committee_id, cycle, total_operating_expenditures)"
+        )
+        con.execute(
+            "CREATE TABLE committee_spending_category AS SELECT * FROM (VALUES"
+            " ('C1', 2024, 'media', 2000.00), ('C1', 2024, 'other', -500.00),"
+            " ('C2', 2024, 'media', 800.00), ('C3', 2024, 'travel', 50.00),"
+            " ('C5', 2024, 'digital', 100.00), ('C5', 2024, 'other', -100.00),"
+            " ('C6', 2024, 'mail', 75.00)"
+            ") AS t(committee_id, cycle, category, amount)"
+        )
+
+        # C1's other nets below $0 and is kept, so its rows add up; C5's net to $0, its total 0.
+        # C2's rows miss $100 (a hand-broken row), C3 has rows beside no total, and C6 rows beside
+        # no committee_cycle row. C4 spent nothing and has none.
+        assert sorted(failing_rows(con, "gold_committee_spending_category_total.sql")) == [
+            ("C2", 2024, Decimal("900.00"), Decimal("800.00")),
+            ("C3", 2024, None, Decimal("50.00")),
+            ("C6", 2024, None, Decimal("75.00")),
+        ]
+
+
+OPERATING_EXPENDITURES = (
+    "CREATE TABLE silver.operating_expenditure AS SELECT * FROM (VALUES {rows})"
+    " AS t(cycle, committee_id, payee_key, payee_name, payee_is_person, is_in_kind, counted,"
+    " amount)"
+)
+
+
+def test_the_top_payee_amount_check_fails_on_a_row_silver_does_not_add_up_to() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            OPERATING_EXPENDITURES.format(
+                rows="(2024, 'C1', 'ACME', 'ACME INC', false, false, true, 500),"
+                " (2024, 'C1', 'ACME', 'ACME, INC.', false, false, true, 250),"
+                " (2024, 'C1', 'ACME', 'ACME INC', false, false, false, 300),"
+                " (2024, 'C1', 'BOLT', 'BOLT LLC', false, false, true, 100),"
+                " (2024, 'C1', 'BOLT', 'BOLT LLC', false, true, true, 40),"
+                " (2024, 'C2', 'ACME', 'ACME INC', false, false, true, 75)"
+            )
+        )
+        acme = hashlib.sha256(b"ACME").hexdigest()[:16]
+        con.execute(
+            "CREATE TABLE committee_top_payee AS SELECT * FROM (VALUES"
+            f" ('C1', 2024, 1, 'ACME', '{acme}', 'ACME INC', 750),"
+            " ('C1', 2024, 2, 'BOLT', NULL, 'BOLT LLC', 140),"
+            f" ('C2', 2024, 1, 'ACME', '{acme}', 'ACME CORP', 75),"
+            f" ('C3', 2024, 1, 'ACME', '{acme}', 'ACME INC', 10),"
+            " ('C4', 2024, 1, 'ACME', 'acme', 'ACME INC', 75)"
+            ") AS t(committee_id, cycle, rank, payee_key, payee_id, name, amount)"
+        )
+
+        # C1's ACME leaves its uncounted row out. BOLT's amount takes in its in-kind outlay, ACME
+        # CORP is no spelling ACME was paid under, C3 paid ACME nothing, and C4's payee_id is not
+        # ACME's (C4 paid nothing either).
+        assert sorted(failing_rows(con, "gold_committee_top_payee_amount.sql")) == [
+            (2024, "C1", "BOLT", "BOLT LLC", None, 140, 100),
+            (2024, "C2", "ACME", "ACME CORP", acme, 75, 75),
+            (2024, "C3", "ACME", "ACME INC", acme, 10, None),
+            (2024, "C4", "ACME", "ACME INC", "acme", 75, None),
+        ]
+
+
+def test_a_top_payee_list_holds_payee_rows_netting_above_0_and_a_persons_key_has_no_page() -> None:
+    with duckdb.connect() as con:
+        con.execute("CREATE SCHEMA silver")
+        con.execute(
+            OPERATING_EXPENDITURES.format(
+                rows="(2024, 'C1', 'ACME', 'ACME INC', false, false, true, 500),"
+                " (2024, 'C2', 'ACME', 'ACME, INC.', false, false, true, 900),"
+                " (2024, 'C1', 'BOLT', 'BOLT LLC', false, false, true, 500),"
+                " (2024, 'C1', 'DOE JANE', 'DOE, JANE', true, false, true, 300),"
+                " (2022, 'C1', 'DOE JANE', 'DOE JANE', false, false, true, 200),"
+                " (2024, 'C1', 'ROE RAY', 'ROE, RAY', true, false, true, 200),"
+                " (2022, 'C1', 'ROE RAY', 'ROE RAY', false, false, true, 400),"
+                " (2024, 'C1', 'GIFT', 'GIFT', false, true, true, 9000),"
+                " (2024, 'C1', 'CARD', 'CARD', false, false, false, 9000),"
+                " (2024, 'C1', 'VOID', 'VOID', false, false, true, 100),"
+                " (2024, 'C1', 'VOID', 'VOID', false, false, true, -100),"
+                " (2024, 'C1', 'REFUNDS', 'REFUNDS INC', false, false, true, 50),"
+                " (2022, 'C2', 'REFUNDS', 'REFUNDS INC', false, false, true, -400),"
+                " (2024, 'C1', NULL, NULL, false, false, true, 9000)"
+            )
+        )
+        con.execute(render(REPO_ROOT / "sql" / "gold" / "22_committee_top_payee.sql", {}))
+
+        listed = con.execute(
+            "SELECT committee_id, cycle, rank, payee_key, payee_id, name, amount"
+            " FROM committee_top_payee ORDER BY committee_id, cycle, rank"
+        ).fetchall()
+
+    def page(key: str) -> str:
+        return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+    # ACME and BOLT tie at C1 and go by key; ACME is named by its most-dollar spelling, C2's. DOE
+    # JANE is a person on 300 of her 500 dollars over both cycles, so no page; ROE RAY on 200 of
+    # 600, so one. REFUNDS nets below $0 over both cycles with no person row: a firm's key, with a
+    # page. An in-kind outlay, an uncounted row, a key netting to $0 and a row with no key are in
+    # no list.
+    assert listed == [
+        ("C1", 2022, 1, "ROE RAY", page("ROE RAY"), "ROE RAY", Decimal("400.00")),
+        ("C1", 2022, 2, "DOE JANE", None, "DOE JANE", Decimal("200.00")),
+        ("C1", 2024, 1, "ACME", page("ACME"), "ACME, INC.", Decimal("500.00")),
+        ("C1", 2024, 2, "BOLT", page("BOLT"), "BOLT LLC", Decimal("500.00")),
+        ("C1", 2024, 3, "DOE JANE", None, "DOE, JANE", Decimal("300.00")),
+        ("C1", 2024, 4, "ROE RAY", page("ROE RAY"), "ROE, RAY", Decimal("200.00")),
+        ("C1", 2024, 5, "REFUNDS", page("REFUNDS"), "REFUNDS INC", Decimal("50.00")),
+        ("C2", 2024, 1, "ACME", page("ACME"), "ACME, INC.", Decimal("900.00")),
+    ]
+
+
 def test_the_given_check_fails_on_a_negative_gift_figure() -> None:
     with duckdb.connect() as con:
         con.execute(
@@ -840,23 +1004,30 @@ def test_reconciliation_lists_a_committee_over_by_more_than_1pct_or_over_a_repor
         )
         con.execute(
             "CREATE TABLE committee_cycle AS SELECT * FROM (VALUES"
-            " ('C1', 2024, 3800.00, 3700.00), ('C2', 2024, 6400.00, 6350.00),"
-            " ('C3', 2024, 500.00, 0.00), ('C4', 2024, 0.00, 0.00), ('C5', 2024, 900.00, NULL),"
-            " ('C6', 2024, 9000.00, 780.00), ('C7', 2024, 100.00, 400.00)"
-            ") AS t(committee_id, cycle, itemized_total, reported_individual_itemized)"
+            " ('C1', 2024, 3800.00, 3700.00, NULL, NULL),"
+            " ('C2', 2024, 6400.00, 6350.00, 100.00, 99.50),"
+            " ('C3', 2024, 500.00, 0.00, 250.00, 0.00), ('C4', 2024, 0.00, 0.00, NULL, 0.00),"
+            " ('C5', 2024, 900.00, NULL, 50.00, NULL),"
+            " ('C6', 2024, 9000.00, 780.00, 800.00, 700.00),"
+            " ('C7', 2024, 100.00, 400.00, 300.00, 400.00)"
+            ") AS t(committee_id, cycle, itemized_total, reported_individual_itemized,"
+            " total_operating_expenditures, reported_operating_expenditures)"
         )
         con.execute(render(REPO_ROOT / "sql" / "gold" / "19_reconciliation.sql", {}))
 
         # C1 is 2.7% over; C2 within 1%. C3's reported 0 is a figure FEC gives, so it is listed
         # with no ratio; C4 has nothing over it. C5's blank figure, the conduit C6 and C7's
-        # shortfall are not listed.
+        # shortfall are not listed. On spending (§5.6) the same, but that the conduit C6 is listed,
+        # 14.3% over, and C4 spent nothing beside its reported 0.
         listed = con.execute(
             "SELECT committee_id, measure, fundlens, reported, round(ratio, 4)"
-            " FROM reconciliation ORDER BY committee_id"
+            " FROM reconciliation ORDER BY committee_id, measure"
         ).fetchall()
     assert listed == [
         ("C1", "individual_itemized", Decimal("3800.00"), Decimal("3700.00"), 1.027),
         ("C3", "individual_itemized", Decimal("500.00"), Decimal("0.00"), None),
+        ("C3", "operating_expenditures", Decimal("250.00"), Decimal("0.00"), None),
+        ("C6", "operating_expenditures", Decimal("800.00"), Decimal("700.00"), 1.1429),
     ]
 
 

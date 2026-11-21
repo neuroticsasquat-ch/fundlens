@@ -1008,6 +1008,22 @@ def spending_candidate(row: Row) -> str | None:
     return before if spent_on < handoff else after
 
 
+def spending_in_kind(row: Row) -> bool:
+    """Spec §5.4's in-kind outlay: a reference to a TRAN_ID no row of its filing holds, or a purpose
+    saying IN-KIND."""
+    return bool(named_tran_id(row) and row["SUB_ID"] not in spending_parents()) or bool(
+        re.search(r"IN[- ]?KIND", row["PURPOSE"].upper())
+    )
+
+
+def payee_is_person(row: Row) -> bool:
+    """Spec §5.4: typed IND or CAN, or untyped with a name the classifier calls no
+    organization's."""
+    return row["ENTITY_TP"] in ("IND", "CAN") or bool(
+        not row["ENTITY_TP"] and row["NAME"] and not normalize.is_organization_name(row["NAME"])
+    )
+
+
 def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     expected = EXPECTED["operating_expenditures"]
     kept = operating_expenditures()
@@ -1037,22 +1053,12 @@ def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     )
     assert expected["total"] == f"{sum(value for _, value in amounts):.2f}"
     assert expected["in_kind"] == sorted(
-        int(row["SUB_ID"])
-        for row in kept
-        if (named_tran_id(row) and row["SUB_ID"] not in spending_parents())
-        or re.search(r"IN[- ]?KIND", row["PURPOSE"].upper())
+        int(row["SUB_ID"]) for row in kept if spending_in_kind(row)
     )
     for sub_id, key in expected["payee_keys"].items():
         [row] = [r for r in kept if r["SUB_ID"] == str(sub_id)]
         assert normalize.organization_key(row["NAME"] or None) == key
-    assert expected["persons"] == sorted(
-        int(row["SUB_ID"])
-        for row in kept
-        if row["ENTITY_TP"] in ("IND", "CAN")
-        or (
-            not row["ENTITY_TP"] and row["NAME"] and not normalize.is_organization_name(row["NAME"])
-        )
-    )
+    assert expected["persons"] == sorted(int(row["SUB_ID"]) for row in kept if payee_is_person(row))
     assert expected["fec_categories"] == {
         int(row["SUB_ID"]): row["CATEGORY"].zfill(3) for row in kept if row["CATEGORY"]
     }
@@ -1065,6 +1071,65 @@ def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     assert any(value < 0 for _, value in amounts)
     keys = [key for key in expected["payee_keys"].values() if key]
     assert len(set(keys)) < len(keys)
+
+
+def test_the_expected_gold_spending_tables_match_the_fixture() -> None:
+    """committee_spending_category and committee_top_payee (spec §5.5), derived from oppexp.csv:
+    each committee's counted dollars by the category expected.yaml gives each row, and its payee
+    rows (counted, named, no in-kind outlay) by key."""
+    expected = EXPECTED["operating_expenditures"]
+    counted = [row for row in operating_expenditures() if spending_counts(row)]
+
+    by_category: defaultdict[str, defaultdict[str, Decimal]] = defaultdict(
+        lambda: defaultdict(Decimal)
+    )
+    for row in counted:
+        [category, _] = expected["categories"][int(row["SUB_ID"])]
+        by_category[row["CMTE_ID"]][category] += Decimal(row["TRANSACTION_AMT"])
+    assert expected["by_committee_category"] == {
+        committee_id: {category: f"{amount:.2f}" for category, amount in sorted(amounts.items())}
+        for committee_id, amounts in sorted(by_category.items())
+    }
+    for committee_id, amounts in expected["by_committee_category"].items():
+        assert sum(map(Decimal, amounts.values())) == Decimal(
+            expected["by_committee"][committee_id]
+        ), committee_id
+
+    paid: defaultdict[str, defaultdict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    spellings: defaultdict[str, defaultdict[str, Decimal]] = defaultdict(
+        lambda: defaultdict(Decimal)
+    )
+    person: defaultdict[str, Decimal] = defaultdict(Decimal)
+    total: defaultdict[str, Decimal] = defaultdict(Decimal)
+    for row in counted:
+        if not row["NAME"] or spending_in_kind(row):
+            continue
+        key = normalize.organization_key(row["NAME"])
+        assert key is not None
+        amount = Decimal(row["TRANSACTION_AMT"])
+        paid[row["CMTE_ID"]][key] += amount
+        spellings[key][row["NAME"]] += amount
+        total[key] += amount
+        if payee_is_person(row):
+            person[key] += amount
+    assert expected["top_payees"] == {
+        committee_id: [
+            [
+                key,
+                max(spellings[key], key=spellings[key].__getitem__),
+                f"{amount:.2f}",
+                person[key] <= total[key] / 2,
+            ]
+            for key, amount in sorted(keys.items(), key=lambda item: (-item[1], item[0]))
+            if amount > 0
+        ]
+        for committee_id, keys in sorted(paid.items())
+    }
+    # The planted cases: a key in two spellings, a tie broken by key, a person's key with no page.
+    assert any(len(names) > 1 for names in spellings.values())
+    okafor = [row[2] for row in expected["top_payees"]["C00800103"]]
+    assert len(set(okafor)) < len(okafor)
+    assert not all(row[3] for rows_ in expected["top_payees"].values() for row in rows_)
 
 
 def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() -> None:
@@ -1382,13 +1447,8 @@ def test_the_expected_candidate_figures_sum_their_credited_committees() -> None:
 def test_the_expected_reconciliation_lists_each_committee_over_its_reported_figure_by_1pct() -> (
     None
 ):
-    listed = {
-        committee_id: [
-            "individual_itemized",
-            fundlens,
-            reported_itemized,
-            coverage(fundlens, reported_itemized),
-        ]
+    itemized = {
+        committee_id: [fundlens, reported_itemized, coverage(fundlens, reported_itemized)]
         for committee_id, (fundlens, reported_itemized, _, _) in EXPECTED["gold_reported"][
             "committees"
         ].items()
@@ -1396,8 +1456,22 @@ def test_the_expected_reconciliation_lists_each_committee_over_its_reported_figu
         and committee_id not in CONDUITS.values()
         and fundlens - reported_itemized > Decimal("0.01") * reported_itemized
     }
+    # Operating expenditures (spec §5.6): counted spending against the reported figure, conduits
+    # included.
+    column = EXPECTED["reported_totals"]["columns"].index("operating_expenditures")
+    reported_totals = EXPECTED["reported_totals"]["reported_total"][2024]
+    spending: dict[str, list[Any]] = {}
+    for committee_id, spent in EXPECTED["operating_expenditures"]["by_committee"].items():
+        reported = reported_totals.get(committee_id, [None] * (column + 1))[column]
+        fundlens = Decimal(spent)
+        if reported is not None and fundlens - reported > Decimal("0.01") * reported:
+            ratio = round(float(fundlens) / reported, 4) if reported else None
+            spending[committee_id] = [int(fundlens), reported, ratio]
 
-    assert EXPECTED["gold_reported"]["reconciliation"] == listed
+    assert EXPECTED["gold_reported"]["reconciliation"] == {
+        "individual_itemized": itemized,
+        "operating_expenditures": spending,
+    }
 
 
 GIFT_SIZE_BUCKETS = ("200_or_less", "under_500", "under_1000", "under_2000", "2000_or_more")

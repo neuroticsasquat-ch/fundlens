@@ -32,6 +32,11 @@
 -- expenditures it made, for and against candidates alike (silver's kind 'ie': 24E and 24A,
 -- NEU-2057), net of corrections: those naming no candidate of the cycle too, which are in no
 -- candidate's or race's figure. Its coordinated expenditures and communication costs are not.
+-- total_operating_expenditures is its counted operating expenditures (silver's `counted`,
+-- every-FEC-dollar spec §5.2, §5.5), net as filed, in-kind outlays included: spending, in no
+-- receipt figure. NULL, never 0, where it has no counted row: a cycle before 2004, or one whose
+-- live build predates the table (§2, older builds), reads as not available, not as nothing spent;
+-- counted rows netting to $0 are 0.
 --
 -- The reported_* fields are FEC's figures for the committee as filed, its silver reported_total row
 -- (every-FEC-dollar spec §4.1, §4.4): NULL where it has no row or the cycle's file lacks the
@@ -121,6 +126,12 @@ independent AS (
     WHERE kind = 'ie'
     GROUP BY cycle, committee_id
 ),
+spent AS (
+    SELECT cycle, committee_id, sum(amount) AS total_operating_expenditures
+    FROM silver.operating_expenditure
+    WHERE counted
+    GROUP BY cycle, committee_id
+),
 totals AS (
     SELECT
         committee.committee_id,
@@ -146,6 +157,7 @@ totals AS (
         CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
             AS total_returned_by_candidates,
         CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total,
+        CAST(spent.total_operating_expenditures AS DECIMAL(16, 2)) AS total_operating_expenditures,
         committee.is_conduit
     FROM silver.committee AS committee
     LEFT JOIN received USING (cycle, committee_id)
@@ -153,6 +165,7 @@ totals AS (
     LEFT JOIN from_organizations USING (cycle, committee_id)
     LEFT JOIN to_candidates USING (cycle, committee_id)
     LEFT JOIN independent USING (cycle, committee_id)
+    LEFT JOIN spent USING (cycle, committee_id)
 ),
 itemized AS (
     SELECT

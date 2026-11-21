@@ -539,16 +539,28 @@ def test_reconciliation_lists_the_committees_over_their_reported_figure(
 ) -> None:
     page = ok(client.get("/v1/reconciliation", params={"cycle": CYCLE}))
 
+    # Both measures (every-FEC-dollar spec §4.5, §5.6), the largest excess first.
+    listed: list[tuple[int, str, str, list[Any]]] = [
+        (fundlens - reported, committee_id, measure, [fundlens, reported, ratio])
+        for measure, committees in GOLD_REPORTED["reconciliation"].items()
+        for committee_id, (fundlens, reported, ratio) in committees.items()
+    ]
+    expected = [
+        [committee_id, measure, *figures]
+        for _, committee_id, measure, figures in sorted(
+            listed, key=lambda row: (-row[0], row[1], row[2])
+        )
+    ]
     assert [
         [
             row["committee_id"],
             row["measure"],
             row["fundlens"],
             row["reported"],
-            round(row["ratio"], 4),
+            None if row["ratio"] is None else round(row["ratio"], 4),
         ]
         for row in page["rows"]
-    ] == [[committee_id, *row] for committee_id, row in GOLD_REPORTED["reconciliation"].items()]
+    ] == expected
     assert [row["name"] for row in page["rows"]] == [
         ok(client.get(f"/v1/committees/{row['committee_id']}"))["name"] for row in page["rows"]
     ]
@@ -577,7 +589,8 @@ def planted_reconciliation(conninfo: str, rows: list[tuple[str, int, int]]) -> G
 
 
 def test_reconciliation_pages_by_excess_then_committee(client: TestClient, gold_db: str) -> None:
-    """One row a page: the largest excess first, a tie by committee id (C00800109's is $100)."""
+    """One row a page: the largest excess first, a tie by committee id (C00800109's itemized
+    figure is $100 over; the fixture's spending rows, §5.6, lie between)."""
     app = cast(FastAPI, client.app)
     app.dependency_overrides[get_page_size] = lambda: 1
     seen: list[str] = []
@@ -598,7 +611,16 @@ def test_reconciliation_pages_by_excess_then_committee(client: TestClient, gold_
     finally:
         del app.dependency_overrides[get_page_size]
 
-    assert seen == ["C00800102", "C00800101", "C00800109"]
+    assert seen == [
+        "C00703975",
+        "C00800205",
+        "C00800115",
+        "C00800102",
+        "C00800203",
+        "C00800114",
+        "C00800101",
+        "C00800109",
+    ]
 
 
 def test_reconciliation_needs_a_known_cycle_and_its_own_cursor(client: TestClient) -> None:

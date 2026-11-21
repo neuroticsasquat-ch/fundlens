@@ -1987,7 +1987,7 @@
         "type": "object"
       },
       "Reconciliation": {
-        "description": "`gold.reconciliation`: a committee whose itemized total exceeds its reported total by more\nthan 1% (every-FEC-dollar spec \u00a74.5). Never a build failure: reported totals lag amendments,\nand a filer's line choice is not fundlens's to fix.",
+        "description": "`gold.reconciliation`: a committee whose fundlens figure exceeds its reported one by more\nthan 1% on a measure (every-FEC-dollar spec \u00a74.5, \u00a75.6). Never a build failure: reported totals\nlag amendments, and a filer's line choice is not fundlens's to fix.",
         "properties": {
           "committee_id": {
             "title": "Committee Id",
@@ -3722,7 +3722,7 @@
     },
     "/v1/reconciliation": {
       "get": {
-        "description": "A cycle's committees over FEC's reported figure by more than 1%, the largest excess first.\nEmpty before 2008, whose files have no itemized figure.",
+        "description": "A cycle's committees over FEC's reported figure by more than 1%, on any measure, the largest\nexcess first. Empty before 2008, whose files have neither reported figure.",
         "operationId": "list_reconciliation_v1_reconciliation_get",
         "parameters": [
           {

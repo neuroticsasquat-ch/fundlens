@@ -25,7 +25,12 @@
 -- ie_support and ie_oppose are the independent expenditures for and against the candidate
 -- (silver's kind 'ie': 24E and 24A, NEU-2057), net of corrections, by anyone: spending, never money
 -- the candidate received, in no figure above. A coordinated expenditure or communication cost is
--- in neither.
+-- in neither. total_operating_expenditures is the counted operating expenditures silver credits to
+-- the candidate (its `candidate_id`, contribution's credit rule: a handed-off committee's by the
+-- row's date, so C00703975's 2024 spending before 2024-07-21 is BIDEN's and the rest HARRIS's;
+-- every-FEC-dollar spec §5.5), net as filed: spending, in no receipt figure. NULL, never 0, where
+-- none is credited. reported_operating_expenditures (below) is the handed-off committee's whole for
+-- the second candidate, so the two are not comparable at a handoff.
 --
 -- The reported_* fields are FEC's figures (every-FEC-dollar spec §4.3, §4.4). From 2008 they are
 -- the sums of the candidate's credited committees' committee_cycle figures, each NULL when none of
@@ -92,6 +97,12 @@ independent AS (
         coalesce(sum(amount) FILTER (WHERE support_oppose = 'O'), 0) AS ie_oppose
     FROM silver.independent_expenditure
     WHERE kind = 'ie' AND candidate_id IS NOT NULL
+    GROUP BY cycle, candidate_id
+),
+spent AS (
+    SELECT cycle, candidate_id, sum(amount) AS total_operating_expenditures
+    FROM silver.operating_expenditure
+    WHERE counted AND candidate_id IS NOT NULL
     GROUP BY cycle, candidate_id
 ),
 credited AS (
@@ -223,6 +234,7 @@ SELECT
     CAST(coalesce(money.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(coalesce(independent.ie_support, 0) AS DECIMAL(16, 2)) AS ie_support,
     CAST(coalesce(independent.ie_oppose, 0) AS DECIMAL(16, 2)) AS ie_oppose,
+    CAST(spent.total_operating_expenditures AS DECIMAL(16, 2)) AS total_operating_expenditures,
     CASE
         -- A cycle with no contributions at all has nothing to leave unresolved.
         WHEN coalesce(resolved.resolved, true) THEN CAST(coalesce(money.contributor_count, 0) AS INTEGER)
@@ -262,6 +274,7 @@ LEFT JOIN money USING (cycle, candidate_id)
 LEFT JOIN from_committees USING (cycle, candidate_id)
 LEFT JOIN jfc_transfers USING (cycle, candidate_id)
 LEFT JOIN independent USING (cycle, candidate_id)
+LEFT JOIN spent USING (cycle, candidate_id)
 LEFT JOIN credited_itemized USING (cycle, candidate_id)
 LEFT JOIN reported USING (cycle, candidate_id)
 WHERE candidate.alias_of IS NULL;
