@@ -278,7 +278,7 @@ Every sub-item and every memo row is kept, with `counted` false, so the itemized
 
 **Checks** (NEU-2152): `silver_operating_expenditure_key.sql` (key unique); `..._committee.sql` (committee in `committee`); `..._counted_once.sql` (no row with `parent_source_record_id` set is counted); `..._no_contribution.sql` (no `source_record_id` is in `contribution`, `committee_transfer`, `organization_receipt` or `independent_expenditure`; the measurement found none, Q7).
 
-**Memory.** The table holds about 0.87 GiB for 2024, which puts the transform's peak at about 27.35 GiB under the 29.80 GiB limit. The transform writes it first and drops each table once written (`WRITTEN_FIRST` in `transform/runner.py`, NEU-2152), so it is gone before `contribution`'s write, the transform's peak (Q1, Decision 7).
+**Memory.** The table holds 0.68 GiB in DuckDB for 2024, and nothing once written. The transform writes it first and drops each table once written (`WRITTEN_FIRST` in `transform/runner.py`, NEU-2152), so it is gone before `contribution`'s write, the transform's peak (Q1, Decision 7). The peak is not the sum of the tables. Build `20261121T211606Z` peaked at 27.44 GiB in that write, 12.56 GiB under the container's 40 GiB. DuckDB spilled 0.21 GiB during it, and about 1.7 GiB of the process sat outside DuckDB as it began: memory the allocator kept from earlier queries and writes. The same code's peak moves 2 GiB between runs. So a new silver table is measured by DuckDB's own figure across its model in the transform's `memory after <step>` lines, not by the run's peak (NEU-2408, `docs/capacity.md`).
 
 ### 5.2 What counts
 
