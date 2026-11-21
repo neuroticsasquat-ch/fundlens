@@ -14,7 +14,8 @@ persistent donor_id in `app.crosswalk` (`resolve.crosswalk`), rewrites each cycl
 `contribution`, `jfc_attribution` and `contributor` partitions with it, and writes a `resolved`
 marker for each cycle's transformed build and, last, the run's record (`RunRecord`) beside its
 model, which makes that model the live model (`model.live_version`).
-Splink's scratch tables are dropped as soon as the run has used them (`model.drop_scratch`).
+Splink's scratch tables are dropped as soon as the run has used them (`model.drop_scratch`),
+and once the working file is closed it is rewritten without the blocks they left free (NEU-2406).
 DuckDB runs under the pipeline's memory limit and
 spills under `scratch/`, and each phase's wall time is logged.
 
@@ -24,6 +25,7 @@ not seen, against that working file and with the live model, untrained: the week
 
 import json
 import logging
+import os
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -54,7 +56,7 @@ from fundlens.resolve.cluster import (
     components_at,
     recluster,
 )
-from fundlens.transform.runner import Limits, literal
+from fundlens.transform.runner import DuckDBConfig, Limits, literal
 
 log = logging.getLogger(__name__)
 
@@ -258,12 +260,72 @@ def _phase(name: str, times: dict[str, float]) -> Generator[None]:
 
 
 def _fresh_database(data_dir: Path) -> Path:
-    """The working file, with any earlier run's removed: `--full` rebuilds it whole."""
+    """The working file, with any earlier run's removed: `--full` rebuilds it whole. So is any
+    copy an interrupted compaction left, which would otherwise hold disk through the run's peak."""
     database = paths.resolution_database(data_dir)
     database.parent.mkdir(parents=True, exist_ok=True)
-    for stale in (database, database.with_name(database.name + ".wal")):
-        stale.unlink(missing_ok=True)
+    for stale in (database, _compact_path(database)):
+        _remove_database(stale)
     return database
+
+
+def _remove_database(path: Path) -> None:
+    """Remove the DuckDB file `path` and its WAL, either of which may be missing."""
+    for part in (path, path.with_name(path.name + ".wal")):
+        part.unlink(missing_ok=True)
+
+
+def _compact_path(database: Path) -> Path:
+    """Where `_compact` writes the working file's copy, beside it."""
+    return database.with_name("resolve.compact.duckdb")
+
+
+def _copy_database(source: Path, target: Path, *, config: DuckDBConfig) -> None:
+    """Copy every table of the DuckDB file `source` into a new file `target`, which holds no
+    free blocks."""
+    with duckdb.connect(config=config) as con:
+        con.execute(f"ATTACH {literal(source)} AS working (READ_ONLY)")
+        con.execute(f"ATTACH {literal(target)} AS compacted")
+        con.execute("COPY FROM DATABASE working TO compacted")
+        con.execute("CHECKPOINT compacted")
+        con.execute("DETACH compacted")
+        con.execute("DETACH working")
+
+
+def _gib(path: Path) -> float:
+    return path.stat().st_size / 2**30
+
+
+def _compact(database: Path, *, config: DuckDBConfig) -> None:
+    """Rewrite the closed working file `database` without its free blocks (NEU-2406).
+
+    DuckDB never gives a file's free blocks back to the disk, and `--full` drops most of what it
+    wrote (Splink's scratch and working tables), so the file would stay at the run's peak: 102
+    GiB against 13.5 GiB of live data on every cycle since 1980. The copy is renamed over the
+    file, atomically. A copy that fails, most likely for want of disk, is removed and the run
+    goes on with the file as it is: still a valid working file, only large, which is not worth
+    hours of training and clustering.
+    """
+    compacted = _compact_path(database)
+    _remove_database(compacted)
+    before = _gib(database)
+    try:
+        _copy_database(database, compacted, config=config)
+    except (duckdb.Error, OSError) as exc:
+        _remove_database(compacted)
+        log.warning(
+            "resolve: left the working file uncompacted at %.2f GiB, the copy failed: %s",
+            before,
+            exc,
+        )
+        return
+    # The copy holds anything a WAL left beside the file held: replayed onto the copy, it would
+    # corrupt it.
+    database.with_name(database.name + ".wal").unlink(missing_ok=True)
+    os.replace(compacted, database)
+    log.info(
+        "resolve: compacted the working file from %.2f GiB to %.2f GiB", before, _gib(database)
+    )
 
 
 def _saved_model(store: R2, version: str) -> dict[str, Any]:
@@ -298,9 +360,9 @@ def resolve_full(
     cluster cap `max_keys`, then apply the overrides file at `overrides_path` and the confident
     verdicts of `adjudication` (`adjudicate.apply`); write the model as version `build_id` right
     after training, then the `edge`, `component` and `cluster` tables, the crosswalk, each
-    cycle's silver with its donor_ids, each cycle's `resolved` marker and, last, the run's record
-    naming `release`, which makes the model live (spec §6.3–§6.6, §5.1, NEU-2122, NEU-2056,
-    NEU-2325).
+    cycle's silver with its donor_ids, the working file compacted (`_compact`), each cycle's
+    `resolved` marker and, last, the run's record naming `release`, which makes the model live
+    (spec §6.3–§6.6, §5.1, NEU-2122, NEU-2056, NEU-2325, NEU-2406).
 
     With `reuse`, the model saved as version `build_id` is read back from R2 instead: nothing is
     trained or saved, and the rest of the run is the same, under that version.
@@ -391,6 +453,8 @@ def resolve_full(
                 )
                 for cycle, build in builds.items()
             }
+    with _phase("compact", times):
+        _compact(database, config=limits.duckdb_config(scratch))
     finished_at = datetime.now(UTC)
     for cycle, build in builds.items():
         markers.write(
