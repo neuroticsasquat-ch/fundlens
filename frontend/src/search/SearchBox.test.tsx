@@ -106,6 +106,26 @@ describe("SearchBox", () => {
     expect(box()).toHaveValue("");
   });
 
+  it("skips a payee hit, which has no page yet, when Enter opens the top hit", async () => {
+    const payee: SearchResult = {
+      kind: "payee",
+      id: "6f774ca924cb0a0b",
+      name: "MARYLAND MEDIA LLC",
+      aliases: null,
+      score: 0.95,
+    };
+    const { router } = renderApp("/methodology", {
+      handlers: [recording(() => [payee, ...MARYLAND])],
+    });
+
+    await type("maryland");
+    await screen.findByRole("option", { name: "2024 Senate MD" });
+    expect(screen.queryByRole("option", { name: /MARYLAND MEDIA/ })).not.toBeInTheDocument();
+    key("Enter");
+
+    expect(router.state.location.pathname).toBe("/committee/C00800103");
+  });
+
   it("opens the highlighted option on Down then Enter", async () => {
     const { router } = renderApp("/methodology", { handlers: [recording(() => MARYLAND)] });
 

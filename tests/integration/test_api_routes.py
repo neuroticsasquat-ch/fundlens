@@ -605,6 +605,85 @@ def test_a_cycles_races_and_their_candidates_have_their_spending(client: TestCli
     }
 
 
+@pytest.mark.parametrize("payee_key", sorted(SPENDING["payees"]))
+def test_a_payee_page_has_its_cycles_and_the_committees_that_paid_it(
+    client: TestClient, payee_key: str
+) -> None:
+    # Every payee with a page as gold's payee, payee_cycle and payee_top_payer hold it
+    # (every-FEC-dollar spec §5.5): BLUE HARBOR STRATEGIES, say, under its most-money spelling and
+    # paid by both committees. Each payer has the candidate its rows are credited to, or none.
+    expected = SPENDING["payees"][payee_key]
+    body = ok(client.get(f"/v1/payees/{payee_id(payee_key)}", params={"cycle": CYCLE}))
+
+    assert {k: body[k] for k in ("payee_id", "payee_key", "display_name", "city", "state")} == {
+        "payee_id": payee_id(payee_key),
+        "payee_key": payee_key,
+        "display_name": expected["name"],
+        "city": expected["city"],
+        "state": expected["state"],
+    }
+    assert (body["total_all_cycles"], body["first_cycle"], body["last_cycle"]) == (
+        dollars(expected["total"]),
+        CYCLE,
+        CYCLE,
+    )
+    assert body["cycles"] == [
+        {
+            "cycle": CYCLE,
+            "total": dollars(expected["total"]),
+            "committee_count": expected["committees"],
+        }
+    ]
+    assert body["cycle"] == CYCLE
+    assert [[p["committee_id"], p["candidate_id"], p["amount"]] for p in body["top_payers"]] == [
+        [committee, candidate, dollars(amount)]
+        for committee, candidate, amount in expected["payers"]
+    ]
+    assert [p["rank"] for p in body["top_payers"]] == list(range(1, len(body["top_payers"]) + 1))
+    assert all(
+        (p["candidate_name"] is None) == (p["candidate_id"] is None) for p in body["top_payers"]
+    )
+
+
+def test_a_payee_page_names_who_paid_it_and_defaults_to_its_last_cycle(
+    client: TestClient,
+) -> None:
+    # Each payer under the name its own committee and candidate pages give it.
+    body = ok(client.get(f"/v1/payees/{payee_id('BLUE HARBOR STRATEGIES')}"))
+
+    assert body["cycle"] == body["last_cycle"] == CYCLE
+    assert [
+        [p["committee_id"], p["committee_name"], p["candidate_id"], p["candidate_name"]]
+        for p in body["top_payers"]
+    ] == [
+        [
+            committee_id,
+            ok(client.get(f"/v1/committees/{committee_id}"))["name"],
+            candidate_id,
+            ok(client.get(f"/v1/candidates/{candidate_id}"))["name"],
+        ]
+        for committee_id, candidate_id in [("C00800103", "S4MD00103"), ("C00800104", "S4MD00104")]
+    ]
+
+
+def test_a_payee_page_in_a_cycle_it_was_not_paid_lists_no_payers(client: TestClient) -> None:
+    body = ok(
+        client.get(f"/v1/payees/{payee_id('BLUE HARBOR STRATEGIES')}", params={"cycle": 2020})
+    )
+
+    assert body["cycle"] == 2020
+    assert body["top_payers"] == []
+    assert [c["cycle"] for c in body["cycles"]] == [CYCLE]
+
+
+def test_an_unknown_payee_is_a_404_and_a_malformed_id_or_cycle_a_422(client: TestClient) -> None:
+    # A person's key has no page (ADR-0012), so it is unknown as any other id is.
+    assert_not_found(client.get(f"/v1/payees/{payee_id('DELGADO MARIA')}"))
+    assert_not_found(client.get("/v1/payees/0000000000000000"))
+    assert client.get("/v1/payees/not-a-payee").status_code == 422
+    assert client.get(f"/v1/payees/{payee_id('BGE')}", params={"cycle": 2023}).status_code == 422
+
+
 def test_reconciliation_lists_the_committees_over_their_reported_figure(
     client: TestClient,
 ) -> None:
@@ -783,12 +862,12 @@ def test_gold_finds_a_payee_by_part_of_its_name(gold_db: str) -> None:
     assert payee_id == hashlib.sha256(b"BLUE HARBOR STRATEGIES").hexdigest()[:16]
 
 
-def test_search_returns_no_payee_until_a_route_serves_them(client: TestClient) -> None:
-    # Gold holds payee rows, which SearchResult has no kind for until NEU-2157: the route leaves
-    # them out rather than fail to serialize them.
-    results = ok(client.get("/v1/search", params={"q": "blue harbor strategies"}))
+def test_search_finds_a_payee_by_part_of_its_name(client: TestClient) -> None:
+    results = ok(client.get("/v1/search", params={"q": "blue harbor"}))
+    payees = ok(client.get("/v1/search", params={"q": "harbor", "kind": "payee"}))
 
-    assert "payee" not in {r["kind"] for r in results}
+    assert {"kind": "payee", "id": payee_id("BLUE HARBOR STRATEGIES")}.items() <= results[0].items()
+    assert payees and {r["kind"] for r in payees} == {"payee"}
 
 
 def test_search_needs_a_query(client: TestClient) -> None:
@@ -820,6 +899,7 @@ def test_routes_are_cached_under_the_build(client: TestClient) -> None:
         "/v1/races/2024/senate/MD",
         "/v1/candidates/S4MD00103",
         "/v1/committees/C00800114",
+        f"/v1/payees/{payee_id('BLUE HARBOR STRATEGIES')}",
         f"/v1/reconciliation?cycle={CYCLE}",
         "/v1/search?q=calloway",
     ],

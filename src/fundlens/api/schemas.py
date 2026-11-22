@@ -15,7 +15,7 @@ from fundlens.transform import spending
 PROBLEM_JSON = "application/problem+json"
 
 type Office = Literal["H", "S", "P"]
-type SearchKind = Literal["donor", "candidate", "committee", "race"]
+type SearchKind = Literal["donor", "candidate", "committee", "race", "payee"]
 # Where a row's reported figures came from (every-FEC-dollar spec §4.1, §4.2): a committee's from
 # `committee_summary` (2008 on, `+webk` where a Form 5 or 7 filer's blanks were filled), `webk`
 # (1996-2006); a candidate's summed from their committees' (`committee_summary`) or `weball`.
@@ -628,6 +628,52 @@ class Donor(BaseModel):
     top_recipients: list[DonorTopRecipient]
 
 
+class PayeeCycle(BaseModel):
+    """`gold.payee_cycle`: what committees paid a payee in one cycle, net as filed
+    (every-FEC-dollar spec §5.4, §5.5)."""
+
+    cycle: int
+    total: float
+    # How many committees paid it in the cycle.
+    committee_count: int
+
+
+class PayeeTopPayer(BaseModel):
+    """`gold.payee_top_payer`: one of the 100 committees that paid a payee most in a cycle."""
+
+    rank: int
+    committee_id: str
+    committee_name: str | None
+    # The candidate the committee's payments to it are credited to: the one with more of the
+    # amount where a handoff gives two, None for a committee raising for no candidate.
+    candidate_id: str | None
+    candidate_name: str | None
+    amount: float
+
+
+class Payee(BaseModel):
+    """A payee page: `gold.payee`, the payments committees reported to one payee key, grouped by
+    normalized name and never resolved (ADR-0012), a row per cycle, newest first, and who paid it
+    most in `cycle`. A sub-item and an in-kind outlay reach no payee (every-FEC-dollar spec
+    §5.4)."""
+
+    payee_id: str
+    # The normalized name the payments are grouped by.
+    payee_key: str
+    # Each the value with the most payee dollars over every cycle.
+    display_name: str
+    city: str | None
+    state: str | None
+    total_all_cycles: float
+    first_cycle: int
+    last_cycle: int
+    cycles: list[PayeeCycle]
+    # The cycle top_payers is for: the one asked for, else last_cycle.
+    cycle: int
+    # Most first; empty in a cycle it was not paid in.
+    top_payers: list[PayeeTopPayer]
+
+
 class ContributionPage(BaseModel):
     """A page of contributions, newest first; `next_cursor` fetches the next, None on the last."""
 
@@ -666,11 +712,12 @@ class SearchResult(BaseModel):
     """`gold.search_entity`: one match, best first."""
 
     kind: SearchKind
-    # A candidate's or committee's FEC id, a race's race_id, a donor's donor_id.
+    # A candidate's or committee's FEC id, a race's race_id, a donor's donor_id, a payee's
+    # payee_id.
     id: str
     name: str
     # The second string matched on: a race's slug, a candidate's principal committee, a
-    # committee's connected organisation.
+    # committee's connected organisation, a payee's other reported spellings.
     aliases: str | None
     # pg_trgm word similarity of the query to the better of name and aliases, 0 to 1.
     score: float

@@ -18,6 +18,8 @@ export function searchTarget(result: SearchResult): string {
       return `/committee/${result.id}`;
     case "donor":
       return `/donor/${result.id}`;
+    case "payee":
+      return `/payee/${result.id}`;
   }
 }
 
@@ -31,9 +33,17 @@ export const KIND_LABELS: Record<SearchKind, string> = {
   candidate: "Candidates",
   committee: "Committees",
   donor: "Donors",
+  payee: "Payees",
 };
 
+// Payees are searchable (NEU-2157) but get their page and badge in NEU-2159, which adds them here.
 const KIND_ORDER: SearchKind[] = ["race", "candidate", "committee", "donor"];
+
+/** The hits of the kinds the SPA shows, in the API's order: the rest are neither listed, opened on
+ * Enter nor counted toward "no results". */
+export function shownResults(results: SearchResult[]): SearchResult[] {
+  return results.filter((result) => KIND_ORDER.includes(result.kind));
+}
 
 export type SearchGroup = {
   kind: SearchKind;

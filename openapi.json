@@ -1757,6 +1757,174 @@
         "title": "OperatingExpenditurePage",
         "type": "object"
       },
+      "Payee": {
+        "description": "A payee page: `gold.payee`, the payments committees reported to one payee key, grouped by\nnormalized name and never resolved (ADR-0012), a row per cycle, newest first, and who paid it\nmost in `cycle`. A sub-item and an in-kind outlay reach no payee (every-FEC-dollar spec\n\u00a75.4).",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "cycles": {
+            "items": {
+              "$ref": "#/components/schemas/PayeeCycle"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "first_cycle": {
+            "title": "First Cycle",
+            "type": "integer"
+          },
+          "last_cycle": {
+            "title": "Last Cycle",
+            "type": "integer"
+          },
+          "payee_id": {
+            "title": "Payee Id",
+            "type": "string"
+          },
+          "payee_key": {
+            "title": "Payee Key",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "top_payers": {
+            "items": {
+              "$ref": "#/components/schemas/PayeeTopPayer"
+            },
+            "title": "Top Payers",
+            "type": "array"
+          },
+          "total_all_cycles": {
+            "title": "Total All Cycles",
+            "type": "number"
+          }
+        },
+        "required": [
+          "payee_id",
+          "payee_key",
+          "display_name",
+          "city",
+          "state",
+          "total_all_cycles",
+          "first_cycle",
+          "last_cycle",
+          "cycles",
+          "cycle",
+          "top_payers"
+        ],
+        "title": "Payee",
+        "type": "object"
+      },
+      "PayeeCycle": {
+        "description": "`gold.payee_cycle`: what committees paid a payee in one cycle, net as filed\n(every-FEC-dollar spec \u00a75.4, \u00a75.5).",
+        "properties": {
+          "committee_count": {
+            "title": "Committee Count",
+            "type": "integer"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cycle",
+          "total",
+          "committee_count"
+        ],
+        "title": "PayeeCycle",
+        "type": "object"
+      },
+      "PayeeTopPayer": {
+        "description": "`gold.payee_top_payer`: one of the 100 committees that paid a payee most in a cycle.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Name"
+          },
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "committee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committee Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "committee_id",
+          "committee_name",
+          "candidate_id",
+          "candidate_name",
+          "amount"
+        ],
+        "title": "PayeeTopPayer",
+        "type": "object"
+      },
       "Problem": {
         "description": "An RFC 9457 problem details document (`application/problem+json`).",
         "properties": {
@@ -2728,7 +2896,8 @@
           "donor",
           "candidate",
           "committee",
-          "race"
+          "race",
+          "payee"
         ],
         "type": "string"
       },
@@ -4189,6 +4358,101 @@
           }
         },
         "summary": "Get Meta"
+      }
+    },
+    "/v1/payees/{payee_id}": {
+      "get": {
+        "operationId": "get_payee_v1_payees__payee_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payee_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{16}$",
+              "title": "Payee Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The payee's last cycle, if left out.",
+            "in": "query",
+            "name": "cycle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1980,
+                  "multipleOf": 2,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The payee's last cycle, if left out.",
+              "title": "Cycle"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payee"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Payee"
       }
     },
     "/v1/races/{cycle}/{office}/{place}": {
