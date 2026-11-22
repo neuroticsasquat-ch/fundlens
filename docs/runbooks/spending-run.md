@@ -924,3 +924,155 @@ Open one PR, `docs(runbooks): log the 2024 spending run (NEU-2160)`, with the en
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-22 — 2024 with spending and payees (NEU-2160)
+
+Run 2026-11-22 20:26 to 23:31 UTC. Started on `bc60bbce14215fd80d76a6f6b6e8e1c9fb2fce66`, and from step 2 on
+`f4ad07f090ee978b5905e1d561efe8b2bbacf7c9` (below). Build `20261122T205402Z`; live before: `20261120T212246Z`.
+`gold_prev` after publish: `20261122T030019Z`, 2026's build as reloaded at 18:48 UTC, with 2026's spending, so a
+rollback stays safe.
+
+**The Facts were stale in two places.**
+
+- **2024's live build was `20261120T212246Z`, not `20261119T212247Z`.** No Log records it. It started at 21:22 UTC
+  on 2026-11-20, after NEU-2402 merged at 20:48, and its `transformed` marker equals the reference's on every v1
+  table (`contribution` 50,085,820), so NEU-2400 to NEU-2402 were already live. Step 7.3 therefore expected
+  nothing to move, and nothing did.
+- **`gold` had been reloaded at 18:48 UTC** with the same 2026 build `gold_prev` held.
+
+**Deviation: nameparser re-keyed contributors (NEU-2458).** Step 1.2's markers differed on `contributor`: 5,504,651
+on the live build, 5,504,466 on the reference. Dependabot's group bump `ddff7ef` (2026-11-21) had moved
+nameparser from 3.0.1 to 3.1.0. It reads dotted initials differently (`SHROLL, C.J.`: `SHROLL, CJ` →
+`SHROLL, C J`; `KELSEY, T.D.`: `KELSEY` → `KELSEY, T D`), and so re-keyed 11,198 2024 contributions: 1,749 keys
+only in the live build, 1,753 only in the reference. Step 5's gate would have stopped on about 1,750 new keys.
+PR #225 pinned `nameparser==3.0.1`, added a test that fails on 3.1.0, and set Dependabot to ignore it. It merged
+at 20:48 UTC, before step 2, and the run continued on `f4ad07f`. 2026's live build was transformed on 3.1.0; its
+next weekly transform gives the 3.0.1 keys back.
+
+**Bronze.** The v1 files were the live build's: `cm`, `cn`, `ccl` of 2026-11-15; `indiv`, `pas2`, `oth` of
+2026-11-16; `weball`, `webk` of 2026-11-19. Downloaded: `bronze/cycle=2024/oppexp/2026-11-22.zip` and
+`bronze/cycle=2024/committee_summary/2026-11-22.csv`.
+
+| Step | Time | Notes |
+| --- | ---: | --- |
+| extract | 26.2 s | `oppexp` and `committee_summary` |
+| seats | 5.2 s | 441 House, 35 Senate (2 special), 1 presidential race; 49 unmatched filings |
+| transform | 1854.7 s (31m0s) | only `contributor` moved from the reference, back to the live build's 5,504,651 |
+| resolve | 421.0 s (7m7s) | `0 new contributor keys of 5504651`; crosswalk 0 new donors, 0 re-pointed, 0 redirects |
+| load | 1766.0 s (29m32s) | aggregates 852.91 s, copy 883.45 s; every gold check passed |
+| publish | 144.6 s (2m36s) | pruned 1 silver build (267 objects) |
+
+**Spending line:** `operating_expenditure 2024: 2,246,038 rows, 1,550,225 counted, $9,594,284,292.22 counted,
+$362,505,186.62 (3.78%) unclassified`. It is identical to the reference's on FEC's 2026-11-22 zip, and to spec
+§5.1's derived 1,550,225 rows and $9,594,284,292. The unclassified share is 3.78%, against the 10% bar. Load:
+`committee_spending_category` 91,646, `committee_top_payee` 273,858, `payee` 93,386 (51,507 before),
+`payee_cycle` 112,497, `payee_top_payer` 231,201, `reconciliation` 385 rows. 8,821 committees have 2024 spending.
+167 GB free after publish.
+
+**Memory (step 4.1), against NEU-2149's estimate.** Peak resident 28.53 GiB, set in `write contribution 2024`, 1.27
+GiB under DuckDB's 29.80 GiB limit: the reference's 27.44 GiB plus 1.09, inside the 2 GiB run-to-run spread, and
+NEU-2149's estimated 27.35 GiB plus 1.18. The table held 0.69 GiB in DuckDB (19.43 → 20.12 GiB across
+`silver operating_expenditure 2024`), against the estimate's 0.87. It was gone (19.43 GiB) after its write,
+before `contribution`'s. DuckDB first spilled 0.42 GiB in `write contribution`. All 83 lines logged. NEU-2455's
+falling peak (PR #221, held during the run) did not occur: the peak only rose.
+
+**Step 7.1, ten committees against FEC** (`read bronze/cycle=2024/committee_summary/2026-11-22.csv`):
+
+| Id | Name | Group | Counted (fundlens) | Reported (gold) | FEC's file | Equal | Counted ÷ reported | Reported − counted |
+| --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: |
+| C00840017 | ALSOBROOKS FOR SENATE | candidate | 30,482,880.86 | 30,486,006.44 | 30,486,006.44 | yes | 99.99% | 3,125.58 |
+| C00264697 | DIGNITY OF WORK PAC | other | 97,460,584.55 | 97,467,283.58 | 97,467,283.58 | yes | 99.99% | 6,699.03 |
+| C00703975 | FIGHT FOR THE PEOPLE PAC | other | 1,153,258,804.61 | 1,154,387,275.14 | 1,154,387,275.14 | yes | 99.90% | 1,128,470.53 |
+| C00853473 | JONATHAN NEZ FOR CONGRESS | candidate | 5,359,336.00 | 5,052,382.61 | 5,052,382.61 | yes | 106.08% | -306,953.39 |
+| C00835959 | FAIRSHAKE | super PAC | 68,913,945.83 | 68,914,690.82 | 68,914,690.82 | yes | 100.00% | 744.99 |
+| C00571703 | SLF PAC | super PAC | 18,069,706.89 | 18,070,266.21 | 18,070,266.21 | yes | 100.00% | 559.32 |
+| C00494021 | CATHOLICVOTE.ORG CANDIDATE FUND | super PAC | 321,708.24 | 122,191.24 | 122,191.24 | yes | 263.28% | -199,517.00 |
+| C00003418 | REPUBLICAN NATIONAL COMMITTEE | party | 246,620,959.33 | 254,881,719.72 | 254,881,719.72 | yes | 96.76% | 8,260,760.39 |
+| C00010603 | DNC SERVICES CORP / DEMOCRATIC NATIONAL COMMITTEE | party | 420,805,013.05 | 432,917,394.22 | 432,917,394.22 | yes | 97.20% | 12,112,381.17 |
+| C00401224 | ACTBLUE | other | 87,074,366.99 | 87,074,366.99 | 87,074,366.99 | yes | 100.00% | 0.00 |
+
+`comparisons: 10; reported equal to the file: 10; counted over reported by more than 1%: 2`. `gold.committee`
+names a committee by its latest cycle. `C00264697` is Brown's 2024 Senate campaign and `C00703975` the
+Biden-then-Harris committee, both since turned PACs and counted whole (spec §5.5). Each gap:
+
+- **Within the unitemized:** Alsobrooks, Brown and Fairshake at 99.99–100.00%, SLF at 100.00%, the Biden/Harris
+  committee at 99.90%, all above Q11b's group medians. ActBlue is exact.
+- **Nez, +$306,953.39.** On the same eight filings FEC lists as most recent, the filer's itemized line 17 exceeds
+  its own summary on the 12G 2024 (`1842067`: $1,195,143.66 against $1,096,187.77, +$98,955.89) and the 30G 2024
+  (`1858999`: $1,669,033.51 against $1,455,401.62, +$213,631.89). The other six reports are $5,634.39 under,
+  within the unitemized. The filer's summary disagrees with its own Schedule B; fundlens counts the Schedule B
+  as filed.
+- **CatholicVote, +$199,517.00.** Seven reports match FEC's period figures within $483 in all. On the 30G 2024
+  (`1859042`), FEC's summary is −$233,861.28, while the four itemized rows net −$33,861.28. The filer reversed the
+  12G's $250,000 to Schedule E on its summary, but itemized only RumbleUp's −$50,000 ("IE PAID 10/8, SEE SCH E").
+- **RNC 96.76% (−$8,260,760.39) and DNC 97.20% (−$12,112,381.17): a gap in FEC's bulk file.** Step 7.1's "party's
+  line 21(a)" explanation does not fit national committees. FEC's `/totals/` gives both $0.00 shared federal and
+  nonfederal spending, so their figure is line 21(b) alone. Their uncounted memo rows net to about $0 (the RNC's
+  HQ and convention transfers to itself), and sub-items do not track the gaps. Small itemized rows hold
+  $2,000–11,000 a month, so the gap is not unitemized payments. Silver equals FEC's raw `oppexp` (read through
+  `register_bulk`) on all 48 filings to the cent, and the repeated-row rule drops nothing. FEC's bulk file holds
+  less than FEC's own summaries: the RNC $208K–$841K short on every report from M2 2023 to M5 2024 and exact from M6
+  2024; the DNC $36K–$2.02M short to M2 2024 (and on M5 2024), within a few hundred dollars from M6 2024. A gap in
+  FEC's bulk data, for §9's raw filings to recover.
+
+**Step 7.2, reconciliation:**
+- `operating_expenditures`: 79 rows, $1,123,069.57 over, 11 at a reported $0 (spec §5.6: 63 over by $1.09M,
+  plus about 12). The top 20 are Q11d's 20, in Q11d's order, with Q11d's excesses, so none needed diagnosing.
+- `individual_itemized`: 150 rows, $50,312,619.95 over, 23 at a reported $0. NEU-2147 had 163 rows and
+  $55,349,367.42; NEU-2400 to NEU-2402 took 13 off.
+
+**Step 7.3, what else moved: nothing.** 2024's `committee_cycle`: 0 missing, 0 `itemized_total` and 0
+`total_individual` moved, $0.00 in all. DemocracyFirst, Williamson and the Georgia party are equal in both golds.
+`cycle` 2024 is $9,970,861,678 over 50,085,820 contributions, and there are 12,564,389 donors, both the same in
+both golds. Spending enters no receipt total.
+
+**Steps 9.1 to 9.3.**
+- `/v1/meta` served `20261122T205402Z`.
+- Alsobrooks's 2024: $30,482,880.86 in 15 categories summing to it, media $18,083,857.26 first. Top payees
+  GRASSROOTS MEDIA $16,429,616.69, BREAK SOMETHING INC $3,861,818.06, WAVELENGTH STRATEGY LLC $2,379,000.00, GUSTO
+  $2,140,663.90 and RWT PRODUCTIONS $725,854.24, each with a page. Her itemized list pages by 100.
+- `/payee/c18850fc2fa9d913` (GRASSROOTS MEDIA, Bala Cynwyd PA): $143,249,030.40 over 2024–2026, of it 2024
+  $135,292,306.40 from 9 committees. Its 2024 payers are Brown, Casey, Baldwin, then ALSOBROOKS FOR SENATE 4th at
+  $16,429,616.69. Payee search finds it first, with `GRASSROOTS MEDIA LLC; GRASSROOTS MEDIA, LLC`.
+- Both pages showed this in the browser.
+- Bugsink: nothing new.
+
+**Step 10, the payee review.**
+
+- **Wrong merges: none in the top 20.** Each key groups one firm's spellings, and none is a person
+  (`person_pct` 0.0):
+  - MEDIA BUYING ANALYTICS $333.8M, STRATEGIC MEDIA SERVICES $287.2M, AMERICAN EXPRESS $195.2M (631 committees)
+  - GAMBIT STRATEGIES $176.1M, SCREEN STRATEGIES MEDIA $142.7M, GRASSROOTS MEDIA $135.3M
+  - ACTBLUE TECHNICAL SERVICES $125.7M, TARGETED VICTORY $123.3M, DUPONT CIRCLE STRATEGIES $122.6M
+  - BULLY PULPIT INTERACTIVE $114.7M, GUSTO $113.1M, META $107.0M (holding `FACEBOOK` through the employer alias)
+  - WINRED TECHNICAL SERVICES $97.2M, AL MEDIA $93.3M, GOOGLE $88.0M, ONMESSAGE $85.4M
+  - MOTHERSHIP STRATEGIES $83.1M, LAUNCHPAD STRATEGIES $79.6M, MISSIONWIRED $72.0M, FLEXPOINT MEDIA $70.8M
+- **Split firms.**
+  - The measurement's three are confirmed, each filed: NEU-2460 (`AX MEDIA` $44.1M, `AXMEDIA` $18.9M), NEU-2461
+    (`TEAM DIRECT` $27.9M, `TEAMDIRECT` $20.0M), NEU-2462 (MissionWired).
+  - MissionWired has a fourth key: `MISSIONWIRED` $72.0M, `ANNE LEWIS STRATEGIES` $22.8M, `… LLC DBA MISSIONWIRED`
+    $18.7M and `MISSION WIRED` $11.6M.
+  - Nine more space splits are one ticket, NEU-2463, rather than one per firm, since each is a line in the same
+    file: `ON MESSAGE`, `SKD KNICKERBOCKER`, `WIN RED TECHNICAL SERVICES`, `WIN RED`, `ACT BLUE TECHNICAL
+    SERVICES`, `BRABENDER COX`, `DONOR BUREAU`, `ABDATA` and `GRASS ROOTS MEDIA`. NEU-2463 also lists five DBA keys
+    to check.
+- **In-kind outlays (spec §5.4's two assertions).**
+  - The structural rule flags 6,973 counted rows ($19,625,238), and the pattern alone 14,454 ($139,958,524).
+  - Precision: of the pattern's 20 largest rows, 16 are gifts. They include Coinbase's $23.0M of bitcoin and
+    $15.5M of USDC, two "petition incentives" rows of $40.5M and $11.2M, and candidates' own in-kind. Three are
+    payments the committee made, $1,339,000 together: "IN-KIND CONTRIBUTION MADE: POLLING" to House Majority PAC,
+    and two SEIU "ADVANCE PAYMENT FOR FUTURE INDEPENDENT EXPENDITURES & IN-KIND CONTRIBUTIONS". One is unclear:
+    RYFF INC., "IN-KIND: GOTV ADVERTISING", $410,000.
+  - Misses: at most 1,000 payee rows and $27,585,850.38 read as a gift received, 0.29% of $9,434,666,487.83. But all
+    20 of the largest are crypto received that the pattern misses. Coinbase's `24,999,995 USDC RECEIVED, NOT
+    LIQUIDATED` shows on its payee page as $24,999,995 paid.
+  - Both directions are filed as NEU-2464.
+- **No-page names.** `THE PAYROLL` ($816,512, one committee) is added to `fec/payee_no_page.csv` in this PR.
+  - The other 27 `… PAYROLL …` keys with a page are payroll processors (Payroll Data Processing $37.4M, ADP, Paychex, Gusto Payroll
+    Services and others), and keep them.
+  - So do the card issuers' product names (`AM EX SIMPLY CASH`, `CITI BANK DOUBLE CASH`), the union pension
+    funds and the employee associations.
+
+**Deviations, each filed:** NEU-2458 (nameparser, fixed in the run); NEU-2460, NEU-2461, NEU-2462, NEU-2463 (split
+firms); NEU-2464 (in-kind pattern). The RNC and DNC gap is FEC's bulk file, so nothing is filed. Dependabot was
+re-enabled after step 10.
