@@ -693,3 +693,15 @@ Written from `main` at `be3084f` (NEU-2062 merged). Found while writing, against
   that the dump ended before `publish`.
 - **`resolve.duckdb` was compacted** from 101.6 GiB (360,262 of 416,215 blocks free) to 13.5 GiB. Step 1.2 expects
   about 14G.
+
+### 2026-11-22 — A Sunday stopped at transform, resumed (NEU-2454)
+
+- **Build `20261122T030019Z` stopped at `transform`:** `silver_reported_total_repeat.sql: ('C00830356', 2)`, nothing
+  uploaded. `committee_summary_2026.csv` lists WAYNE A POPE FOR PRESIDENT twice, both rows with a blank `CAND_ID`,
+  over different periods (2025-01-01 and 2026-07-15, both to 2026-10-15): not the per-candidate repeat the check
+  allowed for.
+- **Fixed by NEU-2454 (`fc14e04`):** `reported_total` keeps the row covering the cycle to date, and the check fails
+  only when rows over that period differ (every-FEC-dollar spec §4.1).
+- **Resumed by hand** with `run --build-id 20261122T030019Z --scheduled --dataset` once `pipeline` ran `fc14e04`:
+  `real 71m19s`, published 04:49:49 UTC, snapshot `v1/2026-11-22/` (6,345 objects in 449 s). The snapshot's
+  `Connection pool is full` warnings are its 16 copies at a time on a 16-connection pool, and harmless.
