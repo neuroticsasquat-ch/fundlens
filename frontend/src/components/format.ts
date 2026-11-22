@@ -23,6 +23,14 @@ export function reportedMoney(v: number | null | undefined): string {
   return v == null ? "not reported" : money(v);
 }
 
+/**
+ * A spending total's figure: `money`, but one fundlens has no counted payment for (a cycle before
+ * FEC's file, or a build without it) is "not available", never 0 (every-FEC-dollar spec §5.5).
+ */
+export function availableMoney(v: number | null | undefined): string {
+  return v == null ? "not available" : money(v);
+}
+
 /** `$1.2M`, `$54.8K`, `$975`. */
 export function moneyCompact(v: number | null | undefined): string {
   if (v == null) return DASH;

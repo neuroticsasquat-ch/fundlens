@@ -9,6 +9,7 @@ import type {
   Donor,
   IndependentExpenditure,
   Meta,
+  OperatingExpenditure,
   Problem,
   Race,
   RaceCandidate,
@@ -17,6 +18,7 @@ import type {
   SearchResult,
   TopDonor,
   TopOrganization,
+  TopPayee,
 } from "../api/client";
 
 const REPORTED_MEASURES = [
@@ -123,6 +125,8 @@ export const RACES: RaceSummary[] = [
     ie_support: 150000,
     ie_oppose: 125000,
     reported_cash_on_hand: 351600,
+    // WHITLOCK's and OKAFOR's; BRANNIGAN and PELL paid nothing out in oppexp.csv.
+    total_operating_expenditures: 16123.45,
   }),
   race({
     race_id: "2024-S-NE-00-special",
@@ -232,6 +236,7 @@ export const RACE_SENATE_MD: Race = {
       total_committee: 5000,
       self_funding: 1750000,
       ie_oppose: 80000,
+      total_operating_expenditures: 3900,
       ...raceReported(1942000, 1650700, 291300, 1250000, 31850),
     }),
     candidate({
@@ -245,6 +250,8 @@ export const RACE_SENATE_MD: Race = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
+      // Her principal committee's $11,223.45 and FRIENDS OF DIANA OKAFOR's $1,000.
+      total_operating_expenditures: 12223.45,
       ...raceReported(131000, 98900, 57100, 3000, 50700),
     }),
     candidate({
@@ -401,6 +408,54 @@ export const CANDIDATE_OKAFOR: Candidate = {
   ],
 };
 
+/** A committee's top payees, by rank: [payee_key, name, amount, payee_id or null for no page]. */
+const payees = (rows: [string, string, number, string | null][]): TopPayee[] =>
+  rows.map(([payee_key, name, amount, payee_id], index) => ({
+    rank: index + 1,
+    payee_key,
+    payee_id,
+    name,
+    amount,
+  }));
+
+/**
+ * The payee ids of the fixture's payee keys: SHA-256's first 16 hex digits (every-FEC-dollar spec
+ * §5.4). PATAPSCO INN is only ever a card charge, never a payee row, so it has no page.
+ */
+export const PAYEE_IDS = {
+  actblue: "64cd888f13722403",
+  americanExpress: "f218949ae6b171c7",
+  blueHarbor: "6f774ca924cb0a0b",
+  capitolCompliance: "0306cea0052a3e1a",
+  firstMariner: "944656893c7b84e9",
+  skylineAir: "e8b3fcab41b3f954",
+} as const;
+
+/**
+ * OKAFOR FOR MARYLAND's 2024 spending, as expected.yaml's `operating_expenditures` has it: its
+ * counted rows, two card bills counted once, as the bills, and an in-kind outlay in no payee's.
+ */
+const OKAFOR_SPENDING: Pick<
+  CommitteeCycle,
+  "total_operating_expenditures" | "spending_by_category" | "top_payees"
+> = {
+  total_operating_expenditures: 11223.45,
+  spending_by_category: [
+    { category: "consulting", amount: 7500 },
+    { category: "credit_card", amount: 2500 },
+    { category: "legal_compliance", amount: 750 },
+    { category: "other", amount: 350 },
+    { category: "transfers_fees", amount: 123.45 },
+  ],
+  top_payees: payees([
+    ["BLUE HARBOR STRATEGIES", "BLUE HARBOR STRATEGIES LLC", 7500, PAYEE_IDS.blueHarbor],
+    ["AMERICAN EXPRESS", "AMERICAN EXPRESS", 1250, PAYEE_IDS.americanExpress],
+    ["FIRST MARINER CARD SERVICES", "FIRST MARINER CARD SERVICES", 1250, PAYEE_IDS.firstMariner],
+    ["CAPITOL COMPLIANCE GROUP", "CAPITOL COMPLIANCE GROUP", 750, PAYEE_IDS.capitolCompliance],
+    ["ACTBLUE", "ACTBLUE", 123.45, PAYEE_IDS.actblue],
+  ]),
+};
+
 const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   cycle: 2024,
   total_individual: 0,
@@ -466,6 +521,7 @@ export const COMMITTEE_OKAFOR: Committee = {
       itemized_total: 38550,
       coverage: 1,
       top_donors: OKAFOR_TOP_DONORS,
+      ...OKAFOR_SPENDING,
     }),
   ],
 };
@@ -1033,3 +1089,145 @@ export const DATASET: Dataset = {
     { ...snapshot("2026-11-15", "20261115T030000Z"), precision: null, recall: null },
   ],
 };
+
+/** An operating expenditure by OKAFOR FOR MARYLAND in 2024, an ordinary counted payment. */
+export const operatingExpenditure = (
+  row: Pick<OperatingExpenditure, "source_record_id" | "date" | "amount" | "payee_name"> &
+    Partial<OperatingExpenditure>,
+): OperatingExpenditure => ({
+  cycle: 2024,
+  committee_id: "C00800103",
+  candidate_id: "S4MD00103",
+  payee_key: row.payee_name,
+  payee_id: null,
+  payee_city: null,
+  payee_state: null,
+  payee_zip: null,
+  purpose: null,
+  fec_category: null,
+  spending_category: "other",
+  category_source: "purpose_rule",
+  memo_code: null,
+  memo_text: null,
+  image_num: null,
+  is_in_kind: false,
+  counted: true,
+  sub_items: [],
+  ...row,
+});
+
+/** A card charge itemizing a bill: a memo row, never counted. */
+const charge = (row: Parameters<typeof operatingExpenditure>[0]) =>
+  operatingExpenditure({ memo_code: "X", counted: false, spending_category: "travel", ...row });
+
+/**
+ * OKAFOR FOR MARYLAND's 2024 operating expenditures (oppexp.csv), newest first, as
+ * `/v1/committees/C00800103/expenditures` serves them: three card bills with their charges under
+ * them, VELASQUEZ's in-kind catering, and four ordinary payments.
+ */
+export const OPERATING_EXPENDITURES: OperatingExpenditure[] = [
+  operatingExpenditure({
+    source_record_id: "4240400000000000035",
+    date: "2024-06-30",
+    amount: 123.45,
+    payee_name: "ACTBLUE",
+    payee_id: PAYEE_IDS.actblue,
+    purpose: "PROCESSING FEES",
+    spending_category: "transfers_fees",
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000020",
+    date: "2024-06-27",
+    amount: 750,
+    payee_name: "FIRST MARINER CARD SERVICES",
+    payee_id: PAYEE_IDS.firstMariner,
+    purpose: "CREDIT CARD PAYMENT",
+    spending_category: "credit_card",
+    sub_items: [
+      charge({
+        source_record_id: "4240400000000000021",
+        date: "2024-06-03",
+        amount: 750,
+        payee_name: "SKYLINE AIR",
+        payee_id: PAYEE_IDS.skylineAir,
+        purpose: "AIRFARE",
+      }),
+    ],
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000016",
+    date: "2024-05-11",
+    amount: 350,
+    payee_name: "VELASQUEZ, TERESA",
+    payee_key: "VELASQUEZ TERESA",
+    purpose: "IN-KIND CONTRIBUTION: CATERING",
+    category_source: "unclassified",
+    is_in_kind: true,
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000032",
+    date: "2024-04-30",
+    amount: 7500,
+    payee_name: "BLUE HARBOR STRATEGIES LLC",
+    payee_key: "BLUE HARBOR STRATEGIES",
+    payee_id: PAYEE_IDS.blueHarbor,
+    purpose: "STRATEGY CONSULTING",
+    fec_category: "001",
+    spending_category: "consulting",
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000052",
+    date: "2024-03-29",
+    amount: 750,
+    payee_name: "CAPITOL COMPLIANCE GROUP",
+    payee_id: PAYEE_IDS.capitolCompliance,
+    purpose: "COMPLIANCE CONSULTING",
+    spending_category: "legal_compliance",
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000018",
+    date: "2024-03-28",
+    amount: 500,
+    payee_name: "FIRST MARINER CARD SERVICES",
+    payee_id: PAYEE_IDS.firstMariner,
+    purpose: "CREDIT CARD PAYMENT",
+    spending_category: "credit_card",
+    sub_items: [
+      charge({
+        source_record_id: "4240400000000000019",
+        date: "2024-03-02",
+        amount: 500,
+        payee_name: "PATAPSCO INN",
+        purpose: "LODGING",
+      }),
+    ],
+  }),
+  operatingExpenditure({
+    source_record_id: "4240400000000000003",
+    date: "2024-03-05",
+    amount: 1250,
+    payee_name: "AMERICAN EXPRESS",
+    payee_id: PAYEE_IDS.americanExpress,
+    purpose: "CREDIT CARD PAYMENT",
+    spending_category: "credit_card",
+    sub_items: [
+      charge({
+        source_record_id: "4240400000000000004",
+        date: "2024-02-12",
+        amount: 412.5,
+        payee_name: "SKYLINE AIR",
+        payee_id: PAYEE_IDS.skylineAir,
+        purpose: "AIRFARE",
+        memo_text: "CHARGE ON CREDIT CARD",
+      }),
+      charge({
+        source_record_id: "4240400000000000005",
+        date: "2024-02-13",
+        amount: 837.5,
+        payee_name: "PATAPSCO INN",
+        purpose: "LODGING",
+        memo_text: "CHARGE ON CREDIT CARD",
+      }),
+    ],
+  }),
+];
