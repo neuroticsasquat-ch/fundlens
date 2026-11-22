@@ -1,8 +1,11 @@
-# Employer aliases (spec §6.2): each canonical employer, written as it normalizes, over the
-# spellings filers use for it. A spelling is written as filers write it; it is normalized
-# (resolve.normalize: uppercased, punctuation deleted, legal form stripped) before it is matched,
-# so 'Tesla, Inc.' needs no entry beside 'TESLA'. A spelling under two employers fails the build.
-# Only the top employers by contribution count are here: linkage handles the long tail.
+# Employer, organization and payee aliases (v1 spec §6.2, spec §5.4): each canonical, written as
+# it normalizes, over the spellings filers use for it. All three are keyed by organization_key, so
+# an entry regroups an employer, an organization and a payee alike (ADR-0011, ADR-0012). A
+# spelling is written as filers write it; it is normalized (resolve.normalize: uppercased,
+# punctuation deleted, legal form stripped) before it is matched, so 'Tesla, Inc.' needs no entry
+# beside 'TESLA'. A spelling under two canonicals fails the build.
+# Only the top employers by contribution count and the split payees a payee review found are
+# here: linkage handles the long tail of employers.
 
 SPACEX:
   - Space Exploration Technologies
@@ -30,6 +33,10 @@ WALMART:
   - Walmart Stores
 UPS:
   - United Parcel Service
+
+# Split payees (spec §5.4): the canonical is the key with more payee dollars.
+AX MEDIA:
+  - AXMEDIA
 
 # The fixture cycle's stand-in for SPACEX (tests/fixtures/fec/2024): fictional, and harmless here,
 # since it rewrites only its own spelling.
