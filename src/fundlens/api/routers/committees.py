@@ -1,13 +1,16 @@
-"""`GET /v1/committees/{committee_id}`: a committee page, its itemized receipts and its independent
-expenditures (spec §7.2)."""
+"""`GET /v1/committees/{committee_id}`: a committee page, its itemized receipts, its independent
+expenditures and its operating expenditures (spec §7.2; every-FEC-dollar spec §5)."""
 
 from collections import defaultdict
+from collections.abc import Iterator
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from psycopg.rows import dict_row
 
 from fundlens.api.contributions import CursorParam, CycleParam, contributions_page, read_page
 from fundlens.api.deps import Conn, Itemized, PageSize
+from fundlens.api.itemized import Sort
 from fundlens.api.reported import pop_reported, reported_columns
 from fundlens.api.schemas import (
     Committee,
@@ -16,8 +19,13 @@ from fundlens.api.schemas import (
     ContributionPage,
     IndependentExpenditure,
     IndependentExpenditurePage,
+    OperatingExpenditure,
+    OperatingExpenditurePage,
+    SpendingByCategory,
+    SpendingCategory,
     TopDonor,
     TopOrganization,
+    TopPayee,
     problem_responses,
 )
 
@@ -61,13 +69,30 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
     top_organizations: defaultdict[int, list[TopOrganization]] = defaultdict(list)
     for row in organizations:
         top_organizations[row.pop("cycle")].append(TopOrganization(**row))
+    categories = conn.cursor(row_factory=dict_row).execute(
+        "SELECT cycle, category, amount FROM gold.committee_spending_category"
+        " WHERE committee_id = %s ORDER BY cycle, amount DESC, category",
+        (committee_id,),
+    )
+    spending_by_category: defaultdict[int, list[SpendingByCategory]] = defaultdict(list)
+    for row in categories:
+        spending_by_category[row.pop("cycle")].append(SpendingByCategory(**row))
+    payees = conn.cursor(row_factory=dict_row).execute(
+        "SELECT cycle, rank, name, payee_key, payee_id, amount"
+        " FROM gold.committee_top_payee WHERE committee_id = %s ORDER BY cycle, rank",
+        (committee_id,),
+    )
+    top_payees: defaultdict[int, list[TopPayee]] = defaultdict(list)
+    for row in payees:
+        top_payees[row.pop("cycle")].append(TopPayee(**row))
     cycles = (
         conn.cursor(row_factory=dict_row)
         .execute(
             "SELECT cycle, total_individual, self_funding, total_from_committees,"
             " total_from_organizations, total_to_candidates, total_returned_by_candidates,"
             " total_non_contribution_account, total_refunds, ie_total,"
-            f" {reported_columns('committee_cycle')}, itemized_total, coverage"
+            f" {reported_columns('committee_cycle')}, itemized_total, coverage,"
+            " total_operating_expenditures"
             " FROM gold.committee_cycle WHERE committee_id = %s ORDER BY cycle DESC",
             (committee_id,),
         )
@@ -79,6 +104,8 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
             CommitteeCycle(
                 reported=reported,
                 **row,
+                spending_by_category=spending_by_category[row["cycle"]],
+                top_payees=top_payees[row["cycle"]],
                 top_recipients=top_recipients[row["cycle"]],
                 top_donors=top_donors[row["cycle"]],
                 top_organizations=top_organizations[row["cycle"]],
@@ -160,4 +187,67 @@ def get_committee_independent_expenditures(
             for row in page.rows
         ],
         next_cursor=page.next_cursor,
+    )
+
+
+@router.get(
+    "/committees/{committee_id}/expenditures",
+    responses=problem_responses(400, 404, 410, 422, 503),
+)
+def get_committee_expenditures(
+    conn: Conn,
+    itemized: Itemized,
+    page_size: PageSize,
+    committee_id: str,
+    cycle: CycleParam,
+    category: Annotated[
+        SpendingCategory | None, Query(description="Only the payments of this spending category.")
+    ] = None,
+    sort: Annotated[
+        Sort, Query(description="`date`, newest first, or `amount`, largest first.")
+    ] = "date",
+    cursor: CursorParam = None,
+) -> OperatingExpenditurePage:
+    """The operating expenditures the committee itemized in `cycle`, each with the sub-items that
+    itemize it nested under it: a card bill with its charges. Only `counted` rows add up to its
+    total_operating_expenditures. `category` keeps the payments of that category, their sub-items
+    whatever theirs, so a category's counted rows add up to its `spending_by_category` amount."""
+    found = conn.execute(
+        "SELECT 1 FROM gold.committee WHERE committee_id = %s", (committee_id,)
+    ).fetchone()
+    if found is None:
+        raise HTTPException(404, f"No committee {committee_id}.")
+    page = read_page(
+        lambda: itemized.operating_expenditures(
+            cycle, committee_id, category=category, sort=sort, cursor=cursor, limit=page_size
+        )
+    )
+    # Each payee key's page: one unique-key lookup of the page's keys, sub-items' included.
+    keys = {row["payee_key"] for row in _with_sub_items(page.rows) if row["payee_key"] is not None}
+    payee_ids: dict[str, str] = dict(
+        conn.execute(
+            "SELECT payee_key, payee_id FROM gold.payee WHERE payee_key = ANY(%s)", (list(keys),)
+        ).fetchall()
+    )
+    return OperatingExpenditurePage(
+        expenditures=[_expenditure(row, payee_ids) for row in page.rows],
+        next_cursor=page.next_cursor,
+    )
+
+
+def _with_sub_items(rows: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """`rows` and every sub-item under them."""
+    for row in rows:
+        yield row
+        yield from _with_sub_items(row["sub_items"])
+
+
+def _expenditure(row: dict[str, Any], payee_ids: dict[str, str]) -> OperatingExpenditure:
+    return OperatingExpenditure.model_validate(
+        row
+        | {
+            "source_record_id": str(row["source_record_id"]),
+            "payee_id": payee_ids.get(row["payee_key"] or ""),
+            "sub_items": [_expenditure(sub_item, payee_ids) for sub_item in row["sub_items"]],
+        }
     )

@@ -92,6 +92,7 @@ const race = (
   ie_support: 0,
   ie_oppose: 0,
   reported_cash_on_hand: null,
+  total_operating_expenditures: null,
   ...race,
 });
 
@@ -164,6 +165,7 @@ const candidate = (
   self_funding: 0,
   ie_support: 0,
   ie_oppose: 0,
+  total_operating_expenditures: null,
   reported: null,
   itemized_total: null,
   coverage: null,
@@ -413,6 +415,9 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   reported: null,
   itemized_total: 0,
   coverage: null,
+  total_operating_expenditures: null,
+  spending_by_category: [],
+  top_payees: [],
   top_recipients: [],
   top_donors: [],
   top_organizations: [],

@@ -345,6 +345,13 @@
             "title": "Self Funding",
             "type": "number"
           },
+          "spending_by_category": {
+            "items": {
+              "$ref": "#/components/schemas/SpendingByCategory"
+            },
+            "title": "Spending By Category",
+            "type": "array"
+          },
           "top_donors": {
             "items": {
               "$ref": "#/components/schemas/TopDonor"
@@ -357,6 +364,13 @@
               "$ref": "#/components/schemas/TopOrganization"
             },
             "title": "Top Organizations",
+            "type": "array"
+          },
+          "top_payees": {
+            "items": {
+              "$ref": "#/components/schemas/TopPayee"
+            },
+            "title": "Top Payees",
             "type": "array"
           },
           "top_recipients": {
@@ -381,6 +395,17 @@
           "total_non_contribution_account": {
             "title": "Total Non Contribution Account",
             "type": "number"
+          },
+          "total_operating_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Operating Expenditures"
           },
           "total_refunds": {
             "title": "Total Refunds",
@@ -409,6 +434,9 @@
           "reported",
           "itemized_total",
           "coverage",
+          "total_operating_expenditures",
+          "spending_by_category",
+          "top_payees",
           "top_recipients",
           "top_donors",
           "top_organizations"
@@ -1467,6 +1495,268 @@
         ],
         "type": "string"
       },
+      "OperatingExpenditure": {
+        "description": "One operating expenditure from silver `operating_expenditure` (every-FEC-dollar spec \u00a75.1): a\npayment a committee itemized, the payee as reported, with the sub-items that itemize it.\n\nOnly `counted` rows add up to the committee's total_operating_expenditures: a sub-item (a card\nbill's charge) is listed under its parent and never counted, nor is a memo row nothing names.\nSpending, never a contribution.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "category_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpendingCategorySource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "counted": {
+            "title": "Counted",
+            "type": "boolean"
+          },
+          "cycle": {
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "fec_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fec Category"
+          },
+          "image_num": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Num"
+          },
+          "is_in_kind": {
+            "title": "Is In Kind",
+            "type": "boolean"
+          },
+          "memo_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo Code"
+          },
+          "memo_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo Text"
+          },
+          "payee_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee City"
+          },
+          "payee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Id"
+          },
+          "payee_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Key"
+          },
+          "payee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Name"
+          },
+          "payee_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee State"
+          },
+          "payee_zip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Zip"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "source_record_id": {
+            "title": "Source Record Id",
+            "type": "string"
+          },
+          "spending_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpendingCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sub_items": {
+            "items": {
+              "$ref": "#/components/schemas/OperatingExpenditure"
+            },
+            "title": "Sub Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cycle",
+          "source_record_id",
+          "date",
+          "amount",
+          "committee_id",
+          "candidate_id",
+          "payee_name",
+          "payee_key",
+          "payee_id",
+          "payee_city",
+          "payee_state",
+          "payee_zip",
+          "purpose",
+          "spending_category",
+          "category_source",
+          "fec_category",
+          "memo_code",
+          "memo_text",
+          "counted",
+          "is_in_kind",
+          "image_num",
+          "sub_items"
+        ],
+        "title": "OperatingExpenditure",
+        "type": "object"
+      },
+      "OperatingExpenditurePage": {
+        "description": "A page of a committee's operating expenditures, each with its sub-items; `next_cursor`\nfetches the next, None on the last.",
+        "properties": {
+          "expenditures": {
+            "items": {
+              "$ref": "#/components/schemas/OperatingExpenditure"
+            },
+            "title": "Expenditures",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "expenditures",
+          "next_cursor"
+        ],
+        "title": "OperatingExpenditurePage",
+        "type": "object"
+      },
       "Problem": {
         "description": "An RFC 9457 problem details document (`application/problem+json`).",
         "properties": {
@@ -1581,6 +1871,17 @@
           "total_jfc_transfers": {
             "title": "Total Jfc Transfers",
             "type": "number"
+          },
+          "total_operating_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Operating Expenditures"
           }
         },
         "required": [
@@ -1598,6 +1899,7 @@
           "ie_support",
           "ie_oppose",
           "reported_cash_on_hand",
+          "total_operating_expenditures",
           "candidates",
           "top_committees",
           "top_donors"
@@ -1711,6 +2013,17 @@
           "total_jfc_transfers": {
             "title": "Total Jfc Transfers",
             "type": "number"
+          },
+          "total_operating_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Operating Expenditures"
           }
         },
         "required": [
@@ -1725,6 +2038,7 @@
           "self_funding",
           "ie_support",
           "ie_oppose",
+          "total_operating_expenditures",
           "reported",
           "itemized_total",
           "coverage"
@@ -1857,6 +2171,17 @@
           "total_jfc_transfers": {
             "title": "Total Jfc Transfers",
             "type": "number"
+          },
+          "total_operating_expenditures": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Operating Expenditures"
           }
         },
         "required": [
@@ -1873,7 +2198,8 @@
           "total_jfc_transfers",
           "ie_support",
           "ie_oppose",
-          "reported_cash_on_hand"
+          "reported_cash_on_hand",
+          "total_operating_expenditures"
         ],
         "title": "RaceSummary",
         "type": "object"
@@ -2446,6 +2772,59 @@
         "title": "SearchResult",
         "type": "object"
       },
+      "Sort": {
+        "enum": [
+          "date",
+          "amount"
+        ],
+        "type": "string"
+      },
+      "SpendingByCategory": {
+        "description": "`gold.committee_spending_category`: a committee's counted operating expenditures in one\nspending category in a cycle, net as filed, so possibly 0 or less (every-FEC-dollar spec\n\u00a75.3, \u00a75.5).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "category": {
+            "$ref": "#/components/schemas/SpendingCategory"
+          }
+        },
+        "required": [
+          "category",
+          "amount"
+        ],
+        "title": "SpendingByCategory",
+        "type": "object"
+      },
+      "SpendingCategory": {
+        "enum": [
+          "media",
+          "digital",
+          "mail",
+          "fundraising",
+          "payroll",
+          "consulting",
+          "field",
+          "polling_research",
+          "travel",
+          "events",
+          "administrative",
+          "legal_compliance",
+          "transfers_fees",
+          "credit_card",
+          "other"
+        ],
+        "type": "string"
+      },
+      "SpendingCategorySource": {
+        "enum": [
+          "purpose_rule",
+          "fec",
+          "unclassified"
+        ],
+        "type": "string"
+      },
       "TopDonor": {
         "description": "`gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave\nmost in a cycle, the candidate's own money left out (spec \u00a77.1).",
         "properties": {
@@ -2509,6 +2888,47 @@
           "amount"
         ],
         "title": "TopOrganization",
+        "type": "object"
+      },
+      "TopPayee": {
+        "description": "`gold.committee_top_payee`: a payee among the 100 a committee paid most in a cycle, its\npayments grouped by payee key, never resolved (ADR-0012; every-FEC-dollar spec \u00a75.4).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "payee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Id"
+          },
+          "payee_key": {
+            "title": "Payee Key",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "name",
+          "payee_key",
+          "payee_id",
+          "amount"
+        ],
+        "title": "TopPayee",
         "type": "object"
       },
       "ValidationErrorDetail": {
@@ -3042,6 +3462,169 @@
           }
         },
         "summary": "Get Committee Contributions"
+      }
+    },
+    "/v1/committees/{committee_id}/expenditures": {
+      "get": {
+        "description": "The operating expenditures the committee itemized in `cycle`, each with the sub-items that\nitemize it nested under it: a card bill with its charges. Only `counted` rows add up to its\ntotal_operating_expenditures. `category` keeps the payments of that category, their sub-items\nwhatever theirs, so a category's counted rows add up to its `spending_by_category` amount.",
+        "operationId": "get_committee_expenditures_v1_committees__committee_id__expenditures_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "committee_id",
+            "required": true,
+            "schema": {
+              "title": "Committee Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cycle",
+            "required": true,
+            "schema": {
+              "minimum": 1980,
+              "multipleOf": 2,
+              "title": "Cycle",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only the payments of this spending category.",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SpendingCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the payments of this spending category.",
+              "title": "Category"
+            }
+          },
+          {
+            "description": "`date`, newest first, or `amount`, largest first.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Sort",
+              "default": "date",
+              "description": "`date`, newest first, or `amount`, largest first."
+            }
+          },
+          {
+            "description": "`next_cursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatingExpenditurePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Committee Expenditures"
       }
     },
     "/v1/committees/{committee_id}/independent-expenditures": {

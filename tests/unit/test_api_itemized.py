@@ -1,8 +1,9 @@
-"""The `/contributions` cursor: opaque to the client, and refused when it is not ours; and a
-build's `donor_id`, NULL until donors are resolved."""
+"""The itemized routes' cursor: opaque to the client, and refused when it is not ours; a build's
+`donor_id`, NULL until donors are resolved; and a backfill-pending table a live build lacks."""
 
 import base64
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import duckdb
@@ -17,6 +18,13 @@ BUILD = "20261030T030000Z"
 @pytest.mark.parametrize("day", [date(2024, 3, 1), None])
 def test_a_cursor_round_trips(day: date | None) -> None:
     cursor = Cursor(BUILD, day, 4240100000000000001, 2024)
+
+    assert Cursor.decode(cursor.encode()) == cursor
+
+
+@pytest.mark.parametrize("amount", [Decimal("-15000.00"), None])
+def test_an_amount_cursor_round_trips(amount: Decimal | None) -> None:
+    cursor = Cursor(BUILD, date(2024, 3, 1), 4240400000000000001, 2024, "amount", amount)
 
     assert Cursor.decode(cursor.encode()) == cursor
 
@@ -42,6 +50,18 @@ def test_a_cursor_is_url_safe() -> None:
         Cursor(BUILD, None, 1).encode()[:-3],
         # One element too many.
         base64.urlsafe_b64encode(b'["20261030T030000Z",null,"1",2024,0]').decode(),
+        # An amount cursor with another sort, or an amount that is no number.
+        base64.urlsafe_b64encode(b'["20261030T030000Z",null,"1",2024,"payee","1"]').decode(),
+        base64.urlsafe_b64encode(b'["20261030T030000Z",null,"1",2024,"amount","x"]').decode(),
+        base64.urlsafe_b64encode(b'["20261030T030000Z",null,"1",2024,"amount",1]').decode(),
+        base64.urlsafe_b64encode(b'["20261030T030000Z",null,"1",null,"amount","1"]').decode(),
+        # Amounts no DECIMAL(14, 2) holds.
+        *(
+            base64.urlsafe_b64encode(
+                f'["20261030T030000Z",null,"1",2024,"amount","{amount}"]'.encode()
+            ).decode()
+            for amount in ["NaN", "Infinity", "-Infinity", "1E+999"]
+        ),
         # A build id that is not YYYYMMDDTHHMMSSZ: it would name a path outside silver.
         Cursor("../../etc", None, 1).encode(),
     ],
@@ -80,4 +100,28 @@ def test_a_build_resolved_in_place_is_read_with_its_donor_ids(tmp_path: Path) ->
 
     assert [row["donor_id"] for row in before.rows] == [None]
     assert [row["donor_id"] for row in after.rows] == [42]
+    reader.close()
+
+
+def test_a_live_build_that_lacks_a_backfill_pending_table_has_no_rows_of_it(
+    tmp_path: Path,
+) -> None:
+    # Transformed before `operating_expenditure` existed (every-FEC-dollar spec §2): its other
+    # tables' partitions, and none of that one.
+    reader = ItemizedReader(tmp_path, lambda: {2024: BUILD})
+    write_partition(tmp_path, donor_id=True)
+
+    page = reader.operating_expenditures(2024, "C00800103", category=None, sort="date", cursor=None)
+
+    assert (page.rows, page.next_cursor) == ([], None)
+    reader.close()
+
+
+def test_a_live_build_missing_from_the_volume_is_no_empty_page(tmp_path: Path) -> None:
+    # Not a build that predates the table: gold names a build the volume does not hold at all.
+    reader = ItemizedReader(tmp_path, lambda: {2024: BUILD})
+    (tmp_path / "silver").mkdir()
+
+    with pytest.raises(FileNotFoundError):
+        reader.operating_expenditures(2024, "C00800103", category=None, sort="date", cursor=None)
     reader.close()

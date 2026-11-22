@@ -1,11 +1,14 @@
-"""`/contributions` against the fixture cycle's silver, read by the API's DuckDB through the live
-build `gold.meta.cycles` names (spec §7.2, ADR-0006)."""
+"""`/contributions`, `/independent-expenditures` and `/expenditures` against the fixture cycle's
+silver, read by the API's DuckDB through the live build `gold.meta.cycles` names (spec §7.2,
+ADR-0006)."""
 
+import hashlib
 import shutil
 import statistics
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -25,7 +28,7 @@ from fundlens.api.itemized import ItemizedReader, Recipient, read_live_builds
 from fundlens.load.db import create_pool
 from fundlens.settings import get_settings
 from tests.integration.conftest import Published
-from tests.integration.test_api_routes import BUILD, CYCLE, ok
+from tests.integration.test_api_routes import BUILD, CYCLE, EXPECTED, ok
 from tests.timing import assert_within
 
 NEXT_BUILD = "20261106T030000Z"
@@ -37,6 +40,12 @@ ACTBLUE = "C00401224"
 # committee with an independent expenditure and a coordinated one.
 SUPER_PAC = "C00800201"
 PARTY = "C00800203"
+SPENDING = EXPECTED["operating_expenditures"]
+# CALLOWAY FOR CONGRESS, the fixture committee with the most spending categories; WHITLOCK FOR
+# SENATE, whose card bill heads a chain; HARGROVE FOR AMERICA, whose memo parent counts.
+CALLOWAY = "C00800106"
+WHITLOCK = "C00800104"
+HARGROVE = "C00800101"
 
 
 @pytest.fixture(scope="module")
@@ -237,9 +246,198 @@ def test_a_committee_that_spent_nothing_has_no_independent_expenditures(client: 
     assert body == {"expenditures": [], "next_cursor": None}
 
 
+def walk_expenditures(client: TestClient, committee_id: str, **params: str) -> list[dict[str, Any]]:
+    """Every operating expenditure the committee's pages hold, following `next_cursor`."""
+    rows: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        query = {"cycle": CYCLE, **params} | ({"cursor": cursor} if cursor else {})
+        body = ok(client.get(f"/v1/committees/{committee_id}/expenditures", params=query))
+        rows += body["expenditures"]
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return rows
+
+
+def nested(rows: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], dict[str, Any] | None]]:
+    """Each row of `rows`, and each sub-item under them, with the row it is nested under."""
+    stack: list[tuple[dict[str, Any], dict[str, Any] | None]] = [(row, None) for row in rows]
+    while stack:
+        row, parent = stack.pop()
+        yield row, parent
+        stack += [(sub_item, row) for sub_item in row["sub_items"]]
+
+
+def top_level_ids(published: Published, committee_id: str, sort: str) -> list[str]:
+    """The committee's rows that are no sub-item, in the order `sort` pages them."""
+    files = str(
+        paths.local_path(
+            published.data_dir, paths.silver_partition("operating_expenditure", CYCLE, BUILD)
+        )
+        / "*.parquet"
+    )
+    rows = duckdb.execute(
+        "SELECT source_record_id FROM read_parquet(?)"
+        " WHERE committee_id = ? AND parent_source_record_id IS NULL"
+        f" ORDER BY {sort} DESC NULLS LAST, source_record_id",
+        [files, committee_id],
+    ).fetchall()
+    return [str(record) for (record,) in rows]
+
+
+def test_every_committees_expenditures_list_each_row_once_under_its_parent(
+    client: TestClient,
+) -> None:
+    # Every row silver keeps, counted or not, each sub-item under the row it itemizes; the counted
+    # ones add up to the committee's total_operating_expenditures (every-FEC-dollar spec §5.2).
+    seen: dict[str, dict[str, Any]] = {}
+    parents: dict[str, str] = {}
+    for committee_id, total in SPENDING["by_committee"].items():
+        rows = list(nested(walk_expenditures(client, committee_id)))
+        for row, parent in rows:
+            assert row["committee_id"] == committee_id
+            seen[row["source_record_id"]] = row
+            if parent is not None:
+                parents[row["source_record_id"]] = parent["source_record_id"]
+        assert sum(Decimal(str(row["amount"])) for row, _ in rows if row["counted"]) == Decimal(
+            total
+        ), committee_id
+
+    assert len(seen) == EXPECTED["silver"]["operating_expenditure"]
+    assert parents == {
+        str(sub_item): str(parent) for sub_item, parent in SPENDING["parents"].items()
+    }
+    assert {record for record, row in seen.items() if not row["counted"]} == {
+        str(record) for record in SPENDING["not_counted"]
+    }
+    assert {record for record, row in seen.items() if row["is_in_kind"]} == {
+        str(record) for record in SPENDING["in_kind"]
+    }
+    assert not {str(record) for record in SPENDING["dropped"]} & set(seen)
+
+
+def test_a_card_bill_lists_its_two_charges_under_it_not_counted(client: TestClient) -> None:
+    rows = walk_expenditures(client, COMMITTEE, category="credit_card")
+
+    [bill] = [row for row in rows if row["source_record_id"] == "4240400000000000003"]
+    assert bill | {"sub_items": None} == {
+        "cycle": CYCLE,
+        "source_record_id": "4240400000000000003",
+        "date": "2024-03-05",
+        "amount": 1250.0,
+        "committee_id": COMMITTEE,
+        "candidate_id": "S4MD00103",
+        "payee_name": "AMERICAN EXPRESS",
+        "payee_key": "AMERICAN EXPRESS",
+        "payee_id": hashlib.sha256(b"AMERICAN EXPRESS").hexdigest()[:16],
+        "payee_city": "NEW YORK",
+        "payee_state": "NY",
+        "payee_zip": "10285",
+        "purpose": "CREDIT CARD PAYMENT",
+        "spending_category": "credit_card",
+        "category_source": "purpose_rule",
+        "fec_category": None,
+        "memo_code": None,
+        "memo_text": None,
+        "counted": True,
+        "is_in_kind": False,
+        "image_num": "202420103010000001",
+        "sub_items": None,
+    }
+    # Newest first, as the page is; each a travel charge, in none of the committee's totals.
+    assert [
+        (
+            c["source_record_id"],
+            c["payee_name"],
+            c["spending_category"],
+            c["counted"],
+            c["sub_items"],
+        )
+        for c in bill["sub_items"]
+    ] == [
+        ("4240400000000000005", "PATAPSCO INN", "travel", False, []),
+        ("4240400000000000004", "SKYLINE AIR", "travel", False, []),
+    ]
+
+
+def test_a_chain_nests_each_sub_item_under_the_one_it_itemizes(client: TestClient) -> None:
+    [bill] = walk_expenditures(client, WHITLOCK, category="credit_card")
+
+    [agency] = bill["sub_items"]
+    [agencys_payee] = agency["sub_items"]
+    assert (bill["counted"], agency["counted"], agencys_payee["counted"]) == (True, False, False)
+    assert (agency["payee_name"], agencys_payee["payee_name"], agencys_payee["sub_items"]) == (
+        "TIDEMARK MEDIA GROUP",
+        "SOCIALREACH ADS",
+        [],
+    )
+
+
+def test_a_payee_with_no_page_has_no_payee_id(client: TestClient) -> None:
+    # A person's key, and PETTY CASH, which fec/payee_no_page.csv names, have no page; a memo
+    # parent counts, its sub-item not.
+    rows = list(nested(walk_expenditures(client, HARGROVE)))
+
+    payees = {row["payee_name"]: row["payee_id"] for row, _ in rows}
+    assert payees["BENNETT, LOGAN"] is None
+    assert payees["PETTY CASH"] is None
+    assert (
+        payees["TIDEMARK MEDIA GROUP"] == hashlib.sha256(b"TIDEMARK MEDIA GROUP").hexdigest()[:16]
+    )
+    [memo_parent] = [row for row, _ in rows if row["payee_name"] == "BENNETT, LOGAN"]
+    assert (memo_parent["memo_code"], memo_parent["counted"]) == ("X", True)
+    assert [c["counted"] for c in memo_parent["sub_items"]] == [False]
+
+
+@pytest.mark.parametrize("category", list(SPENDING["by_committee_category"][CALLOWAY]))
+def test_a_category_lists_the_payments_its_amount_adds_up(
+    client: TestClient, category: str
+) -> None:
+    rows = walk_expenditures(client, CALLOWAY, category=category)
+
+    assert {row["spending_category"] for row in rows} == {category}
+    assert sum(Decimal(str(row["amount"])) for row in rows if row["counted"]) == Decimal(
+        SPENDING["by_committee_category"][CALLOWAY][category]
+    )
+
+
+@pytest.mark.parametrize("sort", ["date", "amount"])
+def test_a_committees_expenditures_page_in_their_sort_order(
+    app: FastAPI, client: TestClient, published: Published, sort: str
+) -> None:
+    small_pages(app, 2)
+
+    rows = walk_expenditures(client, CALLOWAY, sort=sort)
+
+    expected = top_level_ids(published, CALLOWAY, sort)
+    assert len(expected) > 3 * 2
+    assert [row["source_record_id"] for row in rows] == expected
+    if sort == "amount":
+        amounts = [row["amount"] for row in rows]
+        assert amounts == sorted(amounts, reverse=True)
+
+
+def test_a_cursor_pages_only_the_sort_it_was_issued_for(app: FastAPI, client: TestClient) -> None:
+    small_pages(app, 2)
+    url = f"/v1/committees/{CALLOWAY}/expenditures"
+    first = ok(client.get(url, params={"cycle": CYCLE}))
+
+    response = client.get(
+        url, params={"cycle": CYCLE, "sort": "amount", "cursor": first["next_cursor"]}
+    )
+
+    assert response.status_code == 400, response.text
+
+
 @pytest.mark.parametrize(
     ("url", "params", "status"),
     [
+        ("/v1/committees/C99999999/expenditures", {"cycle": CYCLE}, 404),
+        (f"/v1/committees/{CALLOWAY}/expenditures", {"cycle": 2022}, 404),
+        (f"/v1/committees/{CALLOWAY}/expenditures", {}, 422),
+        (f"/v1/committees/{CALLOWAY}/expenditures", {"cycle": CYCLE, "category": "food"}, 422),
+        (f"/v1/committees/{CALLOWAY}/expenditures", {"cycle": CYCLE, "sort": "payee"}, 422),
+        (f"/v1/committees/{CALLOWAY}/expenditures", {"cycle": CYCLE, "cursor": "nope"}, 400),
         ("/v1/committees/C99999999/independent-expenditures", {"cycle": CYCLE}, 404),
         (f"/v1/committees/{SUPER_PAC}/independent-expenditures", {"cycle": 2022}, 404),
         (f"/v1/committees/{SUPER_PAC}/independent-expenditures", {}, 422),

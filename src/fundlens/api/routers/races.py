@@ -59,6 +59,7 @@ def get_race(
             " race_candidate.total_individual, race_candidate.total_committee,"
             " race_candidate.total_jfc_transfers, race_candidate.self_funding,"
             " race_candidate.ie_support, race_candidate.ie_oppose,"
+            " race_candidate.total_operating_expenditures,"
             " candidate_cycle.reported_source_file,"
             f" {reported_columns('race_candidate', RACE_CANDIDATE_REPORTED_FIELDS[1:])},"
             " candidate_cycle.itemized_total, race_candidate.coverage"
