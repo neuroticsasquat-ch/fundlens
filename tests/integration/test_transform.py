@@ -1813,8 +1813,9 @@ def test_reported_totals_are_each_committees_summary_row_by_source_precedence(
     fixture_silver: Path,
 ) -> None:
     """Every fixture committee with a summary row has one reported_total row, the file's figures
-    as filed: committee_summary's, the Form 5 filer's blanks filled from webk. No candidate has
-    one from 2008 (every-FEC-dollar spec §4.1, §4.2)."""
+    as filed: committee_summary's, the Form 5 filer's blanks filled from webk, and HARGROVE FOR
+    AMERICA's the row covering the cycle, not its narrower one (NEU-2454). No candidate has one
+    from 2008 (every-FEC-dollar spec §4.1, §4.2)."""
     expected = fec_fixture.expected()["reported_totals"]
     committees = local_silver(fixture_silver, "reported_total")
     candidates = local_silver(fixture_silver, "candidate_reported_total")
@@ -1853,16 +1854,25 @@ def test_the_reported_total_committee_check_fails_on_a_committee_cm_lacks() -> N
 
 def test_the_repeat_check_fails_on_a_committee_whose_summary_repeats_differ() -> None:
     """A committee repeated per linked candidate passes while its rows differ only in CAND_ID
-    and Link_Image, and fails once a figure differs (every-FEC-dollar spec §4.1)."""
+    and Link_Image, and fails once a figure differs. A committee listed over two periods passes:
+    its row covering the cycle to date is kept, and only rows over that period must agree
+    (every-FEC-dollar spec §4.1, NEU-2454)."""
+    cycle, quarter = "'20250101', '20261015'", "'20260715', '20261015'"
     with duckdb.connect() as con:
         con.execute(
             "CREATE TABLE committee_summary AS SELECT * FROM (VALUES"
-            f" ('https://www.fec.gov/a', '{HANDED_OFF}', '{BIDEN}', 8500.00),"
-            f" ('https://www.fec.gov/b', '{HANDED_OFF}', '{HARRIS}', 8500.00),"
-            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL}', 44500.00),"
-            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL_ALIAS}', 44000.00),"
-            " ('https://www.fec.gov/d', 'C1', NULL, 100.00)"
-            ") AS t(Link_Image, CMTE_ID, CAND_ID, TTL_RECEIPTS)"
+            f" ('https://www.fec.gov/a', '{HANDED_OFF}', '{BIDEN}', {cycle}, 8500.00),"
+            f" ('https://www.fec.gov/b', '{HANDED_OFF}', '{HARRIS}', {cycle}, 8500.00),"
+            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL}', {cycle}, 44500.00),"
+            f" ('https://www.fec.gov/c', '{DRISCOLL_COMMITTEE}', '{DRISCOLL_ALIAS}', {cycle},"
+            " 44000.00),"
+            f" ('https://www.fec.gov/d', 'C1', NULL, {cycle}, 100.00),"
+            f" ('https://www.fec.gov/e', 'C2', NULL, {quarter}, 8438.79),"
+            f" ('https://www.fec.gov/e', 'C2', NULL, {cycle}, 44059.90),"
+            f" ('https://www.fec.gov/f', 'C3', NULL, {quarter}, 10.00),"
+            f" ('https://www.fec.gov/f', 'C3', NULL, {quarter}, 20.00),"
+            f" ('https://www.fec.gov/f', 'C3', NULL, {cycle}, 30.00)"
+            ") AS t(Link_Image, CMTE_ID, CAND_ID, CVG_START_DT, CVG_END_DT, TTL_RECEIPTS)"
         )
 
         assert failing_rows(con, "silver_reported_total_repeat.sql") == [(DRISCOLL_COMMITTEE, 2)]
