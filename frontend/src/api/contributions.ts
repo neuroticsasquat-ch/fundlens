@@ -1,5 +1,9 @@
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
-import type { ContributionPage, IndependentExpenditurePage } from "./client";
+import type {
+  ContributionPage,
+  IndependentExpenditurePage,
+  OperatingExpenditurePage,
+} from "./client";
 
 /**
  * The paging options every `/contributions` query takes: the first page has no cursor
@@ -25,3 +29,12 @@ export const INDEPENDENT_EXPENDITURE_PAGES = {
 
 /** An `/independent-expenditures` query's pages so far. */
 export type IndependentExpendituresQuery = UseInfiniteQueryResult<InfiniteData<IndependentExpenditurePage>, unknown>;
+
+/** The same paging, for a committee's `/expenditures`. */
+export const OPERATING_EXPENDITURE_PAGES = {
+  initialPageParam: null,
+  getNextPageParam: (page: OperatingExpenditurePage) => page.next_cursor,
+};
+
+/** An `/expenditures` query's pages so far. */
+export type OperatingExpendituresQuery = UseInfiniteQueryResult<InfiniteData<OperatingExpenditurePage>, unknown>;

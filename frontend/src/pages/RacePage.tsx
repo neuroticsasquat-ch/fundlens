@@ -7,7 +7,7 @@ import DataTable from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import QueryStatus from "../components/QueryStatus";
 import TopDonorsTable from "../components/TopDonorsTable";
-import { count, DASH, money, reportedMoney } from "../components/format";
+import { availableMoney, count, DASH, money, reportedMoney } from "../components/format";
 import { usePageTitle } from "../components/usePageTitle";
 import { candidateName, candidateTotal } from "../domain/candidates";
 import { officeLabel, raceLabel } from "../domain/states";
@@ -98,6 +98,15 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     align: "right",
     render: (candidate) => money(candidateTotal(candidate)),
     sortValue: candidateTotal,
+  },
+  // What the candidate's committees paid out to run their campaign: never taken off what they
+  // raised, so beside their Total and in no sum of it. No counted payment is "not available".
+  {
+    key: "spending",
+    header: "Spending",
+    align: "right",
+    render: (candidate) => availableMoney(candidate.total_operating_expenditures),
+    sortValue: (candidate) => candidate.total_operating_expenditures,
   },
   // Spent by committees for or against the candidate, never theirs, so after their Total.
   {
@@ -305,6 +314,10 @@ function RaceDetail({ race }: { race: Race }) {
                 rowKey={(candidate) => candidate.candidate_id}
                 defaultSort={{ key: "total", direction: "desc" }}
               />
+              <Text c="dimmed" size="sm">
+                Spending: the operating expenditures the candidate&apos;s committees itemized,
+                never taken off what they raised. Each committee&apos;s page lists the payments.
+              </Text>
               <Text c="dimmed" size="sm">
                 Cash on hand: what each campaign reported to the FEC it held at the end of its
                 latest report, never added to what it raised.

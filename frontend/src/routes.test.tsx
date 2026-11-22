@@ -11,6 +11,8 @@ describe("routes", () => {
     ["/candidate/S4MD00103", "OKAFOR, DIANA"],
     ["/committee/C00401224", "ACTBLUE"],
     ["/donor/412", "MARLOWE, AUGUSTINE MR."],
+    // NEU-2159 builds it.
+    ["/payee/6f774ca924cb0a0b", "Payee"],
     ["/search?q=calloway", "Search: calloway"],
     ["/dataset", "Dataset"],
     ["/methodology", "Methodology"],

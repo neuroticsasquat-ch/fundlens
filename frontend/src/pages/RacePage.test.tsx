@@ -39,6 +39,7 @@ describe("RacePage", () => {
         "$0",
         "$1,750,000",
         "$1,786,850",
+        "$3,900",
         "$0",
         "$80,000",
         "$291,300",
@@ -52,6 +53,7 @@ describe("RacePage", () => {
         "$19,500",
         "$5,000",
         "$79,200",
+        "$12,223",
         "$150,000",
         "$45,000",
         "$57,100",
@@ -65,11 +67,25 @@ describe("RacePage", () => {
         "$0",
         "$0",
         "$7,175",
+        "not available",
         "$0",
         "$0",
         "$1,900",
       ],
-      ["PELL, MARCUS", "LIB", "Open", "$3,250", "$0", "$0", "$0", "$3,250", "$0", "$0", "$1,300"],
+      [
+        "PELL, MARCUS",
+        "LIB",
+        "Open",
+        "$3,250",
+        "$0",
+        "$0",
+        "$0",
+        "$3,250",
+        "not available",
+        "$0",
+        "$0",
+        "$1,300",
+      ],
     ]);
     expect(
       screen.getByText("Independent expenditures: $150,000 for candidates, $125,000 against"),
@@ -85,6 +101,7 @@ describe("RacePage", () => {
       "Via joint fundraising",
       "Self-funding",
       "Total ▼",
+      "Spending",
       "Independent expenditures for",
       "Independent expenditures against",
       "Cash on hand",
@@ -190,6 +207,28 @@ describe("RacePage", () => {
       ["BRANNIGAN, TESS", "$1,900"],
       ["PELL, MARCUS", "$1,300"],
       ["OKAFOR, DIANA", "not reported"],
+    ]);
+  });
+
+  it("has a fixture whose candidates' spending adds up to the race's", () => {
+    const spending = RACE_SENATE_MD.candidates.reduce(
+      (total, candidate) => total + (candidate.total_operating_expenditures ?? 0),
+      0,
+    );
+    expect(spending).toBeCloseTo(RACE_SENATE_MD.total_operating_expenditures!);
+  });
+
+  it("sorts the candidates by spending, most first, a candidate with none available last", async () => {
+    renderApp("/race/2024/senate/MD");
+    const candidates = await screen.findByRole("region", { name: "Candidates" });
+
+    fireEvent.click(within(candidates).getByRole("button", { name: /Spending/ }));
+
+    expect(rows("Candidates").map((row) => [cells(row)[0], cells(row)[8]])).toEqual([
+      ["OKAFOR, DIANA", "$12,223"],
+      ["WHITLOCK, GORDON", "$3,900"],
+      ["BRANNIGAN, TESS", "not available"],
+      ["PELL, MARCUS", "not available"],
     ]);
   });
 

@@ -1,12 +1,16 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Contribution } from "../api/client";
+import type { ChartOption } from "../components/charts/echarts";
 import { http } from "../test/api";
 import { renderApp } from "../test/app";
+import { allOptions } from "../test/echarts";
 import {
   COMMITTEE_BUILDERS_PAC_1998,
   COMMITTEE_OKAFOR,
   contribution,
+  OPERATING_EXPENDITURES,
+  PAYEE_IDS,
   problem,
 } from "../test/fixtures";
 import { figures } from "../test/reported";
@@ -498,5 +502,185 @@ describe("CommitteePage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "No committee C00000000" }),
     ).toBeInTheDocument();
+  });
+});
+
+/** The last option set on the spending-by-category chart: the page also draws its cycle totals. */
+function spendingChart(): ChartOption {
+  const option = allOptions()
+    .filter((set) =>
+      (set.series as { name?: string }[] | undefined)?.some((series) => series.name === "Spending"),
+    )
+    .at(-1);
+  if (!option) throw new Error("No spending chart was drawn");
+  return option;
+}
+
+/** `/expenditures` answering from the fixture, recording each request's query string. */
+function recordedExpenditures() {
+  const queries: URLSearchParams[] = [];
+  const handler = http.get("/v1/committees/{committee_id}/expenditures", ({ request }) => {
+    queries.push(new URL(request.url).searchParams);
+    // Passed on to the fixture API's handler, which answers it.
+    return undefined;
+  });
+  return { handler, queries };
+}
+
+describe("CommitteePage spending", () => {
+  it("shows the cycle's spending total, its categories most first, and its top payees", async () => {
+    renderApp("/committee/C00800103");
+    const spending = await screen.findByRole("region", { name: "Spending" });
+
+    expect(within(spending).getByText("$11,223")).toBeInTheDocument();
+    expect(spendingChart().yAxis).toMatchObject({
+      inverse: true,
+      data: ["Consulting", "Credit card bills", "Legal and compliance", "Other", "Transfers and fees"],
+    });
+    expect(spendingChart().series).toMatchObject([
+      { type: "bar", name: "Spending", data: [7500, 2500, 750, 350, 123.45] },
+    ]);
+    // The categories add up to the total, as gold's committee_spending_category rows do.
+    const cycle = COMMITTEE_OKAFOR.cycles[0];
+    expect(cycle.spending_by_category.reduce((sum, row) => sum + row.amount, 0)).toBeCloseTo(
+      cycle.total_operating_expenditures!,
+    );
+
+    expect(rows("Top payees").map(cells)).toEqual([
+      ["1", "BLUE HARBOR STRATEGIES LLC", "$7,500"],
+      ["2", "AMERICAN EXPRESS", "$1,250"],
+      ["3", "FIRST MARINER CARD SERVICES", "$1,250"],
+      ["4", "CAPITOL COMPLIANCE GROUP", "$750"],
+      ["5", "ACTBLUE", "$123"],
+    ]);
+    expect(
+      within(section("Top payees")).getByRole("link", { name: "BLUE HARBOR STRATEGIES LLC" }),
+    ).toHaveAttribute("href", `/payee/${PAYEE_IDS.blueHarbor}`);
+  });
+
+  it("shows a payee with no page unlinked", async () => {
+    const shown = COMMITTEE_OKAFOR.cycles[0];
+    renderApp("/committee/C00800103", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}", ({ response }) =>
+          response(200).json({
+            ...COMMITTEE_OKAFOR,
+            cycles: [
+              {
+                ...shown,
+                top_payees: [
+                  {
+                    rank: 1,
+                    payee_key: "PETTY CASH",
+                    payee_id: null,
+                    name: "PETTY CASH",
+                    amount: 200,
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "Top payees" });
+
+    expect(rows("Top payees").map(cells)).toEqual([["1", "PETTY CASH", "$200"]]);
+    expect(
+      within(within(section("Top payees")).getByRole("table")).queryByRole("link"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lists every payment newest first, each card bill's charges under it and not counted", async () => {
+    renderApp("/committee/C00800103");
+    const itemized = await screen.findByRole("region", { name: "Itemized spending" });
+
+    expect(await within(itemized).findByText("7 payments, newest first")).toBeInTheDocument();
+    const CARD = ["CREDIT CARD PAYMENT", "Credit card bills"];
+    const [IN_KIND, LEGAL] = ["In-kind", "Legal and compliance"];
+    expect(rows("Itemized spending").map(cells)).toEqual([
+      ["2024-06-30", "ACTBLUE", "PROCESSING FEES", "Transfers and fees", "$123", ""],
+      ["2024-06-27", "FIRST MARINER CARD SERVICES", ...CARD, "$750", ""],
+      ["2024-06-03", "↳ SKYLINE AIR", "AIRFARE", "Travel", "$750", "Not counted"],
+      ["2024-05-11", "VELASQUEZ, TERESA", "IN-KIND CONTRIBUTION: CATERING", "Other", "$350", IN_KIND],
+      ["2024-04-30", "BLUE HARBOR STRATEGIES LLC", "STRATEGY CONSULTING", "Consulting", "$7,500", ""],
+      ["2024-03-29", "CAPITOL COMPLIANCE GROUP", "COMPLIANCE CONSULTING", LEGAL, "$750", ""],
+      ["2024-03-28", "FIRST MARINER CARD SERVICES", ...CARD, "$500", ""],
+      ["2024-03-02", "↳ PATAPSCO INN", "LODGING", "Travel", "$500", "Not counted"],
+      ["2024-03-05", "AMERICAN EXPRESS", ...CARD, "$1,250", ""],
+      ["2024-02-12", "↳ SKYLINE AIR", "AIRFARE", "Travel", "$413", "Not counted"],
+      ["2024-02-13", "↳ PATAPSCO INN", "LODGING", "Travel", "$838", "Not counted"],
+    ]);
+    // A payee key with a page is linked, sub-items' too; a person and a charge-only name are not.
+    expect(within(itemized).getAllByRole("link", { name: "SKYLINE AIR" })[0]).toHaveAttribute(
+      "href",
+      `/payee/${PAYEE_IDS.skylineAir}`,
+    );
+    expect(within(itemized).queryByRole("link", { name: "PATAPSCO INN" })).not.toBeInTheDocument();
+    expect(
+      within(itemized).queryByRole("link", { name: "VELASQUEZ, TERESA" }),
+    ).not.toBeInTheDocument();
+    // The counted payments add up to the committee's total; no charge is added to it.
+    const counted = OPERATING_EXPENDITURES.filter((row) => row.counted);
+    expect(counted.reduce((sum, row) => sum + row.amount!, 0)).toBeCloseTo(
+      COMMITTEE_OKAFOR.cycles[0].total_operating_expenditures!,
+    );
+  });
+
+  it("filters the itemized spending by a category the committee spent in", async () => {
+    const { handler, queries } = recordedExpenditures();
+    renderApp("/committee/C00800103", { handlers: [handler] });
+    const itemized = await screen.findByRole("region", { name: "Itemized spending" });
+    await within(itemized).findByText("7 payments, newest first");
+    const category = within(itemized).getByRole("combobox", { name: "Category" });
+
+    expect(
+      within(category)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "All categories",
+      "Consulting",
+      "Legal and compliance",
+      "Transfers and fees",
+      "Credit card bills",
+      "Other",
+    ]);
+    fireEvent.change(category, { target: { value: "credit_card" } });
+
+    expect(await within(itemized).findByText("3 payments, newest first")).toBeInTheDocument();
+    expect(rows("Itemized spending").map((row) => cells(row)[1])).toEqual([
+      "FIRST MARINER CARD SERVICES",
+      "↳ SKYLINE AIR",
+      "FIRST MARINER CARD SERVICES",
+      "↳ PATAPSCO INN",
+      "AMERICAN EXPRESS",
+      "↳ SKYLINE AIR",
+      "↳ PATAPSCO INN",
+    ]);
+    expect(queries.at(-1)?.get("category")).toBe("credit_card");
+    expect(queries[0].get("category")).toBeNull();
+  });
+
+  it("orders the itemized spending largest first", async () => {
+    const { handler, queries } = recordedExpenditures();
+    renderApp("/committee/C00800103", { handlers: [handler] });
+    const itemized = await screen.findByRole("region", { name: "Itemized spending" });
+    await within(itemized).findByText("7 payments, newest first");
+
+    fireEvent.click(within(itemized).getByRole("radio", { name: "Largest first" }));
+
+    expect(await within(itemized).findByText("7 payments, largest first")).toBeInTheDocument();
+    expect(cells(rows("Itemized spending")[0])[1]).toBe("BLUE HARBOR STRATEGIES LLC");
+    expect(queries.map((query) => query.get("sort"))).toEqual(["date", "amount"]);
+  });
+
+  it("says spending is not available for a cycle with no counted payment, and lists none", async () => {
+    renderApp("/committee/C00401224");
+    const spending = await screen.findByRole("region", { name: "Spending" });
+
+    expect(within(spending).getByText("not available")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Itemized spending" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Top payees" })).not.toBeInTheDocument();
   });
 });

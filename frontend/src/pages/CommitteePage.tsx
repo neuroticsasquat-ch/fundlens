@@ -15,6 +15,7 @@ import { usePageTitle } from "../components/usePageTitle";
 import { committeeDesignation, committeeType } from "../domain/committees";
 import { partyColour } from "../theme";
 import CycleHeading from "./CycleHeading";
+import CommitteeSpending from "./CommitteeSpending";
 import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
 import { useScrollToHash, useShownCycle } from "./entityCycle";
@@ -387,6 +388,8 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
                 </Tabs>
               </section>
             )}
+            {/* Keyed, so its order and category filter start over in another cycle. */}
+            <CommitteeSpending key={shown.cycle} id={committee.committee_id} shown={shown} />
           </Stack>
         </section>
       )}

@@ -18,6 +18,7 @@ import {
   EXPENDITURES,
   MARLOWE_CONTRIBUTIONS,
   META,
+  OPERATING_EXPENDITURES,
   problem,
   RACE_PAGES,
   RACES,
@@ -26,9 +27,10 @@ import {
 
 /**
  * The fixture API: the 2024 cycle, its races and their pages, OKAFOR's candidate page, three
- * committees' pages, their 2024 contributions and independent expenditures on one page each,
- * MARLOWE's donor page and his contributions on one page (the id a merge retired redirecting to
- * his), two dataset snapshots, and hits for any query containing "calloway".
+ * committees' pages, their 2024 contributions, independent expenditures and operating
+ * expenditures on one page each, MARLOWE's donor page and his contributions on one page (the id a
+ * merge retired redirecting to his), two dataset snapshots, and hits for any query containing
+ * "calloway".
  */
 export const fixtureApi = (): HttpHandler[] => [
   http.get("/v1/cycles", ({ response }) => response(200).json(CYCLES)),
@@ -78,6 +80,19 @@ export const fixtureApi = (): HttpHandler[] => [
       next_cursor: null,
     }),
   ),
+  // `category` keeps a category's payments, sub-items and all; `sort=amount` puts the largest
+  // first.
+  http.get("/v1/committees/{committee_id}/expenditures", ({ params, request, response }) => {
+    const search = new URL(request.url).searchParams;
+    const category = search.get("category");
+    const rows = OPERATING_EXPENDITURES.filter(
+      (row) =>
+        row.committee_id === params.committee_id &&
+        (category === null || row.spending_category === category),
+    );
+    if (search.get("sort") === "amount") rows.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+    return response(200).json({ expenditures: rows, next_cursor: null });
+  }),
   http.get("/v1/donors/{donor_id}", ({ params, response }) => {
     if (params.donor_id === String(DONOR_IDS.mergedIntoMarlowe))
       return response(301).empty({ headers: { Location: `/v1/donors/${DONOR_IDS.marlowe}` } });

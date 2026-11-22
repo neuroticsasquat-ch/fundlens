@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 import CandidatePage from "./pages/CandidatePage";
+import ComingSoon from "./pages/ComingSoon";
 import CommitteePage from "./pages/CommitteePage";
 import CyclePage from "./pages/CyclePage";
 import DatasetPage from "./pages/DatasetPage";
@@ -48,6 +49,8 @@ export const routes: RouteObject[] = [
       { path: "/candidate/:id", element: <CandidatePage />, handle: cycleRow },
       { path: "/committee/:id", element: <CommitteePage />, handle: cycleRow },
       { path: "/donor/:id", element: <DonorPage /> },
+      // NEU-2159 builds the payee page.
+      { path: "/payee/:payeeId", element: <ComingSoon name="Payee" /> },
       { path: "/search", element: <SearchPage /> },
       { path: "/dataset", element: <DatasetPage /> },
       { path: "/methodology", element: <MethodologyPage /> },
