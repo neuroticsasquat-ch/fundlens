@@ -74,6 +74,20 @@ def test_name_variants_differing_only_by_punctuation_suffix_or_title_share_a_nor
     assert normalize_name("MARLOWE, AUGUSTINE R.").norm == "MARLOWE, AUGUSTINE R"
 
 
+def test_dotted_initials_norm_as_the_pinned_nameparser_reads_them() -> None:
+    # The contributor key is built from the norm, so a nameparser that reads dotted initials another
+    # way re-keys contributions: 3.1.0 split them ('SHROLL, C J', 'KELSEY, T D') and re-keyed 11,198
+    # of 2024's (NEU-2458). These are 3.0.1's readings, as 2024's live keys hold them. Changing one
+    # is a re-keying decision, not a dependency bump.
+    names = ["SHROLL, C.J.", "KELSEY, T.D.", "WILLIAMS, J.D.", "CRAIN, M.D., LUCYS"]
+    assert {raw: normalize_name(raw).norm for raw in names} == {
+        "SHROLL, C.J.": "SHROLL, CJ",
+        "KELSEY, T.D.": "KELSEY",
+        "WILLIAMS, J.D.": "WILLIAMS",
+        "CRAIN, M.D., LUCYS": "CRAIN",
+    }
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
