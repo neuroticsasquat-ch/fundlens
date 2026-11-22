@@ -13,7 +13,7 @@ router = APIRouter(prefix="/v1")
 RACE_COLUMNS = (
     "race_id, cycle, office, state, district, is_special, slug, candidate_count,"
     " total_individual, total_committee, total_jfc_transfers, ie_support, ie_oppose,"
-    " reported_cash_on_hand"
+    " reported_cash_on_hand, total_operating_expenditures"
 )
 
 

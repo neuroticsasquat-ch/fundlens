@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from fundlens.transform import spending
+
 PROBLEM_JSON = "application/problem+json"
 
 type Office = Literal["H", "S", "P"]
@@ -18,6 +20,9 @@ type SearchKind = Literal["donor", "candidate", "committee", "race"]
 # `committee_summary` (2008 on, `+webk` where a Form 5 or 7 filer's blanks were filled), `webk`
 # (1996-2006); a candidate's summed from their committees' (`committee_summary`) or `weball`.
 type ReportedSourceFile = Literal["committee_summary", "committee_summary+webk", "webk", "weball"]
+# One of the fifteen spending categories, and what decided it (every-FEC-dollar spec §5.3).
+type SpendingCategory = spending.Category
+type SpendingCategorySource = spending.CategorySource
 # A candidate's gift-size buckets (spec §4.6), in this order: FEC's unitemized lump, then each
 # donor's net gifts to the candidate in the cycle.
 type GiftSizeBucket = Literal[
@@ -173,6 +178,9 @@ class RaceSummary(BaseModel):
     # FEC's reported cash on hand at the end of the cycle, its candidates' added up; None when none
     # has a reported figure (every-FEC-dollar spec §4.4).
     reported_cash_on_hand: float | None
+    # Its candidates' operating expenditures added up (every-FEC-dollar spec §5.5): None, never 0,
+    # when none has a counted one in the cycle, as before 2004.
+    total_operating_expenditures: float | None
 
 
 class ReportedTotals(BaseModel):
@@ -250,6 +258,9 @@ class RaceCandidate(BaseModel):
     self_funding: float
     ie_support: float
     ie_oppose: float
+    # The operating expenditures of the committees credited to them (every-FEC-dollar spec §5.5),
+    # None, never 0, with no counted one in the cycle.
+    total_operating_expenditures: float | None
     # The candidate's reported totals, None where FEC's files have no row for any committee
     # credited to them; their itemized total, None when no committee is credited to them; and
     # coverage, the one over the other (spec §4.4), None where that cannot be taken.
@@ -376,6 +387,29 @@ class TopOrganization(BaseModel):
     amount: float
 
 
+class SpendingByCategory(BaseModel):
+    """`gold.committee_spending_category`: a committee's counted operating expenditures in one
+    spending category in a cycle, net as filed, so possibly 0 or less (every-FEC-dollar spec
+    §5.3, §5.5)."""
+
+    category: SpendingCategory
+    amount: float
+
+
+class TopPayee(BaseModel):
+    """`gold.committee_top_payee`: a payee among the 100 a committee paid most in a cycle, its
+    payments grouped by payee key, never resolved (ADR-0012; every-FEC-dollar spec §5.4)."""
+
+    rank: int
+    # The key's reported spelling with the most payee dollars in the cycle.
+    name: str
+    payee_key: str
+    # The payee's page, `/v1/payees/{payee_id}`; None for a person or a name that names nobody,
+    # which have none.
+    payee_id: str | None
+    amount: float
+
+
 class CommitteeCycle(BaseModel):
     """`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who
     gave most to it."""
@@ -411,6 +445,13 @@ class CommitteeCycle(BaseModel):
     # figure is 0 or missing (spec §4.4).
     itemized_total: float
     coverage: float | None
+    # Its counted operating expenditures, net as filed (every-FEC-dollar spec §5.2, §5.5): None,
+    # never 0, with no counted one in the cycle, as before 2004 or on a build that lacks them.
+    total_operating_expenditures: float | None
+    # By category, most first; adding up to total_operating_expenditures, and empty where it is
+    # None.
+    spending_by_category: list[SpendingByCategory]
+    top_payees: list[TopPayee]
     top_recipients: list[CommitteeTopRecipient]
     # Empty on a build loaded before donors were resolved.
     top_donors: list[TopDonor]
@@ -491,6 +532,58 @@ class IndependentExpenditurePage(BaseModel):
     the last."""
 
     expenditures: list[IndependentExpenditure]
+    next_cursor: str | None
+
+
+class OperatingExpenditure(BaseModel):
+    """One operating expenditure from silver `operating_expenditure` (every-FEC-dollar spec §5.1): a
+    payment a committee itemized, the payee as reported, with the sub-items that itemize it.
+
+    Only `counted` rows add up to the committee's total_operating_expenditures: a sub-item (a card
+    bill's charge) is listed under its parent and never counted, nor is a memo row nothing names.
+    Spending, never a contribution."""
+
+    cycle: int
+    # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
+    source_record_id: str
+    # None for a filing whose date FEC could not parse.
+    date: date | None
+    # As filed: a negative one is a refund or an offset, and nets out.
+    amount: float | None
+    committee_id: str
+    # The candidate the paying committee is credited to on the row's date, if any.
+    candidate_id: str | None
+    payee_name: str | None
+    # The payee's normalized name (ADR-0012), None for a row with no name; and its page,
+    # `/v1/payees/{payee_id}`, None where the key has none: a person's, or a name naming nobody.
+    payee_key: str | None
+    payee_id: str | None
+    payee_city: str | None
+    payee_state: str | None
+    payee_zip: str | None
+    purpose: str | None
+    # None on a build transformed before payments were classified.
+    spending_category: SpendingCategory | None
+    category_source: SpendingCategorySource | None
+    # FEC's own category code, as filed, three digits.
+    fec_category: str | None
+    memo_code: str | None
+    memo_text: str | None
+    counted: bool
+    # An in-kind outlay: counted, but in no payee's figures, since its payee is the gift's giver.
+    is_in_kind: bool
+    # The filing image FEC shows this payment on.
+    image_num: str | None
+    # The rows that itemize this one, never counted, in the page's order; a sub-item can have its
+    # own.
+    sub_items: list["OperatingExpenditure"]
+
+
+class OperatingExpenditurePage(BaseModel):
+    """A page of a committee's operating expenditures, each with its sub-items; `next_cursor`
+    fetches the next, None on the last."""
+
+    expenditures: list[OperatingExpenditure]
     next_cursor: str | None
 
 

@@ -536,6 +536,75 @@ def test_a_race_has_its_reported_cash_on_hand_and_its_candidates_coverage(
         assert (candidate["coverage"] and round(candidate["coverage"], 4)) == coverage
 
 
+SPENDING = EXPECTED["operating_expenditures"]
+
+
+def payee_id(payee_key: str) -> str:
+    """A payee key's page id (every-FEC-dollar spec §5.4)."""
+    return hashlib.sha256(payee_key.encode()).hexdigest()[:16]
+
+
+def dollars(amount: str | None) -> float | None:
+    """An `expected.yaml` amount as the API's JSON number."""
+    return None if amount is None else float(Decimal(amount))
+
+
+@pytest.mark.parametrize(
+    "committee_id", sorted(set(EXPECTED["committees"]) | set(SPENDING["by_committee"]))
+)
+def test_a_committee_page_has_its_spending(client: TestClient, committee_id: str) -> None:
+    # Counted spending, net as filed, by category, most first, and the payees it paid most: a card
+    # bill counts at the bill, never at its charges; a person and PETTY CASH have no page. A
+    # committee with no counted row has no total, never 0 (every-FEC-dollar spec §5.5).
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+    categories = SPENDING["by_committee_category"].get(committee_id, {})
+
+    assert cycle["total_operating_expenditures"] == dollars(
+        SPENDING["by_committee"].get(committee_id)
+    )
+    assert {c["category"]: c["amount"] for c in cycle["spending_by_category"]} == {
+        category: dollars(amount) for category, amount in categories.items()
+    }
+    amounts = [c["amount"] for c in cycle["spending_by_category"]]
+    assert amounts == sorted(amounts, reverse=True)
+    assert [
+        [p["payee_key"], p["name"], p["amount"], p["payee_id"]] for p in cycle["top_payees"]
+    ] == [
+        [key, name, dollars(amount), payee_id(key) if has_page else None]
+        for key, name, amount, has_page in cast(
+            list[tuple[str, str, str, bool]], SPENDING["top_payees"].get(committee_id, [])
+        )
+    ]
+    assert [p["rank"] for p in cycle["top_payees"]] == list(range(1, len(cycle["top_payees"]) + 1))
+
+
+def test_a_cycles_races_and_their_candidates_have_their_spending(client: TestClient) -> None:
+    # A candidate's is their credited committees' counted spending, None where they have none; a
+    # race's, its candidates' added up, None where none has any.
+    by_candidate = SPENDING["by_candidate"]
+    races = ok(client.get(f"/v1/cycles/{CYCLE}/races"))
+    spent: dict[str, float | None] = {}
+    for race_id in [race["race_id"] for race in races if race["candidate_count"]]:
+        race = ok(client.get(race_url(race_id)))
+        amounts = [
+            Decimal(by_candidate[c["candidate_id"]])
+            for c in race["candidates"]
+            if c["candidate_id"] in by_candidate
+        ]
+        spent[race_id] = race["total_operating_expenditures"]
+        assert race["total_operating_expenditures"] == (float(sum(amounts)) if amounts else None), (
+            race_id
+        )
+        for candidate in race["candidates"]:
+            assert candidate["total_operating_expenditures"] == dollars(
+                by_candidate.get(candidate["candidate_id"])
+            ), candidate["candidate_id"]
+
+    assert {race["race_id"]: race["total_operating_expenditures"] for race in races} == {
+        race["race_id"]: spent.get(race["race_id"]) for race in races
+    }
+
+
 def test_reconciliation_lists_the_committees_over_their_reported_figure(
     client: TestClient,
 ) -> None:

@@ -20,6 +20,7 @@ ROUTES = {
     "/v1/committees/{committee_id}",
     "/v1/committees/{committee_id}/contributions",
     "/v1/committees/{committee_id}/independent-expenditures",
+    "/v1/committees/{committee_id}/expenditures",
     "/v1/donors/{donor_id}",
     "/v1/donors/{donor_id}/contributions",
     "/v1/reconciliation",

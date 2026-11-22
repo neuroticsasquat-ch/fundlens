@@ -96,6 +96,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/committees/{committee_id}/expenditures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Committee Expenditures
+         * @description The operating expenditures the committee itemized in `cycle`, each with the sub-items that
+         *     itemize it nested under it: a card bill with its charges. Only `counted` rows add up to its
+         *     total_operating_expenditures. `category` keeps the payments of that category, their sub-items
+         *     whatever theirs, so a category's counted rows add up to its `spending_by_category` amount.
+         */
+        get: operations["get_committee_expenditures_v1_committees__committee_id__expenditures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/committees/{committee_id}/independent-expenditures": {
         parameters: {
             query?: never;
@@ -383,10 +406,14 @@ export interface components {
             reported: components["schemas"]["ReportedTotals"] | null;
             /** Self Funding */
             self_funding: number;
+            /** Spending By Category */
+            spending_by_category: components["schemas"]["SpendingByCategory"][];
             /** Top Donors */
             top_donors: components["schemas"]["TopDonor"][];
             /** Top Organizations */
             top_organizations: components["schemas"]["TopOrganization"][];
+            /** Top Payees */
+            top_payees: components["schemas"]["TopPayee"][];
             /** Top Recipients */
             top_recipients: components["schemas"]["CommitteeTopRecipient"][];
             /** Total From Committees */
@@ -397,6 +424,8 @@ export interface components {
             total_individual: number;
             /** Total Non Contribution Account */
             total_non_contribution_account: number;
+            /** Total Operating Expenditures */
+            total_operating_expenditures: number | null;
             /** Total Refunds */
             total_refunds: number;
             /** Total Returned By Candidates */
@@ -743,6 +772,70 @@ export interface components {
         /** @enum {string} */
         Office: "H" | "S" | "P";
         /**
+         * OperatingExpenditure
+         * @description One operating expenditure from silver `operating_expenditure` (every-FEC-dollar spec §5.1): a
+         *     payment a committee itemized, the payee as reported, with the sub-items that itemize it.
+         *
+         *     Only `counted` rows add up to the committee's total_operating_expenditures: a sub-item (a card
+         *     bill's charge) is listed under its parent and never counted, nor is a memo row nothing names.
+         *     Spending, never a contribution.
+         */
+        OperatingExpenditure: {
+            /** Amount */
+            amount: number | null;
+            /** Candidate Id */
+            candidate_id: string | null;
+            category_source: components["schemas"]["SpendingCategorySource"] | null;
+            /** Committee Id */
+            committee_id: string;
+            /** Counted */
+            counted: boolean;
+            /** Cycle */
+            cycle: number;
+            /** Date */
+            date: string | null;
+            /** Fec Category */
+            fec_category: string | null;
+            /** Image Num */
+            image_num: string | null;
+            /** Is In Kind */
+            is_in_kind: boolean;
+            /** Memo Code */
+            memo_code: string | null;
+            /** Memo Text */
+            memo_text: string | null;
+            /** Payee City */
+            payee_city: string | null;
+            /** Payee Id */
+            payee_id: string | null;
+            /** Payee Key */
+            payee_key: string | null;
+            /** Payee Name */
+            payee_name: string | null;
+            /** Payee State */
+            payee_state: string | null;
+            /** Payee Zip */
+            payee_zip: string | null;
+            /** Purpose */
+            purpose: string | null;
+            /** Source Record Id */
+            source_record_id: string;
+            spending_category: components["schemas"]["SpendingCategory"] | null;
+            /** Sub Items */
+            sub_items: components["schemas"]["OperatingExpenditure"][];
+        };
+        /**
+         * OperatingExpenditurePage
+         * @description A page of a committee's operating expenditures, each with its sub-items; `next_cursor`
+         *     fetches the next, None on the last.
+         */
+        OperatingExpenditurePage: {
+            /** Expenditures */
+            expenditures: components["schemas"]["OperatingExpenditure"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
          * Problem
          * @description An RFC 9457 problem details document (`application/problem+json`).
          */
@@ -795,6 +888,8 @@ export interface components {
             total_individual: number;
             /** Total Jfc Transfers */
             total_jfc_transfers: number;
+            /** Total Operating Expenditures */
+            total_operating_expenditures: number | null;
         };
         /**
          * RaceCandidate
@@ -828,6 +923,8 @@ export interface components {
             total_individual: number;
             /** Total Jfc Transfers */
             total_jfc_transfers: number;
+            /** Total Operating Expenditures */
+            total_operating_expenditures: number | null;
         };
         /**
          * RaceCandidateReported
@@ -876,6 +973,8 @@ export interface components {
             total_individual: number;
             /** Total Jfc Transfers */
             total_jfc_transfers: number;
+            /** Total Operating Expenditures */
+            total_operating_expenditures: number | null;
         };
         /**
          * RaceTopCommittee
@@ -1038,6 +1137,23 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** @enum {string} */
+        Sort: "date" | "amount";
+        /**
+         * SpendingByCategory
+         * @description `gold.committee_spending_category`: a committee's counted operating expenditures in one
+         *     spending category in a cycle, net as filed, so possibly 0 or less (every-FEC-dollar spec
+         *     §5.3, §5.5).
+         */
+        SpendingByCategory: {
+            /** Amount */
+            amount: number;
+            category: components["schemas"]["SpendingCategory"];
+        };
+        /** @enum {string} */
+        SpendingCategory: "media" | "digital" | "mail" | "fundraising" | "payroll" | "consulting" | "field" | "polling_research" | "travel" | "events" | "administrative" | "legal_compliance" | "transfers_fees" | "credit_card" | "other";
+        /** @enum {string} */
+        SpendingCategorySource: "purpose_rule" | "fec" | "unclassified";
         /**
          * TopDonor
          * @description `gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
@@ -1065,6 +1181,23 @@ export interface components {
             name: string;
             /** Organization Key */
             organization_key: string;
+            /** Rank */
+            rank: number;
+        };
+        /**
+         * TopPayee
+         * @description `gold.committee_top_payee`: a payee among the 100 a committee paid most in a cycle, its
+         *     payments grouped by payee key, never resolved (ADR-0012; every-FEC-dollar spec §5.4).
+         */
+        TopPayee: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string;
+            /** Payee Id */
+            payee_id: string | null;
+            /** Payee Key */
+            payee_key: string;
             /** Rank */
             rank: number;
         };
@@ -1123,6 +1256,8 @@ export type IndependentExpenditurePage = components['schemas']['IndependentExpen
 export type Meta = components['schemas']['Meta'];
 export type MetaCycle = components['schemas']['MetaCycle'];
 export type Office = components['schemas']['Office'];
+export type OperatingExpenditure = components['schemas']['OperatingExpenditure'];
+export type OperatingExpenditurePage = components['schemas']['OperatingExpenditurePage'];
 export type Problem = components['schemas']['Problem'];
 export type Race = components['schemas']['Race'];
 export type RaceCandidate = components['schemas']['RaceCandidate'];
@@ -1137,8 +1272,13 @@ export type ReportedSourceFile = components['schemas']['ReportedSourceFile'];
 export type ReportedTotals = components['schemas']['ReportedTotals'];
 export type SearchKind = components['schemas']['SearchKind'];
 export type SearchResult = components['schemas']['SearchResult'];
+export type Sort = components['schemas']['Sort'];
+export type SpendingByCategory = components['schemas']['SpendingByCategory'];
+export type SpendingCategory = components['schemas']['SpendingCategory'];
+export type SpendingCategorySource = components['schemas']['SpendingCategorySource'];
 export type TopDonor = components['schemas']['TopDonor'];
 export type TopOrganization = components['schemas']['TopOrganization'];
+export type TopPayee = components['schemas']['TopPayee'];
 export type ValidationErrorDetail = components['schemas']['ValidationErrorDetail'];
 export type ValidationProblem = components['schemas']['ValidationProblem'];
 export type $defs = Record<string, never>;
@@ -1389,6 +1529,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContributionPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_committee_expenditures_v1_committees__committee_id__expenditures_get: {
+        parameters: {
+            query: {
+                cycle: number;
+                /** @description Only the payments of this spending category. */
+                category?: components["schemas"]["SpendingCategory"] | null;
+                /** @description `date`, newest first, or `amount`, largest first. */
+                sort?: components["schemas"]["Sort"];
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                committee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatingExpenditurePage"];
                 };
             };
             /** @description Bad Request */
