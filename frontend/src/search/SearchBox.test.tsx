@@ -106,7 +106,18 @@ describe("SearchBox", () => {
     expect(box()).toHaveValue("");
   });
 
-  it("skips a payee hit, which has no page yet, when Enter opens the top hit", async () => {
+  it("lists a payee hit under Payees and opens its page", async () => {
+    const { router } = renderApp("/methodology");
+
+    await type("harbor");
+    const payee = await screen.findByRole("option", { name: /BLUE HARBOR STRATEGIES LLC/ });
+    expect(within(dropdown()!).getByText("Payees")).toBeInTheDocument();
+    fireEvent.click(payee);
+
+    expect(router.state.location.pathname).toBe("/payee/6f774ca924cb0a0b");
+  });
+
+  it("opens a payee's page when it is the top hit and Enter is pressed", async () => {
     const payee: SearchResult = {
       kind: "payee",
       id: "6f774ca924cb0a0b",
@@ -119,11 +130,10 @@ describe("SearchBox", () => {
     });
 
     await type("maryland");
-    await screen.findByRole("option", { name: "2024 Senate MD" });
-    expect(screen.queryByRole("option", { name: /MARYLAND MEDIA/ })).not.toBeInTheDocument();
+    await screen.findByRole("option", { name: "MARYLAND MEDIA LLC" });
     key("Enter");
 
-    expect(router.state.location.pathname).toBe("/committee/C00800103");
+    expect(router.state.location.pathname).toBe("/payee/6f774ca924cb0a0b");
   });
 
   it("opens the highlighted option on Down then Enter", async () => {

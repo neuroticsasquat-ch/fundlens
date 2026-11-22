@@ -1,6 +1,5 @@
 import type { RouteObject } from "react-router";
 import CandidatePage from "./pages/CandidatePage";
-import ComingSoon from "./pages/ComingSoon";
 import CommitteePage from "./pages/CommitteePage";
 import CyclePage from "./pages/CyclePage";
 import DatasetPage from "./pages/DatasetPage";
@@ -8,6 +7,7 @@ import DonorPage from "./pages/DonorPage";
 import HomePage from "./pages/HomePage";
 import MethodologyPage from "./pages/MethodologyPage";
 import NotFound from "./pages/NotFound";
+import PayeePage from "./pages/PayeePage";
 import RacePage from "./pages/RacePage";
 import SearchPage from "./pages/SearchPage";
 import Layout from "./shell/Layout";
@@ -19,7 +19,7 @@ import { defaultCycleTarget, parseCycle } from "./shell/cycleTarget";
 
 const routeCycle: CycleHandle["cycle"] = (params) => parseCycle(params.cycle);
 
-// A candidate's or committee's page lists every cycle; switching scrolls to that cycle's row.
+// A candidate's, committee's or payee's page lists every cycle; switching scrolls to its row.
 const cycleRow: CycleHandle = {
   cycleTarget: (cycle, _params, location) => ({
     pathname: location.pathname,
@@ -49,8 +49,7 @@ export const routes: RouteObject[] = [
       { path: "/candidate/:id", element: <CandidatePage />, handle: cycleRow },
       { path: "/committee/:id", element: <CommitteePage />, handle: cycleRow },
       { path: "/donor/:id", element: <DonorPage /> },
-      // NEU-2159 builds the payee page.
-      { path: "/payee/:payeeId", element: <ComingSoon name="Payee" /> },
+      { path: "/payee/:payeeId", element: <PayeePage />, handle: cycleRow },
       { path: "/search", element: <SearchPage /> },
       { path: "/dataset", element: <DatasetPage /> },
       { path: "/methodology", element: <MethodologyPage /> },

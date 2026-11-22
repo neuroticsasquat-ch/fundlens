@@ -38,6 +38,17 @@ describe("SearchPage", () => {
     expect(screen.queryByRole("region", { name: "Races" })).not.toBeInTheDocument();
   });
 
+  it("lists a payee hit with its badge, linked to its page", async () => {
+    renderApp("/search?q=harbor");
+
+    const payees = await screen.findByRole("region", { name: "Payees" });
+    expect(
+      within(payees).getByRole("link", { name: "BLUE HARBOR STRATEGIES LLC" }),
+    ).toHaveAttribute("href", "/payee/6f774ca924cb0a0b");
+    expect(within(payees).getByText("payee")).toBeInTheDocument();
+    expect(within(payees).getByText("BLUE HARBOR STRATEGIES L.L.C.")).toBeInTheDocument();
+  });
+
   it("says when nothing matched", async () => {
     renderApp("/search?q=zzz");
 

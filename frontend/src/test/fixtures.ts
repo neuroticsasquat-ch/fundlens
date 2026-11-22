@@ -10,6 +10,7 @@ import type {
   IndependentExpenditure,
   Meta,
   OperatingExpenditure,
+  Payee,
   Problem,
   Race,
   RaceCandidate,
@@ -372,6 +373,17 @@ export const SEARCH_CALLOWAY: SearchResult[] = [
   },
 ];
 
+/** `/v1/search?q=harbor`: BLUE HARBOR STRATEGIES, its other spelling as its alias. */
+export const SEARCH_HARBOR: SearchResult[] = [
+  {
+    kind: "payee",
+    id: "6f774ca924cb0a0b",
+    name: "BLUE HARBOR STRATEGIES LLC",
+    aliases: "BLUE HARBOR STRATEGIES L.L.C.",
+    score: 0.74,
+  },
+];
+
 /** `/v1/candidates/S4MD00103`: OKAFOR's 2024 totals, as expected.yaml has them. */
 export const CANDIDATE_OKAFOR: Candidate = {
   candidate_id: "S4MD00103",
@@ -430,6 +442,42 @@ export const PAYEE_IDS = {
   firstMariner: "944656893c7b84e9",
   skylineAir: "e8b3fcab41b3f954",
 } as const;
+
+/**
+ * `/v1/payees/6f774ca924cb0a0b`: BLUE HARBOR STRATEGIES, as expected.yaml's `payees` has it, paid
+ * by both Maryland Senate campaigns in 2024. Its display name is the LLC spelling, which has more
+ * of its dollars than the L.L.C. one.
+ */
+export const PAYEE_BLUE_HARBOR: Payee = {
+  payee_id: PAYEE_IDS.blueHarbor,
+  payee_key: "BLUE HARBOR STRATEGIES",
+  display_name: "BLUE HARBOR STRATEGIES LLC",
+  city: "BALTIMORE",
+  state: "MD",
+  total_all_cycles: 10500,
+  first_cycle: 2024,
+  last_cycle: 2024,
+  cycles: [{ cycle: 2024, total: 10500, committee_count: 2 }],
+  cycle: 2024,
+  top_payers: [
+    {
+      rank: 1,
+      committee_id: "C00800103",
+      committee_name: "OKAFOR FOR MARYLAND",
+      candidate_id: "S4MD00103",
+      candidate_name: "OKAFOR, DIANA",
+      amount: 7500,
+    },
+    {
+      rank: 2,
+      committee_id: "C00800104",
+      committee_name: "WHITLOCK FOR SENATE",
+      candidate_id: "S4MD00104",
+      candidate_name: "WHITLOCK, GORDON",
+      amount: 3000,
+    },
+  ],
+};
 
 /**
  * OKAFOR FOR MARYLAND's 2024 spending, as expected.yaml's `operating_expenditures` has it: its
