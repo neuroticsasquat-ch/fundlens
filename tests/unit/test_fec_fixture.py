@@ -1240,7 +1240,7 @@ def test_the_1998_cycle_publishes_its_summary_zips_and_no_committee_summary() ->
             assert archive.namelist() == [member]
 
 
-def test_committee_summary_repeats_a_committee_only_per_linked_candidate() -> None:
+def test_committee_summary_repeats_a_committee_per_linked_candidate_or_period() -> None:
     by_committee: dict[str, list[Row]] = defaultdict(list)
     for r in rows("committee_summary"):
         by_committee[r["CMTE_ID"]].append(r)
@@ -1250,13 +1250,27 @@ def test_committee_summary_repeats_a_committee_only_per_linked_candidate() -> No
     assert {c: sorted(r["CAND_ID"] for r in rs) for c, rs in repeated.items()} == {
         "C00703975": ["P00009423", "P80000722"],
         "C00800107": ["H4MD05107", "H6MD05113"],
+        "C00800101": ["P40000101", "P40000101"],
     }
-    for rs in repeated.values():
+    # A committee repeated per linked candidate: every field but CAND_ID alike.
+    for committee_id in ("C00703975", "C00800107"):
+        rs = repeated[committee_id]
         assert len({tuple(v for k, v in r.items() if k != "CAND_ID") for r in rs}) == 1
+    # HARGROVE FOR AMERICA over two periods, the narrower first (NEU-2454): its cycle-to-date row
+    # is the second.
+    hargrove = repeated["C00800101"]
+    assert [(r["CVG_START_DT"], r["CVG_END_DT"]) for r in hargrove] == [
+        ("20240701", "20241231"),
+        ("20230101", "20241231"),
+    ]
+    assert cycle_to_date(hargrove)["C00800101"] is hargrove[1]
 
 
 def test_a_weball_row_adds_up_its_candidates_principal_and_authorized_committees() -> None:
-    receipts = {r["CMTE_ID"]: int(r["TTL_RECEIPTS"] or 0) for r in rows("committee_summary")}
+    receipts = {
+        committee_id: int(r["TTL_RECEIPTS"] or 0)
+        for committee_id, r in cycle_to_date(rows("committee_summary")).items()
+    }
     weball = {r["CAND_ID"]: int(r["TTL_RECEIPTS"]) for r in rows("weball")}
 
     assert weball == {
@@ -1323,6 +1337,21 @@ def figure(row: Row, column: str) -> int | None:
     return int(value)
 
 
+def cycle_to_date(summary: Iterable[Row]) -> dict[str, Row]:
+    """Each committee's `committee_summary` row covering the cycle to date, as silver keeps it
+    (spec §4.1): the earliest CVG_START_DT, then the latest CVG_END_DT, then the lowest CAND_ID;
+    a blank date last."""
+
+    def order(row: Row) -> tuple[bool, int, bool, int, str]:
+        start, end = row["CVG_START_DT"], row["CVG_END_DT"]
+        return (not start, int(start or 0), not end, -int(end or 0), row["CAND_ID"])
+
+    kept: dict[str, Row] = {}
+    for row in sorted(summary, key=order):
+        kept.setdefault(row["CMTE_ID"], row)
+    return kept
+
+
 def summary_figures(row: Row, file: str) -> dict[str, date | int | None]:
     """One summary-file row's reporting period and measures, by silver column name."""
     index = SUMMARY_FILES.index(file)
@@ -1361,9 +1390,10 @@ def reported_totals(cycle: int) -> dict[str, list[object]]:
             if committee_id in committees
         }
     totals: dict[str, list[object]] = {}
-    for row in fec_fixture.read_rows("committee_summary", directory):
-        committee_id = row["CMTE_ID"]
-        if committee_id not in committees or committee_id in totals:
+    for committee_id, row in cycle_to_date(
+        fec_fixture.read_rows("committee_summary", directory)
+    ).items():
+        if committee_id not in committees:
             continue
         figures, source_file = summary_figures(row, "committee_summary"), "committee_summary"
         if row["CMTE_TP"] in FILLED_FROM_WEBK and committee_id in webk:

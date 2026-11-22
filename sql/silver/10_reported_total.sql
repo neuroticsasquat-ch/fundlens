@@ -4,8 +4,10 @@
 --
 -- Which file a row comes from depends on the cycle (spec §4, source precedence):
 -- - 2008 on: `committee_summary`, one row per CMTE_ID. The file repeats a committee once per
---   linked candidate, every field but CAND_ID and Link_Image alike: one row is kept, and
---   silver_reported_total_repeat.sql fails the build when the repeats differ. A Form 5 filer
+--   linked candidate, every field but CAND_ID and Link_Image alike, and now and then lists a
+--   committee twice over different periods (NEU-2454). The row kept is the one covering the
+--   cycle to date: the earliest start, then the latest end. silver_reported_total_repeat.sql
+--   fails the build when the rows over that period differ. A Form 5 filer
 --   (type I) or Form 7 filer (type C) has a row carrying little or nothing: each measure it leaves
 --   blank is `webk`'s, when `webk` holds the committee, and its `source_file` says so; its
 --   reporting period stays `committee_summary`'s, both ends from one file. No other
@@ -53,7 +55,10 @@ WITH summary AS (
         END AS DECIMAL(14, 2)) AS operating_expenditures,
         FED_FUNDS AS federal_funds
     FROM committee_summary
-    QUALIFY row_number() OVER (PARTITION BY CMTE_ID ORDER BY CAND_ID) = 1
+    QUALIFY row_number() OVER (
+        PARTITION BY CMTE_ID
+        ORDER BY period_start ASC NULLS LAST, period_end DESC NULLS LAST, CAND_ID
+    ) = 1
 ),
 -- `webk`'s rows under the same names, NULL for a measure it does not have.
 pac AS (
