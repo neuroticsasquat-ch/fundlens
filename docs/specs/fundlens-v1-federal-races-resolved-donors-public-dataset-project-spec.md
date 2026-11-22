@@ -329,7 +329,8 @@ Top-N = 100 everywhere. All aggregates net refunds. "No on-request aggregation":
 | `GET /v1/candidates/{id}` · `GET /v1/candidates/{id}/contributions?cycle=&cursor=` | gold (301 via `candidate_redirect`) · DuckDB scan of `contribution` for `candidate_id` (cycle partition) |
 | `GET /v1/committees/{id}` · `…/contributions?cycle=&cursor=` · `…/independent-expenditures?cycle=&cursor=` | gold · DuckDB · DuckDB scan of `independent_expenditure` for `committee_id`, `kind = 'ie'` only (cycle partition), the rows `committee_cycle.ie_total` sums, each candidate's name from `gold.candidate` (NEU-2058) |
 | `GET /v1/donors/{id}` · `…/contributions?cycle=&cursor=` | gold (301 via `donor_redirect`) · DuckDB scan of `bucket=donor_id % 256` |
-| `GET /v1/search?q=&kind=` | `search_entity` trigram, top 20 |
+| `GET /v1/payees/{payee_id}?cycle=` | `payee`, `payee_cycle`, and `payee_top_payer` for `cycle` (the payee's `last_cycle` when left out), each payer's name from `gold.committee` and `gold.candidate`; a key with no page has no id, so a 404 (every-FEC-dollar spec §5.4, §5.5; NEU-2157) |
+| `GET /v1/search?q=&kind=` | `search_entity` trigram, top 20; `kind` includes `payee` (NEU-2157) |
 | `GET /v1/dataset` | list of snapshots from the public bucket manifest (NEU-2066: each finished snapshot's `manifest.json`, newest first, and the snapshot `latest/` holds; §9) |
 | `GET /healthz` | Postgres + silver volume reachable |
 

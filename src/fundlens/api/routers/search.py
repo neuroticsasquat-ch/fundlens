@@ -5,9 +5,9 @@ stretch of a name, so `calloway` finds `CALLOWAY FOR CONGRESS` as well as `CALLO
 whole-string similarity would sink a short query under a long name. `<%` is the indexed form
 (`gin_trgm_ops`, at pg_trgm's default 0.6 threshold); ties go to the bigger `weight`.
 
-Only the kinds `SearchKind` names are returned: gold may hold a kind no route serves yet (payees,
-every-FEC-dollar spec §5.5, before NEU-2157 gives them a page), whose rows the response model
-would refuse.
+Only the kinds `SearchKind` names are returned: gold may hold a kind no route serves yet, whose
+rows the response model would refuse. A payee's `id` is its `payee_id`, its page
+`/v1/payees/{payee_id}` (every-FEC-dollar spec §5.5).
 """
 
 from typing import Annotated, get_args

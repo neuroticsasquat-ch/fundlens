@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchResult } from "../api/client";
-import { groupByKind, raceRoute, searchTarget } from "./target";
+import { groupByKind, raceRoute, searchTarget, shownResults } from "./target";
 
 const hit = (
   kind: SearchResult["kind"],
@@ -22,6 +22,7 @@ describe("searchTarget", () => {
     expect(searchTarget(hit("candidate", "H4MD05106"))).toBe("/candidate/H4MD05106");
     expect(searchTarget(hit("committee", "C00800106"))).toBe("/committee/C00800106");
     expect(searchTarget(hit("donor", "d-1"))).toBe("/donor/d-1");
+    expect(searchTarget(hit("payee", "6f774ca924cb0a0b"))).toBe("/payee/6f774ca924cb0a0b");
   });
 
   it("turns a special race's slug suffix into the query the race route takes", () => {
@@ -51,5 +52,13 @@ describe("groupByKind", () => {
         ],
       ],
     ]);
+  });
+});
+
+describe("shownResults", () => {
+  it("drops the kinds the SPA does not show yet, payees, keeping the API's order", () => {
+    const results = [hit("payee", "p"), hit("donor", "d"), hit("race", "r")];
+
+    expect(shownResults(results).map((r) => r.id)).toEqual(["d", "r"]);
   });
 });

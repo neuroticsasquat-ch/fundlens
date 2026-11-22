@@ -4,7 +4,7 @@ import { $api } from "../api/client";
 import QueryStatus from "../components/QueryStatus";
 import { usePageTitle } from "../components/usePageTitle";
 import { MIN_QUERY } from "../search/SearchBox";
-import { groupByKind, searchAliases, searchTarget } from "../search/target";
+import { groupByKind, searchAliases, searchTarget, shownResults } from "../search/target";
 
 /** `/search?q=`: every hit for a query, grouped by kind, at a URL that can be shared. */
 function SearchPage() {
@@ -25,7 +25,7 @@ function SearchPage() {
       ) : (
         <QueryStatus query={search}>
           {(results) =>
-            results.length === 0 ? (
+            shownResults(results).length === 0 ? (
               <Text>No results for ‘{q}’.</Text>
             ) : (
               groupByKind(results).map((group) => (

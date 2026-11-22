@@ -252,6 +252,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payees/{payee_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payee */
+        get: operations["get_payee_v1_payees__payee_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/races/{cycle}/{office}/{place}": {
         parameters: {
             query?: never;
@@ -836,6 +853,68 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * Payee
+         * @description A payee page: `gold.payee`, the payments committees reported to one payee key, grouped by
+         *     normalized name and never resolved (ADR-0012), a row per cycle, newest first, and who paid it
+         *     most in `cycle`. A sub-item and an in-kind outlay reach no payee (every-FEC-dollar spec
+         *     §5.4).
+         */
+        Payee: {
+            /** City */
+            city: string | null;
+            /** Cycle */
+            cycle: number;
+            /** Cycles */
+            cycles: components["schemas"]["PayeeCycle"][];
+            /** Display Name */
+            display_name: string;
+            /** First Cycle */
+            first_cycle: number;
+            /** Last Cycle */
+            last_cycle: number;
+            /** Payee Id */
+            payee_id: string;
+            /** Payee Key */
+            payee_key: string;
+            /** State */
+            state: string | null;
+            /** Top Payers */
+            top_payers: components["schemas"]["PayeeTopPayer"][];
+            /** Total All Cycles */
+            total_all_cycles: number;
+        };
+        /**
+         * PayeeCycle
+         * @description `gold.payee_cycle`: what committees paid a payee in one cycle, net as filed
+         *     (every-FEC-dollar spec §5.4, §5.5).
+         */
+        PayeeCycle: {
+            /** Committee Count */
+            committee_count: number;
+            /** Cycle */
+            cycle: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PayeeTopPayer
+         * @description `gold.payee_top_payer`: one of the 100 committees that paid a payee most in a cycle.
+         */
+        PayeeTopPayer: {
+            /** Amount */
+            amount: number;
+            /** Candidate Id */
+            candidate_id: string | null;
+            /** Candidate Name */
+            candidate_name: string | null;
+            /** Committee Id */
+            committee_id: string;
+            /** Committee Name */
+            committee_name: string | null;
+            /** Rank */
+            rank: number;
+        };
+        /**
          * Problem
          * @description An RFC 9457 problem details document (`application/problem+json`).
          */
@@ -1121,7 +1200,7 @@ export interface components {
             transfers_out: number | null;
         };
         /** @enum {string} */
-        SearchKind: "donor" | "candidate" | "committee" | "race";
+        SearchKind: "donor" | "candidate" | "committee" | "race" | "payee";
         /**
          * SearchResult
          * @description `gold.search_entity`: one match, best first.
@@ -1258,6 +1337,9 @@ export type MetaCycle = components['schemas']['MetaCycle'];
 export type Office = components['schemas']['Office'];
 export type OperatingExpenditure = components['schemas']['OperatingExpenditure'];
 export type OperatingExpenditurePage = components['schemas']['OperatingExpenditurePage'];
+export type Payee = components['schemas']['Payee'];
+export type PayeeCycle = components['schemas']['PayeeCycle'];
+export type PayeeTopPayer = components['schemas']['PayeeTopPayer'];
 export type Problem = components['schemas']['Problem'];
 export type Race = components['schemas']['Race'];
 export type RaceCandidate = components['schemas']['RaceCandidate'];
@@ -2004,6 +2086,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Meta"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_payee_v1_payees__payee_id__get: {
+        parameters: {
+            query?: {
+                /** @description The payee's last cycle, if left out. */
+                cycle?: number | null;
+            };
+            header?: never;
+            path: {
+                payee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payee"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description Service Unavailable */
