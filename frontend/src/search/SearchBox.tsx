@@ -6,7 +6,7 @@ import type { KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 import { $api } from "../api/client";
 import type { SearchResult } from "../api/client";
-import { groupByKind, searchAliases, searchTarget, shownResults } from "./target";
+import { groupByKind, searchAliases, searchTarget } from "./target";
 
 // The API's `q` minimum; below it the box shows no dropdown and sends no request.
 export const MIN_QUERY = 2;
@@ -29,7 +29,7 @@ function SearchBox({ size, autoFocus }: { size?: MantineSize; autoFocus?: boolea
     { enabled: q.length >= MIN_QUERY },
   );
   // Results for what is in the box now, not for what was typed before the debounce caught up.
-  const results = q === typed && search.data ? shownResults(search.data) : undefined;
+  const results = q === typed ? search.data : undefined;
 
   const go = (to: string) => {
     navigate(to);

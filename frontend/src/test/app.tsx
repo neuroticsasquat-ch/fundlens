@@ -19,18 +19,20 @@ import {
   MARLOWE_CONTRIBUTIONS,
   META,
   OPERATING_EXPENDITURES,
+  PAYEE_BLUE_HARBOR,
   problem,
   RACE_PAGES,
   RACES,
   SEARCH_CALLOWAY,
+  SEARCH_HARBOR,
 } from "./fixtures";
 
 /**
  * The fixture API: the 2024 cycle, its races and their pages, OKAFOR's candidate page, three
  * committees' pages, their 2024 contributions, independent expenditures and operating
  * expenditures on one page each, MARLOWE's donor page and his contributions on one page (the id a
- * merge retired redirecting to his), two dataset snapshots, and hits for any query containing
- * "calloway".
+ * merge retired redirecting to his), BLUE HARBOR STRATEGIES's payee page, two dataset snapshots,
+ * and hits for any query containing "calloway" or "harbor".
  */
 export const fixtureApi = (): HttpHandler[] => [
   http.get("/v1/cycles", ({ response }) => response(200).json(CYCLES)),
@@ -110,9 +112,24 @@ export const fixtureApi = (): HttpHandler[] => [
       next_cursor: null,
     });
   }),
+  // Only its one cycle has payers; any other's list is empty, as the API's is.
+  http.get("/v1/payees/{payee_id}", ({ params, request, response }) => {
+    if (params.payee_id !== PAYEE_BLUE_HARBOR.payee_id)
+      return response(404).json(problem(404, "Not Found", `No payee ${params.payee_id}.`));
+    const cycle = Number(
+      new URL(request.url).searchParams.get("cycle") ?? PAYEE_BLUE_HARBOR.last_cycle,
+    );
+    return response(200).json({
+      ...PAYEE_BLUE_HARBOR,
+      cycle,
+      top_payers: cycle === PAYEE_BLUE_HARBOR.cycle ? PAYEE_BLUE_HARBOR.top_payers : [],
+    });
+  }),
   http.get("/v1/search", ({ request, response }) => {
     const q = new URL(request.url).searchParams.get("q") ?? "";
-    return response(200).json(q.toLowerCase().includes("calloway") ? SEARCH_CALLOWAY : []);
+    const lower = q.toLowerCase();
+    if (lower.includes("calloway")) return response(200).json(SEARCH_CALLOWAY);
+    return response(200).json(lower.includes("harbor") ? SEARCH_HARBOR : []);
   }),
 ];
 

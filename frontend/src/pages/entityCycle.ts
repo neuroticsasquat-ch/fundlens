@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { parseCycle } from "../shell/cycleTarget";
 
-// A candidate's or committee's page lists every cycle; the cycle switcher sends it to
+// A candidate's, committee's or payee's page lists every cycle; the cycle switcher sends it to
 // `#cycle-{c}` (spec NEU-2043 §4.2), the id of that cycle's totals row.
 const CYCLE_HASH = /^#cycle-(\d+)$/;
 

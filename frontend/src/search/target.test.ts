@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchResult } from "../api/client";
-import { groupByKind, raceRoute, searchTarget, shownResults } from "./target";
+import { groupByKind, raceRoute, searchTarget } from "./target";
 
 const hit = (
   kind: SearchResult["kind"],
@@ -53,12 +53,10 @@ describe("groupByKind", () => {
       ],
     ]);
   });
-});
 
-describe("shownResults", () => {
-  it("drops the kinds the SPA does not show yet, payees, keeping the API's order", () => {
+  it("puts payees last, after donors", () => {
     const results = [hit("payee", "p"), hit("donor", "d"), hit("race", "r")];
 
-    expect(shownResults(results).map((r) => r.id)).toEqual(["d", "r"]);
+    expect(groupByKind(results).map((g) => g.label)).toEqual(["Races", "Donors", "Payees"]);
   });
 });
