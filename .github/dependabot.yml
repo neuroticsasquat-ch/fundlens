@@ -14,6 +14,11 @@ updates:
     commit-message:
       prefix: build
       prefix-development: build
+    # nameparser builds the contributor key, so a new version can re-key contributions: 3.1.0
+    # re-keyed 11,198 of 2024's (NEU-2458). It is pinned in pyproject.toml, and upgrading it is a
+    # re-keying decision, not a bump.
+    ignore:
+      - dependency-name: nameparser
     groups:
       minor-and-patch:
         update-types: [minor, patch]
