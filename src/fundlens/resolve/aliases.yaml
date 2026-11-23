@@ -44,6 +44,51 @@ MISSIONWIRED:
   - Anne Lewis Strategies
   - Anne Lewis Strategies LLC DBA MissionWired
   - Mission Wired
+# Written with and without a space (NEU-2463). WINRED and WINRED TECHNICAL SERVICES stay two
+# firms, WinRed, Inc. and its technical-services LLC: only each one's space variant joins it.
+ONMESSAGE:
+  - On Message
+SKDKNICKERBOCKER:
+  - SKD Knickerbocker
+WINRED TECHNICAL SERVICES:
+  - Win Red Technical Services
+WINRED:
+  - Win Red
+ACTBLUE TECHNICAL SERVICES:
+  - Act Blue Technical Services
+BRABENDERCOX:
+  - Brabender Cox
+DONORBUREAU:
+  - Donor Bureau
+AB DATA:
+  - ABDATA
+GRASSROOTS MEDIA:
+  - Grass Roots Media
+# Firms trading under a second name (NEU-2463): the legal name, the trade name and the DBA
+# spellings are one firm, under whichever key has the most payee dollars. Bare 'Mass Markets' is
+# left out: it was an MCI division's name too, and as an employer it would join MCI's staff.
+IMPACT RESEARCH:
+  - ALG Polling
+  - ALG Polling, Inc. DBA Impact Research
+  - ALG Polling, Inc. D/B/A Impact Research, Inc.
+HART RESEARCH ASSOCIATES:
+  - Yang Strategic Research LLC
+  - Yang Strategic Research LLC DBA Hart Research Associates
+  - Yang Strategic Research LLC D/B/A Hart Research Associates
+  - Yang Strategic Research LLC D/B/A Hart Research
+  - Hart Research Associates Yang Strategic Research LLC
+REPUBLIC STRATEGIES:
+  - Reid Political Consulting
+  - Reid Political Consulting, LLC DBA Republic Strategies, LLC
+  - Republic Strategies/Reid Political Consulting LLC
+TMONE LLC DBA MASS MARKETS:
+  - TMOne LLC
+  - TMONW LLC DBA Mass Markets
+  - TIMONE LLC DBA Mass Markets
+TRUVERSE INC DBA AMPLIFYAI:
+  - Truverse, Inc.
+  - Truverse/Amplify.ai
+  - Amplify.ai
 
 # The fixture cycle's stand-in for SPACEX (tests/fixtures/fec/2024): fictional, and harmless here,
 # since it rewrites only its own spelling.
