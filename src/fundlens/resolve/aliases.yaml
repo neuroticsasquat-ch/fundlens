@@ -37,6 +37,8 @@ UPS:
 # Split payees (spec §5.4): the canonical is the key with more payee dollars.
 AX MEDIA:
   - AXMEDIA
+TEAM DIRECT:
+  - TEAMDIRECT
 
 # The fixture cycle's stand-in for SPACEX (tests/fixtures/fec/2024): fictional, and harmless here,
 # since it rewrites only its own spelling.
