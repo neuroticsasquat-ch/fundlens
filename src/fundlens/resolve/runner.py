@@ -508,6 +508,9 @@ class NoBaseline(Exception):
 _BASELINE_TABLES = frozenset({CONTRIBUTOR_TABLE, EDGE_TABLE, COMPONENT_TABLE, CLUSTER_TABLE})
 # The temp tables and tables `resolve_incremental` works in, dropped when it is done.
 _NEW_KEYS, _NEW_CONTRIBUTORS, _NEW_EDGES, _KNOWN = "new_key", "new_contributor", "new_edge", "known"
+# The returning keys of the run under way, kept in the working file until its crosswalk commits,
+# so a run that dies first leaves the next one the keys to forget (`_forget_returning`).
+_RETURNING_TABLE = "returning_key"
 # The model version the working file's clusters were made with (`_stamp`).
 _STAMP_TABLE = "resolved_with"
 
@@ -533,7 +536,10 @@ class Linked:
     # The cycle's keys, and those of them the crosswalk had not given a donor_id.
     cycle_keys: int
     new_keys: int
-    # Pairs at or above the match threshold with a new key at either end.
+    # Those of them the crosswalk holds but the working file does not: keys a `--full` over a
+    # build without them dropped, back in this one (NEU-2465). They are linked as new keys are.
+    returning_keys: int
+    # Pairs at or above the match threshold with a new or returning key at either end.
     edges: int
     attached: Attached
     overridden: overrides.Applied
@@ -589,37 +595,57 @@ def _forget_unknown(con: duckdb.DuckDBPyConnection, cycle: int) -> int:
             " `fundlens resolve --full`"
         )
     if stale:
-        tables = {name for (name,) in con.execute("SHOW TABLES").fetchall()}
-        clustered = [
-            table
-            for table in (COMPONENT_TABLE, CLUSTER_TABLE, UNADJUDICATED_TABLE)
-            if table in tables
-        ]
-        for table in (CONTRIBUTOR_TABLE, *clustered):
-            con.execute(
-                f"DELETE FROM {table}"
-                " WHERE contributor_key IN (SELECT contributor_key FROM unknown)"
-            )
-        for table in clustered:
-            con.execute(
-                f"""
-                UPDATE {table} SET cluster_id = renamed.lowest
-                FROM (
-                    SELECT cluster_id, min(contributor_key) AS lowest FROM {table}
-                    WHERE cluster_id IN (SELECT contributor_key FROM unknown)
-                    GROUP BY cluster_id
-                ) AS renamed
-                WHERE {table}.cluster_id = renamed.cluster_id
-                """
-            )
-        con.execute(
-            f"DELETE FROM {EDGE_TABLE}"
-            " WHERE contributor_key_l IN (SELECT contributor_key FROM unknown)"
-            " OR contributor_key_r IN (SELECT contributor_key FROM unknown)"
-        )
+        _forget(con, "unknown")
         log.info("resolve: forgot %d keys an earlier run left without a donor_id", stale)
     con.execute("DROP TABLE unknown")
     return stale
+
+
+def _forget(con: duckdb.DuckDBPyConnection, keys: str) -> None:
+    """Remove the keys of the table `keys` from the working file's `contributor`, its clustered
+    tables and `edge`. A cluster or component named by one of them is named again by its lowest
+    key, so no id names a key the file does not hold."""
+    tables = {name for (name,) in con.execute("SHOW TABLES").fetchall()}
+    clustered = [
+        table for table in (COMPONENT_TABLE, CLUSTER_TABLE, UNADJUDICATED_TABLE) if table in tables
+    ]
+    for table in (CONTRIBUTOR_TABLE, *clustered):
+        con.execute(
+            f"DELETE FROM {table} WHERE contributor_key IN (SELECT contributor_key FROM {keys})"
+        )
+    for table in clustered:
+        con.execute(
+            f"""
+            UPDATE {table} SET cluster_id = renamed.lowest
+            FROM (
+                SELECT cluster_id, min(contributor_key) AS lowest FROM {table}
+                WHERE cluster_id IN (SELECT contributor_key FROM {keys})
+                GROUP BY cluster_id
+            ) AS renamed
+            WHERE {table}.cluster_id = renamed.cluster_id
+            """
+        )
+    con.execute(
+        f"DELETE FROM {EDGE_TABLE}"
+        f" WHERE contributor_key_l IN (SELECT contributor_key FROM {keys})"
+        f" OR contributor_key_r IN (SELECT contributor_key FROM {keys})"
+    )
+
+
+def _forget_returning(con: duckdb.DuckDBPyConnection) -> int:
+    """Remove from the working file the returning keys a run that died before its crosswalk
+    committed left in it, recorded in `returning_key`; how many. `_forget_unknown` cannot find
+    them, since the crosswalk holds them, and left in place they would sit in clusters no
+    donor_id stands for, or in `contributor` with no cluster (NEU-2465)."""
+    tables = {name for (name,) in con.execute("SHOW TABLES").fetchall()}
+    if _RETURNING_TABLE not in tables:
+        return 0
+    [(left,)] = con.execute(f"SELECT count(*) FROM {_RETURNING_TABLE}").fetchall()
+    if left:
+        _forget(con, _RETURNING_TABLE)
+        log.info("resolve: forgot %d returning keys an earlier run left unassigned", left)
+    con.execute(f"DROP TABLE {_RETURNING_TABLE}")
+    return left
 
 
 def _extend_unadjudicated(con: duckdb.DuckDBPyConnection) -> None:
@@ -736,13 +762,19 @@ def resolve_incremental(
     conn: Connection[TupleRow],
     release: str | None,
 ) -> Linked:
-    """Resolve the keys of `cycle`'s newest transformed build that `app.crosswalk` does not hold
-    against everything resolved before, with the live model and no training (spec §6.10).
+    """Resolve the keys of `cycle`'s newest transformed build that the working file does not hold
+    against everything resolved before, with the live model and no training (spec §6.10): the
+    new keys, which `app.crosswalk` does not hold either, and the returning ones, which it does.
+    A returning key was given a donor_id by an earlier build, then left the working file with a
+    `resolve --full` over a build without it (NEU-2465). It is linked as a new key is, and the
+    crosswalk gives it back its donor_id wherever its cluster keeps that id (§6.6).
 
-    The new keys are scored against every key in the working file's `contributor` and against
-    each other (`_link`), never the keys already there against each other, and join the working
-    file's tables: `contributor`, `edge`, then `cluster` and `component` by `attach`, which
-    leaves every cluster standing, so a new key joins a donor or forms a new one. The overrides
+    The new and returning keys are scored against every key in the working file's `contributor`
+    and against each other (`_link`), never the keys already there against each other, and join
+    the working file's tables: `contributor`, `edge`, then `cluster` and `component` by
+    `attach`, which leaves every cluster standing, so a new key joins a donor or forms a new
+    one. Until the crosswalk commits, the returning keys are also kept in `returning_key`, so
+    the next run can forget them should this one die first (`_forget_returning`). The overrides
     file at `overrides_path` and the confident verdicts of `adjudication` are applied again, as
     `resolve_full` applies them; the crosswalk gives each new key its donor_id, writing only the
     rows that change; and only this cycle's build gets its silver rewritten with donor_ids and
@@ -787,24 +819,33 @@ def resolve_incremental(
             partition = _local_partition(store, cycle, build, data_dir=data_dir)
             crosswalk.read_crosswalk(con, conn, table=_KNOWN, work=scratch / f"known-{build}")
             _forget_unknown(con, cycle)
+            _forget_returning(con)
             _check_baseline(con)
+            # Against the working file, not the crosswalk: `_forget_unknown` has left it no key
+            # the crosswalk lacks, so this is every new key and every returning one.
             con.execute(
                 f"""
                 CREATE OR REPLACE TEMP TABLE {_NEW_KEYS} AS
                 SELECT DISTINCT contributor_key
                 FROM read_parquet({literal(partition / "*.parquet")}, hive_partitioning = false)
-                ANTI JOIN {_KNOWN} USING (contributor_key)
+                ANTI JOIN {CONTRIBUTOR_TABLE} USING (contributor_key)
                 """
             )
             con.execute(f"DROP TABLE IF EXISTS {_NEW_CONTRIBUTORS}")
             _write_contributors(con, _NEW_CONTRIBUTORS, [partition], only=_NEW_KEYS)
-            [(new_keys,)] = con.execute(f"SELECT count(*) FROM {_NEW_KEYS}").fetchall()
+            con.execute(
+                f"CREATE TABLE {_RETURNING_TABLE} AS"
+                f" FROM {_NEW_KEYS} SEMI JOIN {_KNOWN} USING (contributor_key)"
+            )
+            [(linked_keys,)] = con.execute(f"SELECT count(*) FROM {_NEW_KEYS}").fetchall()
+            [(returning_keys,)] = con.execute(f"SELECT count(*) FROM {_RETURNING_TABLE}").fetchall()
+            new_keys = linked_keys - returning_keys
             cycle_keys = _count(con, partition)
         db_api = DuckDBAPI(con)
         linker = model.linker(db_api, CONTRIBUTOR_TABLE, saved)
         with _phase("link", times):
             # Splink cannot block an empty table.
-            if new_keys:
+            if linked_keys:
                 edges = _link(linker, db_api, con, match_threshold=thresholds.match)
             else:
                 con.execute(f"CREATE OR REPLACE TABLE {_NEW_EDGES} AS FROM {EDGE_TABLE} LIMIT 0")
@@ -840,6 +881,8 @@ def resolve_incremental(
             con.execute("CHECKPOINT")
         with _phase("crosswalk", times):
             assigned = crosswalk.assign(con, conn, build_id=build, scratch=scratch)
+            # The crosswalk holds every returning key's id now: nothing is left to forget.
+            con.execute(f"DROP TABLE {_RETURNING_TABLE}")
         with _phase("silver", times):
             contributions = crosswalk.onto_silver(
                 con, store, cycle=cycle, build_id=build, data_dir=data_dir
@@ -860,8 +903,10 @@ def resolve_incremental(
     )
     store.put(paths.resolution_run(version), record.model_dump_json().encode())
     log.info(
-        "resolved %d new contributor keys of %d in %d (model %s, %.2f s; DuckDB memory limit %s)",
+        "resolved %d new and %d returning contributor keys of %d in %d (model %s, %.2f s;"
+        " DuckDB memory limit %s)",
         new_keys,
+        returning_keys,
         cycle_keys,
         cycle,
         version,
@@ -874,6 +919,7 @@ def resolve_incremental(
         build,
         cycle_keys,
         new_keys,
+        returning_keys,
         edges,
         attached,
         overridden,
