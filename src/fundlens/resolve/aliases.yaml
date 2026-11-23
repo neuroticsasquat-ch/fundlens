@@ -39,6 +39,11 @@ AX MEDIA:
   - AXMEDIA
 TEAM DIRECT:
   - TEAMDIRECT
+# Anne Lewis Strategies LLC, trading as MissionWired: the legal name joins the trade name too.
+MISSIONWIRED:
+  - Anne Lewis Strategies
+  - Anne Lewis Strategies LLC DBA MissionWired
+  - Mission Wired
 
 # The fixture cycle's stand-in for SPACEX (tests/fixtures/fec/2024): fictional, and harmless here,
 # since it rewrites only its own spelling.
