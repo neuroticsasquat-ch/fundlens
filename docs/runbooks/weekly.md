@@ -175,7 +175,7 @@ grep -E '^build |^[0-9]{4}: build|new contributor keys|^attach:|^crosswalk:|^war
 
 ```
 2026: build <B>
-<n> new contributor keys of <k>, <e> pairs scored at or above the match threshold
+<n> new contributor keys of <k>, <r> returning to the working file, <e> pairs scored at or above the match threshold
 attach: …
 overrides: …
 adjudications: …
@@ -189,6 +189,10 @@ Then load's and publish's lines, `published build <B> of 2026` with `previous bu
 404, and `finished build <B> of 2026: ran extract, transform, resolve, load, publish`. About 45 minutes plus the
 resolution; `real` gives the whole.
 
+- `<r>` is the keys the crosswalk holds but the working file had lost: given a donor_id by an earlier build, dropped
+  by a `resolve --full` over a build without them, and back this week (NEU-2465). Each is linked as a new key is and
+  keeps its donor_id wherever its cluster keeps that id; one that cannot is counted under `keys re-pointed`. A few
+  dozen is plausible.
 - `<n>` is the 2026 keys the crosswalk had never given a donor_id: FEC's amendments since 2026-11-16 and the week's
   new filings. A few thousand to a few hundred thousand is plausible. All 2026 keys, about 2.6 million, means the
   working file did not hold 2026's: stop and find out why.

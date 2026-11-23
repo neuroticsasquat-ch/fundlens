@@ -18,7 +18,8 @@ from typer.testing import CliRunner, Result
 from fundlens import cli, markers, paths
 from fundlens.fec.files import CATALOGUE
 from fundlens.r2 import R2
-from fundlens.resolve import model
+from fundlens.resolve import model, runner
+from fundlens.resolve.cluster import Attached
 from fundlens.resolve.runner import RunRecord, run_record
 from fundlens.settings import get_settings
 from tests import fec_fixture
@@ -29,8 +30,9 @@ from tests.integration.test_validate import resolved_env
 
 log = logging.getLogger(__name__)
 
-# The fixture cycle's next weekly build.
+# The fixture cycle's next weekly build, and the one after.
 NEXT = "20261106T030000Z"
+THIRD = "20261113T030000Z"
 # Augustine Marlowe, the fixture's Musk case, in three new ways; Rosalind Fenwick, a donor never
 # seen before; and two more gifts from donors whose keys stood.
 MARLOWE_NEW = (
@@ -345,3 +347,104 @@ def test_after_overrides_and_verdicts_an_incremental_resolve_moves_no_key_that_s
     assert unadjudicated == clustered
     # The keys the adjudication merged sit apart before it.
     assert mixed > 0
+
+
+# Two keys `NEXT` resolved, one into Marlowe's donor and one a donor of its own, that a `--full`
+# over a build without them would drop from the working file, back in `THIRD` (NEU-2465).
+RETURNING = (MARLOWE_NEW[0], NEWCOMER)
+
+
+@dataclass(frozen=True)
+class Rejoined:
+    """`incremented`, its working file without `RETURNING`, then `THIRD`, which has them,
+    transformed and resolved incrementally: first by a run that dies after linking them and
+    before clustering them, then by one that finishes."""
+
+    died: Result
+    result: Result
+    before: dict[str, tuple[Any, ...]]
+    after: dict[str, tuple[Any, ...]]
+    snapshot: Snapshot
+
+
+@pytest.fixture(scope="module")
+def rejoined(
+    incremented: Incremented, migrated_template: str, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Rejoined]:
+    seen: dict[str, Any] = {}
+
+    def dies(*_: object, **__: object) -> Attached:
+        raise RuntimeError("died before attaching the new keys")
+
+    def steps(env: pytest.MonkeyPatch) -> None:
+        memory_limit(env)
+        settings = get_settings()
+        seen["before"] = before = crosswalk_rows(settings.database_url)
+        # The working file a `--full` over a build without `RETURNING` leaves: every other key
+        # as it stood, theirs gone. `_forget_unknown` removes keys the temp table `known` lacks.
+        with duckdb.connect(paths.resolution_database(settings.data_dir)) as con:
+            con.execute(
+                "CREATE TEMP TABLE known AS SELECT unnest($keys::VARCHAR[]) AS contributor_key",
+                {"keys": [key for key in before if key not in RETURNING]},
+            )
+            forgot = runner._forget_unknown(con, fec_fixture.CYCLE)  # pyright: ignore[reportPrivateUsage]
+        assert forgot == len(RETURNING)
+        transformed = CliRunner().invoke(
+            cli.app, ["transform", "--cycle", str(fec_fixture.CYCLE), "--build-id", THIRD]
+        )
+        assert transformed.exit_code == 0, transformed.output
+        # The returning keys join `contributor`, then the run dies with them in no cluster: the
+        # next one must find them to forget, since the crosswalk holds them and
+        # `_forget_unknown` cannot.
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(runner, "attach", dies)
+            seen["died"] = resolve("--cycle", str(fec_fixture.CYCLE))
+        seen["result"] = resolve("--cycle", str(fec_fixture.CYCLE))
+        seen["after"] = crosswalk_rows(settings.database_url)
+
+    for snapshot in build_snapshot(
+        "rejoined",
+        tmp_path_factory,
+        template=migrated_template,
+        steps=steps,
+        parent=incremented.snapshot,
+    ):
+        yield Rejoined(seen["died"], seen["result"], seen["before"], seen["after"], snapshot)
+
+
+def test_a_key_back_after_the_working_file_lost_it_takes_its_donor_id_again(
+    rejoined: Rejoined,
+) -> None:
+    assert rejoined.died.exit_code == 1
+    assert rejoined.result.exit_code == 0, rejoined.result.output
+    # Every row as it stood: each returning key back on its donor, and no id drawn.
+    assert rejoined.after == rejoined.before
+    output = rejoined.result.output
+    assert "0 new contributor keys of" in output
+    assert f"{len(RETURNING)} returning to the working file" in output
+    assert "crosswalk: 0 new donors, 0 keys re-pointed, 0 redirects" in output
+    database = paths.resolution_database(rejoined.snapshot.data_dir)
+    with duckdb.connect(database, read_only=True) as con:
+        [(clustered,)] = con.execute(
+            "SELECT count(*) FROM cluster WHERE contributor_key IN (SELECT unnest($keys))",
+            {"keys": list(RETURNING)},
+        ).fetchall()
+        tables = {name for (name,) in con.execute("SHOW TABLES").fetchall()}
+    # Once each, though the run that died had written them to `contributor` too.
+    assert clustered == len(RETURNING)
+    assert "returning_key" not in tables
+
+
+def test_the_build_they_return_in_carries_their_donor_ids_on_silver(rejoined: Rejoined) -> None:
+    part = paths.local_path(
+        rejoined.snapshot.data_dir,
+        paths.silver_partition("contribution", fec_fixture.CYCLE, THIRD),
+    )
+    with duckdb.connect() as con:
+        rows = con.execute(
+            "SELECT contributor_key, donor_id FROM read_parquet(?, hive_partitioning = false)",
+            [str(part / "**" / "*.parquet")],
+        ).fetchall()
+    assert all(donor_id is not None for _, donor_id in rows)
+    carried = {key: donor_id for key, donor_id in rows if key in RETURNING}
+    assert carried == {key: rejoined.before[key][0] for key in RETURNING}

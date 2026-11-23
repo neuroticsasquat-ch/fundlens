@@ -497,6 +497,7 @@ def _resolve_incremental(cycle: int) -> None:
     typer.echo(f"{result.cycle}: build {result.build}")
     typer.echo(
         f"{result.new_keys} new contributor keys of {result.cycle_keys},"
+        f" {result.returning_keys} returning to the working file,"
         f" {result.edges} pairs scored at or above the match threshold"
     )
     typer.echo(f"attach: {result.attached.summary()}")
@@ -512,12 +513,13 @@ def _resolve_incremental(cycle: int) -> None:
         f" {assigned.redirects} redirects"
     )
     if assigned.repointed:
-        # Only an override or a verdict new since the last run re-points a key that stood, and
-        # only this cycle's silver is rewritten: the runbooks follow one with `resolve --full`.
+        # Only an override or a verdict new since the last run re-points a key that stood, or a
+        # returning key whose cluster no longer keeps its id (NEU-2465), and only this cycle's
+        # silver is rewritten: the runbooks follow one with `resolve --full`.
         typer.echo(
-            f"warning: {assigned.repointed} keys that stood were re-pointed by overrides or"
-            " verdicts; other cycles' silver and gold keep their old donor_ids until"
-            " `fundlens resolve --full` and their reload",
+            f"warning: {assigned.repointed} keys that stood were re-pointed by overrides,"
+            " verdicts or returning keys; other cycles' silver and gold keep their old donor_ids"
+            " until `fundlens resolve --full` and their reload",
             err=True,
         )
     typer.echo(f"model {result.model_version}: the live model, untrained")
