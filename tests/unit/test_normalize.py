@@ -197,13 +197,18 @@ def test_normalize_occupation(raw: str | None, expected: str | None) -> None:
         ("IRONWORKERS LOCAL 16", "IRONWORKERS LOCAL 16"),
         ("ACME HOLDINGS, L.L.C.", "ACME HOLDINGS"),
         # The payee key is the organization key (ADR-0012), so a split payee is one key by alias
-        # (spec §5.4, NEU-2460, NEU-2461).
+        # (spec §5.4, NEU-2460, NEU-2461, NEU-2462).
         ("AXMEDIA", "AX MEDIA"),
         ("AXMEDIA LLC", "AX MEDIA"),
         ("AX MEDIA", "AX MEDIA"),
         ("TEAMDIRECT", "TEAM DIRECT"),
         ("TEAMDIRECT LLC", "TEAM DIRECT"),
         ("TEAM DIRECT", "TEAM DIRECT"),
+        ("MISSIONWIRED", "MISSIONWIRED"),
+        ("ANNE LEWIS STRATEGIES", "MISSIONWIRED"),
+        ("Anne Lewis Strategies, LLC", "MISSIONWIRED"),
+        ("ANNE LEWIS STRATEGIES LLC DBA MISSIONWIRED", "MISSIONWIRED"),
+        ("MISSION WIRED", "MISSIONWIRED"),
         # A name the employer rule nulls keeps the cleaned name as its key: a receipt always has
         # one.
         ("NONE", "NONE"),
