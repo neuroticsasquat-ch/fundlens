@@ -510,3 +510,43 @@ operating_expenditure:
     counted: >-
       True for a row every total counts: not a sub-item, and either a payment some sub-item
       itemizes, whatever its memo code, or not a memo entry. Sum only these.
+electioneering_communication:
+  description: >-
+    One electioneering communication for one candidate: a broadcast ad naming a candidate shortly
+    before an election, paid for by a spender filing the FEC's Form 9, from the FEC's
+    electioneering communications file (from 2010). A disbursement naming several candidates is
+    one row per candidate, each with the FEC's equal share in `amount`: sum `amount`, never
+    `disbursement_amount`. A row has no side: the filing does not say whether the ad is for or
+    against the candidate. The file shows no amendment, so a report a later one restates may be
+    counted twice. Outside spending, never a contribution: never add it to `contribution` or any
+    other receipt amount. Partitioned by cycle.
+  key: [cycle, source, source_record_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: >-
+      The row's id, unique within a source: `<image_num>:<n>`, n the row's place among its image
+      number's rows in this table, ordered by every column as filed. The file has no id of its own.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    committee_id: >-
+      The FEC id of the spender: a person or group filing as a committee (a non-committee spender,
+      told by `committee.type`), or a committee.
+    candidate_id: >-
+      The FEC id of the candidate the row names, when they are a candidate of the cycle, else
+      null: an ad about an issue may name none. A second id the same person holds for the race is
+      replaced by the one holding their money, and a row naming a candidate whose committee was
+      handed to another (Biden's 2024 campaign, Harris's from 2024-07-21), dated on or after the
+      handoff or undated, is the second candidate's.
+    race_id: That candidate's race, the `race` table's key; null when there is none.
+    amount: >-
+      The candidate's share of the disbursement in dollars, as the FEC calculated it: the
+      disbursement divided equally among the candidates it names. Sum this.
+    disbursement_amount: >-
+      The whole disbursement in dollars, as reported, repeated on each of its rows. Never sum it.
+    candidate_count: The number of candidates the disbursement names, as reported.
+    date: The date of the disbursement as reported; null when the filer gave none.
+    communication_date: The date of the communication as reported.
+    public_distribution_date: The date the communication was first publicly distributed, as reported.
+    payee_name: Whom the spender paid, as reported.
+    description: What the spender paid for, as reported.
+    image_num: The FEC image number of the page the row is on.
