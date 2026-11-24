@@ -64,6 +64,7 @@ GoldTable = Literal[
     "race",
     "race_candidate",
     "race_top_committee",
+    "race_top_spender",
     "candidate",
     "candidate_cycle",
     "candidate_redirect",
@@ -96,7 +97,8 @@ FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 # `candidate_committee_link` credits a committee's reported figures to its candidate
 # (every-FEC-dollar spec §4.3): silver `contribution` carries the candidate of each row, not of a
 # committee with no counted money. `operating_expenditure` is spending (every-FEC-dollar spec §5.5),
-# in no receipt figure.
+# in no receipt figure. `electioneering_communication` is outside spending (every-FEC-dollar spec
+# §6.5), as `independent_expenditure` is.
 INPUTS: dict[SilverTable, str] = {
     "committee": "transform",
     "candidate": "transform",
@@ -107,6 +109,7 @@ INPUTS: dict[SilverTable, str] = {
     "contributor": "transform",
     "organization_receipt": "transform",
     "independent_expenditure": "transform",
+    "electioneering_communication": "transform",
     "reported_total": "transform",
     "candidate_reported_total": "transform",
     "operating_expenditure": "transform",

@@ -23,9 +23,19 @@
 -- NULL for every candidate of a cycle whose build was loaded before `resolve`, whose contributions
 -- have no donor (the loader gives them a NULL donor_id).
 -- ie_support and ie_oppose are the independent expenditures for and against the candidate
--- (silver's kind 'ie': 24E and 24A, NEU-2057), net of corrections, by anyone: spending, never money
--- the candidate received, in no figure above. A coordinated expenditure or communication cost is
--- in neither. total_operating_expenditures is the counted operating expenditures silver credits to
+-- (silver's kind 'ie': 24E and 24A, NEU-2057, and the 24/48-hour rows NEU-2165 adds), net of
+-- corrections, by anyone: spending, never money the candidate received, in no figure above. A
+-- coordinated expenditure or communication cost is in neither. The other kinds of outside spending
+-- naming the candidate (every-FEC-dollar spec §6.5, NEU-2168) sit beside them, each in no other
+-- figure: communication_cost_support and communication_cost_oppose, a corporation's or union's
+-- communications to its members (kind 'communication_cost') by side; party_coordinated, a party's
+-- coordinated expenditures (kind 'coordinated', always in support). A row with no side (NEU-2165)
+-- is in none of the five. Those are 0 where there is no row, as pas2 has every cycle.
+-- electioneering is the electioneering communications' shares naming the candidate (silver
+-- electioneering_communication.amount, NEU-2166), with no side: NULL, never 0, where there is
+-- none, since a cycle before 2010 has no file and a build may lack the table (§2, older builds).
+-- No total on a candidate: for and against point opposite ways.
+-- total_operating_expenditures is the counted operating expenditures silver credits to
 -- the candidate (its `candidate_id`, contribution's credit rule: a handed-off committee's by the
 -- row's date, so C00703975's 2024 spending before 2024-07-21 is BIDEN's and the rest HARRIS's;
 -- every-FEC-dollar spec §5.5), net as filed: spending, in no receipt figure. NULL, never 0, where
@@ -93,10 +103,23 @@ independent AS (
     SELECT
         cycle,
         candidate_id,
-        coalesce(sum(amount) FILTER (WHERE support_oppose = 'S'), 0) AS ie_support,
-        coalesce(sum(amount) FILTER (WHERE support_oppose = 'O'), 0) AS ie_oppose
+        coalesce(sum(amount) FILTER (WHERE kind = 'ie' AND support_oppose = 'S'), 0) AS ie_support,
+        coalesce(sum(amount) FILTER (WHERE kind = 'ie' AND support_oppose = 'O'), 0) AS ie_oppose,
+        coalesce(
+            sum(amount) FILTER (WHERE kind = 'communication_cost' AND support_oppose = 'S'), 0
+        ) AS communication_cost_support,
+        coalesce(
+            sum(amount) FILTER (WHERE kind = 'communication_cost' AND support_oppose = 'O'), 0
+        ) AS communication_cost_oppose,
+        coalesce(sum(amount) FILTER (WHERE kind = 'coordinated'), 0) AS party_coordinated
     FROM silver.independent_expenditure
-    WHERE kind = 'ie' AND candidate_id IS NOT NULL
+    WHERE candidate_id IS NOT NULL AND support_oppose IN ('S', 'O')
+    GROUP BY cycle, candidate_id
+),
+electioneering AS (
+    SELECT cycle, candidate_id, sum(amount) AS electioneering
+    FROM silver.electioneering_communication
+    WHERE candidate_id IS NOT NULL
     GROUP BY cycle, candidate_id
 ),
 spent AS (
@@ -234,6 +257,12 @@ SELECT
     CAST(coalesce(money.self_funding, 0) AS DECIMAL(16, 2)) AS self_funding,
     CAST(coalesce(independent.ie_support, 0) AS DECIMAL(16, 2)) AS ie_support,
     CAST(coalesce(independent.ie_oppose, 0) AS DECIMAL(16, 2)) AS ie_oppose,
+    CAST(coalesce(independent.communication_cost_support, 0) AS DECIMAL(16, 2))
+        AS communication_cost_support,
+    CAST(coalesce(independent.communication_cost_oppose, 0) AS DECIMAL(16, 2))
+        AS communication_cost_oppose,
+    CAST(coalesce(independent.party_coordinated, 0) AS DECIMAL(16, 2)) AS party_coordinated,
+    CAST(electioneering.electioneering AS DECIMAL(16, 2)) AS electioneering,
     CAST(spent.total_operating_expenditures AS DECIMAL(16, 2)) AS total_operating_expenditures,
     CASE
         -- A cycle with no contributions at all has nothing to leave unresolved.
@@ -274,6 +303,7 @@ LEFT JOIN money USING (cycle, candidate_id)
 LEFT JOIN from_committees USING (cycle, candidate_id)
 LEFT JOIN jfc_transfers USING (cycle, candidate_id)
 LEFT JOIN independent USING (cycle, candidate_id)
+LEFT JOIN electioneering USING (cycle, candidate_id)
 LEFT JOIN spent USING (cycle, candidate_id)
 LEFT JOIN credited_itemized USING (cycle, candidate_id)
 LEFT JOIN reported USING (cycle, candidate_id)

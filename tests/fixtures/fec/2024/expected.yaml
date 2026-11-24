@@ -762,6 +762,78 @@ electioneering_communications:
   "202410249200000007:1": [C90800207, S4MD00105, 2024-S-MD-00, 3500]
   "202410289200000010:1": [C90800207, H4MD05107, 2024-H-MD-05, 7500.25]
 
+# Gold's other kinds of outside spending (every-FEC-dollar spec §6.5, NEU-2168), from the three
+# lists above. by_candidate, each candidate with a row of them naming them:
+# [communication_cost_support, communication_cost_oppose, party_coordinated, electioneering]; a
+# candidate not listed has 0, 0, 0 and null, null being no electioneering row. by_race, every race
+# above: those added up over its candidates (electioneering null where none has a row) and
+# outside_spending_total, those four with its ie_support and ie_oppose, a null as 0. by_committee,
+# each spender with a row of them: [communication_cost_total, party_coordinated_total,
+# electioneering_total, outside_spending_total], every row of each kind, those naming no candidate
+# too (STEAMFITTERS' $800, RESTORATION PAC's $36,000), and the total with its ie_total; a committee
+# not listed has 0, 0, null and its ie_total. A Form 7 filer's and a Form 9 filer's spending is
+# theirs, in no receipt figure.
+outside_spending:
+  by_candidate:
+    H4MD05106: [512, 0, 0, 18000] # CALLOWAY
+    H4MD05107: [0, 0, 0, 12000.25] # DRISCOLL: one electioneering row naming his alias
+    P00009423: [0, 0, 0, 27500] # HARRIS: BIDEN's row dated on the handoff
+    P40000101: [0, 0, 0, 30000] # HARGROVE
+    P80000722: [0, 0, 0, 25000] # BIDEN
+    S4MD00103: [4224, 0, 0, 71409.5] # OKAFOR
+    S4MD00104: [0, 2400, 20000, 26409.5] # WHITLOCK: the party's 24C
+    S4MD00105: [0, 0, 0, 3500] # PELL
+  by_race:
+    2024-P-US-00: [0, 0, 0, 82500, 504750]
+    2024-S-MD-00: [4224, 2400, 20000, 101319, 547293.75]
+    2024-H-MD-05: [512, 0, 0, 30000.25, 82812.25]
+    2024-S-NE-00-special: [0, 0, 0, null, 0]
+    2024-H-MD-08: [0, 0, 0, null, 0]
+  by_committee:
+    C00800203: [0, 20000, null, 65000] # OLD LINE REPUBLICAN COMMITTEE
+    C70800208: [7936, 0, null, 7936] # STEAMFITTERS LOCAL 486
+    C90800207: [0, 0, 249819.25, 249819.25] # RESTORATION PAC
+
+# Each race's lines in gold's race_top_spender (every-FEC-dollar spec §6.5, NEU-2168), by rank:
+# [committee_id, candidate_id, kind, support_oppose, amount]. One line per spender, candidate, kind
+# and side, every kind on the race's candidates, a row with no side in none; ranked by amount, then
+# committee, candidate, kind and side. The Form 5 filer (ONE NATION), the Form 9 filer
+# (RESTORATION PAC) and the union (STEAMFITTERS LOCAL 486) each have lines, under their own ids.
+race_top_spenders:
+  2024-P-US-00:
+    - [C00800201, P40000101, independent_expenditure, S, 400000]
+    - [C90800207, P40000101, electioneering_communication, null, 30000]
+    - [C90800207, P00009423, electioneering_communication, null, 27500]
+    - [C90800207, P80000722, electioneering_communication, null, 25000]
+    - [C00800202, P00009423, independent_expenditure, S, 14000]
+    - [C00800202, P00009423, independent_expenditure, O, 5000]
+    - [C00800202, P80000722, independent_expenditure, S, 2000]
+    - [C90800206, P00009423, independent_expenditure, S, 750]
+    - [C90800206, P80000722, independent_expenditure, S, 500]
+  2024-S-MD-00:
+    - [C00800201, S4MD00103, independent_expenditure, S, 150000]
+    - [C00800201, S4MD00104, independent_expenditure, O, 80000]
+    - [C90800207, S4MD00103, electioneering_communication, null, 71409.5]
+    - [C00800210, S4MD00104, independent_expenditure, O, 67500]
+    - [C00800210, S4MD00103, independent_expenditure, S, 60000]
+    - [C00800203, S4MD00103, independent_expenditure, O, 45000]
+    - [C90800207, S4MD00104, electioneering_communication, null, 26409.5]
+    - [C00800203, S4MD00104, party_coordinated, S, 20000]
+    - [C90800206, S4MD00103, independent_expenditure, S, 13200.5]
+    - [C70800208, S4MD00103, communication_cost, S, 4224]
+    - [C90800206, S4MD00104, independent_expenditure, O, 3650.25]
+    - [C90800207, S4MD00105, electioneering_communication, null, 3500]
+    - [C70800208, S4MD00104, communication_cost, O, 2400]
+  2024-H-MD-05:
+    - [C00800201, H4MD05106, independent_expenditure, S, 25000]
+    - [C90800207, H4MD05106, electioneering_communication, null, 18000]
+    - [C00800201, H4MD05107, independent_expenditure, O, 15000]
+    - [C90800207, H4MD05107, electioneering_communication, null, 12000.25]
+    - [C90800206, H4MD05106, independent_expenditure, S, 5300]
+    - [C90800206, H4MD05107, independent_expenditure, O, 4000]
+    - [C00800202, H4MD05106, independent_expenditure, S, 3000]
+    - [C70800208, H4MD05106, communication_cost, S, 512]
+
 races:
   2024-P-US-00:
     candidate_count: 5
@@ -1056,7 +1128,7 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C70800208: # STEAMFITTERS LOCAL 486: a Form 7 filer, its communication costs in no total
+  C70800208: # STEAMFITTERS LOCAL 486: a Form 7 filer, its communication costs in no receipt total
     total_individual: 0
     self_funding: 0
     total_from_committees: 0

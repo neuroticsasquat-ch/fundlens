@@ -72,6 +72,12 @@ def whole(value: Decimal | None) -> int | None:
     return None if value is None else int(value)
 
 
+def cents(value: Decimal | None) -> float | None:
+    """A nullable dollars-and-cents figure, as `expected.yaml` lists it: quarter-dollars, which a
+    YAML float holds exactly."""
+    return None if value is None else float(value)
+
+
 def ratio(value: float | None) -> float | None:
     """A ratio to four places, as `expected.yaml` lists it."""
     return None if value is None else round(value, 4)
@@ -192,6 +198,64 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         ), committee_id
         # Its independent expenditures for and against candidates; not the party's 24C.
         assert float(row["ie_total"]) == totals["ie_total"], committee_id
+
+    # Every kind of outside spending (every-FEC-dollar spec §6.5): beside v1's independent
+    # expenditures, which now include the 24/48-hour rows, each other kind by candidate, race and
+    # spender, electioneering NULL where there is no row; a total on a race and a spender.
+    outside = expected["outside_spending"]
+    candidate_kinds = (
+        "communication_cost_support",
+        "communication_cost_oppose",
+        "party_coordinated",
+        "electioneering",
+    )
+    for candidate_id, row in candidate_cycles.items():
+        assert [cents(row[f]) for f in candidate_kinds] == outside["by_candidate"].get(
+            candidate_id, [0, 0, 0, None]
+        ), candidate_id
+        if candidate_id in race_candidates:
+            assert [race_candidates[candidate_id][f] for f in candidate_kinds] == [
+                row[f] for f in candidate_kinds
+            ], candidate_id
+    assert {
+        race_id: [cents(races[race_id][f]) for f in (*candidate_kinds, "outside_spending_total")]
+        for race_id in outside["by_race"]
+    } == outside["by_race"]
+    for committee_id, row in committee_cycles.items():
+        assert [
+            cents(row[f])
+            for f in (
+                "communication_cost_total",
+                "party_coordinated_total",
+                "electioneering_total",
+                "outside_spending_total",
+            )
+        ] == outside["by_committee"].get(
+            committee_id, [0, 0, None, expected["committees"][committee_id]["ie_total"]]
+        ), committee_id
+    # Every spender is a committee, a non-committee spender (types I, C and E) too, named as `cm`
+    # names it.
+    committees_by_id = {
+        row["committee_id"]: (row["name"], row["type"]) for row in rows(migrated_db, "committee")
+    }
+    top_spenders: dict[str, list[list[str | float | None]]] = defaultdict(list)
+    for row in sorted(
+        rows(migrated_db, "race_top_spender"), key=lambda r: (r["race_id"], r["rank"])
+    ):
+        assert row["name"] == committees_by_id[row["committee_id"]][0], row
+        top_spenders[row["race_id"]].append(
+            [
+                row["committee_id"],
+                row["candidate_id"],
+                row["kind"],
+                row["support_oppose"],
+                float(row["amount"]),
+            ]
+        )
+    assert top_spenders == expected["race_top_spenders"]
+    assert {
+        committees_by_id[str(line[0])][1] for lines in top_spenders.values() for line in lines
+    } >= {"I", "C", "E"}
 
     # FEC's reported figures beside fundlens's itemized one (every-FEC-dollar spec §4.4): coverage 1
     # where the two agree, above 1 where fundlens counts more, NULL at a conduit or a reported 0.

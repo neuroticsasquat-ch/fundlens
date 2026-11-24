@@ -311,7 +311,8 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     sum; no file before 2008 has an itemized figure, so no coverage, reconciliation or unitemized
     gift-size row (every-FEC-dollar spec §4.3 to §4.7). `oppexp` starts in 2004, so a 1998
     committee, candidate and race has a NULL total_operating_expenditures, never 0, and no category,
-    top-payee, payee-cycle or top-payer row (§5.5); 2024's beside it keep theirs."""
+    top-payee, payee-cycle or top-payer row (§5.5); 2024's beside it keep theirs. Nor has it an
+    electioneering figure (§6.5)."""
     columns = EXPECTED["reported_totals"]["columns"]
     weball = EXPECTED["reported_totals"]["candidate_reported_total"][EARLY]
     webk = EXPECTED["reported_totals"]["reported_total"][EARLY]
@@ -350,6 +351,18 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
             " FROM (VALUES (%s), (2024)) AS c(cycle) ORDER BY c.cycle",
             (EARLY,),
         ).fetchall()
+        # No electioneering file before 2010 (§6.5): NULL, never 0, on every committee, candidate
+        # and race, while each outside_spending_total is a figure.
+        [electioneering_early, electioneering_current] = conn.execute(
+            "SELECT"
+            " (SELECT count(electioneering_total) FROM gold.committee_cycle WHERE cycle = c.cycle)"
+            " + (SELECT count(electioneering) FROM gold.candidate_cycle WHERE cycle = c.cycle)"
+            " + (SELECT count(electioneering) FROM gold.race WHERE cycle = c.cycle),"
+            " (SELECT count(*) FROM gold.race"
+            "  WHERE cycle = c.cycle AND outside_spending_total IS NULL)"
+            " FROM (VALUES (%s), (2024)) AS c(cycle) ORDER BY c.cycle",
+            (EARLY,),
+        ).fetchall()
 
     receipts, cash = columns.index("receipts"), columns.index("cash_on_hand_end")
     assert {row[0]: row[1:] for row in candidates} == {
@@ -368,6 +381,9 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     assert later == (0, 0)
     assert spending_early == (0,)
     assert spending_current[0] > 0
+    assert electioneering_early == (0, 0)
+    assert electioneering_current[0] > 0
+    assert electioneering_current[1] == 0
 
 
 # What a 1996-2006 `webk` row lacks and `committee_summary` has (every-FEC-dollar spec §4.7).
