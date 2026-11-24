@@ -16,6 +16,7 @@ from psycopg.rows import TupleRow, dict_row
 
 from fundlens.api.contributions import CursorParam, CycleParam, contributions_page
 from fundlens.api.deps import Conn, Itemized, PageSize
+from fundlens.api.outside_spending import outside_spending_columns, pop_outside_spending
 from fundlens.api.reported import pop_reported, reported_columns
 from fundlens.api.schemas import (
     Candidate,
@@ -95,8 +96,9 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
             "SELECT candidate_cycle.cycle, candidate_cycle.race_id, race.slug AS race_slug,"
             " candidate_cycle.total_individual, candidate_cycle.total_committee,"
             " candidate_cycle.total_jfc_transfers,"
-            " candidate_cycle.self_funding, candidate_cycle.ie_support,"
-            " candidate_cycle.ie_oppose, candidate_cycle.contributor_count,"
+            " candidate_cycle.self_funding,"
+            f" {outside_spending_columns('candidate_cycle')},"
+            " candidate_cycle.contributor_count,"
             f" {reported_columns('candidate_cycle')},"
             " candidate_cycle.reported_includes_converted_committee,"
             " candidate_cycle.itemized_total, candidate_cycle.coverage"
@@ -113,13 +115,15 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
         cycles=[
             CandidateCycle(
                 reported=reported,
+                outside_spending=outside,
                 **row,
                 top_donors=top_donors[row["cycle"]],
                 gift_sizes=gift_sizes[row["cycle"]],
             )
             for row in cycles
-            # Popped first, so `row` holds no `reported_*` column when it is spread.
+            # Popped first, so `row` holds neither's columns when it is spread.
             for reported in [pop_reported(row)]
+            for outside in [pop_outside_spending(row)]
         ],
     )
 

@@ -227,6 +227,100 @@ def test_a_race_page_names_its_committees(client: TestClient) -> None:
     assert "C00800203" not in {c["committee_id"] for c in race["top_committees"]}
 
 
+OUTSIDE_SPENDING = EXPECTED["outside_spending"]
+# The fixture's non-committee spenders (every-FEC-dollar spec §6.1): ONE NATION (Form 5, type I),
+# RESTORATION PAC (Form 9, type E) and STEAMFITTERS LOCAL 486 (Form 7, type C).
+NON_COMMITTEE_SPENDERS = {"C90800206", "C90800207", "C70800208"}
+
+
+def outside_spending(kinds: list[float | None]) -> dict[str, object]:
+    """The `outside_spending` object for a candidate's or race's [communication_cost_support,
+    communication_cost_oppose, party_coordinated, electioneering] and its ie_support, ie_oppose."""
+    support, oppose, coordinated, electioneering = kinds
+    return {
+        "communication_cost": {"support": support, "oppose": oppose},
+        "party_coordinated": coordinated,
+        "electioneering_communication": electioneering,
+    }
+
+
+def candidate_outside_spending(body: dict[str, Any], candidate_id: str) -> dict[str, object]:
+    """`body`'s outside spending, its independent expenditures checked against its v1 fields."""
+    got = dict(body["outside_spending"])
+    assert got.pop("independent_expenditure") == {
+        "support": body["ie_support"],
+        "oppose": body["ie_oppose"],
+    }, candidate_id
+    return got
+
+
+@pytest.mark.parametrize("race_id", list(OUTSIDE_SPENDING["by_race"]))
+def test_a_race_page_has_its_outside_spending_by_kind_and_top_spenders(
+    client: TestClient, race_id: str
+) -> None:
+    race = ok(client.get(race_url(race_id)))
+
+    *kinds, total = OUTSIDE_SPENDING["by_race"][race_id]
+    assert candidate_outside_spending(race, race_id) == outside_spending(kinds)
+    assert race["outside_spending_total"] == total
+    for candidate in race["candidates"]:
+        candidate_id = candidate["candidate_id"]
+        want = OUTSIDE_SPENDING["by_candidate"].get(candidate_id, [0, 0, 0, None])
+        assert candidate_outside_spending(candidate, candidate_id) == outside_spending(want)
+    top = race["top_spenders"]
+    assert [s["rank"] for s in top] == list(range(1, len(top) + 1))
+    assert [
+        [s["committee_id"], s["candidate_id"], s["kind"], s["support_oppose"], s["amount"]]
+        for s in top
+    ] == EXPECTED["race_top_spenders"].get(race_id, [])
+    for spender in top:
+        is_committee = spender["committee_id"] not in NON_COMMITTEE_SPENDERS
+        assert spender["is_committee"] is is_committee, spender["committee_id"]
+
+
+def test_a_race_page_names_a_non_committee_spender_under_its_own_id(client: TestClient) -> None:
+    race = ok(client.get("/v1/races/2024/senate/MD"))
+
+    # RESTORATION PAC, a Form 9 filer: no political committee, with a page all the same.
+    assert race["top_spenders"][2] == {
+        "rank": 3,
+        "committee_id": "C90800207",
+        "name": "RESTORATION PAC",
+        "candidate_id": "S4MD00103",
+        "is_committee": False,
+        "kind": "electioneering_communication",
+        "support_oppose": None,
+        "amount": 71409.5,
+    }
+    assert race["top_spenders"][0]["is_committee"] is True
+
+
+@pytest.mark.parametrize("candidate_id", list(EXPECTED["candidates"]))
+def test_a_candidate_page_has_its_outside_spending_by_kind(
+    client: TestClient, candidate_id: str
+) -> None:
+    [cycle] = ok(client.get(f"/v1/candidates/{candidate_id}"))["cycles"]
+
+    want = OUTSIDE_SPENDING["by_candidate"].get(candidate_id, [0, 0, 0, None])
+    assert candidate_outside_spending(cycle, candidate_id) == outside_spending(want)
+
+
+@pytest.mark.parametrize("committee_id", list(EXPECTED["committees"]))
+def test_a_committee_page_has_its_outside_spending_by_kind(
+    client: TestClient, committee_id: str
+) -> None:
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+
+    ie_total = EXPECTED["committees"][committee_id]["ie_total"]
+    want = OUTSIDE_SPENDING["by_committee"].get(committee_id, [0, 0, None, ie_total])
+    assert [
+        cycle["communication_cost_total"],
+        cycle["party_coordinated_total"],
+        cycle["electioneering_total"],
+        cycle["outside_spending_total"],
+    ] == want
+
+
 def test_an_unknown_race_is_a_404(client: TestClient) -> None:
     # The fixture's unmatched filing: no 9th district in Maryland, so no race.
     assert_not_found(client.get("/v1/races/2024/house/MD-09"))

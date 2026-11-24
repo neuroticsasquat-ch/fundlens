@@ -178,3 +178,37 @@ def test_independent_expenditures_page_by_their_key_whether_text_or_sub_id(
 
     assert sorted(str(key) for key in walked) == sorted(key.strip("'") for key in keys)
     reader.close()
+
+
+@pytest.mark.parametrize(
+    ("added", "expected"),
+    [
+        # A build transformed before NEU-2165 appended them: `pas2` rows alone, no payee kept.
+        ("", ("pas2", None, None)),
+        (
+            ", 'ie_24_48' AS source_file, 'Tidewater Digital LLC' AS payee_name,"
+            " 'Digital advertising' AS purpose",
+            ("ie_24_48", "Tidewater Digital LLC", "Digital advertising"),
+        ),
+    ],
+    ids=["before NEU-2165", "since"],
+)
+def test_an_independent_expenditure_has_its_source_file_payee_and_purpose(
+    tmp_path: Path, added: str, expected: tuple[str, str | None, str | None]
+) -> None:
+    partition = paths.local_path(
+        tmp_path, paths.silver_partition("independent_expenditure", 2024, BUILD)
+    )
+    partition.mkdir(parents=True)
+    row = (
+        "SELECT 2024 AS cycle, '1910001:SE.4128' AS source_record_id, DATE '2024-10-02' AS date,"
+        " 4250.50 AS amount, 'C90800206' AS committee_id, NULL AS candidate_id, NULL AS race_id,"
+        f" 'S' AS support_oppose, NULL AS transaction_type, 'ie' AS kind{added}"
+    )
+    duckdb.execute(f"COPY ({row}) TO '{partition / paths.part(0)}' (FORMAT parquet)")
+    reader = ItemizedReader(tmp_path, lambda: {2024: BUILD})
+
+    [page_row] = reader.independent_expenditures(2024, "C90800206", cursor=None).rows
+
+    assert (page_row["source_file"], page_row["payee_name"], page_row["purpose"]) == expected
+    reader.close()

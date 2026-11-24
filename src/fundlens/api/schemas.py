@@ -28,6 +28,13 @@ type SpendingCategorySource = spending.CategorySource
 type GiftSizeBucket = Literal[
     "unitemized", "200_or_less", "under_500", "under_1000", "under_2000", "2000_or_more"
 ]
+# The four kinds of outside spending, as gold names them (every-FEC-dollar spec §6.1).
+type OutsideSpendingKind = Literal[
+    "independent_expenditure",
+    "communication_cost",
+    "party_coordinated",
+    "electioneering_communication",
+]
 
 
 class Problem(BaseModel):
@@ -223,6 +230,29 @@ class ReportedTotals(BaseModel):
     federal_funds: float | None
 
 
+class SupportOppose(BaseModel):
+    """One kind of outside spending naming a candidate, for them and against them, net as filed."""
+
+    support: float
+    oppose: float
+
+
+class OutsideSpending(BaseModel):
+    """Spending on a candidate or race by anyone but its candidates' own committees, by kind
+    (every-FEC-dollar spec §6.5): never a contribution and in no receipt total. A row filed with no
+    side is in none of these.
+
+    `independent_expenditure` is v1's `ie_support` and `ie_oppose`, the 24/48-hour file's rows
+    included. Party coordinated expenditures are always in support. An electioneering communication
+    says neither: its figure is None, never 0, where there is no row, as before 2010 or on a build
+    loaded before the table existed."""
+
+    independent_expenditure: SupportOppose
+    communication_cost: SupportOppose
+    party_coordinated: float
+    electioneering_communication: float | None
+
+
 class RaceCandidateReported(BaseModel):
     """A race candidate's headline reported figures, their `candidate_cycle` values (spec §4.4)."""
 
@@ -258,6 +288,9 @@ class RaceCandidate(BaseModel):
     self_funding: float
     ie_support: float
     ie_oppose: float
+    # Every kind of outside spending naming them, for and against: no one total, since the two
+    # point opposite ways (every-FEC-dollar spec §6.5).
+    outside_spending: OutsideSpending
     # The operating expenditures of the committees credited to them (every-FEC-dollar spec §5.5),
     # None, never 0, with no counted one in the cycle.
     total_operating_expenditures: float | None
@@ -277,6 +310,26 @@ class RaceTopCommittee(BaseModel):
     name: str | None
     amount: float
     kind: Literal["contribution", "ie"]
+
+
+class RaceTopSpender(BaseModel):
+    """`gold.race_top_spender`: one of the race's 100 biggest lines of outside spending, a line
+    being one spender's spending of one kind on one of its candidates, on one side (every-FEC-dollar
+    spec §6.5)."""
+
+    rank: int
+    # The spender, a committee or not: every spender has a page.
+    committee_id: str
+    name: str | None
+    candidate_id: str
+    # False for a non-committee spender: a person or group filing Form 5, 7 or 9 (`committee.type`
+    # I, C or E), not a political committee.
+    is_committee: bool
+    kind: OutsideSpendingKind
+    # Always S for `party_coordinated`; None for `electioneering_communication`, whose filing says
+    # neither.
+    support_oppose: Literal["S", "O"] | None
+    amount: float
 
 
 class RaceTopDonorCandidate(BaseModel):
@@ -299,11 +352,19 @@ class RaceTopDonor(BaseModel):
 
 
 class Race(RaceSummary):
-    """A race page: the race, its candidates (most money first), its top committees and its top
-    donors."""
+    """A race page: the race, its candidates (most money first), its outside spending, its top
+    committees, top spenders and top donors."""
 
+    # Its candidates' outside spending added up, by kind; an electioneering figure None where none
+    # has a row.
+    outside_spending: OutsideSpending
+    # How much was spent on the race by anyone but its candidates' committees: every kind, both
+    # sides, a None electioneering figure as 0 (every-FEC-dollar spec §6.5).
+    outside_spending_total: float
     candidates: list[RaceCandidate]
     top_committees: list[RaceTopCommittee]
+    # Most first; every kind, a non-committee spender's too.
+    top_spenders: list[RaceTopSpender]
     # Empty on a build loaded before donors were resolved.
     top_donors: list[RaceTopDonor]
 
@@ -333,6 +394,8 @@ class CandidateCycle(BaseModel):
     self_funding: float
     ie_support: float
     ie_oppose: float
+    # Every kind of outside spending naming them, for and against (every-FEC-dollar spec §6.5).
+    outside_spending: OutsideSpending
     # None until M3 resolves donors.
     contributor_count: int | None
     # Reported totals (spec §4.3): from 2008 the credited committees' added up, before it the
@@ -435,7 +498,17 @@ class CommitteeCycle(BaseModel):
     # less (NEU-2265). FEC's itemized figure is gross of them: total_individual +
     # total_from_organizations - total_refunds.
     total_refunds: float
+    # The committee's own outside spending (every-FEC-dollar spec §6.5), every row of each kind,
+    # both sides, those naming no candidate of the cycle and those with no side included: its
+    # independent expenditures, communication costs (a corporation's or union's, Form 7) and party
+    # coordinated expenditures, 0 where it has none; its electioneering communications (Form 9),
+    # None where there is no row, as before 2010; and the four added up, a None as 0. Spending,
+    # never in a receipt total.
     ie_total: float
+    communication_cost_total: float
+    party_coordinated_total: float
+    electioneering_total: float | None
+    outside_spending_total: float
     # The committee's reported totals as filed (spec §4.1), None where FEC's files have no row
     # for it: every committee before 1996, and House and Senate campaigns before 2008.
     reported: ReportedTotals | None
@@ -529,6 +602,14 @@ class IndependentExpenditure(BaseModel):
     support_oppose: Literal["S", "O"] | None
     # FEC's transaction type, 24E or 24A; None for a 24/48-hour row: that file has none.
     transaction_type: str | None
+    # `pas2`, the periodic report's line, or `ie_24_48`, a 24- or 48-hour report's estimate no
+    # periodic report holds yet, which leaves the list once one restates it (every-FEC-dollar spec
+    # §6.2, §6.3).
+    source_file: Literal["pas2", "ie_24_48"]
+    # Whom the spender paid, as reported; None on a build transformed before it was kept.
+    payee_name: str | None
+    # What for, as reported: a 24/48-hour row's alone, since `pas2` has none.
+    purpose: str | None
 
 
 class IndependentExpenditurePage(BaseModel):

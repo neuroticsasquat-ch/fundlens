@@ -222,6 +222,9 @@ def test_a_super_pacs_independent_expenditures_page_newest_first(
         "race_id": "2024-P-US-00",
         "support_oppose": "S",
         "transaction_type": "24E",
+        "source_file": "pas2",
+        "payee_name": "BLUE CRAB MEDIA LLC",
+        "purpose": None,
     }
     # The rows the committee page's ie_total sums.
     [committee_cycle] = ok(client.get(f"/v1/committees/{SUPER_PAC}"))["cycles"]
@@ -244,6 +247,13 @@ def test_a_spenders_24_48_hour_rows_page_by_their_text_keys(
     assert dates == sorted(dates, reverse=True)
     [committee_cycle] = ok(client.get(f"/v1/committees/{ONE_NATION}"))["cycles"]
     assert sum(row["amount"] for row in rows) == committee_cycle["ie_total"] == 30185.75
+    # Each an estimate from a 24- or 48-hour report, with its payee and purpose as filed.
+    assert {row["source_file"] for row in rows} == {"ie_24_48"}
+    first = next(row for row in rows if row["source_record_id"] == "1910001:SE.4128")
+    assert (first["payee_name"], first["purpose"]) == (
+        "Tidewater Digital LLC",
+        "Digital advertising",
+    )
 
 
 def test_a_coordinated_expenditure_is_no_independent_expenditure(client: TestClient) -> None:

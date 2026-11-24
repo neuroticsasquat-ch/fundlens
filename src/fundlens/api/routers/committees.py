@@ -91,6 +91,8 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
             "SELECT cycle, total_individual, self_funding, total_from_committees,"
             " total_from_organizations, total_to_candidates, total_returned_by_candidates,"
             " total_non_contribution_account, total_refunds, ie_total,"
+            " communication_cost_total, party_coordinated_total, electioneering_total,"
+            " outside_spending_total,"
             f" {reported_columns('committee_cycle')}, itemized_total, coverage,"
             " total_operating_expenditures"
             " FROM gold.committee_cycle WHERE committee_id = %s ORDER BY cycle DESC",
