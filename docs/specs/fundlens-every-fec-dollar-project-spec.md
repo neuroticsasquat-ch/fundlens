@@ -459,7 +459,7 @@ The rules below were written by NEU-2163 (`docs/specs/NEU-2163-outside-spending-
 
 NEU-2167 adds `silver_independent_expenditure_communication.sql`: `communication_type` or `communication_class` is set only on a `communication_cost` row.
 
-**Memory.** Asserted, not measured: the six columns and the added rows are small beside the table (73,841 `pas2` rows in 2024). NEU-2165 reads DuckDB's figure across the model in the transform's `memory after <step>` lines, as §5.1 asks of a new table (`docs/capacity.md`).
+**Memory.** Measured by NEU-2165 on a hand transform of 2026 on the VM (build `20261124T180255Z`, 2026-11-24): DuckDB held 13.39 GiB after `09_reported_total.sql` and 13.40 GiB after `10_independent_expenditure.sql`, so the model and its added rows cost about 0.01 GiB, and peak resident memory stayed at 16.84 GiB across it. The transform's peak is still `contribution`'s write (26.50 GiB resident in that run), which this model does not move, so `docs/capacity.md` has no entry for it.
 
 ### 6.3 What the 24/48-hour file adds
 
@@ -474,7 +474,7 @@ The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–
    - The row's date is §6.2's `date`. A spender with no `reported_total` row, or a NULL `period_end`, has no row added by this rule.
    - It lasts until a periodic report covers the rows: the next build after one arrives has a later `period_end`, and the spending is then `pas2`'s. A build reads `committee_summary` and `pas2` of the same extract.
    - 2026, read live on 2026-11-24: rows after `period_end` hold $1,287,474,092 from 512 spenders, nearly all from the last three weeks of October, and `pas2` already holds 0.46% of them, under NEU-2162's 1% bar; 69% and 87% of the rows dated on or before it are in `pas2` (Q7c, Q7e). Before the track record, the rule adds $1,281,571,904 on 2026 and $28,732 on 2024.
-   - **Asserted, not measured:** what the track record leaves out of that $1,281,571,904. NEU-2165 measures it on 2026 and lists the spenders left out.
+   - **What the track record leaves out**, measured by NEU-2165 on FEC's files of 2026-11-24: rows after their spender's `period_end`, the chain applied and the spender in `cm`, came to $1,287,175,625.72. Timeliness added $1,251,481,621.45 of it (14,831 rows, 412 spenders) and left out **$35,694,004.27, 2.77%**, at 95 spenders with neither a counted `pas2` independent expenditure nor a reported figure above $0. 62 of them are super PACs (`cm` type O) and 20 type V. Most have filed no periodic report with independent expenditures yet this cycle. The largest are The Edge Action Fund ($7,018,000), Buckeye Freedom PAC ($3,844,014), Alaska Values PAC ($3,754,011) and Common Sense for America PAC ($3,644,251). NEU-2165's ticket lists all 95. That is the screen's cost on a current cycle, accepted as the screen's cost below is; their spending is `pas2`'s once they file a periodic report. On 2024 the track record leaves out one spender: Conservative Fighter PAC, 2 rows, $25,278.89.
    - No dollar cap: a spender's last three weeks can dwarf its year to date. So a hoax filer that also reports a small real figure has a track record, and its rows after its period end are added unscreened: the transform's log line, which names the largest added row and its spender, is what catches one. Accepted (NEU-2165).
 4. **By spender, behind the hoax screen** (Decision 3). A spender with no counted `pas2` independent expenditure in the cycle contributes its remaining rows, those dated on or before its `period_end` or undated, when both hold:
    - `reported_total.independent_expenditures` is above $0;
@@ -492,7 +492,12 @@ The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–
    - **What it costs.** Where the file holds more than `pas2` for such a spender, the difference is not added: the NRCC's $14.1M of late lines in 2024 (Q5r).
    - The ladder, its fourth rung included, is the measurement's evidence that the rows are the same. No pipeline rule matches a row to a row.
 
-**2024 on this contract.** Rows with `source_file = 'ie_24_48'` should come to the 14 spenders' $1,001,297, plus whatever timeliness adds at other spenders, at most $28,732. NEU-2165's definition of done is within 1% of $1,001,297 for the by-spender rows, with each timeliness row listed.
+**2024 on this contract.** Rows with `source_file = 'ie_24_48'` should come to the 14 spenders' $1,001,297, plus whatever timeliness adds at other spenders, at most $28,732. NEU-2165's definition of done is within 1% of $1,001,297 for the by-spender rows, with each timeliness row listed. Measured by NEU-2165 on FEC's files of 2026-11-24, the merged models over `cm`, `pas2`, `committee_summary`, `webk` and `ie_24_48`:
+
+- **By spender:** 65 rows, $997,843.85, 13 spenders, 0.34% under $1,001,297.
+- **Timeliness:** 35 rows, $3,453.50, all FORFACT, LLC (`C90018771`), a Form 5 filer whose period ends 2024-09-30. Among them is the $85.29 row with no side (§6.2).
+- **Together:** $1,001,297.35, 100 rows, 14 spenders: Q6's figure exactly. The measurement counted FORFACT's rows by spender. They fall after its period end, so timeliness adds them instead, as the rule above anticipates.
+- **Largest added row:** $90,000.
 
 **Every transform logs** the rows and dollars added by each of the two rules and the largest single added row with its spender, so a hoax filing that passes is seen in the run's log.
 
