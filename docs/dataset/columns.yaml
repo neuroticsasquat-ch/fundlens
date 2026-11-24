@@ -477,8 +477,10 @@ operating_expenditure:
     is_in_kind: >-
       True for an in-kind outlay: the spending side of a gift of goods or services, which the
       committee reports both as a receipt and as spending naming the giver. It refers back to a
-      row this file does not hold, or its purpose says in-kind. Counted in the committee's
-      spending, but the payee was paid nothing.
+      row this file does not hold, or its purpose names a gift received: it says in-kind, other
+      than an in-kind contribution the committee made or paid ahead for, or it names
+      cryptocurrency received, or something received and held (not liquidated). Counted in the
+      committee's spending, but the payee was paid nothing.
     counted: >-
       True for a row every total counts: not a sub-item, and either a payment some sub-item
       itemizes, whatever its memo code, or not a memo entry. Sum only these.

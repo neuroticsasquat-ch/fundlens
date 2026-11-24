@@ -1011,9 +1011,19 @@ def spending_candidate(row: Row) -> str | None:
 
 def spending_in_kind(row: Row) -> bool:
     """Spec §5.4's in-kind outlay: a reference to a TRAN_ID no row of its filing holds, or a purpose
-    saying IN-KIND."""
-    return bool(named_tran_id(row) and row["SUB_ID"] not in spending_parents()) or bool(
-        re.search(r"IN[- ]?KIND", row["PURPOSE"].upper())
+    naming a gift received: IN-KIND, but no in-kind contribution the committee made or pays ahead
+    for, or crypto received (NEU-2464)."""
+    purpose = row["PURPOSE"].upper()
+    gift = bool(re.search(r"IN[- ]?KIND", purpose)) and not re.search(
+        r"IN[- ]?KIND CONTRIBUTIONS? MADE|\bFOR\b.*\bIN[- ]?KIND CONTRIBUTIONS\b", purpose
+    )
+    crypto = re.search(
+        r"\b(BITCOINS?|ETHER(EUM)?|USDC|RIPPLE|CRYPTO\w*)\b.*\bRECEIVED\b"
+        r"|\bRECEIVED,? (NOT )?LIQUIDATED\b|\bNOT LIQUIDATED\b",
+        purpose,
+    )
+    return (
+        bool(named_tran_id(row) and row["SUB_ID"] not in spending_parents()) or gift or bool(crypto)
     )
 
 
