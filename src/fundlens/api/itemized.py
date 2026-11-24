@@ -13,7 +13,9 @@ aggregate.
 
 Rows come newest cycle first, then newest first (or, for operating expenditures sorted by amount,
 largest first), ties broken by `source_record_id`, and are paged by an opaque cursor holding the
-last row's `(cycle, date or amount, source_record_id)` and the build it was read from. A cursor
+last row's `(cycle, date or amount, source_record_id)` and the build it was read from. An
+independent expenditure's `source_record_id` is text (a 24/48-hour row's is `<file_num>:<tran_id>`,
+NEU-2165), compared and ordered as text, a build transformed before it was text included. A cursor
 keeps reading its own build after a publish swaps a newer one in, so a walk through the pages
 neither skips nor repeats a row; once that build is pruned the cursor is gone (`BuildGone`) and
 the walk must start again from the first page. A donor's walk reads each older cycle from the
@@ -55,6 +57,8 @@ PAGE_SIZE = 100
 MAX_AMOUNT = Decimal(10) ** 12
 # Every sub-item of a page's rows is read, on one scan per level of nesting.
 ALL_SUB_ITEMS = 2**31
+# The tables whose `source_record_id` is text, not a SUB_ID (every-FEC-dollar spec §6.2).
+TEXT_KEYED: frozenset[SilverTable] = frozenset({"independent_expenditure"})
 
 # Small, because one request reads one partition and returns at most a page of it; the pipeline's
 # DuckDB limits are its own (settings.py) and never reach the API.
@@ -151,7 +155,8 @@ class Cursor:
 
     build_id: str
     date: date | None
-    source_record_id: int
+    # A SUB_ID, or a text-keyed table's id (`TEXT_KEYED`) that is not all digits.
+    source_record_id: int | str
     # None only in a cursor issued before a donor's walk could cross cycles: one cycle's.
     cycle: int | None = None
     sort: Sort = "date"
@@ -185,6 +190,8 @@ class Cursor:
                 [cycle] = rest or [None]
                 sort, amount = "date", None
             paths.parse_build_id(build_id)
+            if not isinstance(record, str) or not record:
+                raise TypeError(record)
             last = None if amount is None else Decimal(amount)
             # A DECIMAL(14, 2), as silver's amounts are: never NaN, infinite or out of its range.
             if last is not None and not (last.is_finite() and abs(last) < MAX_AMOUNT):
@@ -192,7 +199,7 @@ class Cursor:
             return cls(
                 build_id,
                 None if day is None else date.fromisoformat(day),
-                int(record),
+                int(record) if record.isascii() and record.isdecimal() else record,
                 None if cycle is None else int(cycle),
                 sort,
                 last,
@@ -245,19 +252,23 @@ class Scan:
             "value": self.value,
             "limit": self.limit + 1,
         }
+        text = self.table in TEXT_KEYED
+        # A text-keyed table's build from before its key was text holds integers: read as text.
+        record = "CAST(source_record_id AS VARCHAR)" if text else "source_record_id"
         if self.after is not None:
             params["after_cycle"] = self.after.cycle
-            params["after_id"] = self.after.source_record_id
+            after_id = self.after.source_record_id
+            params["after_id"] = str(after_id) if text else after_id
             # The column names are this module's, never a request's.
             key = self.sort
             last = self.after.amount if key == "amount" else self.after.date
             if last is None:
-                within = f"{key} IS NULL AND source_record_id > $after_id"
+                within = f"{key} IS NULL AND {record} > $after_id"
             else:
                 params["after_key"] = last
                 within = (
                     f"({key} < $after_key OR {key} IS NULL"
-                    f" OR ({key} = $after_key AND source_record_id > $after_id))"
+                    f" OR ({key} = $after_key AND {record} > $after_id))"
                 )
             where.append(f"(cycle < $after_cycle OR (cycle = $after_cycle AND {within}))")
         columns = (
@@ -268,7 +279,7 @@ class Scan:
             f"SELECT {', '.join(columns)}"
             " FROM read_parquet($files, hive_partitioning = false)"
             f" WHERE {' AND '.join(where)}"
-            f" ORDER BY cycle DESC, {self.sort} DESC NULLS LAST, source_record_id"
+            f" ORDER BY cycle DESC, {self.sort} DESC NULLS LAST, {record}"
             " LIMIT $limit"
         )
         return query, params
@@ -440,7 +451,11 @@ class ItemizedReader:
         """The scan for one page of `table`'s rows in `cycle`'s partition matching `where`."""
         after = None if cursor is None else Cursor.decode(cursor)
         if after is not None:
-            if after.sort != sort or after.cycle not in (None, cycle):
+            if (
+                after.sort != sort
+                or after.cycle not in (None, cycle)
+                or (isinstance(after.source_record_id, str) and table not in TEXT_KEYED)
+            ):
                 raise BadCursor(cursor)
             after = replace(after, cycle=cycle)
         builds = self._builds([cycle], after)
@@ -470,7 +485,11 @@ class ItemizedReader:
         Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
         """
         after = None if cursor is None else Cursor.decode(cursor)
-        if after is not None and (after.cycle is None or cycle not in (None, after.cycle)):
+        if after is not None and (
+            after.cycle is None
+            or cycle not in (None, after.cycle)
+            or isinstance(after.source_record_id, str)
+        ):
             # A recipient's cursor of the old format, or another cycle's.
             raise BadCursor(cursor)
         if cycle is not None:

@@ -40,6 +40,8 @@ ACTBLUE = "C00401224"
 # committee with an independent expenditure and a coordinated one.
 SUPER_PAC = "C00800201"
 PARTY = "C00800203"
+# A Form 5 filer whose independent expenditures are all the 24/48-hour file's (NEU-2165).
+ONE_NATION = "C90800206"
 SPENDING = EXPECTED["operating_expenditures"]
 # CALLOWAY FOR CONGRESS, the fixture committee with the most spending categories; WHITLOCK FOR
 # SENATE, whose card bill heads a chain; HARGROVE FOR AMERICA, whose memo parent counts.
@@ -224,6 +226,24 @@ def test_a_super_pacs_independent_expenditures_page_newest_first(
     # The rows the committee page's ie_total sums.
     [committee_cycle] = ok(client.get(f"/v1/committees/{SUPER_PAC}"))["cycles"]
     assert sum(row["amount"] for row in rows) == committee_cycle["ie_total"]
+
+
+def test_a_spenders_24_48_hour_rows_page_by_their_text_keys(
+    app: FastAPI, client: TestClient
+) -> None:
+    # ONE NATION, a Form 5 filer with no `pas2` row: every row of its own is the 24/48-hour file's,
+    # keyed `<file_num>:<tran_id>` (NEU-2165), so each page's cursor holds a text key.
+    small_pages(app, 3)
+
+    rows = walk_independent_expenditures(client, ONE_NATION)
+
+    keys = [row["source_record_id"] for row in rows]
+    assert sorted(keys) == EXPECTED["ie_24_48"]["by_spender"]["source_record_ids"]
+    assert len(set(keys)) == len(keys)
+    dates = [row["date"] for row in rows]
+    assert dates == sorted(dates, reverse=True)
+    [committee_cycle] = ok(client.get(f"/v1/committees/{ONE_NATION}"))["cycles"]
+    assert sum(row["amount"] for row in rows) == committee_cycle["ie_total"] == 30185.75
 
 
 def test_a_coordinated_expenditure_is_no_independent_expenditure(client: TestClient) -> None:

@@ -717,13 +717,10 @@ export interface components {
             race_id: string | null;
             /** Source Record Id */
             source_record_id: string;
-            /**
-             * Support Oppose
-             * @enum {string}
-             */
-            support_oppose: "S" | "O";
+            /** Support Oppose */
+            support_oppose: ("S" | "O") | null;
             /** Transaction Type */
-            transaction_type: string;
+            transaction_type: string | null;
         };
         /**
          * IndependentExpenditurePage

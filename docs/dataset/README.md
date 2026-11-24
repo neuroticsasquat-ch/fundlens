@@ -51,6 +51,10 @@ A few things to know before you add anything up:
 - **A reported total is never added to `contribution` amounts.** `reported_total` and
   `candidate_reported_total` hold the FEC's own cycle-to-date figures, as filed: they already
   include the itemized money the other tables itemize. Compare the two; don't sum them.
+- **Tell `independent_expenditure`'s kinds apart by `kind`.** Only `kind = 'ie'` is independent
+  expenditure. A row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and
+  leaves the table when a periodic report restates it, so its `source_record_id` is not stable
+  from one snapshot to the next. Outside spending is never to be added to `contribution` amounts.
 - **Organizations are not resolved.** Their gifts are grouped by `organization_key`, the
   normalized name.
 - **Sum `operating_expenditure` only where `counted` is true.** A sub-item, a card bill's charge

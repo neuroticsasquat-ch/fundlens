@@ -509,7 +509,9 @@ class IndependentExpenditure(BaseModel):
     spending for or against a candidate, never a gift to one."""
 
     cycle: int
-    # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly.
+    # FEC's SUB_ID, as a string: its 19 digits are past what a JSON number holds exactly. A row
+    # of the 24/48-hour file, a 24- or 48-hour report's estimate no periodic report holds yet, has
+    # none: its key is `<file_num>:<tran_id>` (every-FEC-dollar spec §6.2, NEU-2165).
     source_record_id: str
     # None for a filing whose date FEC could not parse.
     date: date | None
@@ -522,9 +524,11 @@ class IndependentExpenditure(BaseModel):
     candidate_name: str | None
     # The candidate's race, None when their seat is not up this cycle.
     race_id: str | None
-    # S for the candidate (FEC's 24E), O against (24A).
-    support_oppose: Literal["S", "O"]
-    transaction_type: str
+    # S for the candidate (FEC's 24E), O against (24A); None for a 24/48-hour row filed with
+    # neither, which is in its spender's ie_total and no candidate's figure.
+    support_oppose: Literal["S", "O"] | None
+    # FEC's transaction type, 24E or 24A; None for a 24/48-hour row: that file has none.
+    transaction_type: str | None
 
 
 class IndependentExpenditurePage(BaseModel):

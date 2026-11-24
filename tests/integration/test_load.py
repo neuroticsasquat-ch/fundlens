@@ -4,6 +4,7 @@ of its own (spec §5.5, NEU-2039 §4.1, §6)."""
 import hashlib
 import shutil
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -76,7 +77,7 @@ def ratio(value: float | None) -> float | None:
     return None if value is None else round(value, 4)
 
 
-def ranked(lists: dict[str, list[list[str | int]]]) -> dict[str, list[tuple[str | int, ...]]]:
+def ranked[T](lists: Mapping[str, Sequence[Sequence[T]]]) -> dict[str, list[tuple[T, ...]]]:
     """expected.yaml's ranked lists, each row a tuple as the test builds gold's."""
     return {key: [tuple(row) for row in rows] for key, rows in lists.items()}
 
@@ -103,9 +104,10 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         assert dollars(race["total_individual"]) == totals["total_individual"], race_id
         assert dollars(race["total_committee"]) == totals["total_committee"], race_id
         assert dollars(race["total_jfc_transfers"]) == totals["total_jfc_transfers"], race_id
-        # Independent expenditures for and against its candidates, by anyone (NEU-2057).
-        assert dollars(race["ie_support"]) == totals["ie_support"], race_id
-        assert dollars(race["ie_oppose"]) == totals["ie_oppose"], race_id
+        # Independent expenditures for and against its candidates, by anyone (NEU-2057), the
+        # 24/48-hour file's with their cents (NEU-2165).
+        assert float(race["ie_support"]) == totals["ie_support"], race_id
+        assert float(race["ie_oppose"]) == totals["ie_oppose"], race_id
     assert races["2024-S-MD-00"]["slug"] == "2024/senate/MD"
     assert races["2024-S-NE-00-special"]["is_special"] is True
 
@@ -126,8 +128,8 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
             candidate_id
         )
         assert dollars(cycle_row["self_funding"]) == totals["self_funding"], candidate_id
-        assert dollars(cycle_row["ie_support"]) == totals["ie_support"], candidate_id
-        assert dollars(cycle_row["ie_oppose"]) == totals["ie_oppose"], candidate_id
+        assert float(cycle_row["ie_support"]) == totals["ie_support"], candidate_id
+        assert float(cycle_row["ie_oppose"]) == totals["ie_oppose"], candidate_id
         assert cycle_row["contributor_count"] is None
         if totals["race_id"] is not None:
             race_row = race_candidates[candidate_id]
@@ -189,7 +191,7 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
             committee_id, 0
         ), committee_id
         # Its independent expenditures for and against candidates; not the party's 24C.
-        assert dollars(row["ie_total"]) == totals["ie_total"], committee_id
+        assert float(row["ie_total"]) == totals["ie_total"], committee_id
 
     # FEC's reported figures beside fundlens's itemized one (every-FEC-dollar spec §4.4): coverage 1
     # where the two agree, above 1 where fundlens counts more, NULL at a conduit or a reported 0.
@@ -407,14 +409,14 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
     # add up to its total_committee, the ie rows to its ie_support and ie_oppose. The super PAC is
     # there for its independent expenditures; a conduit (ActBlue, WinRed), whose 24Ks are no gifts,
     # is in no list.
-    top_committees: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+    top_committees: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
     for row in sorted(
         rows(migrated_db, "race_top_committee"), key=lambda row: (row["race_id"], row["rank"])
     ):
         assert row["name"], row
         assert row["rank"] == len(top_committees[row["race_id"]]) + 1
         top_committees[row["race_id"]].append(
-            (row["kind"], row["committee_id"], dollars(row["amount"]))
+            (row["kind"], row["committee_id"], float(row["amount"]))
         )
     assert top_committees == ranked(expected["race_top_committees"])
     for race_id, listed in top_committees.items():
