@@ -310,6 +310,17 @@ class GoldReported(TypedDict):
     gift_sizes: dict[str, dict[str, list[int | None]]]
 
 
+class OutsideSpending(TypedDict):
+    # Gold's other kinds of outside spending (every-FEC-dollar spec §6.5, NEU-2168). Per candidate
+    # with any: [communication_cost_support, communication_cost_oppose, party_coordinated,
+    # electioneering]; per race: those and outside_spending_total; per committee with any:
+    # [communication_cost_total, party_coordinated_total, electioneering_total,
+    # outside_spending_total]. electioneering figures are None where there is no row.
+    by_candidate: dict[str, list[float | None]]
+    by_race: dict[str, list[float | None]]
+    by_committee: dict[str, list[float | None]]
+
+
 class Added(TypedDict):
     # The rows' amounts added up, and their silver keys (`<file_num>:<tran_id>`).
     amount: float
@@ -346,6 +357,10 @@ class Expected(TypedDict):
     # (NEU-2167).
     communication_costs: dict[str, list[str | int | None]]
     party_coordinated: dict[str, list[str | int | None]]
+    outside_spending: OutsideSpending
+    # Gold's race_top_spender per race, by rank: [committee_id, candidate_id, kind,
+    # support_oppose, amount] (NEU-2168).
+    race_top_spenders: dict[str, list[list[str | float | None]]]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]

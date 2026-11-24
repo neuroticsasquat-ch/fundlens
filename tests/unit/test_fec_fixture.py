@@ -2317,6 +2317,155 @@ def test_the_expected_race_committees_are_the_givers_and_the_spenders_on_its_can
     assert EXPECTED["race_top_committees"] == lists
 
 
+# One row of outside spending as gold reads it (every-FEC-dollar spec §6.5): spender, the candidate
+# of the cycle it names (None when none), the contract's kind, side (None where there is none) and
+# amount.
+type OutsideLine = tuple[str, str | None, str, str | None, Decimal]
+
+KIND_TOTALS = ("communication_cost", "party_coordinated", "electioneering_communication")
+
+
+@functools.cache
+def outside_spending() -> tuple[OutsideLine, ...]:
+    """Every row of every kind of outside spending silver holds: `pas2`'s independent expenditures
+    and the 24/48-hour rows silver adds, `pas2`'s communication costs and party coordinated
+    expenditures, and the electioneering communications' shares."""
+    races = race_ids()
+    sides = {IE_SUPPORT: "S", IE_OPPOSE: "O"}
+
+    def of_cycle(candidate: str | None) -> str | None:
+        return candidate if candidate in races else None
+
+    lines: list[OutsideLine] = [
+        (
+            r["CMTE_ID"],
+            of_cycle(ie_candidate(r)),
+            "independent_expenditure",
+            sides[r["TRANSACTION_TP"]],
+            Decimal(amount(r)),
+        )
+        for r in rows("pas2")
+        if r["TRANSACTION_TP"] in sides
+    ]
+    lines += [
+        (
+            r["spe_id"],
+            of_cycle(ie_24_48_candidate(r)),
+            "independent_expenditure",
+            r["sup_opp"] if r["sup_opp"] in ("S", "O") else None,
+            Decimal(r["exp_amo"]),
+        )
+        for r, _ in ie_24_48_added()
+    ]
+    for kind, types in (("communication_cost", ("24F", "24N")), ("party_coordinated", ("24C",))):
+        lines += [
+            (
+                r["CMTE_ID"],
+                candidate,
+                kind,
+                "O" if r["TRANSACTION_TP"] == "24N" else "S",
+                Decimal(amount(r)),
+            )
+            for r, candidate, _ in pas2_kind(types).values()
+        ]
+    lines += [
+        (
+            str(spender),
+            None if candidate is None else str(candidate),
+            "electioneering_communication",
+            None,
+            Decimal(str(share)),
+        )
+        for spender, candidate, _, share in electioneering_communications().values()
+    ]
+    return tuple(lines)
+
+
+def figures(
+    lines: list[OutsideLine], kinds: Iterable[tuple[str, str | None]]
+) -> list[float | None]:
+    """The lines' amounts added up by (kind, side), a side of None taking both; an electioneering
+    figure None where there is no line, every other 0."""
+    totals: list[float | None] = []
+    for kind, side in kinds:
+        mine = [line[4] for line in lines if line[2] == kind and side in (None, line[3])]
+        none = not mine and kind == "electioneering_communication"
+        totals.append(None if none else float(sum(mine, Decimal(0))))
+    return totals
+
+
+def test_the_expected_outside_spending_is_every_kind_on_the_fixture() -> None:
+    # Gold's other kinds beside v1's independent expenditures (every-FEC-dollar spec §6.5): on a
+    # candidate by side, a row with no side in none; on a race its candidates' added up; on a
+    # spender every row, those naming no candidate too. A total adds the kinds, a NULL as 0.
+    lines = outside_spending()
+    races = race_ids()
+    sided = [
+        line
+        for line in lines
+        if line[1] is not None
+        and (line[3] is not None or line[2] == "electioneering_communication")
+    ]
+    candidate_kinds = (
+        ("communication_cost", "S"),
+        ("communication_cost", "O"),
+        ("party_coordinated", None),
+        ("electioneering_communication", None),
+    )
+    other = {line[1] for line in sided if line[2] in KIND_TOTALS}
+    by_candidate = {
+        candidate_id: figures([line for line in sided if line[1] == candidate_id], candidate_kinds)
+        for candidate_id in sorted(c for c in other if c is not None)
+    }
+    by_race: dict[str, list[float | None]] = {}
+    for race_id, totals in EXPECTED["races"].items():
+        members = [line for line in sided if races.get(line[1] or "") == race_id]
+        kinds = figures(members, candidate_kinds)
+        ie = Decimal(str(totals["ie_support"])) + Decimal(str(totals["ie_oppose"]))
+        added = sum((Decimal(str(f)) for f in kinds if f is not None), ie)
+        by_race[race_id] = [*kinds, float(added)]
+    spenders = {line[0] for line in lines if line[2] in KIND_TOTALS}
+    by_committee: dict[str, list[float | None]] = {}
+    for committee_id in sorted(spenders):
+        mine = [line for line in lines if line[0] == committee_id]
+        kinds = figures(mine, [(kind, None) for kind in KIND_TOTALS])
+        ie = Decimal(str(EXPECTED["committees"][committee_id]["ie_total"]))
+        by_committee[committee_id] = [
+            *kinds,
+            float(sum((Decimal(str(f)) for f in kinds if f is not None), ie)),
+        ]
+
+    assert EXPECTED["outside_spending"] == {
+        "by_candidate": by_candidate,
+        "by_race": by_race,
+        "by_committee": by_committee,
+    }
+
+
+def test_the_expected_race_top_spenders_are_every_kinds_lines_on_its_candidates() -> None:
+    # One line per spender, candidate, kind and side on the race, a row with no side in none, a
+    # line netting to $0 or less left out; ranked by amount, then committee, candidate, kind and
+    # side (every-FEC-dollar spec §6.5).
+    races = race_ids()
+    net: dict[tuple[str, str, str, str, str | None], Decimal] = defaultdict(Decimal)
+    for spender, candidate, kind, side, value in outside_spending():
+        race = races[candidate] if candidate is not None else None
+        if race is not None and (side is not None or kind == "electioneering_communication"):
+            net[(race, spender, candidate or "", kind, side)] += value
+    lists: dict[str, list[list[str | float | None]]] = defaultdict(list)
+    for (race, spender, candidate, kind, side), value in sorted(
+        ((key, value) for key, value in net.items() if value > 0),
+        key=lambda e: (e[0][0], -e[1], e[0][1], e[0][2], e[0][3], e[0][4] or ""),
+    ):
+        lists[race].append([spender, candidate, kind, side, float(value)])
+
+    assert EXPECTED["race_top_spenders"] == lists
+    # The Form 5 filer, the Form 9 filer and the union (CMTE_TP I, E, C) each have a line.
+    types = {r["CMTE_ID"]: r["CMTE_TP"] for r in rows("cm")}
+    listed = {types[row[0]] for lines in lists.values() for row in lines if isinstance(row[0], str)}
+    assert listed >= {"I", "E", "C"}
+
+
 def test_the_expected_refunds_are_the_counted_refunds_on_line_20() -> None:
     contributions = counted()
     receipts = organization_receipts()

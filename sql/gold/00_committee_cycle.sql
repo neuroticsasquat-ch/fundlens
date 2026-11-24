@@ -30,8 +30,16 @@
 -- filters, so 0 or less and never NULL. Both totals stay net of it (spec §7.1); FEC's gross basis
 -- is total_individual + total_from_organizations - total_refunds. ie_total is the independent
 -- expenditures it made, for and against candidates alike (silver's kind 'ie': 24E and 24A,
--- NEU-2057), net of corrections: those naming no candidate of the cycle too, which are in no
--- candidate's or race's figure. Its coordinated expenditures and communication costs are not.
+-- NEU-2057, and the 24/48-hour rows NEU-2165 adds, a row with no side too), net of corrections:
+-- those naming no candidate of the cycle too, which are in no candidate's or race's figure. Its
+-- coordinated expenditures and communication costs are not. Those are its other outside spending
+-- (every-FEC-dollar spec §6.5, NEU-2168), counted the same way, both sides and every row:
+-- communication_cost_total (kind 'communication_cost'), party_coordinated_total (kind
+-- 'coordinated'), both 0 where it has no row; electioneering_total, its electioneering
+-- communications' shares (silver electioneering_communication.amount), NULL, never 0, where it
+-- has none, since a cycle before 2010 has no file and a build may lack the table (§2, older
+-- builds). outside_spending_total is the four added up, a NULL electioneering_total as 0: never
+-- NULL. Outside spending is in no receipt figure.
 -- total_operating_expenditures is its counted operating expenditures (silver's `counted`,
 -- every-FEC-dollar spec §5.2, §5.5), net as filed, in-kind outlays included: spending, in no
 -- receipt figure. NULL, never 0, where it has no counted row: a cycle before 2004, or one whose
@@ -121,9 +129,18 @@ to_candidates AS (
     GROUP BY cycle, committee_id
 ),
 independent AS (
-    SELECT cycle, committee_id, sum(amount) AS ie_total
+    SELECT
+        cycle,
+        committee_id,
+        sum(amount) FILTER (WHERE kind = 'ie') AS ie_total,
+        sum(amount) FILTER (WHERE kind = 'communication_cost') AS communication_cost_total,
+        sum(amount) FILTER (WHERE kind = 'coordinated') AS party_coordinated_total
     FROM silver.independent_expenditure
-    WHERE kind = 'ie'
+    GROUP BY cycle, committee_id
+),
+electioneering AS (
+    SELECT cycle, committee_id, sum(amount) AS electioneering_total
+    FROM silver.electioneering_communication
     GROUP BY cycle, committee_id
 ),
 spent AS (
@@ -157,6 +174,18 @@ totals AS (
         CAST(coalesce(to_candidates.total_returned_by_candidates, 0) AS DECIMAL(16, 2))
             AS total_returned_by_candidates,
         CAST(coalesce(independent.ie_total, 0) AS DECIMAL(16, 2)) AS ie_total,
+        CAST(coalesce(independent.communication_cost_total, 0) AS DECIMAL(16, 2))
+            AS communication_cost_total,
+        CAST(coalesce(independent.party_coordinated_total, 0) AS DECIMAL(16, 2))
+            AS party_coordinated_total,
+        CAST(electioneering.electioneering_total AS DECIMAL(16, 2)) AS electioneering_total,
+        CAST(
+            coalesce(independent.ie_total, 0)
+                + coalesce(independent.communication_cost_total, 0)
+                + coalesce(independent.party_coordinated_total, 0)
+                + coalesce(electioneering.electioneering_total, 0)
+            AS DECIMAL(16, 2)
+        ) AS outside_spending_total,
         CAST(spent.total_operating_expenditures AS DECIMAL(16, 2)) AS total_operating_expenditures,
         committee.is_conduit
     FROM silver.committee AS committee
@@ -165,6 +194,7 @@ totals AS (
     LEFT JOIN from_organizations USING (cycle, committee_id)
     LEFT JOIN to_candidates USING (cycle, committee_id)
     LEFT JOIN independent USING (cycle, committee_id)
+    LEFT JOIN electioneering USING (cycle, committee_id)
     LEFT JOIN spent USING (cycle, committee_id)
 ),
 itemized AS (

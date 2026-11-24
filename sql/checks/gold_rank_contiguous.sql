@@ -4,6 +4,11 @@ FROM race_top_committee
 GROUP BY race_id
 HAVING min(rank) <> 1 OR max(rank) <> count(*) OR count(DISTINCT rank) <> count(*)
 UNION ALL
+SELECT 'race_top_spender', race_id, count(*), min(rank), max(rank)
+FROM race_top_spender
+GROUP BY race_id
+HAVING min(rank) <> 1 OR max(rank) <> count(*) OR count(DISTINCT rank) <> count(*)
+UNION ALL
 SELECT 'committee_top_recipient', committee_id || '/' || cycle, count(*), min(rank), max(rank)
 FROM committee_top_recipient
 GROUP BY committee_id, cycle
