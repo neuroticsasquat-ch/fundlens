@@ -139,6 +139,22 @@
       ],
       "format": "date",
       "x-duckdb-type": "DATE"
+    },
+    "communication_type": {
+      "description": "The communication cost's type, a code as filed on the FEC's communication costs file, from 2010 (`DM` is direct mail, most of 2024's dollars). Null on every other kind, and on a communication cost that file lacks. The row's amount and side are `pas2`'s, never that file's.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "communication_class": {
+      "description": "The communication cost's class, a code as filed on the FEC's communication costs file, from 2010. Null where `communication_type` is.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
     }
   },
   "required": [
@@ -157,7 +173,9 @@
     "source_file",
     "payee_name",
     "purpose",
-    "dissemination_date"
+    "dissemination_date",
+    "communication_type",
+    "communication_class"
   ],
   "additionalProperties": false
 }

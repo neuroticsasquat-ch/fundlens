@@ -588,6 +588,31 @@ def _log_ie_24_48(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     )
 
 
+def _log_pas2_kinds(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log `independent_expenditure`'s communication costs and party coordinated expenditures, rows
+    and dollars of each, and the communication costs `CommunicationCosts` gives a type: the
+    figures a cycle's two kinds are checked against (every-FEC-dollar spec §6.2, NEU-2167)."""
+    [(costs, cost_dollars, typed, coordinated, coordinated_dollars)] = con.execute(
+        "SELECT"
+        " count(*) FILTER (WHERE kind = 'communication_cost'),"
+        " coalesce(sum(amount) FILTER (WHERE kind = 'communication_cost'), 0),"
+        " count(*) FILTER (WHERE kind = 'communication_cost' AND communication_type IS NOT NULL),"
+        " count(*) FILTER (WHERE kind = 'coordinated'),"
+        " coalesce(sum(amount) FILTER (WHERE kind = 'coordinated'), 0)"
+        " FROM independent_expenditure"
+    ).fetchall()
+    log.info(
+        "independent_expenditure %d: communication costs %s rows, $%s, %s with a type;"
+        " party coordinated %s rows, $%s",
+        cycle,
+        f"{costs:,}",
+        f"{cost_dollars:,}",
+        f"{typed:,}",
+        f"{coordinated:,}",
+        f"{coordinated_dollars:,}",
+    )
+
+
 def _log_electioneering(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     """Log `electioneering_communication`'s rows and dollars, the dollars reaching a race, and the
     disbursements' copies dropped: the figures a cycle's electioneering communications are checked
@@ -695,6 +720,7 @@ def transform(
             )
             _log_spending(con, cycle)
             _log_ie_24_48(con, cycle)
+            _log_pas2_kinds(con, cycle)
             _log_electioneering(con, cycle)
             written: dict[SilverTable, tuple[str, Path, int]] = {}
             for table in write_order([table for table, _ in models]):

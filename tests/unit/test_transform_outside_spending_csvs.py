@@ -2,8 +2,9 @@
 (NEU-2164): `ie_24_48`, `ElectioneeringComm` and `CommunicationCosts`, each copied with
 `copy_as_utf8` and registered with `register_bulk`, as `fetch_bulk` and the runner do.
 
-No model reads their views yet (NEU-2165, NEU-2166, NEU-2167); this holds the catalogue's types
-to the fixture's cells, so a type that refused a real cell's shape fails here first.
+The models that read their views (NEU-2165, NEU-2166, NEU-2167) are tested on their own; this
+holds the catalogue's types to the fixture's cells, so a type that refused a real cell's shape
+fails here first.
 """
 
 import io

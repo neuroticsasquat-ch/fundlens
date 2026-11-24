@@ -135,7 +135,7 @@ Each measure is the file's figure as filed, `DECIMAL(14,2)`: a blank is NULL, a 
 - **Rows, 1996–2006.** One row per `webk` committee in silver `committee`, `source_file` `webk`. House and Senate campaign committees have none: `webk04` holds 54 candidate committees (Q8).
 - **Rows, 1980–1994.** None. The model still writes its partition, empty (§2, older builds).
 - A row whose every measure is blank is kept: FEC lists the committee and reports nothing.
-- **Not held:** FEC's `FED_CAND_CMTE_CONTB` (Form 3X line 23), which reconciles with neither the gross nor the net 24Ks (Decision 8), `OTHER_RECEIPTS`, and Form 7's `TTL_COMMUNICATION_COST`, which is M3's (§6). Adding a measure later is an additive dataset change.
+- **Not held:** FEC's `FED_CAND_CMTE_CONTB` (Form 3X line 23), which reconciles with neither the gross nor the net 24Ks (Decision 8), `OTHER_RECEIPTS`, and Form 7's `TTL_COMMUNICATION_COST`, which M3 does not hold either (§6.2). Adding a measure later is an additive dataset change.
 
 ### 4.2 Silver `candidate_reported_total`
 
@@ -448,7 +448,7 @@ The rules below were written by NEU-2163 (`docs/specs/NEU-2163-outside-spending-
 - **Amounts.** `pas2` writes whole dollars (Q4h); the 24/48-hour file carries cents. Each is kept as its file gives it, a negative one included.
 - **Dates.** 25,780 of 2024's 24/48-hour rows have no `exp_date` and 14,141 no `dissem_dt`; none lacks both (Q1). A spender's impossible year is kept as filed: dissemination dates run from 2004 to 2042.
 - **A row with no side.** One added row of 2024 ($85) has a blank `sup_opp` (Q6d). It is in its spender's total and in no candidate's or race's figure, since those are by side.
-- **Communication costs.** Every row of the CSV is a `pas2` 24F or 24N row under the same `SUB_ID`, filer, filing, `TRAN_ID` and candidate, in every cycle 2010–2026 but one 2022 row, and the amounts are equal once the CSV's cents are dropped (Q8c, Q8l, Q12g; Decision 5). `pas2` holds 20 rows the CSV lacks ($59,480, none naming a candidate): they count, with both new columns NULL. A CSV row with no `pas2` row adds nothing. `COMMUNICATION_TP` is `DM` (direct mail) on $6.19M of 2024 and `COMMUNICATION_CLASS` `M` on $7.05M; both are kept as filed. The CSV's `PURPOSE` is never filled (Q1), so `purpose` stays NULL. Form 7's reported total is in no file fundlens reads, so no spender's sum is checked (Q8).
+- **Communication costs.** Every row of the CSV is a `pas2` 24F or 24N row under the same `SUB_ID`, filer, filing, `TRAN_ID` and candidate, in every cycle 2010–2026 but one 2022 row, and the amounts are equal once the CSV's cents are dropped (Q8c, Q8l, Q12g; Decision 5). `pas2` holds 20 rows the CSV lacks ($59,480, none naming a candidate): they count, with both new columns NULL. A CSV row with no `pas2` row adds nothing. `COMMUNICATION_TP` is `DM` (direct mail) on $6.19M of 2024 and `COMMUNICATION_CLASS` `M` on $7.05M; both are kept as filed. The CSV's `PURPOSE` is never filled (Q1), so `purpose` stays NULL. Form 7's reported total is `committee_summary`'s `TTL_COMMUNICATION_COST` (65 of FEC's 68 type-`C` rows of 2024 above $0; `docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §5), which `reported_total` does not hold (§4.1), so no spender's sum is checked against it (NEU-2167). Holding it in `reported_total` is an additive change.
 - **Party coordinated expenditures.** `pas2`'s 24C rows as v1 holds them, credited to the candidate named. 43 of 2024's 47 spenders are party committees (`cm` type `Y`), and each party committee matches its `reported_total.party_coordinated` within 1% but four that report $20,650 and file $3,000 (Q10). Three spenders are no party: a House campaign ($85,250), a union PAC ($3,000) and a Democratic club ($1,287). They count as filed (Decision 7). $89,034,392 names a candidate and $88,084,906 reaches a race (Q10h).
 
 **Checks.** v1's five stand (`silver_independent_expenditure_key`, `_candidate`, `_correction`, `_handoff`, `_not_money`), the side-and-type check applying to `pas2` rows alone. NEU-2165 adds `silver_independent_expenditure_no_double.sql`, which fails the build on a 24/48-hour row that:
@@ -458,6 +458,8 @@ The rules below were written by NEU-2163 (`docs/specs/NEU-2163-outside-spending-
 - is at a spender that has neither a counted `pas2` independent expenditure in the cycle nor a reported figure above $0.
 
 NEU-2167 adds `silver_independent_expenditure_communication.sql`: `communication_type` or `communication_class` is set only on a `communication_cost` row.
+
+**Every transform logs** the communication costs' rows and dollars and how many the CSV gives a type, and the party coordinated expenditures' rows and dollars (NEU-2167): the figures §6.1's 2024 numbers are checked against.
 
 **Memory.** Measured by NEU-2165 on a hand transform of 2026 on the VM (build `20261124T180255Z`, 2026-11-24): DuckDB held 13.39 GiB after `09_reported_total.sql` and 13.40 GiB after `10_independent_expenditure.sql`, so the model and its added rows cost about 0.01 GiB, and peak resident memory stayed at 16.84 GiB across it. The transform's peak is still `contribution`'s write (26.50 GiB resident in that run), which this model does not move, so `docs/capacity.md` has no entry for it.
 

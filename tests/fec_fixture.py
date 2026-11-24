@@ -340,6 +340,12 @@ class Expected(TypedDict):
     # Silver electioneering_communication's rows by key: [committee_id, candidate_id, race_id,
     # amount] (NEU-2166).
     electioneering_communications: dict[str, list[str | float | None]]
+    # Silver independent_expenditure's communication costs by SUB_ID: [committee_id, candidate_id,
+    # race_id, support_oppose, amount, communication_type, communication_class]; its party
+    # coordinated expenditures: [committee_id, candidate_id, race_id, support_oppose, amount]
+    # (NEU-2167).
+    communication_costs: dict[str, list[str | int | None]]
+    party_coordinated: dict[str, list[str | int | None]]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]

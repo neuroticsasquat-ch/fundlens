@@ -1335,6 +1335,44 @@ def test_communication_costs_and_pas2_each_repeat_the_same_one_row() -> None:
     assert REPEATED_COST in fec_repeats("pas2")
 
 
+def pas2_kind(transaction_types: tuple[str, ...]) -> dict[str, tuple[Row, str | None, str | None]]:
+    """`pas2`'s counted rows of `transaction_types` by SUB_ID, each with the candidate it names
+    (when one of the cycle) and that candidate's race, as silver attaches them."""
+    races = race_ids()
+    kept: dict[str, tuple[Row, str | None, str | None]] = {}
+    for r in rows("pas2"):
+        if r["TRANSACTION_TP"] in transaction_types and r["MEMO_CD"] != "X":
+            candidate = ie_candidate(r)
+            candidate = candidate if candidate in races else None
+            kept[r["SUB_ID"]] = (r, candidate, races[candidate] if candidate else None)
+    return kept
+
+
+def test_the_expected_communication_costs_are_pas2s_with_the_csvs_type_and_class() -> None:
+    # Counted from pas2 alone (project spec §6.2, NEU-2167): its amount and side by type; the CSV
+    # gives the type and class of the row under the same SUB_ID, and adds no row of its own.
+    described = {r["SUB_ID"]: r for r in rows("CommunicationCosts")}
+    assert EXPECTED["communication_costs"] == {
+        sub_id: [
+            r["CMTE_ID"],
+            candidate,
+            race,
+            "O" if r["TRANSACTION_TP"] == "24N" else "S",
+            amount(r),
+            (cost := described.get(sub_id, {})).get("COMMUNICATION_TP") or None,
+            cost.get("COMMUNICATION_CLASS") or None,
+        ]
+        for sub_id, (r, candidate, race) in sorted(pas2_kind(("24F", "24N")).items())
+    }
+
+
+def test_the_expected_party_coordinated_expenditures_are_pas2s_24cs() -> None:
+    assert EXPECTED["party_coordinated"] == {
+        sub_id: [r["CMTE_ID"], candidate, race, "S", amount(r)]
+        for sub_id, (r, candidate, race) in sorted(pas2_kind(("24C",)).items())
+    }
+
+
 def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     expected = EXPECTED["operating_expenditures"]
     kept = operating_expenditures()
