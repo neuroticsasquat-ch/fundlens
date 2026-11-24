@@ -2216,6 +2216,13 @@ NAMES_ITSELF, YEAR_9201, UNDATED_SPENDING = (
     4240400000000000046,
     4240400000000000050,
 )
+# Its purposes naming no IN-KIND or a gift the committee made (NEU-2464): crypto received, an
+# in-kind contribution made, and an advance for in-kind contributions to come.
+CRYPTO_RECEIVED, IN_KIND_MADE, IN_KIND_ADVANCE = (
+    4240400000000000053,
+    4240400000000000054,
+    4240400000000000055,
+)
 
 
 def test_operating_expenditures_count_a_sub_itemized_payment_once_and_net_as_filed(
@@ -2270,6 +2277,16 @@ def test_operating_expenditures_count_a_sub_itemized_payment_once_and_net_as_fil
     assert names_itself["tran_id"] == names_itself["back_ref_tran_id"] == "SB17.0001"
     assert (names_itself["parent_source_record_id"], names_itself["is_in_kind"]) == (None, False)
     assert names_itself["counted"]
+    # Crypto received is a gift though its purpose says no IN-KIND; a payment for an in-kind
+    # contribution the committee made, or will make, is no gift though it does (NEU-2464).
+    assert {
+        sub_id: (by_id[sub_id]["counted"], by_id[sub_id]["is_in_kind"])
+        for sub_id in (CRYPTO_RECEIVED, IN_KIND_MADE, IN_KIND_ADVANCE)
+    } == {
+        CRYPTO_RECEIVED: (True, True),
+        IN_KIND_MADE: (True, False),
+        IN_KIND_ADVANCE: (True, False),
+    }
     # A filer's impossible year is kept as filed, and a row with no date has none.
     assert by_id[YEAR_9201]["date"] == date(9201, 11, 1)
     assert by_id[UNDATED_SPENDING]["date"] is None

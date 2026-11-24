@@ -39,8 +39,9 @@
 -- row with no name. payee_is_person: ENTITY_TP IND or CAN, or blank and the name one the
 -- classifier (resolve.normalize.is_organization_name, NEU-2132) does not call an organization's,
 -- asked once per distinct blank-typed name. is_in_kind: a row naming a TRAN_ID no row of its
--- filing holds (most name a receipt on it, Q7c), or a purpose saying IN-KIND; it keeps its
--- `counted`, and is in no payee figure.
+-- filing holds (most name a receipt on it, Q7c), or a purpose naming a gift received: IN-KIND,
+-- but not an in-kind contribution the committee made or pays ahead for, or crypto received
+-- (NEU-2464). It keeps its `counted`, and is in no payee figure.
 --
 -- spending_category and category_source (§5.3, NEU-2153): transform.spending's rule over the
 -- purpose, else FEC's code where it is one of the six filers use reliably, else other. The
@@ -55,6 +56,22 @@ WITH spending AS (
         -- FEC writes MM/DD/YYYY; a malformed date is null rather than a failed build. An
         -- impossible year (1201 to 9201 appear in every cycle) is kept as filed.
         CAST(try_strptime(TRANSACTION_DT, '%m/%d/%Y') AS DATE) AS spent_on,
+        -- A purpose naming a gift received (spec §5.4, NEU-2464): IN-KIND, unless the committee
+        -- made the in-kind contribution or pays ahead for ones it will make; or crypto received,
+        -- which names no IN-KIND ('24,999,995 USDC RECEIVED, NOT LIQUIDATED').
+        coalesce(
+            (regexp_matches(upper(PURPOSE), 'IN[- ]?KIND')
+                AND NOT regexp_matches(
+                    upper(PURPOSE),
+                    'IN[- ]?KIND CONTRIBUTIONS? MADE|\bFOR\b.*\bIN[- ]?KIND CONTRIBUTIONS\b'
+                ))
+            OR regexp_matches(
+                upper(PURPOSE),
+                '\b(BITCOINS?|ETHER(EUM)?|USDC|RIPPLE|CRYPTO\w*)\b.*\bRECEIVED\b'
+                    || '|\bRECEIVED,? (NOT )?LIQUIDATED\b|\bNOT LIQUIDATED\b'
+            ),
+            false
+        ) AS gift_purpose,
         -- FEC's three-digit code, one written without its leading zeros ('1', '01') padded to it.
         CASE
             WHEN regexp_matches(trim(CATEGORY), '^[0-9]{{1,2}}$')
@@ -155,7 +172,7 @@ SELECT
     spending.IMAGE_NUM AS image_num,
     spending.FILE_NUM AS file_num,
     (spending.named_tran_id IS NOT NULL AND parent.SUB_ID IS NULL)
-        OR coalesce(regexp_matches(upper(spending.PURPOSE), 'IN[- ]?KIND'), false) AS is_in_kind,
+        OR spending.gift_purpose AS is_in_kind,
     CASE
         WHEN parent.SUB_ID IS NOT NULL THEN false
         WHEN spending.SUB_ID IN (SELECT SUB_ID FROM parent) THEN true

@@ -4,6 +4,15 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-24 — `operating_expenditure.is_in_kind` reads crypto received and in-kind gifts made
+
+One column's meaning, a change to its values only: `is_in_kind` is now also true for
+cryptocurrency a committee was given and reported as spending naming the giver
+(`… USDC RECEIVED, NOT LIQUIDATED`), and no longer true for a payment for an in-kind contribution
+the committee made or pays ahead for (`IN-KIND CONTRIBUTION MADE: POLLING`, `ADVANCE PAYMENT FOR
+… IN-KIND CONTRIBUTIONS`). `counted` does not change. A cycle built before the change keeps the
+old values until the backfill rebuilds it.
+
 ## 2026-11-21 — `operating_expenditure.spending_category` and `category_source` filled
 
 Two columns' meaning, a change to their values only: `spending_category` now holds what each

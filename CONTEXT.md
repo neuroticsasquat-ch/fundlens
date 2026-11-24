@@ -43,7 +43,7 @@ A row itemizing part of an operating expenditure the committee already reported 
 _Avoid_: memo child, child row, memo item, sub-itemization
 
 **In-kind outlay**:
-The spending-side record of a gift of goods or services: the regulator has the committee report the gift as a receipt and its use as an operating expenditure naming the giver. Counted in the committee's spending, as the regulator counts it; credited to no payee, since the giver was paid nothing.
+The spending-side record of a gift of goods, services or other property, cryptocurrency among them: the regulator has the committee report the gift as a receipt and its use as an operating expenditure naming the giver. Counted in the committee's spending, as the regulator counts it; credited to no payee, since the giver was paid nothing.
 _Avoid_: in-kind payment, orphan child, in-kind contribution (that is the receipt)
 
 **Spending category**:
