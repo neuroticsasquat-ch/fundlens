@@ -337,6 +337,9 @@ class Expected(TypedDict):
     aliases: dict[str, str]
     # The 24/48-hour file's rows silver independent_expenditure adds, by rule (NEU-2165).
     ie_24_48: dict[str, Added]
+    # Silver electioneering_communication's rows by key: [committee_id, candidate_id, race_id,
+    # amount] (NEU-2166).
+    electioneering_communications: dict[str, list[str | float | None]]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]

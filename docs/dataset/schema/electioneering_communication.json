@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/electioneering_communication.json",
+  "title": "electioneering_communication",
+  "description": "One electioneering communication for one candidate: a broadcast ad naming a candidate shortly before an election, paid for by a spender filing the FEC's Form 9, from the FEC's electioneering communications file (from 2010). A disbursement naming several candidates is one row per candidate, each with the FEC's equal share in `amount`: sum `amount`, never `disbursement_amount`. A row has no side: the filing does not say whether the ad is for or against the candidate. The file shows no amendment, so a report a later one restates may be counted twice. Outside spending, never a contribution: never add it to `contribution` or any other receipt amount. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The row's id, unique within a source: `<image_num>:<n>`, n the row's place among its image number's rows in this table, ordered by every column as filed. The file has no id of its own.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The FEC id of the spender: a person or group filing as a committee (a non-committee spender, told by `committee.type`), or a committee.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "candidate_id": {
+      "description": "The FEC id of the candidate the row names, when they are a candidate of the cycle, else null: an ad about an issue may name none. A second id the same person holds for the race is replaced by the one holding their money, and a row naming a candidate whose committee was handed to another (Biden's 2024 campaign, Harris's from 2024-07-21), dated on or after the handoff or undated, is the second candidate's.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "race_id": {
+      "description": "That candidate's race, the `race` table's key; null when there is none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "amount": {
+      "description": "The candidate's share of the disbursement in dollars, as the FEC calculated it: the disbursement divided equally among the candidates it names. Sum this.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "disbursement_amount": {
+      "description": "The whole disbursement in dollars, as reported, repeated on each of its rows. Never sum it.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "candidate_count": {
+      "description": "The number of candidates the disbursement names, as reported.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "SMALLINT"
+    },
+    "date": {
+      "description": "The date of the disbursement as reported; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "communication_date": {
+      "description": "The date of the communication as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "public_distribution_date": {
+      "description": "The date the communication was first publicly distributed, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "payee_name": {
+      "description": "Whom the spender paid, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "description": {
+      "description": "What the spender paid for, as reported.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "image_num": {
+      "description": "The FEC image number of the page the row is on.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "committee_id",
+    "candidate_id",
+    "race_id",
+    "amount",
+    "disbursement_amount",
+    "candidate_count",
+    "date",
+    "communication_date",
+    "public_distribution_date",
+    "payee_name",
+    "description",
+    "image_num"
+  ],
+  "additionalProperties": false
+}

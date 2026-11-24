@@ -1246,6 +1246,65 @@ def test_one_electioneering_disbursement_has_more_rows_than_candidates() -> None
     assert len({r["COMMUNICATION_DATE"] for r in copies}) == len(copies)
 
 
+def electioneering_candidate(row: Row) -> str | None:
+    """The candidate an electioneering row names (project spec §6.1): its CANDIDATE_ID, or the id
+    it is an alias of, when a candidate of the cycle; past the handoff, on a row dated on or after
+    it or undated, the candidate the committee was handed to."""
+    named = aliases().get(row["CANDIDATE_ID"], row["CANDIDATE_ID"])
+    if named not in race_ids():
+        return None
+    filed = row["DISBURSEMENT_DATE"]
+    day = datetime.strptime(filed, "%d-%b-%y").date() if filed else None
+    for before, after, handoff in HANDOFFS.values():
+        if named == before and not (day is not None and day < handoff):
+            return after
+    return named
+
+
+@functools.cache
+def electioneering_communications() -> Mapping[str, list[str | float | None]]:
+    """Silver electioneering_communication's rows by key, [committee_id, candidate_id, race_id,
+    amount]: every row of a spender in `cm` but a disbursement's rows beyond its candidate count, in
+    order of CANDIDATE_ID and then every column; each keyed by its place among its image number's
+    kept rows, in the same order (project spec §6.4)."""
+    by_disbursement: dict[tuple[str, ...], list[Row]] = defaultdict(list)
+    for r in fec_fixture.read_rows("ElectioneeringComm"):
+        if r["COMMITTEE_ID"] in committee_ids():
+            disbursement = (
+                r["COMMITTEE_ID"],
+                r["SB_IMAGE_NUM"],
+                r["PAYEE_NAME"],
+                r["DISBURSEMENT_DATE"],
+                r["REPORTED_DISBURSEMENT_AMOUNT"],
+            )
+            by_disbursement[disbursement].append(r)
+    columns = list(CATALOGUE["ElectioneeringComm"].columns)
+
+    def order(r: Row) -> tuple[tuple[bool, str], ...]:
+        # Blanks last, as DuckDB orders a NULL.
+        return tuple((not r[c], r[c]) for c in columns)
+
+    by_image: dict[str, list[Row]] = defaultdict(list)
+    for rs in by_disbursement.values():
+        for r in sorted(rs, key=order)[: int(rs[0]["NUMBER_OF_CANDIDATES"])]:
+            by_image[r["SB_IMAGE_NUM"]].append(r)
+    tallied: dict[str, list[str | float | None]] = {}
+    for image, rs in by_image.items():
+        for place, r in enumerate(sorted(rs, key=order), start=1):
+            candidate = electioneering_candidate(r)
+            tallied[f"{image}:{place}"] = [
+                r["COMMITTEE_ID"],
+                candidate,
+                None if candidate is None else race_ids()[candidate],
+                float(Decimal(r["CALCULATED_CANDIDATE_SHARE"])),
+            ]
+    return MappingProxyType(tallied)
+
+
+def test_the_expected_electioneering_rows_are_the_rules_on_the_fixture() -> None:
+    assert EXPECTED["electioneering_communications"] == electioneering_communications()
+
+
 def test_each_communication_cost_is_a_pas2_row_under_its_sub_id_but_one() -> None:
     costs = fec_fixture.read_rows("CommunicationCosts")
     sub_ids = [r["SUB_ID"] for r in costs]
@@ -2018,6 +2077,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "reported_total": len(reported_totals(CYCLE)),
         "candidate_reported_total": len(candidate_reported_totals(CYCLE)),
         "operating_expenditure": len(operating_expenditures()),
+        "electioneering_communication": len(electioneering_communications()),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}

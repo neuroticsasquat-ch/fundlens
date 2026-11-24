@@ -89,8 +89,8 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded. The outside-spending files' rows'
 # cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
-# below (NEU-2165); of ElectioneeringComm and CommunicationCosts, NEU-2166's and NEU-2167's to
-# record.
+# below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166); of
+# CommunicationCosts, NEU-2167's to record.
 rows:
   cm: 26
   cn: 15
@@ -133,6 +133,9 @@ silver:
   candidate_reported_total: 0
   # `operating_expenditures` below: every `oppexp` row but its three dropped ones.
   operating_expenditure: 52
+  # `electioneering_communications` below: every ElectioneeringComm row but a disbursement's copy
+  # and the row of a spender `cm` lacks.
+  electioneering_communication: 14
 
 # Operating expenditures (every-FEC-dollar spec §5, NEU-2152): silver operating_expenditure on
 # oppexp.csv, whose comments say which rule (§5.2) counts or leaves out each row. A sub-item
@@ -713,6 +716,30 @@ ie_24_48:
       - "1910022:SE.00343"
       - "1910022:SE.00344"
       - "1910026:SE.00346"
+
+# Silver electioneering_communication's rows (project spec §6.4, NEU-2166), by key
+# (`<SB_IMAGE_NUM>:<n>`): [committee_id, candidate_id, race_id, amount]. ElectioneeringComm.csv's
+# comments give each row's case. Its 16 rows less two: case 2's copy (CALLOWAY's second row of a
+# one-candidate disbursement, the one with the later COMMUNICATION_DATE) and case 10's spender `cm`
+# lacks. Case 4's two rows name no candidate, and case 6's an id `cn` lacks: kept, candidate and
+# race null. Case 7's share stands as filed though three of it is not the amount. Case 8's BIDEN row
+# dated on the handoff is HARRIS's, case 9's alias DRISCOLL's, and case 11's restated report counts
+# twice. Every amount is the row's CALCULATED_CANDIDATE_SHARE.
+electioneering_communications:
+  "202407209200000008:1": [C90800207, P80000722, 2024-P-US-00, 25000]
+  "202407219200000009:1": [C90800207, P00009423, 2024-P-US-00, 27500]
+  "202409309200000012:1": [C90800207, P40000101, 2024-P-US-00, 15000]
+  "202410039200000001:1": [C90800207, S4MD00103, 2024-S-MD-00, 45000]
+  "202410109200000002:1": [C90800207, H4MD05106, 2024-H-MD-05, 18000]
+  "202410149200000003:1": [C90800207, S4MD00103, 2024-S-MD-00, 26409.5]
+  "202410149200000003:2": [C90800207, S4MD00104, 2024-S-MD-00, 26409.5]
+  "202410159200000013:1": [C90800207, P40000101, 2024-P-US-00, 15000]
+  "202410179200000004:1": [C90800207, null, null, 15000]
+  "202410179200000004:2": [C90800207, null, null, 15000]
+  "202410219200000005:1": [C90800207, H4MD05107, 2024-H-MD-05, 4500]
+  "202410229200000006:1": [C90800207, null, null, 6000]
+  "202410249200000007:1": [C90800207, S4MD00105, 2024-S-MD-00, 3500]
+  "202410289200000010:1": [C90800207, H4MD05107, 2024-H-MD-05, 7500.25]
 
 races:
   2024-P-US-00:

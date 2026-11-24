@@ -4,6 +4,15 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-24 — `electioneering_communication` added
+
+One table, an additive change: `electioneering_communication`, every electioneering
+communication from 2010 on, one row per candidate a disbursement names, from the FEC's
+electioneering communications file, as `schema/electioneering_communication.json` describes it.
+Sum `amount`, each candidate's share, never `disbursement_amount`. A row has no side, and a report
+a later one restates may be counted twice. A cycle built before the table existed has no files of
+it until the backfill rebuilds it: read a table's cycles from `manifest.json`.
+
 ## 2026-11-24 — `independent_expenditure` adds the 24/48-hour file's rows and four columns
 
 Rows, four columns and one retyping:

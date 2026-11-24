@@ -588,6 +588,29 @@ def _log_ie_24_48(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     )
 
 
+def _log_electioneering(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log `electioneering_communication`'s rows and dollars, the dollars reaching a race, and the
+    disbursements' copies dropped: the figures a cycle's electioneering communications are checked
+    against (every-FEC-dollar spec §6.4, NEU-2166). A copy is a row of a spender of the cycle the
+    table does not hold."""
+    [(rows, dollars, in_races, filed)] = con.execute(
+        "SELECT count(*), coalesce(sum(amount), 0),"
+        " coalesce(sum(amount) FILTER (WHERE race_id IS NOT NULL), 0),"
+        " (SELECT count(*) FROM ElectioneeringComm"
+        "  WHERE COMMITTEE_ID IN (SELECT committee_id FROM committee))"
+        " FROM electioneering_communication"
+    ).fetchall()
+    log.info(
+        "electioneering_communication %d: %s rows, $%s; $%s reaching a race;"
+        " disbursements' copies dropped: %s",
+        cycle,
+        f"{rows:,}",
+        f"{dollars:,}",
+        f"{in_races:,}",
+        f"{filed - rows:,}",
+    )
+
+
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
@@ -672,6 +695,7 @@ def transform(
             )
             _log_spending(con, cycle)
             _log_ie_24_48(con, cycle)
+            _log_electioneering(con, cycle)
             written: dict[SilverTable, tuple[str, Path, int]] = {}
             for table in write_order([table for table, _ in models]):
                 written[table] = _write(

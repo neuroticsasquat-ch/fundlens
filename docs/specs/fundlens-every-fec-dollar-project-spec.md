@@ -505,7 +505,7 @@ The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–
 
 ### 6.4 Silver `electioneering_communication`
 
-`sql/silver/NN_electioneering_communication.sql` (NEU-2166), from `ElectioneeringComm` (2010–). Key `(cycle, source, source_record_id)`. `source` is `fec` and `jurisdiction` `US`.
+`sql/silver/13_electioneering_communication.sql` (NEU-2166), from `ElectioneeringComm` (2010–). Key `(cycle, source, source_record_id)`. `source` is `fec` and `jurisdiction` `US`.
 
 Columns, in order:
 
@@ -532,6 +532,9 @@ Not held: the candidate's and spender's names and the candidate's office, state 
 - **No candidate.** 24 rows of 2024 ($2,179,759) name none: trade groups' and nonprofits' ads about an issue. One names an id `cn` lacks (`P60012143`, $32,000) (Q9e). Each is kept with candidate and race NULL, in its spender's total alone. Blank-candidate rows begin in 2016 (Q12f). So 2024's rows reaching a candidate and a race come to $7,230,615: $9,442,374 less those two figures. Derived by subtraction, not measured; NEU-2166 confirms it.
 - **No amendment rule.** The file has no filing number and no amendment indicator. The Form 9s support one rule, that a row restated by an amendment of the same report is one payment and a repeat across two reports is two, and the file cannot apply it (Q9p). So a restatement is counted twice: $33,750 in 2024, 0.36% (Issue One Action's `1849492` amending `1816711`), and about $73,000 in 2010. Rejected: keeping the highest image number among rows equal on spender, payee, date, amount and candidate, which is exact in 2024 and drops $3,101,798 of 2010's $71,692,553, most of it separate real reports (Q9q).
 - A row whose spender `cm` lacks is dropped (none in 2024: all 25 spenders are type `E`, Q9a).
+- **Three answers NEU-2166 gave**, each for a case no cycle 2010–2026 is known to hold: no `NUMBER_OF_CANDIDATES` is blank and every filled date parses as `%d-%b-%y` (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §5). A disbursement is told by `DISBURSEMENT_DATE` parsed, the date silver holds, so the copies check groups exactly as the model does. A disbursement whose count is blank or below 1 has no copies known and keeps every row; a count of 0 was not measured, only each cycle's largest. "Ordered by every column as filed" puts a blank cell after a filled one, as DuckDB orders a NULL.
+
+**Every transform logs** the table's rows and dollars, the dollars reaching a race and the disbursements' copies dropped (a row of a spender of the cycle the table does not hold), the figures this section's 2024 numbers are checked against.
 
 **Checks** (NEU-2166): `silver_electioneering_communication_key.sql` (key unique); `..._committee.sql` (spender in `committee`); `..._candidate.sql` (a candidate is the cycle's, is no alias and is no handoff's first candidate on or after the handoff; a race is its candidate's); `..._copies.sql` (no disbursement has more rows than its `candidate_count`).
 

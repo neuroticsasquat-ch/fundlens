@@ -43,6 +43,7 @@ TABLES: tuple[SilverTable, ...] = (
     "reported_total",
     "candidate_reported_total",
     "operating_expenditure",
+    "electioneering_communication",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -583,6 +584,7 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         "silver check ",
         "operating_expenditure 2024: ",
         "independent_expenditure 2024: ",
+        "electioneering_communication 2024: ",
         "write ",
         "upload ",
     )
@@ -605,6 +607,10 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         # ACTION's $12,000 after its period end, a hoax filing's place had one passed the screen.
         "independent_expenditure 2024: 24/48-hour rows added: by spender 20 rows, $30,185.75;"
         " timeliness 3 rows, $27,500.00; largest $12,000.00 by C00800210 (1910022:SE.00343)",
+        # The figures NEU-2166's definition of done is measured by: the fixture's 14 rows, the
+        # $36,000 of its three naming no candidate of the cycle reaching no race, and case 2's copy.
+        "electioneering_communication 2024: 14 rows, $249,819.25; $213,819.25 reaching a race;"
+        " disbursements' copies dropped: 1",
         *(f"write {table} 2024" for table in write_order(tables)),
         *(
             f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
@@ -1448,6 +1454,71 @@ def test_a_handed_off_committees_money_is_split_between_its_candidates_by_date(
     ) == (
         BIDEN,
         BIDEN,
+    )
+
+
+def test_electioneering_communications_are_each_candidates_share_less_a_disbursements_copies(
+    fixture_silver: Path,
+) -> None:
+    rows = local_silver(fixture_silver, "electioneering_communication")
+
+    assert list(rows[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "committee_id",
+        "candidate_id",
+        "race_id",
+        "amount",
+        "disbursement_amount",
+        "candidate_count",
+        "date",
+        "communication_date",
+        "public_distribution_date",
+        "payee_name",
+        "description",
+        "image_num",
+    ]
+    assert {
+        str(row["source_record_id"]): [
+            row["committee_id"],
+            row["candidate_id"],
+            row["race_id"],
+            float(cast(Decimal, row["amount"])),
+        ]
+        for row in rows
+    } == fec_fixture.expected()["electioneering_communications"]
+    by_key = {str(row["source_record_id"]): row for row in rows}
+    # Case 2: the copy's first row, by every column as filed, is the one kept.
+    copy = by_key["202410109200000002:1"]
+    assert (copy["date"], copy["communication_date"], copy["candidate_count"]) == (
+        date(2024, 10, 8),
+        date(2024, 10, 10),
+        1,
+    )
+    # Case 3: the whole disbursement on each of its two rows, and each row's share.
+    split = by_key["202410149200000003:2"]
+    assert (split["amount"], split["disbursement_amount"], split["candidate_count"]) == (
+        Decimal("26409.50"),
+        Decimal("52819.00"),
+        2,
+    )
+    # Case 6: a blank PUBLIC_DISBURSEMENT_DATE is null; the rest as filed.
+    unknown = by_key["202410229200000006:1"]
+    assert {
+        column: unknown[column]
+        for column in ("cycle", "source", "jurisdiction", "public_distribution_date", "image_num")
+    } == {
+        "cycle": 2024,
+        "source": "fec",
+        "jurisdiction": "US",
+        "public_distribution_date": None,
+        "image_num": "202410229200000006",
+    }
+    assert (unknown["payee_name"], unknown["description"]) == (
+        "Tidewater Digital LLC",
+        "DIGITAL AD PLACEMENT",
     )
 
 
