@@ -4,6 +4,23 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-24 — `independent_expenditure` adds the 24/48-hour file's rows and four columns
+
+Rows, four columns and one retyping:
+
+- **Rows.** From 2010, the table also holds independent expenditures from the FEC's 24/48-hour
+  file that no periodic report holds yet: a spender's estimates dated after its last periodic
+  report, and the spending of a spender with no `pas2` independent expenditure that reports
+  some, screened against what it reports. Each is `kind = 'ie'`. Such a row leaves the table once
+  a periodic report restates it.
+- **`source_record_id` is text** (a breaking change): a `pas2` row's is its `SUB_ID`'s digits, as
+  before but as a string, and a 24/48-hour row's is `<file_num>:<tran_id>`. A cycle built before
+  the change still holds integers until the backfill rebuilds it: read the column as text.
+- **Four columns added**, an additive change: `source_file` (`pas2` or `ie_24_48`), `payee_name`,
+  `purpose` and `dissemination_date`. `support_oppose` is null on a 24/48-hour row whose filer
+  gave no side, and `transaction_type` on every 24/48-hour row. A cycle built before the change
+  has none of the four columns: read `source_file` as `pas2` and the rest as null.
+
 ## 2026-11-24 — `operating_expenditure.is_in_kind` reads crypto received and in-kind gifts made
 
 One column's meaning, a change to its values only: `is_in_kind` is now also true for

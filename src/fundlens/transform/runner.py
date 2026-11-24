@@ -62,6 +62,7 @@ import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from importlib.resources import files as package_files
 from pathlib import Path
 from typing import IO, Literal, get_args
@@ -565,6 +566,28 @@ def _log_spending(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     )
 
 
+def _log_ie_24_48(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log the 24/48-hour file's rows `independent_expenditure` adds, rows and dollars by each of
+    the two rules, and the largest single row with its spender: a hoax filing that passes the
+    screen shows here (every-FEC-dollar spec §6.3, NEU-2165). `ie_24_48_added` is the model's."""
+    added = dict.fromkeys(("by_spender", "timeliness"), (0, Decimal(0)))
+    for rule, rows, dollars in con.execute(
+        "SELECT rule, count(*), coalesce(sum(amount), 0) FROM ie_24_48_added GROUP BY rule"
+    ).fetchall():
+        added[rule] = (rows, dollars)
+    largest = con.execute(
+        "SELECT amount, committee_id, source_record_id FROM ie_24_48_added"
+        " ORDER BY amount DESC NULLS LAST, source_record_id LIMIT 1"
+    ).fetchone()
+    log.info(
+        "independent_expenditure %d: 24/48-hour rows added: by spender %s rows, $%s;"
+        " timeliness %s rows, $%s; largest %s",
+        cycle,
+        *(f"{figure:,}" for rows, dollars in added.values() for figure in (rows, dollars)),
+        "none" if largest is None else f"${largest[0]:,} by {largest[1]} ({largest[2]})",
+    )
+
+
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
@@ -648,6 +671,7 @@ def transform(
                 after=lambda step: _log_memory(step, con),
             )
             _log_spending(con, cycle)
+            _log_ie_24_48(con, cycle)
             written: dict[SilverTable, tuple[str, Path, int]] = {}
             for table in write_order([table for table, _ in models]):
                 written[table] = _write(

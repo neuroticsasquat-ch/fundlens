@@ -35,6 +35,10 @@
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   One naming a candidate a committee was handed from is the other's on and after the handoff
 #   date, and undated (NEU-2277): BRICKLAYERS' spending for BIDEN from 2024-07-21 is HARRIS's.
+#   The 24/48-hour file's rows silver adds (`ie_24_48` below, NEU-2165) are in all three, by their
+#   sup_opp; one with no side is in its spender's ie_total alone. They carry cents, so these three
+#   figures and race_top_committees' amounts are dollars and cents: quarter-dollars, which a YAML
+#   float holds exactly.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
 #   blank, the designation-J committee whose name NAME is, compared after uppercasing and dropping
@@ -79,14 +83,14 @@
 #   giver wrote one's id, its recipient linked to no candidate, is credited to the id it is an
 #   alias of.
 # - A race's totals are the sums over the candidates attached to it.
-# All amounts are whole dollars.
+# All amounts are whole dollars but the 24/48-hour file's.
 
 cycle: 2024
 
-# Data rows per bulk file, comment lines and header excluded. The outside-spending files (NEU-2164)
-# are counted here and nowhere else: their rows' cases are in each file's comments, and what silver
-# makes of them is NEU-2165's (ie_24_48), NEU-2166's (ElectioneeringComm) and NEU-2167's
-# (CommunicationCosts) to record.
+# Data rows per bulk file, comment lines and header excluded. The outside-spending files' rows'
+# cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
+# below (NEU-2165); of ElectioneeringComm and CommunicationCosts, NEU-2166's and NEU-2167's to
+# record.
 rows:
   cm: 26
   cn: 15
@@ -104,7 +108,7 @@ rows:
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions and the row FEC's file repeats (24A/24E, and the 24C, 24F and 24N
-# kept with their kind). committee_transfer is
+# kept with their kind), and the 24/48-hour rows of `ie_24_48` below. committee_transfer is
 # every `oth` receipt from a committee (recorded by the receiving committee, so filed by one in
 # `cm`, NEU-2281), every `indiv` row a committee's by the name rule (`name_matched` below), plus
 # every `pas2` 24K row not filed by a conduit (a disbursement, recorded by the giver): the one gift
@@ -115,7 +119,7 @@ silver:
   candidate: 15
   candidate_committee_link: 15
   contribution: 347
-  independent_expenditure: 22
+  independent_expenditure: 45
   committee_transfer: 32
   organization_receipt: 19
   # One row per `attributions` line below.
@@ -633,22 +637,26 @@ top_recipients:
 
 # Each race's committees in gold's race_top_committee (NEU-2057), by rank: [kind, committee_id,
 # amount]. A contribution row is a giver's 24Ks to the race's candidates, adding up to the race's
-# total_committee; an ie row is a spender's 24E and 24A on them, adding up to its ie_support plus
-# ie_oppose. Ranked by amount, then committee id, then kind. The conduits are in none.
+# total_committee; an ie row is a spender's 24E and 24A on them, and its 24/48-hour rows with a
+# side (`ie_24_48` below), adding up to its ie_support plus ie_oppose. Ranked by amount, then
+# committee id, then kind. The conduits are in none.
 race_top_committees:
   2024-P-US-00:
     - [ie, C00800201, 400000]
     - [ie, C00800202, 21000]
     - [contribution, C00800202, 7500]
+    - [ie, C90800206, 1250]
   2024-S-MD-00:
     - [ie, C00800201, 230000]
-    - [ie, C00800210, 100000]
+    - [ie, C00800210, 127500]
     - [ie, C00800203, 45000]
+    - [ie, C90800206, 16850.75]
     - [contribution, C00800202, 6000]
     - [contribution, C00800203, 5000]
   2024-H-MD-05:
     - [ie, C00800201, 40000]
     - [contribution, C00800202, 9500]
+    - [ie, C90800206, 9300]
     - [contribution, C00800114, 5000]
     - [ie, C00800202, 3000]
 
@@ -661,28 +669,73 @@ unmatched_filings: [H4MD09109]
 aliases:
   H6MD05113: H4MD05107 # DRISCOLL, PETER J.: DRISCOLL, PETER
 
+# The 24/48-hour file's rows silver independent_expenditure adds (project spec §6.3, NEU-2165), by
+# the rule that adds them, with their amounts added up and their keys (`<file_num>:<tran_id>`).
+# ie_24_48.csv's comments give each row's case. by_spender: ONE NATION, a Form 5 filer with no
+# `pas2` row reporting $30,000, its rows on no replaced filing, $30,185.75 against ten times that;
+# not GUNPOWDER VALUES PROJECT ($11,500 against $1,000 reported), RESTORATION PAC (reports $0) or
+# its Form 9 filer (reports nothing). timeliness: NANTICOKE ACTION's rows dated after its period
+# end, 2024-09-30, its amended filing's row in place of the original's. Every other row is not
+# read: a replaced filing's, a spender's `cm` lacks, and a `pas2` spender's by its period end.
+# So the races move by exactly these rows' amounts, by side: Maryland's Senate race by ONE
+# NATION's $13,200.50 for OKAFOR and $3,650.25 against WHITLOCK and NANTICOKE ACTION's $20,000 and
+# $7,500; its 5th district by $5,300 for CALLOWAY and $4,000 against DRISCOLL (one row naming his
+# alias); the presidency by $500 for BIDEN and $750 for HARRIS, the second dated on the handoff.
+# The $85 row with no side, the $1,500 naming no candidate and the $1,200 naming an id `cn` lacks
+# are in ONE NATION's ie_total alone.
+ie_24_48:
+  by_spender:
+    amount: 30185.75
+    source_record_ids:
+      - "1910001:SE.4128"
+      - "1910001:SE.4129"
+      - "1910002:SE.4201"
+      - "1910002:SE.4202"
+      - "1910002:SE.4203"
+      - "1910002:SE.4204"
+      - "1910002:SE.4205"
+      - "1910003:F57.000003"
+      - "1910003:F57.000004"
+      - "1910004:SE.4301"
+      - "1910004:SE.4302"
+      - "1910006:SE.5001"
+      - "1910006:SE.5003"
+      - "1910009:SE.6001"
+      - "1910010:SE.6101"
+      - "1910011:SE.6201"
+      - "1910013:SE.7001"
+      - "1910014:SE.7001"
+      - "1910015:SE.1"
+      - "1910016:SE.1"
+  timeliness:
+    amount: 27500
+    source_record_ids:
+      - "1910022:SE.00343"
+      - "1910022:SE.00344"
+      - "1910026:SE.00346"
+
 races:
   2024-P-US-00:
     candidate_count: 5
     total_individual: 58625
     total_committee: 7500
     total_jfc_transfers: 0
-    ie_support: 416000
+    ie_support: 417250
     ie_oppose: 5000
   2024-S-MD-00:
     candidate_count: 4
     total_individual: 93975
     total_committee: 11000
     total_jfc_transfers: 19500
-    ie_support: 190000
-    ie_oppose: 185000
+    ie_support: 223200.50
+    ie_oppose: 196150.25
   2024-H-MD-05:
     candidate_count: 4
     total_individual: 68050
     total_committee: 14500
     total_jfc_transfers: 0
-    ie_support: 28000
-    ie_oppose: 15000
+    ie_support: 33300
+    ie_oppose: 19000
   # A special in the seat calendar with no one attached: the fixture plants no Nebraska Senate
   # filing, so neither NE race has anyone (`special_candidates.csv` places 2024's real filings
   # for it, NEU-2319, and `silver_candidate_special.sql` passes a seat no one filed for).
@@ -725,7 +778,7 @@ candidates:
     total_committee: 2500
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 2000
+    ie_support: 2500
     ie_oppose: 0
   P00009423: # HARRIS: C00703975's money, BIDEN's spending from the handoff on or undated, and a corrected row (NEU-2279)
     race_id: 2024-P-US-00
@@ -733,7 +786,7 @@ candidates:
     total_committee: 0
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 14000
+    ie_support: 14750
     ie_oppose: 5000
   P40000110: # QUILL: no committee
     race_id: 2024-P-US-00
@@ -749,7 +802,7 @@ candidates:
     total_committee: 5000
     total_jfc_transfers: 19500
     self_funding: 5000
-    ie_support: 190000
+    ie_support: 223200.50
     ie_oppose: 45000
   S4MD00104: # WHITLOCK: the self-funder: 250000 of his own, 1750000 lent, 100000 repaid (NEU-2071)
     race_id: 2024-S-MD-00
@@ -758,7 +811,7 @@ candidates:
     total_jfc_transfers: 0
     self_funding: 1900000
     ie_support: 0
-    ie_oppose: 140000
+    ie_oppose: 151150.25
   S4MD00105: # PELL
     race_id: 2024-S-MD-00
     total_individual: 3250
@@ -781,7 +834,7 @@ candidates:
     total_committee: 10000
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 28000
+    ie_support: 33300
     ie_oppose: 0
   H4MD05107: # DRISCOLL
     race_id: 2024-H-MD-05
@@ -790,7 +843,7 @@ candidates:
     total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
-    ie_oppose: 15000
+    ie_oppose: 19000
   H4MD05108: # YANG: BRICKLAYERS' gift, net of its same-cycle refund
     race_id: 2024-H-MD-05
     total_individual: 6400
@@ -943,12 +996,12 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C90800206: # ONE NATION: a Form 5 filer (type I), an organization by its gifts
+  C90800206: # ONE NATION: a Form 5 filer (type I), an organization by its gifts; its 24/48-hour rows
     total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
-    ie_total: 0
+    ie_total: 30185.75
   C90800207: # RESTORATION PAC: a Form 9 filer (type E) under the super PAC's name, which names no gift
     total_individual: 0
     self_funding: 0
@@ -967,12 +1020,12 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C00800210: # NANTICOKE ACTION: a super PAC whose last report ends 2024-09-30
+  C00800210: # NANTICOKE ACTION: a super PAC whose last report ends 2024-09-30, and its later rows
     total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
-    ie_total: 100000
+    ie_total: 127500
 
 # The donors behind the planted hard cases (spec §6), each with every one of their counted
 # contributions by SUB_ID and their label in tests/fixtures/dime/ (`bonica.cid`).

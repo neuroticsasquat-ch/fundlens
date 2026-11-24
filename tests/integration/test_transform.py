@@ -438,6 +438,10 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "date",
         "transaction_type",
         "kind",
+        "source_file",
+        "payee_name",
+        "purpose",
+        "dissemination_date",
     ]
     assert {
         sub_id: (
@@ -448,16 +452,17 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
             row["kind"],
         )
         for sub_id, row in spending.items()
-        if sub_id in (4240200000000000001, 4240200000000000003, 4240200000000000009)
+        if sub_id in ("4240200000000000001", "4240200000000000003", "4240200000000000009")
     } == {
-        4240200000000000001: ("C00800201", "S4MD00103", "2024-S-MD-00", "S", "ie"),
-        4240200000000000003: ("C00800201", "S4MD00104", "2024-S-MD-00", "O", "ie"),
-        4240200000000000009: ("C00800203", "S4MD00104", "2024-S-MD-00", "S", "coordinated"),
+        "4240200000000000001": ("C00800201", "S4MD00103", "2024-S-MD-00", "S", "ie"),
+        "4240200000000000003": ("C00800201", "S4MD00104", "2024-S-MD-00", "O", "ie"),
+        "4240200000000000009": ("C00800203", "S4MD00104", "2024-S-MD-00", "S", "coordinated"),
     }
     # Spending is never money given: no 24K is here, and no expenditure is a contribution or a
     # committee transfer. A Form 7 filer's communication costs (24F, 24N) are kept with their kind
     # (NEU-2164's rows), the one FEC's file repeats read once.
     assert {row["transaction_type"] for row in spending.values()} == {
+        None,
         "24A",
         "24E",
         "24C",
@@ -467,10 +472,26 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
     assert {
         row["kind"] for row in spending.values() if row["transaction_type"] in ("24F", "24N")
     } == {"communication_cost"}
-    assert 4240200000000000034 in spending
-    assert 4240200000000000035 not in spending
-    assert not set(spending) & {row["source_record_id"] for row in transfers}
-    assert not set(spending) & {row["source_record_id"] for row in contributions}
+    assert "4240200000000000034" in spending
+    assert "4240200000000000035" not in spending
+    assert not set(spending) & {str(row["source_record_id"]) for row in transfers}
+    assert not set(spending) & {str(row["source_record_id"]) for row in contributions}
+    # The 24/48-hour file's rows the two rules add (NEU-2165), and no other: independent
+    # expenditures with no transaction type, their payee, purpose and dissemination date as filed.
+    added = expected["ie_24_48"]
+    late = {str(key): row for key, row in spending.items() if row["source_file"] == "ie_24_48"}
+    assert sorted(late) == sorted(
+        key for rule in added.values() for key in rule["source_record_ids"]
+    )
+    assert {(row["kind"], row["transaction_type"]) for row in late.values()} == {("ie", None)}
+    assert {row["source_file"] for row in spending.values()} == {"pas2", "ie_24_48"}
+    assert (
+        late["1910022:SE.00344"]["date"],
+        late["1910022:SE.00344"]["dissemination_date"],
+        late["1910022:SE.00344"]["payee_name"],
+        late["1910022:SE.00344"]["purpose"],
+    ) == (date(2024, 10, 20), date(2024, 10, 20), "Shorebird Media Group", "Digital advertising")
+    assert late["1910002:SE.4202"]["support_oppose"] is None
 
     contributors = read_silver(store, "contributor", tmp_path)
     assert list(contributors[0]) == [
@@ -558,7 +579,13 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
     tables: list[SilverTable] = [cast(SilverTable, path.stem.partition("_")[2]) for path in models]
     logged = [record.getMessage() for record in caplog.records]
     last = logged.index(f"silver {tables[-1]} 2024: {models[-1].name}")
-    prefixes = ("silver check ", "operating_expenditure 2024: ", "write ", "upload ")
+    prefixes = (
+        "silver check ",
+        "operating_expenditure 2024: ",
+        "independent_expenditure 2024: ",
+        "write ",
+        "upload ",
+    )
     steps = [m for m in logged[last + 1 :] if m.startswith(prefixes)]
     # The spending figures a real cycle's run is checked against (NEU-2152), from the log.
     spending = fec_fixture.expected()["operating_expenditures"]
@@ -574,6 +601,10 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         f"operating_expenditure 2024: {rows:,} rows, {counted:,} counted,"
         f" ${Decimal(spending['total']):,} counted, ${Decimal(spending['unclassified']):,}"
         f" ({Decimal(spending['unclassified']) / Decimal(spending['total']):.2%}) unclassified",
+        # What the 24/48-hour file adds by each rule, and its largest row (NEU-2165): NANTICOKE
+        # ACTION's $12,000 after its period end, a hoax filing's place had one passed the screen.
+        "independent_expenditure 2024: 24/48-hour rows added: by spender 20 rows, $30,185.75;"
+        " timeliness 3 rows, $27,500.00; largest $12,000.00 by C00800210 (1910022:SE.00343)",
         *(f"write {table} 2024" for table in write_order(tables)),
         *(
             f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
@@ -1428,10 +1459,15 @@ def test_spending_naming_a_handed_off_candidate_is_split_between_its_candidates_
         for row in local_silver(fixture_silver, "independent_expenditure")
     }
 
+    # ONE NATION's 24/48-hour rows for BIDEN the day before and the day of the handoff (NEU-2165).
+    assert [spending["1910003:F57.000003"], spending["1910003:F57.000004"]] == [
+        (BIDEN, "2024-P-US-00", "S"),
+        (HARRIS, "2024-P-US-00", "S"),
+    ]
     # Filed for BIDEN all four: his before the handoff, HARRIS's on its date, after it and undated,
     # as the committee's own money is. Its side stays as filed.
     assert [
-        spending[s]
+        spending[str(s)]
         for s in (SPENT_BEFORE_HANDOFF, SPENT_ON_HANDOFF, SPENT_AFTER_HANDOFF, SPENT_UNDATED)
     ] == [
         (BIDEN, "2024-P-US-00", "S"),
@@ -1451,7 +1487,7 @@ def test_spending_pas2_codes_to_the_wrong_candidate_is_the_one_its_filing_names(
 
     # Coded BIDEN's and dated before the handoff, so the handoff leaves it his: the list makes it
     # HARRIS's. The other is coded HARRIS's, not BIDEN's as the list corrects, so it stays hers.
-    assert [spending[s] for s in (SPENT_CORRECTED, SPENT_RECODED)] == [
+    assert [spending[str(s)] for s in (SPENT_CORRECTED, SPENT_RECODED)] == [
         (HARRIS, "2024-P-US-00", "S"),
         (HARRIS, "2024-P-US-00", "O"),
     ]
@@ -1619,8 +1655,8 @@ def test_a_gift_naming_an_alias_is_credited_to_the_id_it_is_an_alias_of(
         row["source_record_id"]: (row["candidate_id"], row["race_id"], row["support_oppose"])
         for row in read_silver(store, "independent_expenditure", tmp_path)
     }
-    assert expenditures[4240200000000000098] == (DRISCOLL, "2024-H-MD-05", "O")
-    assert 4240200000000000097 not in expenditures
+    assert expenditures["4240200000000000098"] == (DRISCOLL, "2024-H-MD-05", "O")
+    assert "4240200000000000097" not in expenditures
 
 
 def failing_rows(con: duckdb.DuckDBPyConnection, check: str) -> list[tuple[object, ...]]:
@@ -1671,19 +1707,25 @@ def test_the_expenditure_checks_fail_on_a_misattached_row_or_one_counted_as_mone
             f" ('{DRISCOLL_ALIAS}', '{DRISCOLL}', '2024-H-MD-05')"
             ") AS t(candidate_id, alias_of, race_id)"
         )
-        # Right: 1 attached, 2 attached to no one. Wrong: 3 an alias, 4 a race not its
-        # candidate's, 5 a race and no candidate, 6 a 24C called an ie, 7 a 24A called support.
+        # Right: 1 attached, 2 attached to no one, 10 and 11 24/48-hour rows with a side and none
+        # (NEU-2165). Wrong: 3 an alias, 4 a race not its candidate's, 5 a race and no candidate,
+        # 6 a 24C called an ie, 7 a 24A called support, 12 a 24/48-hour row with a type, 13 one
+        # called coordinated.
         con.execute(
             "CREATE TABLE independent_expenditure AS SELECT * FROM (VALUES"
-            f" (1, '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'O'),"
-            " (2, NULL, NULL, '24E', 'ie', 'S'),"
-            f" (3, '{DRISCOLL_ALIAS}', '2024-H-MD-05', '24E', 'ie', 'S'),"
-            f" (4, '{DRISCOLL}', '2024-S-MD-00', '24E', 'ie', 'S'),"
-            " (5, NULL, '2024-H-MD-05', '24E', 'ie', 'S'),"
-            f" (6, '{DRISCOLL}', '2024-H-MD-05', '24C', 'ie', 'S'),"
-            f" (7, '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'S')"
+            f" ('1', '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'O', 'pas2'),"
+            " ('2', NULL, NULL, '24E', 'ie', 'S', 'pas2'),"
+            f" ('3', '{DRISCOLL_ALIAS}', '2024-H-MD-05', '24E', 'ie', 'S', 'pas2'),"
+            f" ('4', '{DRISCOLL}', '2024-S-MD-00', '24E', 'ie', 'S', 'pas2'),"
+            " ('5', NULL, '2024-H-MD-05', '24E', 'ie', 'S', 'pas2'),"
+            f" ('6', '{DRISCOLL}', '2024-H-MD-05', '24C', 'ie', 'S', 'pas2'),"
+            f" ('7', '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'S', 'pas2'),"
+            f" ('10:A', '{DRISCOLL}', '2024-H-MD-05', NULL, 'ie', 'O', 'ie_24_48'),"
+            f" ('11:A', '{DRISCOLL}', '2024-H-MD-05', NULL, 'ie', NULL, 'ie_24_48'),"
+            f" ('12:A', '{DRISCOLL}', '2024-H-MD-05', '24A', 'ie', 'O', 'ie_24_48'),"
+            f" ('13:A', '{DRISCOLL}', '2024-H-MD-05', NULL, 'coordinated', 'S', 'ie_24_48')"
             ") AS t(source_record_id, candidate_id, race_id, transaction_type, kind,"
-            " support_oppose)"
+            " support_oppose, source_file)"
         )
         con.execute(
             "CREATE TABLE contribution AS SELECT * FROM (VALUES (1, '15'), (8, '24E'))"
@@ -1693,7 +1735,7 @@ def test_the_expenditure_checks_fail_on_a_misattached_row_or_one_counted_as_mone
         con.execute("CREATE TABLE organization_receipt AS SELECT 9 AS source_record_id")
 
         failed = failing_rows(con, "silver_independent_expenditure_candidate.sql")
-        assert sorted(str(row[0]) for row in failed) == ["3", "4", "5", "6", "7"]
+        assert sorted(str(row[0]) for row in failed) == ["12:A", "13:A", "3", "4", "5", "6", "7"]
         assert sorted(failing_rows(con, "silver_independent_expenditure_not_money.sql")) == [
             (1, "contribution"),
             (2, "committee_transfer"),
@@ -1743,7 +1785,7 @@ def test_the_fec_repeat_check_fails_on_a_counted_repeat() -> None:
         con.execute("CREATE TABLE organization_receipt AS SELECT 2 AS source_record_id")
         con.execute("CREATE TABLE committee_transfer AS SELECT 3 AS source_record_id")
         con.execute("CREATE TABLE jfc_attribution AS SELECT 4 AS source_record_id")
-        con.execute("CREATE TABLE independent_expenditure AS SELECT 5 AS source_record_id")
+        con.execute("CREATE TABLE independent_expenditure AS SELECT '5' AS source_record_id")
 
         assert sorted(failing_rows(con, "silver_fec_repeat.sql")) == [
             ("committee_transfer", "oth", 3),
@@ -2363,12 +2405,17 @@ def test_the_no_contribution_check_fails_on_spending_another_table_holds() -> No
             ("contribution", 2),
             ("organization_receipt", 3),
             ("committee_transfer", 4),
-            ("independent_expenditure", 5),
         ):
             con.execute(
                 f"CREATE TABLE {table} AS SELECT * FROM (VALUES ({sub_id}), (9))"
                 " AS t(source_record_id)"
             )
+        # Its key is text (NEU-2165): a `pas2` row's SUB_ID's digits, a 24/48-hour row's not.
+        con.execute(
+            "CREATE TABLE independent_expenditure AS SELECT * FROM"
+            " (VALUES ('5', 'pas2'), ('9', 'pas2'), ('1:SE.1', 'ie_24_48'))"
+            " AS t(source_record_id, source_file)"
+        )
 
         assert sorted(failing_rows(con, "silver_operating_expenditure_no_contribution.sql")) == [
             (2, "contribution"),

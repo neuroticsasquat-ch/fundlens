@@ -6,7 +6,9 @@ import type { Column } from "./DataTable";
 import PagedTable from "./PagedTable";
 import { DASH, isoDate, money } from "./format";
 
-const SIDES: Record<IndependentExpenditure["support_oppose"], { label: string; color: string }> = {
+type Side = NonNullable<IndependentExpenditure["support_oppose"]>;
+
+const SIDES: Record<Side, { label: string; color: string }> = {
   S: { label: "For", color: "teal" },
   O: { label: "Against", color: "orange" },
 };
@@ -30,11 +32,15 @@ const COLUMNS: Column<IndependentExpenditure>[] = [
   {
     key: "side",
     header: "For or against",
-    render: (row) => (
-      <Badge variant="light" color={SIDES[row.support_oppose].color}>
-        {SIDES[row.support_oppose].label}
-      </Badge>
-    ),
+    // A 24/48-hour report may name neither side: the money is in the spender's total alone.
+    render: (row) =>
+      row.support_oppose === null ? (
+        DASH
+      ) : (
+        <Badge variant="light" color={SIDES[row.support_oppose].color}>
+          {SIDES[row.support_oppose].label}
+        </Badge>
+      ),
   },
   { key: "amount", header: "Amount", align: "right", render: (row) => money(row.amount) },
 ];

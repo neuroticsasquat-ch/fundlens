@@ -5,7 +5,8 @@
 -- candidate whose seat is not up (1,282 of 2024's IE rows, $54.4M, name an id `cn` lacks or
 -- none), so an unattached row is kept, in its spender's ie_total alone; what this fails on is a
 -- row attached to the wrong candidate or race, or a kind or side its transaction type does not
--- give.
+-- give. A 24/48-hour row (NEU-2165) has no transaction type: it is an independent expenditure,
+-- its side as filed or none.
 SELECT spending.source_record_id, spending.candidate_id, spending.race_id, spending.kind
 FROM independent_expenditure AS spending
 LEFT JOIN candidate USING (candidate_id)
@@ -14,7 +15,12 @@ WHERE (
         AND (candidate.candidate_id IS NULL OR candidate.alias_of IS NOT NULL)
     )
     OR spending.race_id IS DISTINCT FROM candidate.race_id
-    OR NOT EXISTS (
+    OR (spending.source_file = 'ie_24_48' AND (
+        spending.kind <> 'ie'
+        OR spending.transaction_type IS NOT NULL
+        OR spending.support_oppose NOT IN ('S', 'O')
+    ))
+    OR (spending.source_file <> 'ie_24_48' AND NOT EXISTS (
         SELECT 1
         FROM (VALUES
             ('24E', 'ie', 'S'),
@@ -26,4 +32,4 @@ WHERE (
         WHERE rule.transaction_type = spending.transaction_type
             AND rule.kind = spending.kind
             AND rule.support_oppose = spending.support_oppose
-    );
+    ));

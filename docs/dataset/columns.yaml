@@ -184,17 +184,25 @@ race:
 
 independent_expenditure:
   description: >-
-    One expenditure for or against a candidate, from the FEC's file of committees' spending on
-    and gifts to candidates (`pas2`): an independent expenditure, a party's coordinated
-    expenditure or a communication cost, told apart by `kind`. Only `kind = 'ie'` is independent expenditure. Never a contribution.
-    Partitioned by cycle.
+    One expenditure for or against a candidate: an independent expenditure, a party's coordinated
+    expenditure or a communication cost, told apart by `kind`. Only `kind = 'ie'` is independent
+    expenditure. Most rows are from the FEC's file of committees' spending on and gifts to
+    candidates (`pas2`); from 2010, an independent expenditure a spender has reported in a 24- or
+    48-hour report and no periodic report holds yet is from the FEC's 24/48-hour file
+    (`source_file`). Never a contribution. Partitioned by cycle.
   key: [cycle, source, source_record_id]
   columns:
     cycle: The two-year election cycle, named by its even year.
     source: Where the row comes from. `fec` for every row of v1.
-    source_record_id: The FEC's id of the row (`SUB_ID`), unique within a source.
+    source_record_id: >-
+      The row's id, unique within a source, as text: the FEC's `SUB_ID` for a `pas2` row, and
+      `<file_num>:<tran_id>` (the filing and the spender's transaction id) for a 24/48-hour row.
+      A 24/48-hour row leaves the table when a periodic report restates it, so its id is not stable
+      from one snapshot to the next.
     jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
-    committee_id: The FEC id of the committee that spent the money.
+    committee_id: >-
+      The FEC id of the spender: a committee, or a person or group filing as one (a non-committee
+      spender, told by `committee.type`).
     candidate_id: >-
       The FEC id of the candidate the filing names, when they are a candidate of the cycle, else
       null. Where the FEC coded another candidate's id, a hand-curated list restores the filed one;
@@ -203,13 +211,31 @@ independent_expenditure:
       campaign, Harris's from 2024-07-21), dated on or after the handoff, is the second
       candidate's.
     race_id: That candidate's race, the `race` table's key; null when there is none.
-    support_oppose: '`S` for spending in support of the candidate, `O` in opposition.'
-    amount: The amount in dollars, as filed. A correction may be negative and nets out in any sum.
-    date: The date of the expenditure as filed; null when the filer gave none.
-    transaction_type: The FEC transaction type (`24E`, `24A`, `24C`, `24F`, `24N`).
+    support_oppose: >-
+      `S` for spending in support of the candidate, `O` in opposition. Null on a 24/48-hour row
+      whose filer gave neither: such a row is in its spender's total and no candidate's.
+    amount: >-
+      The amount in dollars, as filed: whole dollars from `pas2`, with cents from the 24/48-hour
+      file. A correction may be negative and nets out in any sum.
+    date: >-
+      The date of the expenditure as filed; for a 24/48-hour row without one, the date it was
+      disseminated. Null when the filer gave neither.
+    transaction_type: >-
+      The FEC transaction type (`24E`, `24A`, `24C`, `24F`, `24N`). Null on a 24/48-hour row: that
+      file has none.
     kind: >-
-      `ie` for an independent expenditure (24E, 24A), `coordinated` for a party's coordinated
-      expenditure (24C), `communication_cost` for a Form 7 filer's communication cost (24F, 24N).
+      `ie` for an independent expenditure (24E, 24A, and every 24/48-hour row), `coordinated` for a
+      party's coordinated expenditure (24C), `communication_cost` for a Form 7 filer's
+      communication cost (24F, 24N).
+    source_file: >-
+      The FEC file the row is from: `pas2`, a periodic report's line, or `ie_24_48`, a 24- or
+      48-hour report's estimate. Null in a cycle built before the column existed, whose rows are
+      all `pas2`'s.
+    payee_name: Whom the spender paid, as filed.
+    purpose: What the spender paid for, as filed. Null on a `pas2` row, which has none.
+    dissemination_date: >-
+      The date the communication was first publicly distributed, as filed on a 24/48-hour row.
+      Null on a `pas2` row, which has none.
 
 committee_transfer:
   description: >-

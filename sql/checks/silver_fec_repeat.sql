@@ -31,7 +31,9 @@ JOIN repeat ON repeat.SUB_ID = jfc_attribution.source_record_id
 UNION ALL
 SELECT 'independent_expenditure', repeat.file, repeat.SUB_ID
 FROM independent_expenditure
-JOIN repeat ON repeat.SUB_ID = independent_expenditure.source_record_id
+-- Its key is text, a `pas2` row's SUB_ID's digits (NEU-2165): the repeats, the smaller side, are
+-- cast to match.
+JOIN repeat ON CAST(repeat.SUB_ID AS VARCHAR) = independent_expenditure.source_record_id
 UNION ALL
 SELECT 'operating_expenditure', repeat.file, repeat.SUB_ID
 FROM operating_expenditure

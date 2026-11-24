@@ -16,4 +16,9 @@ WHERE source_record_id IN (SELECT source_record_id FROM committee_transfer)
 UNION ALL
 SELECT source_record_id, 'independent_expenditure'
 FROM operating_expenditure
-WHERE source_record_id IN (SELECT source_record_id FROM independent_expenditure);
+WHERE source_record_id IN (
+    -- Text, a `pas2` row's SUB_ID's digits (NEU-2165); a 24/48-hour row has no SUB_ID.
+    SELECT CAST(source_record_id AS UBIGINT)
+    FROM independent_expenditure
+    WHERE source_file = 'pas2'
+);

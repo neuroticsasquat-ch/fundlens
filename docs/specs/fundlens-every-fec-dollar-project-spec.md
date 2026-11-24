@@ -425,7 +425,7 @@ The rules below were written by NEU-2163 (`docs/specs/NEU-2163-outside-spending-
 
 ### 6.2 Silver `independent_expenditure`
 
-`sql/silver/09_independent_expenditure.sql`, v1's model (NEU-2057), extended by NEU-2165 and NEU-2167. Key `(cycle, source, source_record_id)`, unchanged. v1's twelve columns keep their order and meaning; six are appended.
+`sql/silver/10_independent_expenditure.sql`, v1's model (NEU-2057), extended by NEU-2165 and NEU-2167. Key `(cycle, source, source_record_id)`, unchanged. v1's twelve columns keep their order and meaning; six are appended. `source_record_id` is text for every row, a `pas2` row's its `SUB_ID`'s digits, since a 24/48-hour row has no `SUB_ID` (NEU-2165, decided 2026-11-24): a retyping, the dataset's one breaking change of this section (§6.7). Rejected: a synthetic negative integer for a 24/48-hour row, which keeps the type and loses the key's meaning.
 
 | Column | `pas2` rows | 24/48-hour rows (§6.3) | Added by |
 |---|---|---|---|
@@ -475,10 +475,12 @@ The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–
    - It lasts until a periodic report covers the rows: the next build after one arrives has a later `period_end`, and the spending is then `pas2`'s. A build reads `committee_summary` and `pas2` of the same extract.
    - 2026, read live on 2026-11-24: rows after `period_end` hold $1,287,474,092 from 512 spenders, nearly all from the last three weeks of October, and `pas2` already holds 0.46% of them, under NEU-2162's 1% bar; 69% and 87% of the rows dated on or before it are in `pas2` (Q7c, Q7e). Before the track record, the rule adds $1,281,571,904 on 2026 and $28,732 on 2024.
    - **Asserted, not measured:** what the track record leaves out of that $1,281,571,904. NEU-2165 measures it on 2026 and lists the spenders left out.
-   - No dollar cap: a spender's last three weeks can dwarf its year to date.
+   - No dollar cap: a spender's last three weeks can dwarf its year to date. So a hoax filer that also reports a small real figure has a track record, and its rows after its period end are added unscreened: the transform's log line, which names the largest added row and its spender, is what catches one. Accepted (NEU-2165).
 4. **By spender, behind the hoax screen** (Decision 3). A spender with no counted `pas2` independent expenditure in the cycle contributes its remaining rows, those dated on or before its `period_end` or undated, when both hold:
    - `reported_total.independent_expenditures` is above $0;
    - those rows add up to no more than ten times that figure.
+
+   A spender whose `reported_total` row has a figure but a NULL `period_end` has no row added by timeliness, so all its rows are its remaining rows (NEU-2165).
 
    2024: 14 spenders, 100 rows, **$1,001,297**, against $996,357 they report; 13 are Form 5 filers (Earthjustice Action $293,577, FLIC Votes $207,175, Red Wine and Blue $134,695). $251,224 reaches a race and $750,073 names no candidate (Q6d–f).
    - Unscreened it adds $43,906,446,618, of which $43,905,445,320 is from 53 spenders reporting no independent expenditure (Q6c). No kept spender's rows exceed 4.9 times its reported figure, so the tenfold test drops nobody in 2024: it is there for a hoax filer who also reports a small real figure.
@@ -494,7 +496,7 @@ The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–
 
 **Every transform logs** the rows and dollars added by each of the two rules and the largest single added row with its spender, so a hoax filing that passes is seen in the run's log.
 
-**Model order.** The rules read `reported_total`, which `10_reported_total.sql` builds after this model today, and which exists from 2008. NEU-2165 arranges the order.
+**Model order.** The rules read `reported_total`, which exists from 2008, so `09_reported_total.sql` runs before `10_independent_expenditure.sql` (NEU-2165 swapped the two; `reported_total` reads neither `independent_expenditure` nor any model after 08). The model leaves the temporary table `ie_24_48_added`, each added row with its rule, which the transform's log line reads.
 
 ### 6.4 Silver `electioneering_communication`
 
@@ -546,11 +548,11 @@ Adds to v1 §7.1. Every amount is net: rows' amounts added as filed. Built by NE
 - **No total on a candidate.** Money for a candidate and money against them point opposite ways, and an electioneering communication points neither. A race's total is how much was spent on the race by anyone but its candidates' committees.
 - **A row with no side** (§6.2) is in `ie_total` and in no candidate, race or top-spender figure.
 - **A non-committee spender** is told by `committee.type` (`I`, `C`, `E`). Every spender has a `committee` row and so a page; NEU-2169 returns the flag and NEU-2170 shows the badge.
-- **`race_top_committee` is unchanged.** Its `ie` rows remain a spender's independent expenditures on the race, for and against summed, and now include the 24/48-hour rows. NEU-2170 decides which list a page shows.
+- **`race_top_committee`'s definition stands.** Its `ie` rows remain a spender's independent expenditures on the race, for and against summed, and now include the 24/48-hour rows; a row with no side is left out (NEU-2165), so they still add up to the race's `ie_support` plus `ie_oppose`. NEU-2170 decides which list a page shows.
 - **The handoff** follows silver's dated rule in every kind: spending naming Biden on or after 2024-07-21 is Harris's.
 - Outside spending is in no receipt total, no `cycle.total_amount`, no donor figure, no `total_operating_expenditures` and no top-donor, top-organization or top-payee list.
 - **Checks** (gold): a race's six columns add up to its `outside_spending_total`; each of a race's columns equals the sum over its `race_candidate` rows; a committee's four totals add up to its `outside_spending_total`; every `race_top_spender` amount equals its silver sum; ranks are contiguous (`gold_rank_contiguous.sql`); no receipt or spending total moves on the fixture.
-- **The API and pages** (NEU-2169, NEU-2170) read these fields. The itemized independent-expenditure route (v1 §7.2) scans `kind = 'ie'`, so it lists the 24/48-hour rows without a change; NEU-2169 adds `source_file`, `payee_name` and `purpose` to its rows, and a page marks a 24/48-hour row as an estimate from a 24- or 48-hour report.
+- **The API and pages** (NEU-2169, NEU-2170) read these fields. The itemized independent-expenditure route (v1 §7.2) scans `kind = 'ie'`, so it lists the 24/48-hour rows; NEU-2165 made its cursor carry a text key, compared as text, and its `support_oppose` and `transaction_type` nullable, and the committee page's table shows a dash for a row with no side. NEU-2169 adds `source_file`, `payee_name` and `purpose` to its rows, and a page marks a 24/48-hour row as an estimate from a 24- or 48-hour report.
 
 **The five races.** NEU-2171 compares gold with the measurement's Q13: Ohio, Pennsylvania, Montana, Michigan and Wisconsin, per candidate and kind. Q13's "added" column is the screened by-spender rule's, and its electioneering column counts every row of the file. The two copies this contract drops ($38,500) name House candidates, so no Senate figure differs for them. This contract can differ from Q13 only by timeliness, at most $28,732 across 2024, and NEU-2171 explains any other gap.
 
@@ -570,7 +572,7 @@ No cycle breaks a 2024 rule as written (Q12; Decision 9). The screen and the tra
 ### 6.7 Dataset and older builds
 
 - `electioneering_communication` joins the public dataset (§8): NEU-2166 adds it to `DATASET_TABLES`, `columns.yaml`, the schema, the changelog, the README and `paths.BACKFILL_PENDING` in the PR that builds it. Its README entry says: sum `amount`, never `disbursement_amount`; a row has no side; a restated report may be counted twice (§6.4); and outside spending is never to be added to `contribution` amounts.
-- `independent_expenditure`'s six columns are additive changes, each with a `CHANGELOG.md` entry and a `columns.yaml` description by the ticket that adds it (NEU-2165, NEU-2167). Its table description stops saying every row is from `pas2`. Its README entry says: tell the kinds apart by `kind`; a row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and leaves the table when a periodic report restates it, so its `source_record_id` is not stable from one snapshot to the next.
+- `independent_expenditure`'s six columns are additive changes, each with a `CHANGELOG.md` entry and a `columns.yaml` description by the ticket that adds it (NEU-2165, NEU-2167). `source_record_id`'s retyping from an integer to text (§6.2) is a breaking change, in NEU-2165's entry: a cycle built before it holds integers until NEU-2180's backfill, and the gold loader's `union_by_name` reads the two as text. Its table description stops saying every row is from `pas2`. Its README entry says: tell the kinds apart by `kind`; a row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and leaves the table when a periodic report restates it, so its `source_record_id` is not stable from one snapshot to the next.
 - The table is in every build, so it is no backfill-pending table. A cycle built before a column existed has no such column and reads it as NULL, as `organization_receipt.is_returned_cost` was handled (changelog, 2026-11-20). Gold reads none of the six. NEU-2180's backfill rebuilds every cycle with them.
 
 ## 7. Leadership PACs and lobbyist bundling (M4)
