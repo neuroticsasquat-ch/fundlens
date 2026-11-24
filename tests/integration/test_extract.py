@@ -115,17 +115,22 @@ def test_the_cli_extracts_every_file_once_and_a_second_run_uploads_nothing(
     assert sorted(re.sub(r"/[^/]+\.(zip|csv)$", "", key) for key in uploaded) == sorted(
         f"bronze/cycle=2024/{name}" for name in FILES
     )
-    # The summary files with the rest (NEU-2142): two zips, and a CSV kept as a CSV.
+    # The summary files with the rest (NEU-2142): two zips, and a CSV kept as a CSV. The
+    # outside-spending CSVs too (NEU-2164), the 24/48-hour file under FEC's name.
+    csvs = ["committee_summary", "ie_24_48", "ElectioneeringComm", "CommunicationCosts"]
     assert sorted(fec.gets()) == sorted(
         [
-            *(f"/2024/{name}24.zip" for name in FILES if name != "committee_summary"),
+            *(f"/2024/{name}24.zip" for name in FILES if name not in csvs),
             "/2024/committee_summary_2024.csv",
+            "/2024/independent_expenditure_2024.csv",
+            "/2024/ElectioneeringComm_2024.csv",
+            "/2024/CommunicationCosts_2024.csv",
         ]
     )
     assert all(re.search(r"/\d{4}-\d{2}-\d{2}\.(zip|csv)$", key) for key in uploaded)
-    assert [key.rsplit("/", 1)[0] for key in uploaded if key.endswith(".csv")] == [
-        "bronze/cycle=2024/committee_summary"
-    ]
+    assert sorted(key.rsplit("/", 1)[0] for key in uploaded if key.endswith(".csv")) == sorted(
+        f"bronze/cycle=2024/{name}" for name in csvs
+    )
     assert markers.exists("extracted", store, cycle=2024, build_id=BUILD)
     # 2024 is a historical cycle: nothing of it stays on disk.
     assert local_files(cli_env) == []
@@ -273,6 +278,16 @@ def test_the_cli_rejects_oppexp_before_fec_published_it(
 ) -> None:
     # FEC publishes operating expenditures from 2004 (every-FEC-dollar spec §3.1).
     result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2002", "--file", "oppexp"])
+
+    assert result.exit_code == 2
+    assert fec.requests == []
+
+
+def test_the_cli_rejects_the_24_48_hour_file_before_fec_published_it(
+    fec: FakeFec, store: R2, cli_env: Path
+) -> None:
+    # FEC publishes the outside-spending CSVs from 2010 (every-FEC-dollar spec §3.1, NEU-2164).
+    result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2008", "--file", "ie_24_48"])
 
     assert result.exit_code == 2
     assert fec.requests == []

@@ -8,10 +8,11 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   header, and a CSV, whose header row must be the catalogue's columns, are both copied under
   `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
   deleted after it (`fetch_bulk`). An `indiv` text file that disagrees in size with the same rows
-  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321). The itemized
-  files, `indiv`, `oth` and `pas2`, read each transaction of a filing once: a row FEC's file
-  repeats, the same in every column but SUB_ID, is in `<file>_repeat` and not the view, which
-  reads `<file>_published` (`_drop_fec_repeats`, NEU-2401);
+  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321). The files
+  that carry the itemized files' transaction key, `indiv`, `oth`, `pas2`, `oppexp` and
+  `CommunicationCosts`, read each transaction of a filing once: a row FEC's file repeats, the
+  same in every column but SUB_ID, is in `<file>_repeat` and not the view, which reads
+  `<file>_published` (`_drop_fec_repeats`, NEU-2401);
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;
@@ -61,6 +62,7 @@ import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from importlib.resources import files as package_files
 from pathlib import Path
 from typing import IO, Literal, get_args
@@ -564,6 +566,76 @@ def _log_spending(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     )
 
 
+def _log_ie_24_48(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log the 24/48-hour file's rows `independent_expenditure` adds, rows and dollars by each of
+    the two rules, and the largest single row with its spender: a hoax filing that passes the
+    screen shows here (every-FEC-dollar spec §6.3, NEU-2165). `ie_24_48_added` is the model's."""
+    added = dict.fromkeys(("by_spender", "timeliness"), (0, Decimal(0)))
+    for rule, rows, dollars in con.execute(
+        "SELECT rule, count(*), coalesce(sum(amount), 0) FROM ie_24_48_added GROUP BY rule"
+    ).fetchall():
+        added[rule] = (rows, dollars)
+    largest = con.execute(
+        "SELECT amount, committee_id, source_record_id FROM ie_24_48_added"
+        " ORDER BY amount DESC NULLS LAST, source_record_id LIMIT 1"
+    ).fetchone()
+    log.info(
+        "independent_expenditure %d: 24/48-hour rows added: by spender %s rows, $%s;"
+        " timeliness %s rows, $%s; largest %s",
+        cycle,
+        *(f"{figure:,}" for rows, dollars in added.values() for figure in (rows, dollars)),
+        "none" if largest is None else f"${largest[0]:,} by {largest[1]} ({largest[2]})",
+    )
+
+
+def _log_pas2_kinds(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log `independent_expenditure`'s communication costs and party coordinated expenditures, rows
+    and dollars of each, and the communication costs `CommunicationCosts` gives a type: the
+    figures a cycle's two kinds are checked against (every-FEC-dollar spec §6.2, NEU-2167)."""
+    [(costs, cost_dollars, typed, coordinated, coordinated_dollars)] = con.execute(
+        "SELECT"
+        " count(*) FILTER (WHERE kind = 'communication_cost'),"
+        " coalesce(sum(amount) FILTER (WHERE kind = 'communication_cost'), 0),"
+        " count(*) FILTER (WHERE kind = 'communication_cost' AND communication_type IS NOT NULL),"
+        " count(*) FILTER (WHERE kind = 'coordinated'),"
+        " coalesce(sum(amount) FILTER (WHERE kind = 'coordinated'), 0)"
+        " FROM independent_expenditure"
+    ).fetchall()
+    log.info(
+        "independent_expenditure %d: communication costs %s rows, $%s, %s with a type;"
+        " party coordinated %s rows, $%s",
+        cycle,
+        f"{costs:,}",
+        f"{cost_dollars:,}",
+        f"{typed:,}",
+        f"{coordinated:,}",
+        f"{coordinated_dollars:,}",
+    )
+
+
+def _log_electioneering(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log `electioneering_communication`'s rows and dollars, the dollars reaching a race, and the
+    disbursements' copies dropped: the figures a cycle's electioneering communications are checked
+    against (every-FEC-dollar spec §6.4, NEU-2166). A copy is a row of a spender of the cycle the
+    table does not hold."""
+    [(rows, dollars, in_races, filed)] = con.execute(
+        "SELECT count(*), coalesce(sum(amount), 0),"
+        " coalesce(sum(amount) FILTER (WHERE race_id IS NOT NULL), 0),"
+        " (SELECT count(*) FROM ElectioneeringComm"
+        "  WHERE COMMITTEE_ID IN (SELECT committee_id FROM committee))"
+        " FROM electioneering_communication"
+    ).fetchall()
+    log.info(
+        "electioneering_communication %d: %s rows, $%s; $%s reaching a race;"
+        " disbursements' copies dropped: %s",
+        cycle,
+        f"{rows:,}",
+        f"{dollars:,}",
+        f"{in_races:,}",
+        f"{filed - rows:,}",
+    )
+
+
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
@@ -647,6 +719,9 @@ def transform(
                 after=lambda step: _log_memory(step, con),
             )
             _log_spending(con, cycle)
+            _log_ie_24_48(con, cycle)
+            _log_pas2_kinds(con, cycle)
+            _log_electioneering(con, cycle)
             written: dict[SilverTable, tuple[str, Path, int]] = {}
             for table in write_order([table for table, _ in models]):
                 written[table] = _write(

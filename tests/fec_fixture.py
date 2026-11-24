@@ -169,8 +169,10 @@ class RaceTotals(TypedDict):
     total_individual: int
     total_committee: int
     total_jfc_transfers: int
-    ie_support: int
-    ie_oppose: int
+    # Dollars and cents: the 24/48-hour file's amounts have cents (NEU-2165), quarter-dollars in
+    # the fixture, which a YAML float holds exactly.
+    ie_support: float
+    ie_oppose: float
 
 
 class CandidateTotals(TypedDict):
@@ -179,8 +181,8 @@ class CandidateTotals(TypedDict):
     total_committee: int
     total_jfc_transfers: int
     self_funding: int
-    ie_support: int
-    ie_oppose: int
+    ie_support: float
+    ie_oppose: float
 
 
 class CommitteeTotals(TypedDict):
@@ -188,7 +190,7 @@ class CommitteeTotals(TypedDict):
     self_funding: int
     total_from_committees: int
     total_to_candidates: int
-    ie_total: int
+    ie_total: float
 
 
 class OrganizationReceipts(TypedDict):
@@ -308,6 +310,12 @@ class GoldReported(TypedDict):
     gift_sizes: dict[str, dict[str, list[int | None]]]
 
 
+class Added(TypedDict):
+    # The rows' amounts added up, and their silver keys (`<file_num>:<tran_id>`).
+    amount: float
+    source_record_ids: list[str]
+
+
 class Expected(TypedDict):
     cycle: int
     rows: dict[str, int]
@@ -324,9 +332,20 @@ class Expected(TypedDict):
     # Ranked rows: [recipient_kind, recipient_id, amount] per giver, [kind, committee_id, amount]
     # per race.
     top_recipients: dict[str, list[list[str | int]]]
-    race_top_committees: dict[str, list[list[str | int]]]
+    race_top_committees: dict[str, list[list[str | float]]]
     unmatched_filings: list[str]
     aliases: dict[str, str]
+    # The 24/48-hour file's rows silver independent_expenditure adds, by rule (NEU-2165).
+    ie_24_48: dict[str, Added]
+    # Silver electioneering_communication's rows by key: [committee_id, candidate_id, race_id,
+    # amount] (NEU-2166).
+    electioneering_communications: dict[str, list[str | float | None]]
+    # Silver independent_expenditure's communication costs by SUB_ID: [committee_id, candidate_id,
+    # race_id, support_oppose, amount, communication_type, communication_class]; its party
+    # coordinated expenditures: [committee_id, candidate_id, race_id, support_oppose, amount]
+    # (NEU-2167).
+    communication_costs: dict[str, list[str | int | None]]
+    party_coordinated: dict[str, list[str | int | None]]
     races: dict[str, RaceTotals]
     candidates: dict[str, CandidateTotals]
     committees: dict[str, CommitteeTotals]

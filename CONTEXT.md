@@ -11,8 +11,28 @@ One itemized transfer of money from a contributor to a committee, as reported to
 _Avoid_: donation, transaction, record
 
 **Independent expenditure**:
-Money a committee spends for or against a candidate without coordinating with them. It attaches to the candidate it names and their race when that candidate is one of the cycle, unless that candidate is a **Handoff**'s first and the spending is dated on or after the handoff, or undated: then it is the second candidate's. The candidate it names is the one its filing names: where `pas2`'s candidate id is another's, whether FEC coded it so or the filer did, a hand-curated list (`fec/ie_candidate_corrections.csv`) names the filed one. It is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
-_Avoid_: IE spend, outside money, super PAC money
+Money a spender spends for or against a candidate without coordinating with them: one kind of outside spending. It attaches to the candidate it names and their race when that candidate is one of the cycle, unless that candidate is a **Handoff**'s first and the spending is dated on or after the handoff, or undated: then it is the second candidate's. The candidate it names is the one its filing names: where `pas2`'s candidate id is another's, whether FEC coded it so or the filer did, a hand-curated list (`fec/ie_candidate_corrections.csv`) names the filed one. It is never a contribution. One naming no candidate of the cycle counts in its spender's total alone.
+_Avoid_: IE spend, outside money (outside spending is the umbrella, and this is one kind of it), super PAC money
+
+**Outside spending**:
+Spending on a race by anyone but the candidates' own committees, of four kinds: independent expenditures, electioneering communications, communication costs and party coordinated expenditures. Never a contribution and never in a candidate's receipts. Spending that names no candidate of the cycle counts in its spender's total alone.
+_Avoid_: outside money, dark money, IE spending (that is one kind), third-party spending
+
+**Electioneering communication**:
+A broadcast ad that names a candidate close to their election without saying how to vote, as its spender reports its cost to the regulator. It is neither for nor against the candidate; one naming several candidates is split equally among them.
+_Avoid_: issue ad (most issue ads are reported nowhere), electioneering ad, EC
+
+**Communication cost**:
+What a corporation, union or membership organization spent urging its own members, shareholders or staff to vote for or against a candidate. It reaches nobody else, which is what sets it apart from an independent expenditure.
+_Avoid_: internal communication, member communication, communication expense
+
+**Party coordinated expenditure**:
+What a party committee spends for its candidate in cooperation with the campaign, within the regulator's limits. The one kind of outside spending that is not independent: always for the candidate, paid and reported by the party, and never a contribution.
+_Avoid_: coordinated spending, party contribution, party support
+
+**Hoax filing**:
+A report of outside spending that never happened, filed with the regulator by a prankster, often for billions of dollars. The regulator publishes it beside real reports; fundlens screens it out of every figure (project spec §6.3).
+_Avoid_: fake filing, false filing (the regulator's false and fictitious filings list is another thing), web-form hoax (real spenders use the web form too)
 
 **Earmark**:
 A contribution routed through a conduit (ActBlue, WinRed) to its final recipient. The regulator reports it twice, on the conduit side and the recipient side; fundlens counts it once. A committee passing on a gift it did not deposit (Senate Conservatives Fund's to a candidate, type 24I) is an earmark too: its side is dropped when the recipient itemized the gift, and kept, the committee's, when that side is the only record. Most 24Is are not this: they are recipients' own receipts of earmarks through a conduit.
@@ -43,7 +63,7 @@ A row itemizing part of an operating expenditure the committee already reported 
 _Avoid_: memo child, child row, memo item, sub-itemization
 
 **In-kind outlay**:
-The spending-side record of a gift of goods or services: the regulator has the committee report the gift as a receipt and its use as an operating expenditure naming the giver. Counted in the committee's spending, as the regulator counts it; credited to no payee, since the giver was paid nothing.
+The spending-side record of a gift of goods, services or other property, cryptocurrency among them: the regulator has the committee report the gift as a receipt and its use as an operating expenditure naming the giver. Counted in the committee's spending, as the regulator counts it; credited to no payee, since the giver was paid nothing.
 _Avoid_: in-kind payment, orphan child, in-kind contribution (that is the receipt)
 
 **Spending category**:
@@ -124,6 +144,14 @@ _Avoid_: corporate donor, entity (that is FEC's word for every giver type), busi
 **Payee**:
 Whoever an operating expenditure names as paid: a firm, a person, a card issuer or another committee, identified only by the name it is reported under. It carries no regulator ID and is never resolved; its operating expenditures are grouped by payee key. A payee that is a person, or a name that names nobody (petty cash), is listed under the committee that paid it and has no page of its own.
 _Avoid_: vendor (staff and card issuers are payees too), recipient (that is the committee a contribution goes to), contractor
+
+**Spender**:
+Whoever made outside spending, of any kind, identified by its regulator ID. Always listed among the committees, whether or not it is one.
+_Avoid_: sponsor (the regulator's word for an electioneering communication's spender), filer (that is whoever files any report), outside group
+
+**Non-committee spender**:
+A spender that is no political committee: a person, group, corporation or union that reports only its outside spending to the regulator, on Form 5 (independent expenditures), Form 7 (communication costs) or Form 9 (electioneering communications). It has a regulator ID and a page like a committee's.
+_Avoid_: outside group, dark money group, individual spender
 
 **Candidate**:
 A person seeking an office in a cycle, identified by their regulator ID.
@@ -244,6 +272,10 @@ _Avoid_: file list, registry, manifest (the manifest is a snapshot's)
 **Undated file**:
 A regulator bulk file published once for every cycle, not once per cycle. Bronze keeps a copy under each cycle extracted, so a cycle rebuilds from its own bronze alone.
 _Avoid_: global file, cycle-less file, shared file
+
+**24/48-hour file**:
+The regulator's file of 24- and 48-hour reports of independent expenditures: what a spender reports within a day or two of spending, often as an estimate, and restates later in a periodic report. It keeps a report beside the amendment that replaced it, and it holds hoax filings. The file catalogue names it `ie_24_48`: the regulator's own name for it, `independent_expenditure`, is the table's.
+_Avoid_: the independent expenditure file (the table of that name holds more than this file gives it), 24-hour file, Schedule E file
 
 **Bronze**:
 Raw regulator bulk files exactly as downloaded.

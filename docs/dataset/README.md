@@ -2,9 +2,9 @@
 
 Federal campaign-finance money for every cycle since 1980, from the FEC's bulk files, as open
 Parquet files: contributions, committees, candidates, races, committee transfers, organizations'
-gifts, independent expenditures, committees' spending and the totals committees report, with
-**individual donors resolved** across the name, employer and address variants they are reported
-under. It is the data behind [fundlens.org](https://fundlens.org).
+gifts, independent expenditures, electioneering communications, committees' spending and the
+totals committees report, with **individual donors resolved** across the name, employer and address
+variants they are reported under. It is the data behind [fundlens.org](https://fundlens.org).
 
 Served from `https://data.fundlens.org/v1/`. License: [CC BY 4.0](LICENSE). Read the
 [notice on contributor information](#notice-contributor-information-and-the-fec) before you use
@@ -28,6 +28,7 @@ it.
 | `reported_total` | committee's own reported totals for a cycle (from 1996) | `reported_total/cycle=<c>/*.parquet` |
 | `candidate_reported_total` | candidate's own reported totals for a cycle, before 2008 | `candidate_reported_total/cycle=<c>/*.parquet` |
 | `operating_expenditure` | payment a committee itemized as spending (from 2004), counted or not | `operating_expenditure/cycle=<c>/*.parquet` |
+| `electioneering_communication` | electioneering communication's share for one candidate (from 2010) | `electioneering_communication/cycle=<c>/*.parquet` |
 
 Every column of every table is described in its JSON Schema, `schema/<table>.json` (for
 example [`schema/contribution.json`](schema/contribution.json)), and every change to them is in
@@ -51,6 +52,18 @@ A few things to know before you add anything up:
 - **A reported total is never added to `contribution` amounts.** `reported_total` and
   `candidate_reported_total` hold the FEC's own cycle-to-date figures, as filed: they already
   include the itemized money the other tables itemize. Compare the two; don't sum them.
+- **Tell `independent_expenditure`'s kinds apart by `kind`.** Only `kind = 'ie'` is independent
+  expenditure. A row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and
+  leaves the table when a periodic report restates it, so its `source_record_id` is not stable
+  from one snapshot to the next. A communication cost is counted once, from `pas2`; the FEC's
+  communication costs file only adds its `communication_type` and `communication_class`. Outside
+  spending is never to be added to `contribution` amounts.
+- **Sum `electioneering_communication`'s `amount`, never `disbursement_amount`.** A disbursement
+  naming several candidates is one row per candidate, each with the FEC's equal share in
+  `amount`; `disbursement_amount` is the whole disbursement, on each of its rows. A row has no
+  side: the filing does not say whether the ad is for or against the candidate. The FEC's file
+  shows no amendment, so a report a later one restates may be counted twice (0.36% of 2024's
+  dollars). Outside spending is never to be added to `contribution` amounts.
 - **Organizations are not resolved.** Their gifts are grouped by `organization_key`, the
   normalized name.
 - **Sum `operating_expenditure` only where `counted` is true.** A sub-item, a card bill's charge

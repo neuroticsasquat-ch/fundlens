@@ -1,0 +1,43 @@
+# ElectioneeringComm: FEC's electioneering communications, ElectioneeringComm_2024.csv (project
+# spec §3, §6.4; NEU-2164). Read by tests/fec_fixture.py, which drops these comment lines and writes
+# the rest as FEC serves the file: the header row unquoted, every data field double-quoted. Dates
+# are DD-MON-YY. A disbursement for several candidates is one row per candidate, each with its
+# share. The spender is RESTORATION PAC's Form 9 filer (C90800207, type E) but in case 10. What
+# NEU-2166's silver electioneering_communication makes of each case is in its comment.
+CANDIDATE_ID,CANDIDATE_NAME,CANDIDATE_OFFICE,CANDIDATE_STATE,CANDIDATE_DISTRICT,COMMITTEE_ID,COMMITTEE_NAME,SB_IMAGE_NUM,PAYEE_NAME,PAYEE_STREET,PAYEE_CITY,PAYEE_STATE,DISBURSEMENT_DESCRIPTION,DISBURSEMENT_DATE,COMMUNICATION_DATE,PUBLIC_DISBURSEMENT_DATE,REPORTED_DISBURSEMENT_AMOUNT,NUMBER_OF_CANDIDATES,CALCULATED_CANDIDATE_SHARE
+# Case 1, one candidate, one row: the share is the amount. Kept.
+S4MD00103,"OKAFOR, DIANA",S,MD,00,C90800207,Restoration PAC,202410039200000001,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PRODUCTION AND PLACEMENT,03-OCT-24,05-OCT-24,05-OCT-24,45000,1,45000
+# Case 2, a disbursement's copies: one candidate on two rows, equal on the five disbursement
+# columns (COMMITTEE_ID, SB_IMAGE_NUM, PAYEE_NAME, DISBURSEMENT_DATE, the amount) and differing in
+# COMMUNICATION_DATE alone, as 2024's Evan Low pair does. One kept, one dropped.
+H4MD05106,"CALLOWAY, RUTH",H,MD,05,C90800207,Restoration PAC,202410109200000002,Tidewater Digital LLC,12 Dock St,Annapolis,MD,DIGITAL AD PLACEMENT,08-OCT-24,10-OCT-24,10-OCT-24,18000,1,18000
+H4MD05106,"CALLOWAY, RUTH",H,MD,05,C90800207,Restoration PAC,202410109200000002,Tidewater Digital LLC,12 Dock St,Annapolis,MD,DIGITAL AD PLACEMENT,08-OCT-24,12-OCT-24,10-OCT-24,18000,1,18000
+# Case 3, two candidates, both named: an odd amount, so each share ends in .5, written with one
+# decimal as FEC writes it. Both kept.
+S4MD00103,"OKAFOR, DIANA",S,MD,00,C90800207,Restoration PAC,202410149200000003,Severn Broadcast Partners,88 West St,Annapolis,MD,RADIO AD PLACEMENT,14-OCT-24,16-OCT-24,16-OCT-24,52819,2,26409.5
+S4MD00104,"WHITLOCK, GORDON",S,MD,00,C90800207,Restoration PAC,202410149200000003,Severn Broadcast Partners,88 West St,Annapolis,MD,RADIO AD PLACEMENT,14-OCT-24,16-OCT-24,16-OCT-24,52819,2,26409.5
+# Case 4, two candidates, none named: two rows equal in every column, CANDIDATE_ID and the
+# candidate's columns blank, NUMBER_OF_CANDIDATES 2 (Q9i). Both kept, candidate and race NULL.
+,,,,,C90800207,Restoration PAC,202410179200000004,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,17-OCT-24,19-OCT-24,19-OCT-24,30000,2,15000
+,,,,,C90800207,Restoration PAC,202410179200000004,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,17-OCT-24,19-OCT-24,19-OCT-24,30000,2,15000
+# Case 5, fewer rows than candidates: a two-candidate disbursement on one row. Kept; the
+# disbursement is half short.
+H4MD05107,"DRISCOLL, PETER",H,MD,05,C90800207,Restoration PAC,202410219200000005,Tidewater Digital LLC,12 Dock St,Annapolis,MD,DIGITAL AD PLACEMENT,21-OCT-24,23-OCT-24,23-OCT-24,9000,2,4500
+# Case 6, an id cn lacks: kept, candidate and race NULL. Case 12, a blank
+# PUBLIC_DISBURSEMENT_DATE: NULL.
+H4MD03120,"LINDQUIST, OWEN",H,MD,03,C90800207,Restoration PAC,202410229200000006,Tidewater Digital LLC,12 Dock St,Annapolis,MD,DIGITAL AD PLACEMENT,22-OCT-24,24-OCT-24,,6000,1,6000
+# Case 7, a split off by more than a cent: the share times NUMBER_OF_CANDIDATES is not the
+# amount (2010's shape, Q12f). Kept, the share as filed.
+S4MD00105,"PELL, MARCUS",S,MD,00,C90800207,Restoration PAC,202410249200000007,Severn Broadcast Partners,88 West St,Annapolis,MD,RADIO AD PLACEMENT,24-OCT-24,26-OCT-24,26-OCT-24,10000,3,3500
+# Case 8, the handoff: two rows naming BIDEN's P80000722, the day before and the day of
+# 2024-07-21 (fec/handoffs.csv). BIDEN's, then HARRIS's.
+P80000722,"BIDEN, JOSEPH R JR",P,US,00,C90800207,Restoration PAC,202407209200000008,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,20-JUL-24,22-JUL-24,22-JUL-24,25000,1,25000
+P80000722,"BIDEN, JOSEPH R JR",P,US,00,C90800207,Restoration PAC,202407219200000009,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,21-JUL-24,23-JUL-24,23-JUL-24,27500,1,27500
+# Case 9, an alias: H6MD05113, H4MD05107's second id (cn.csv). DRISCOLL's.
+H6MD05113,"DRISCOLL, PETER J.",H,MD,05,C90800207,Restoration PAC,202410289200000010,Tidewater Digital LLC,12 Dock St,Annapolis,MD,DIGITAL AD PLACEMENT,28-OCT-24,30-OCT-24,30-OCT-24,7500.25,1,7500.25
+# Case 10, a spender cm lacks: dropped.
+S4MD00111,"BRANNIGAN, TESS",S,MD,00,C90899910,Free State Citizens Alliance,202410299200000011,Severn Broadcast Partners,88 West St,Annapolis,MD,RADIO AD PLACEMENT,29-OCT-24,31-OCT-24,31-OCT-24,5000.50,1,5000.50
+# Case 11, a restated report: the same payee, date, amount and candidate on two SB_IMAGE_NUMs.
+# Both kept: no amendment rule reaches this file.
+P40000101,"HARGROVE, ELLEN",P,US,00,C90800207,Restoration PAC,202409309200000012,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,30-SEP-24,02-OCT-24,02-OCT-24,15000,1,15000
+P40000101,"HARGROVE, ELLEN",P,US,00,C90800207,Restoration PAC,202410159200000013,Harbor Light Media,410 Key Hwy,Baltimore,MD,TV AD PLACEMENT,30-SEP-24,02-OCT-24,02-OCT-24,15000,1,15000

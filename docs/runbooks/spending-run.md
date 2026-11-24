@@ -61,7 +61,7 @@ moves some 2024 receipt figures as well. Step 7.3 records how many. They are not
 | NEU-2149's memory estimate | `operating_expenditure` holds 0.87 GiB in DuckDB for 2024, putting the transform's peak at about 27.35 GiB against DuckDB's 29.80 GiB (`32GB`) limit. NEU-2152 writes and drops it first, so it is gone before `contribution`'s write, the peak (spec §5.1). Measured since: 0.68 GiB; peak 27.44 GiB on the reference, with 2 GiB of spread between runs of the same code ([capacity.md](../capacity.md)) |
 | The measurement's Q11 figures | At the 9,909 committees with a reported figure above $0: counted $9,594,311,329 against reported $9,916,558,902, median committee 98.76%, 63 committees more than 1% over by $1,086,185. By group (Q11b, median and dollar-weighted): candidate 99.20% / 99.44%, super PAC 99.49% / 99.82%, other 98.14% / 99.45%, party 50.51% / 83.83%. 12 committees list a reported $0 beside counted money (spec §5.6). `docs/measurements/oppexp-2024.md` Q11 |
 | The ten comparisons | `C00840017` ALSOBROOKS FOR SENATE and `C00264697` (Sherrod Brown): Senate campaigns. `C00703975` (Biden, then Harris): Form 3P, the handoff. `C00853473` JONATHAN NEZ FOR CONGRESS: Q11d's largest excess. `C00835959` FAIRSHAKE and `C00571703` SLF PAC: super PACs. `C00494021` CATHOLICVOTE.ORG CANDIDATE FUND: Q11d's second-largest excess. `C00003418` RNC and `C00010603` DNC: parties. `C00401224` ACTBLUE: an "other" filer, and the conduit the reconciliation does not exclude here (spec §5.6) |
-| What a comparison checks | That gold's `reported_operating_expenditures` is the file's `OP_EXP` + `TTL_OP_EXP` (Form 3 and 3P fill the first, Form 3X the second; `10_reported_total.sql`), and how gold's `total_operating_expenditures` stands against it. Itemized spending sits below the reported figure by design: payments of $200 or less a year to one payee are unitemized (spec §5.2) |
+| What a comparison checks | That gold's `reported_operating_expenditures` is the file's `OP_EXP` + `TTL_OP_EXP` (Form 3 and 3P fill the first, Form 3X the second; `09_reported_total.sql`), and how gold's `total_operating_expenditures` stands against it. Itemized spending sits below the reported figure by design: payments of $200 or less a year to one payee are unitemized (spec §5.2) |
 | Monitors | `fundlens/publish` gets a push from `publish`. If the monitor is still paused, `publish` ends with `kuma push (up) failed: HTTPError: HTTP Error 404: Not Found`: the paused monitor refusing the push, not a fault |
 
 ## 0. Session setup
@@ -399,7 +399,7 @@ try:
     print("read", sorted(store.list_keys(paths.bronze_dir(2024, summary.name)))[-1])
     text = runner.fetch_bulk(store, 2024, summary, data_dir=settings.data_dir, work=work)
     con = runner.connect(runner.Limits.from_settings(settings), paths.scratch_dir(settings.data_dir))
-    # Form 3 and 3P fill OP_EXP, Form 3X TTL_OP_EXP (10_reported_total.sql). A committee's rows can repeat, one per
+    # Form 3 and 3P fill OP_EXP, Form 3X TTL_OP_EXP (09_reported_total.sql). A committee's rows can repeat, one per
     # CAND_ID, or span two periods (NEU-2454): `figures` counts the distinct ones.
     fec = {row[0]: row[1:] for row in con.execute(
         "SELECT CMTE_ID, count(DISTINCT figure), max(figure) FROM ("

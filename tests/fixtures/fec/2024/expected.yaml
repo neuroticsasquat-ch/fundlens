@@ -35,6 +35,10 @@
 #   ie_support is `pas2` 24E, ie_oppose 24A, ie_total both; 24C is no independent expenditure.
 #   One naming a candidate a committee was handed from is the other's on and after the handoff
 #   date, and undated (NEU-2277): BRICKLAYERS' spending for BIDEN from 2024-07-21 is HARRIS's.
+#   The 24/48-hour file's rows silver adds (`ie_24_48` below, NEU-2165) are in all three, by their
+#   sup_opp; one with no side is in its spender's ie_total alone. They carry cents, so these three
+#   figures and race_top_committees' amounts are dollars and cents: quarter-dollars, which a YAML
+#   float holds exactly.
 #   total_from_committees: `oth` receipts from committees, by the receiving committee (CMTE_ID):
 #   TRANSACTION_TP 1x or 3x, MEMO_CD not X, from a giver: OTHER_ID when a committee's id, else, when
 #   blank, the designation-J committee whose name NAME is, compared after uppercasing and dropping
@@ -79,36 +83,43 @@
 #   giver wrote one's id, its recipient linked to no candidate, is credited to the id it is an
 #   alias of.
 # - A race's totals are the sums over the candidates attached to it.
-# All amounts are whole dollars.
+# All amounts are whole dollars but the 24/48-hour file's.
 
 cycle: 2024
 
-# Data rows per bulk file, comment lines and header excluded.
+# Data rows per bulk file, comment lines and header excluded. The outside-spending files' rows'
+# cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
+# below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166), and of
+# CommunicationCosts `communication_costs` (NEU-2167).
 rows:
-  cm: 23
+  cm: 26
   cn: 15
   ccl: 15
   indiv: 406
-  pas2: 30
+  pas2: 38
   oth: 32
   weball: 12
-  webk: 13
-  committee_summary: 27
-  oppexp: 52
+  webk: 14
+  committee_summary: 30
+  oppexp: 55
+  ie_24_48: 38
+  ElectioneeringComm: 16
+  CommunicationCosts: 6
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
-# 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
+# 24K committee contributions and the row FEC's file repeats (24A/24E, and the 24C, 24F and 24N
+# kept with their kind), and the 24/48-hour rows of `ie_24_48` below. committee_transfer is
 # every `oth` receipt from a committee (recorded by the receiving committee, so filed by one in
 # `cm`, NEU-2281), every `indiv` row a committee's by the name rule (`name_matched` below), plus
 # every `pas2` 24K row not filed by a conduit (a disbursement, recorded by the giver): the one gift
 # on both sides, each side its own row. organization_receipt is one row per
 # `organization_receipts` receipt below.
 silver:
-  committee: 23
+  committee: 26
   candidate: 15
   candidate_committee_link: 15
   contribution: 347
-  independent_expenditure: 15
+  independent_expenditure: 45
   committee_transfer: 32
   organization_receipt: 19
   # One row per `attributions` line below.
@@ -118,10 +129,13 @@ silver:
   # several; fewer than the contributions.
   contributor: 133
   # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
-  reported_total: 23
+  reported_total: 26
   candidate_reported_total: 0
   # `operating_expenditures` below: every `oppexp` row but its three dropped ones.
-  operating_expenditure: 49
+  operating_expenditure: 52
+  # `electioneering_communications` below: every ElectioneeringComm row but a disbursement's copy
+  # and the row of a spender `cm` lacks.
+  electioneering_communication: 14
 
 # Operating expenditures (every-FEC-dollar spec §5, NEU-2152): silver operating_expenditure on
 # oppexp.csv, whose comments say which rule (§5.2) counts or leaves out each row. A sub-item
@@ -160,9 +174,9 @@ operating_expenditures:
     C00800113: "1000.00"
     C00800114: "180.00"
     C00800115: "2500.00"
-    C00800201: "11200.00"
+    C00800201: "39200.00"
     C00800203: "210.00"
-    C00800205: "5000.00"
+    C00800205: "10390.00"
   # By the candidate each row is credited to: the paying committee's, by contribution's rule.
   # OKAFOR's are her principal and authorized committees'; HARRIS FOR PRESIDENT's are BIDEN's
   # before 2024-07-21 and HARRIS's on the day and undated. The leadership PAC, the joint
@@ -176,10 +190,11 @@ operating_expenditures:
     P80000722: "50000.00"
     S4MD00103: "12223.45"
     S4MD00104: "3900.00"
-  total: "154455.85"
-  # In-kind outlays: PELLEGRINO's, naming a receipt on its filing, and the IN-KIND purpose. The row
-  # naming itself is none.
-  in_kind: [4240400000000000015, 4240400000000000016]
+  total: "187845.85"
+  # In-kind outlays: PELLEGRINO's, naming a receipt on its filing, the IN-KIND purpose and the crypto
+  # received (NEU-2464). The row naming itself is none, nor are the in-kind contribution made and
+  # the advance for ones to come.
+  in_kind: [4240400000000000015, 4240400000000000016, 4240400000000000053]
   # Payee keys of the spelling cases: two spellings sharing one, and two the rule leaves apart.
   # The row with no name has none.
   payee_keys:
@@ -205,8 +220,9 @@ operating_expenditures:
   # Every row's spending category and its source (§5.3, NEU-2153): the purpose rule's, FEC's code
   # where the purpose names nothing bought and the code is trusted (case 23's 004 on SEE BELOW),
   # else other, unclassified (the memo parent's REIMBURSEMENT: SEE BELOW, the IN-KIND purpose, SEE
-  # SCHEDULE E and SEE MEMO). Untrusted codes (006 on PRINTING, 001 on pay, rent and consulting)
-  # are never read. PELLEGRINO's in-kind outlay by structure takes its purpose's, STOCK TRANSFER's.
+  # SCHEDULE E, SEE MEMO and case 26's three). Untrusted codes (006 on PRINTING, 001 on pay, rent
+  # and consulting) are never read. PELLEGRINO's in-kind outlay by structure takes its purpose's,
+  # STOCK TRANSFER's.
   categories:
     4240400000000000001: [mail, purpose_rule]
     4240400000000000002: [transfers_fees, purpose_rule]
@@ -257,9 +273,12 @@ operating_expenditures:
     4240400000000000050: [travel, purpose_rule]
     4240400000000000051: [legal_compliance, purpose_rule]
     4240400000000000052: [legal_compliance, purpose_rule]
+    4240400000000000053: [other, unclassified]
+    4240400000000000054: [other, unclassified]
+    4240400000000000055: [other, unclassified]
   # The counted dollars classified other, unclassified: the memo parent, the IN-KIND purpose, SEE
-  # SCHEDULE E's -$15,000 and SEE MEMO, as filed.
-  unclassified: "-13050.00"
+  # SCHEDULE E's -$15,000, SEE MEMO and case 26's three, as filed.
+  unclassified: "20340.00"
   # Gold's committee_spending_category (§5.5): each committee's counted dollars by category, as
   # filed, adding up to `by_committee`. A card bill is counted once, at the parent: CALLOWAY's
   # three bills are its credit_card $3,620 and none of their charges' travel. RESTORATION PAC's
@@ -275,13 +294,13 @@ operating_expenditures:
     C00800113: {other: "1000.00"}
     C00800114: {events: "180.00"}
     C00800115: {events: "2500.00"}
-    C00800201: {digital: "10000.00", transfers_fees: "1200.00"}
+    C00800201: {digital: "10000.00", other: "28000.00", transfers_fees: "1200.00"}
     C00800203: {administrative: "210.00"}
-    C00800205: {digital: "20000.00", other: "-15000.00"}
+    C00800205: {digital: "20000.00", other: "-9610.00"}
   # Gold's committee_top_payee (§5.4, §5.5), by rank: [payee_key, name, amount, has_page]. Payee
-  # rows only: no in-kind outlay (PELLEGRINO's, VELASQUEZ's) and not the row with no name. Each
-  # name is the key's most-dollar spelling in the cycle, so BLUE HARBOR STRATEGIES is its LLC
-  # spelling at WHITLOCK too; OKAFOR's two $1,250 card issuers tie and go by key; a key netting
+  # rows only: no in-kind outlay (PELLEGRINO's, VELASQUEZ's, COINBASE's) and not the row with no
+  # name. Each name is the key's most-dollar spelling in the cycle, so BLUE HARBOR STRATEGIES is
+  # its LLC spelling at WHITLOCK too; OKAFOR's two $1,250 card issuers tie and go by key; a key netting
   # above $0 is listed (CALLOWAY's print shop less its refund, RESTORATION PAC's agency less its
   # SEE SCHEDULE E). A key whose payee dollars are mostly a person's has no page (has_page false,
   # payee_id NULL), and nor has PETTY CASH, which the hand-kept fec/payee_no_page.csv names.
@@ -325,9 +344,11 @@ operating_expenditures:
       - [PATUXENT EVENTS, PATUXENT EVENTS, "2500.00", true]
     C00800201:
       - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "10000.00", true]
+      - [BAY COUNTIES LABOR COUNCIL, BAY COUNTIES LABOR COUNCIL, "3000.00", true]
     C00800203:
       - [BGE, BGE, "210.00", true]
     C00800205:
+      - [CHESAPEAKE MAJORITY PAC, CHESAPEAKE MAJORITY PAC, "5390.00", true]
       - [TIDEMARK MEDIA GROUP, TIDEMARK MEDIA GROUP, "5000.00", true]
   # Gold's payee, payee_cycle and payee_top_payer (§5.4, §5.5): every key with a page, by key. Each
   # display column is its value with the most payee dollars, so BLUE HARBOR STRATEGIES is its LLC
@@ -341,10 +362,12 @@ operating_expenditures:
     AMERICAN EXPRESS: {name: AMERICAN EXPRESS, city: NEW YORK, state: NY, total: "5770.00", committees: 3, payers: [[C00800106, H4MD05106, "3620.00"], [C00800103, S4MD00103, "1250.00"], [C00800104, S4MD00104, "900.00"]]}
     ANNAPOLIS OFFICE PARK: {name: ANNAPOLIS OFFICE PARK LLC, city: ANNAPOLIS, state: MD, total: "3000.00", committees: 1, payers: [[C00800102, P40000102, "3000.00"]]}
     ANNE ARUNDEL GRILL: {name: ANNE ARUNDEL GRILL, city: ANNAPOLIS, state: MD, total: "180.00", committees: 1, payers: [[C00800114, null, "180.00"]]}
+    BAY COUNTIES LABOR COUNCIL: {name: BAY COUNTIES LABOR COUNCIL, city: BALTIMORE, state: MD, total: "3000.00", committees: 1, payers: [[C00800201, null, "3000.00"]]}
     BAYSIDE CATERING: {name: BAYSIDE CATERING, city: WALDORF, state: MD, total: "275.00", committees: 1, payers: [[C00800107, H4MD05107, "275.00"]]}
     BGE: {name: BGE, city: BALTIMORE, state: MD, total: "210.00", committees: 1, payers: [[C00800203, null, "210.00"]]}
     BLUE HARBOR STRATEGIES: {name: BLUE HARBOR STRATEGIES LLC, city: BALTIMORE, state: MD, total: "10500.00", committees: 2, payers: [[C00800103, S4MD00103, "7500.00"], [C00800104, S4MD00104, "3000.00"]]}
     CAPITOL COMPLIANCE GROUP: {name: CAPITOL COMPLIANCE GROUP, city: ARLINGTON, state: VA, total: "750.00", committees: 1, payers: [[C00800103, S4MD00103, "750.00"]]}
+    CHESAPEAKE MAJORITY PAC: {name: CHESAPEAKE MAJORITY PAC, city: ANNAPOLIS, state: MD, total: "5390.00", committees: 1, payers: [[C00800205, null, "5390.00"]]}
     CHESAPEAKE PRINT WORKS: {name: CHESAPEAKE PRINT WORKS INC, city: BALTIMORE, state: MD, total: "3500.00", committees: 1, payers: [[C00800106, H4MD05106, "3500.00"]]}
     CHESAPEAKE PRINTWORKS: {name: CHESAPEAKE PRINTWORKS, city: BALTIMORE, state: MD, total: "2200.00", committees: 1, payers: [[C00800107, H4MD05107, "2200.00"]]}
     FIRST MARINER CARD SERVICES: {name: FIRST MARINER CARD SERVICES, city: BALTIMORE, state: MD, total: "1250.00", committees: 1, payers: [[C00800103, S4MD00103, "1250.00"]]}
@@ -617,21 +640,26 @@ top_recipients:
 
 # Each race's committees in gold's race_top_committee (NEU-2057), by rank: [kind, committee_id,
 # amount]. A contribution row is a giver's 24Ks to the race's candidates, adding up to the race's
-# total_committee; an ie row is a spender's 24E and 24A on them, adding up to its ie_support plus
-# ie_oppose. Ranked by amount, then committee id, then kind. The conduits are in none.
+# total_committee; an ie row is a spender's 24E and 24A on them, and its 24/48-hour rows with a
+# side (`ie_24_48` below), adding up to its ie_support plus ie_oppose. Ranked by amount, then
+# committee id, then kind. The conduits are in none.
 race_top_committees:
   2024-P-US-00:
     - [ie, C00800201, 400000]
     - [ie, C00800202, 21000]
     - [contribution, C00800202, 7500]
+    - [ie, C90800206, 1250]
   2024-S-MD-00:
     - [ie, C00800201, 230000]
+    - [ie, C00800210, 127500]
     - [ie, C00800203, 45000]
+    - [ie, C90800206, 16850.75]
     - [contribution, C00800202, 6000]
     - [contribution, C00800203, 5000]
   2024-H-MD-05:
     - [ie, C00800201, 40000]
     - [contribution, C00800202, 9500]
+    - [ie, C90800206, 9300]
     - [contribution, C00800114, 5000]
     - [ie, C00800202, 3000]
 
@@ -644,28 +672,118 @@ unmatched_filings: [H4MD09109]
 aliases:
   H6MD05113: H4MD05107 # DRISCOLL, PETER J.: DRISCOLL, PETER
 
+# The 24/48-hour file's rows silver independent_expenditure adds (project spec §6.3, NEU-2165), by
+# the rule that adds them, with their amounts added up and their keys (`<file_num>:<tran_id>`).
+# ie_24_48.csv's comments give each row's case. by_spender: ONE NATION, a Form 5 filer with no
+# `pas2` row reporting $30,000, its rows on no replaced filing, $30,185.75 against ten times that;
+# not GUNPOWDER VALUES PROJECT ($11,500 against $1,000 reported), RESTORATION PAC (reports $0) or
+# its Form 9 filer (reports nothing). timeliness: NANTICOKE ACTION's rows dated after its period
+# end, 2024-09-30, its amended filing's row in place of the original's. Every other row is not
+# read: a replaced filing's, a spender's `cm` lacks, and a `pas2` spender's by its period end.
+# So the races move by exactly these rows' amounts, by side: Maryland's Senate race by ONE
+# NATION's $13,200.50 for OKAFOR and $3,650.25 against WHITLOCK and NANTICOKE ACTION's $20,000 and
+# $7,500; its 5th district by $5,300 for CALLOWAY and $4,000 against DRISCOLL (one row naming his
+# alias); the presidency by $500 for BIDEN and $750 for HARRIS, the second dated on the handoff.
+# The $85 row with no side, the $1,500 naming no candidate and the $1,200 naming an id `cn` lacks
+# are in ONE NATION's ie_total alone.
+ie_24_48:
+  by_spender:
+    amount: 30185.75
+    source_record_ids:
+      - "1910001:SE.4128"
+      - "1910001:SE.4129"
+      - "1910002:SE.4201"
+      - "1910002:SE.4202"
+      - "1910002:SE.4203"
+      - "1910002:SE.4204"
+      - "1910002:SE.4205"
+      - "1910003:F57.000003"
+      - "1910003:F57.000004"
+      - "1910004:SE.4301"
+      - "1910004:SE.4302"
+      - "1910006:SE.5001"
+      - "1910006:SE.5003"
+      - "1910009:SE.6001"
+      - "1910010:SE.6101"
+      - "1910011:SE.6201"
+      - "1910013:SE.7001"
+      - "1910014:SE.7001"
+      - "1910015:SE.1"
+      - "1910016:SE.1"
+  timeliness:
+    amount: 27500
+    source_record_ids:
+      - "1910022:SE.00343"
+      - "1910022:SE.00344"
+      - "1910026:SE.00346"
+
+# Silver independent_expenditure's communication costs (project spec §6.2, NEU-2167), by SUB_ID:
+# [committee_id, candidate_id, race_id, support_oppose, amount, communication_type,
+# communication_class]. STEAMFITTERS LOCAL 486's pas2.csv 24F and 24N rows, each counted once,
+# from pas2: its amount, whole dollars, and its side by type. CommunicationCosts.csv adds no row and
+# no money; it gives each row it holds under the same SUB_ID its type and class, as filed. Its
+# case 3, the 24F naming no candidate the CSV lacks, counts with both NULL; its case 4, a row pas2
+# lacks, adds nothing; case 5's side as filed is its type, and the row's is pas2's; case 6's repeat
+# is read once in both files.
+communication_costs:
+  "1091820230265311901": [C70800208, S4MD00103, 2024-S-MD-00, S, 2974, DM, M]
+  "4240200000000000031": [C70800208, S4MD00103, 2024-S-MD-00, S, 1250, DM, M]
+  "4240200000000000032": [C70800208, S4MD00104, 2024-S-MD-00, O, 2400, O, E]
+  "4240200000000000033": [C70800208, null, null, S, 800, null, null]
+  "4240200000000000034": [C70800208, H4MD05106, 2024-H-MD-05, S, 512, DM, M]
+
+# Silver independent_expenditure's party coordinated expenditures (project spec §6.2, NEU-2167), by
+# SUB_ID: [committee_id, candidate_id, race_id, support_oppose, amount]. pas2.csv's one 24C, always
+# in support of the candidate it names, and in that candidate's race.
+party_coordinated:
+  "4240200000000000009": [C00800203, S4MD00104, 2024-S-MD-00, S, 20000]
+
+# Silver electioneering_communication's rows (project spec §6.4, NEU-2166), by key
+# (`<SB_IMAGE_NUM>:<n>`): [committee_id, candidate_id, race_id, amount]. ElectioneeringComm.csv's
+# comments give each row's case. Its 16 rows less two: case 2's copy (CALLOWAY's second row of a
+# one-candidate disbursement, the one with the later COMMUNICATION_DATE) and case 10's spender `cm`
+# lacks. Case 4's two rows name no candidate, and case 6's an id `cn` lacks: kept, candidate and
+# race null. Case 7's share stands as filed though three of it is not the amount. Case 8's BIDEN row
+# dated on the handoff is HARRIS's, case 9's alias DRISCOLL's, and case 11's restated report counts
+# twice. Every amount is the row's CALCULATED_CANDIDATE_SHARE.
+electioneering_communications:
+  "202407209200000008:1": [C90800207, P80000722, 2024-P-US-00, 25000]
+  "202407219200000009:1": [C90800207, P00009423, 2024-P-US-00, 27500]
+  "202409309200000012:1": [C90800207, P40000101, 2024-P-US-00, 15000]
+  "202410039200000001:1": [C90800207, S4MD00103, 2024-S-MD-00, 45000]
+  "202410109200000002:1": [C90800207, H4MD05106, 2024-H-MD-05, 18000]
+  "202410149200000003:1": [C90800207, S4MD00103, 2024-S-MD-00, 26409.5]
+  "202410149200000003:2": [C90800207, S4MD00104, 2024-S-MD-00, 26409.5]
+  "202410159200000013:1": [C90800207, P40000101, 2024-P-US-00, 15000]
+  "202410179200000004:1": [C90800207, null, null, 15000]
+  "202410179200000004:2": [C90800207, null, null, 15000]
+  "202410219200000005:1": [C90800207, H4MD05107, 2024-H-MD-05, 4500]
+  "202410229200000006:1": [C90800207, null, null, 6000]
+  "202410249200000007:1": [C90800207, S4MD00105, 2024-S-MD-00, 3500]
+  "202410289200000010:1": [C90800207, H4MD05107, 2024-H-MD-05, 7500.25]
+
 races:
   2024-P-US-00:
     candidate_count: 5
     total_individual: 58625
     total_committee: 7500
     total_jfc_transfers: 0
-    ie_support: 416000
+    ie_support: 417250
     ie_oppose: 5000
   2024-S-MD-00:
     candidate_count: 4
     total_individual: 93975
     total_committee: 11000
     total_jfc_transfers: 19500
-    ie_support: 150000
-    ie_oppose: 125000
+    ie_support: 223200.50
+    ie_oppose: 196150.25
   2024-H-MD-05:
     candidate_count: 4
     total_individual: 68050
     total_committee: 14500
     total_jfc_transfers: 0
-    ie_support: 28000
-    ie_oppose: 15000
+    ie_support: 33300
+    ie_oppose: 19000
   # A special in the seat calendar with no one attached: the fixture plants no Nebraska Senate
   # filing, so neither NE race has anyone (`special_candidates.csv` places 2024's real filings
   # for it, NEU-2319, and `silver_candidate_special.sql` passes a seat no one filed for).
@@ -708,7 +826,7 @@ candidates:
     total_committee: 2500
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 2000
+    ie_support: 2500
     ie_oppose: 0
   P00009423: # HARRIS: C00703975's money, BIDEN's spending from the handoff on or undated, and a corrected row (NEU-2279)
     race_id: 2024-P-US-00
@@ -716,7 +834,7 @@ candidates:
     total_committee: 0
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 14000
+    ie_support: 14750
     ie_oppose: 5000
   P40000110: # QUILL: no committee
     race_id: 2024-P-US-00
@@ -732,7 +850,7 @@ candidates:
     total_committee: 5000
     total_jfc_transfers: 19500
     self_funding: 5000
-    ie_support: 150000
+    ie_support: 223200.50
     ie_oppose: 45000
   S4MD00104: # WHITLOCK: the self-funder: 250000 of his own, 1750000 lent, 100000 repaid (NEU-2071)
     race_id: 2024-S-MD-00
@@ -741,7 +859,7 @@ candidates:
     total_jfc_transfers: 0
     self_funding: 1900000
     ie_support: 0
-    ie_oppose: 80000
+    ie_oppose: 151150.25
   S4MD00105: # PELL
     race_id: 2024-S-MD-00
     total_individual: 3250
@@ -764,7 +882,7 @@ candidates:
     total_committee: 10000
     total_jfc_transfers: 0
     self_funding: 0
-    ie_support: 28000
+    ie_support: 33300
     ie_oppose: 0
   H4MD05107: # DRISCOLL
     race_id: 2024-H-MD-05
@@ -773,7 +891,7 @@ candidates:
     total_jfc_transfers: 0
     self_funding: 0
     ie_support: 0
-    ie_oppose: 15000
+    ie_oppose: 19000
   H4MD05108: # YANG: BRICKLAYERS' gift, net of its same-cycle refund
     race_id: 2024-H-MD-05
     total_individual: 6400
@@ -926,18 +1044,36 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
-  C90800206: # ONE NATION: a Form 5 filer (type I), an organization by its gifts
+  C90800206: # ONE NATION: a Form 5 filer (type I), an organization by its gifts; its 24/48-hour rows
     total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
-    ie_total: 0
+    ie_total: 30185.75
   C90800207: # RESTORATION PAC: a Form 9 filer (type E) under the super PAC's name, which names no gift
     total_individual: 0
     self_funding: 0
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
+  C70800208: # STEAMFITTERS LOCAL 486: a Form 7 filer, its communication costs in no total
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C90800209: # GUNPOWDER VALUES PROJECT: a Form 5 filer with no pas2 row
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800210: # NANTICOKE ACTION: a super PAC whose last report ends 2024-09-30, and its later rows
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 127500
 
 # The donors behind the planted hard cases (spec §6), each with every one of their counted
 # contributions by SUB_ID and their label in tests/fixtures/dime/ (`bonica.cid`).
@@ -1179,6 +1315,9 @@ reported_totals:
       C00800205: [committee_summary, 2023-01-01, 2024-12-31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
       C90800206: [committee_summary+webk, 2023-01-01, 2024-12-31, 35000, 30000, 0, 5000, 0, null, null, null, 35000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 30000, 0, null, null]
       C90800207: [committee_summary, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+      C70800208: [committee_summary, 2023-01-01, 2024-12-31, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+      C90800209: [committee_summary, 2023-01-01, 2024-12-31, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 1000, null, null, null]
+      C00800210: [committee_summary, 2023-01-01, 2024-09-30, 120000, 100000, 0, 20000, 0, 0, 0, 120000, 120000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 100000, 0, 0, null]
     1998:
       C00298003: [webk, null, 1998-12-31, 6000, 2500, 4000, 7500, 0, null, null, null, 6000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null]
       C00800203: [webk, null, 1998-12-31, 3500, 3000, 2000, 2500, 0, null, null, null, 3500, 0, null, 0, null, null, 0, null, 0, 0, 0, 0, 1500, null, null]
@@ -1228,6 +1367,9 @@ gold_reported:
     C00800205: [0, 0, 0, null]
     C90800206: [0, null, 5000, null]
     C90800207: [0, null, null, null]
+    C70800208: [0, null, null, null]
+    C90800209: [0, null, null, null]
+    C00800210: [0, 0, 20000, null]
   # [reported_receipts, reported_cash_on_hand_end, itemized_total, coverage,
   #  reported_includes_converted_committee]
   candidates:
@@ -1266,7 +1408,7 @@ gold_reported:
       C00800114: [180, 0, null]
       C00800115: [2500, 0, null]
       C00800203: [210, 0, null]
-      C00800205: [5000, 0, null]
+      C00800205: [10390, 0, null]
   # A candidate's gift sizes on a resolved build, by bucket: [amount, donors]. Each donor's bucket
   # is their net gifts to the candidate (DIME's `bonica.cid` tells the donors apart): THACKERAY's
   # twenty $50 gifts are one $1,000 donor, in under_2000. unitemized is the candidate's

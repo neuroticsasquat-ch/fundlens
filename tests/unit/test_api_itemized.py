@@ -125,3 +125,56 @@ def test_a_live_build_missing_from_the_volume_is_no_empty_page(tmp_path: Path) -
     with pytest.raises(FileNotFoundError):
         reader.operating_expenditures(2024, "C00800103", category=None, sort="date", cursor=None)
     reader.close()
+
+
+def test_a_text_keyed_cursor_round_trips_and_is_refused_where_keys_are_sub_ids(
+    tmp_path: Path,
+) -> None:
+    # A 24/48-hour row's key (NEU-2165); a `pas2` row's, all digits, decodes as a SUB_ID still.
+    cursor = Cursor(BUILD, date(2024, 10, 1), "1910001:SE.4128", 2024)
+    reader = ItemizedReader(tmp_path, lambda: {2024: BUILD})
+    write_partition(tmp_path, donor_id=True)
+
+    assert Cursor.decode(cursor.encode()) == cursor
+    with pytest.raises(BadCursor):
+        reader.contributions(2024, "recipient_committee_id", "C00800103", cursor=cursor.encode())
+    with pytest.raises(BadCursor):
+        reader.donor_contributions(42, cycle=2024, cursor=cursor.encode())
+    reader.close()
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        # A build transformed before the key was text: SUB_IDs.
+        ["4240200000000000001", "4240200000000000002", "4240200000000000003"],
+        # Since: a `pas2` row's digits beside 24/48-hour rows' keys, all text.
+        ["'4240200000000000001'", "'1910001:SE.4128'", "'1910001:SE.4129'"],
+    ],
+)
+def test_independent_expenditures_page_by_their_key_whether_text_or_sub_id(
+    tmp_path: Path, keys: list[str]
+) -> None:
+    partition = paths.local_path(
+        tmp_path, paths.silver_partition("independent_expenditure", 2024, BUILD)
+    )
+    partition.mkdir(parents=True)
+    rows = " UNION ALL ".join(
+        f"SELECT 2024 AS cycle, {key} AS source_record_id, DATE '2024-10-01' AS date,"
+        " 100.0 AS amount, 'C90800206' AS committee_id, NULL AS candidate_id, NULL AS race_id,"
+        " 'S' AS support_oppose, NULL AS transaction_type, 'ie' AS kind"
+        for key in keys
+    )
+    duckdb.execute(f"COPY ({rows}) TO '{partition / paths.part(0)}' (FORMAT parquet)")
+    reader = ItemizedReader(tmp_path, lambda: {2024: BUILD})
+
+    walked: list[object] = []
+    cursor = None
+    while True:
+        page = reader.independent_expenditures(2024, "C90800206", cursor=cursor, limit=1)
+        walked += [row["source_record_id"] for row in page.rows]
+        if (cursor := page.next_cursor) is None:
+            break
+
+    assert sorted(str(key) for key in walked) == sorted(key.strip("'") for key in keys)
+    reader.close()

@@ -745,6 +745,14 @@ def sum_by[K](pairs: Iterable[tuple[K, int]]) -> dict[K, int]:
     return totals
 
 
+def sum_dollars[K](pairs: Iterable[tuple[K, Decimal]]) -> dict[K, Decimal]:
+    """`sum_by` for amounts with cents: the 24/48-hour file's (NEU-2165)."""
+    totals: dict[K, Decimal] = defaultdict(Decimal)
+    for key, value in pairs:
+        totals[key] += value
+    return totals
+
+
 def tally_committees() -> dict[str, CommitteeTotals]:
     contributions = counted()
     account = {r["SUB_ID"] for r in non_contribution_account(contributions)}
@@ -759,8 +767,15 @@ def tally_committees() -> dict[str, CommitteeTotals]:
     )
     pas2 = rows("pas2")
     to_candidates = sum_by((giver, net) for (giver, _), net in gift_pairs().items() if net >= 0)
-    ie = sum_by(
-        (r["CMTE_ID"], amount(r)) for r in pas2 if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+    ie = sum_dollars(
+        [
+            *(
+                (r["CMTE_ID"], Decimal(amount(r)))
+                for r in pas2
+                if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+            ),
+            *((r["spe_id"], Decimal(r["exp_amo"])) for r, _ in ie_24_48_added()),
+        ]
     )
     return {
         committee_id: {
@@ -768,7 +783,7 @@ def tally_committees() -> dict[str, CommitteeTotals]:
             "self_funding": self_funding.get(committee_id, 0),
             "total_from_committees": from_committees.get(committee_id, 0),
             "total_to_candidates": to_candidates.get(committee_id, 0),
-            "ie_total": ie.get(committee_id, 0),
+            "ie_total": float(ie.get(committee_id, 0)),
         }
         for committee_id in (row["CMTE_ID"] for row in rows("cm"))
     }
@@ -821,6 +836,89 @@ def ie_candidate(row: Row) -> str | None:
     return named
 
 
+def ie_24_48_date(row: Row) -> date | None:
+    """A 24/48-hour row's date: exp_date, or dissem_dt where that is blank (DD-MON-YY)."""
+    filed = row["exp_date"] or row["dissem_dt"]
+    return datetime.strptime(filed, "%d-%b-%y").date() if filed else None
+
+
+@functools.cache
+def ie_24_48_added() -> tuple[tuple[Row, str], ...]:
+    """The 24/48-hour file's rows silver independent_expenditure adds, each with the rule that adds
+    it (project spec §6.3, NEU-2165): no row on a filing an amendment replaced, nor of a spender
+    `cm` lacks; a row dated after the period end of a spender with a track record (a counted `pas2`
+    independent expenditure, or a reported figure above $0); and the other rows of a spender with
+    no `pas2` independent expenditure that reports one above $0, when they add up to no more than
+    ten times it."""
+    ies = fec_fixture.read_rows("ie_24_48")
+    replaced = {r["prev_file_num"] for r in ies if r["prev_file_num"]}
+    kept = [r for r in ies if r["file_num"] not in replaced and r["spe_id"] in committee_ids()]
+    in_pas2 = {
+        r["CMTE_ID"]
+        for r in rows("pas2")
+        if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE) and r["MEMO_CD"] != "X"
+    }
+    summary = cycle_to_date(rows("committee_summary"))
+
+    def period_end(spender: str) -> date | None:
+        row = summary.get(spender)
+        return None if row is None or not row["CVG_END_DT"] else summary_day(row["CVG_END_DT"])
+
+    def figure_reported(spender: str) -> Decimal:
+        row = summary.get(spender)
+        return Decimal(row["INDT_EXP"]) if row is not None and row["INDT_EXP"] else Decimal(0)
+
+    def is_timely(row: Row) -> bool:
+        spender, end, day = row["spe_id"], period_end(row["spe_id"]), ie_24_48_date(row)
+        has_record = spender in in_pas2 or figure_reported(spender) > 0
+        return end is not None and day is not None and day > end and has_record
+
+    by_spender: dict[str, list[Row]] = defaultdict(list)
+    for row in kept:
+        if not is_timely(row) and row["spe_id"] not in in_pas2:
+            by_spender[row["spe_id"]].append(row)
+    screened = {
+        spender
+        for spender, spent in by_spender.items()
+        if 0 < figure_reported(spender)
+        and sum(Decimal(r["exp_amo"]) for r in spent) <= 10 * figure_reported(spender)
+    }
+    return tuple(
+        (row, "timeliness" if is_timely(row) else "by_spender")
+        for row in kept
+        if is_timely(row) or row["spe_id"] in screened
+    )
+
+
+def summary_day(value: str) -> date:
+    return datetime.strptime(value, "%Y%m%d").date()
+
+
+def ie_24_48_candidate(row: Row) -> str | None:
+    """The candidate a 24/48-hour row is for or against: the one it names, or the one that id is
+    an alias of, unless a committee was handed from them, and then the one it was handed to when
+    the row is dated on or after the handoff or undated. No correction applies: the list is keyed
+    by `pas2`'s SUB_ID."""
+    named = aliases().get(row["cand_id"], row["cand_id"])
+    day = ie_24_48_date(row)
+    for before, after, handoff in HANDOFFS.values():
+        if named == before and not (day is not None and day < handoff):
+            return after
+    return named or None
+
+
+def test_the_expected_24_48_hour_rows_are_the_rules_on_the_fixture() -> None:
+    added = defaultdict[str, list[str]](list)
+    amounts = defaultdict[str, Decimal](Decimal)
+    for row, rule in ie_24_48_added():
+        added[rule].append(f"{row['file_num']}:{row['tran_id']}")
+        amounts[rule] += Decimal(row["exp_amo"])
+    assert EXPECTED["ie_24_48"] == {
+        rule: {"amount": float(amounts[rule]), "source_record_ids": sorted(added[rule])}
+        for rule in ("by_spender", "timeliness")
+    }
+
+
 def test_the_tallys_ie_corrections_are_the_vendored_lists() -> None:
     text = package_files("fundlens.fec").joinpath("ie_candidate_corrections.csv").read_text()
     vendored = {
@@ -847,11 +945,22 @@ def tally_candidates() -> dict[str, CandidateTotals]:
         if is_self_funding(r) and (c := candidate_of(r["CMTE_ID"], r)) is not None
     )
 
-    def by_type(transaction_type: str) -> dict[str, int]:
-        return sum_by(
-            (c, amount(r))
-            for r in pas2
-            if r["TRANSACTION_TP"] == transaction_type and (c := ie_candidate(r)) is not None
+    def by_side(side: str) -> dict[str, Decimal]:
+        transaction_type = {"S": IE_SUPPORT, "O": IE_OPPOSE}[side]
+        return sum_dollars(
+            [
+                *(
+                    (c, Decimal(amount(r)))
+                    for r in pas2
+                    if r["TRANSACTION_TP"] == transaction_type
+                    and (c := ie_candidate(r)) is not None
+                ),
+                *(
+                    (c, Decimal(r["exp_amo"]))
+                    for r, _ in ie_24_48_added()
+                    if r["sup_opp"] == side and (c := ie_24_48_candidate(r)) is not None
+                ),
+            ]
         )
 
     from_committees = sum_by(
@@ -864,7 +973,7 @@ def tally_candidates() -> dict[str, CandidateTotals]:
         for r in committee_receipts()
         if giver(r) in jfcs and (c := candidate_of(r["CMTE_ID"], r)) is not None
     )
-    support, oppose = by_type(IE_SUPPORT), by_type(IE_OPPOSE)
+    support, oppose = by_side("S"), by_side("O")
     races, alias_ids = race_ids(), aliases()
     return {
         candidate_id: {
@@ -873,8 +982,8 @@ def tally_candidates() -> dict[str, CandidateTotals]:
             "total_committee": from_committees.get(candidate_id, 0),
             "total_jfc_transfers": jfc_transfers.get(candidate_id, 0),
             "self_funding": self_funding.get(candidate_id, 0),
-            "ie_support": support.get(candidate_id, 0),
-            "ie_oppose": oppose.get(candidate_id, 0),
+            "ie_support": float(support.get(candidate_id, 0)),
+            "ie_oppose": float(oppose.get(candidate_id, 0)),
         }
         for candidate_id in races
         if candidate_id not in alias_ids
@@ -890,8 +999,8 @@ def tally_races(candidates: dict[str, CandidateTotals]) -> dict[str, RaceTotals]
             "total_individual": sum(c["total_individual"] for c in members),
             "total_committee": sum(c["total_committee"] for c in members),
             "total_jfc_transfers": sum(c["total_jfc_transfers"] for c in members),
-            "ie_support": sum(c["ie_support"] for c in members),
-            "ie_oppose": sum(c["ie_oppose"] for c in members),
+            "ie_support": float(sum(Decimal(str(c["ie_support"])) for c in members)),
+            "ie_oppose": float(sum(Decimal(str(c["ie_oppose"])) for c in members)),
         }
     return races
 
@@ -1011,9 +1120,19 @@ def spending_candidate(row: Row) -> str | None:
 
 def spending_in_kind(row: Row) -> bool:
     """Spec §5.4's in-kind outlay: a reference to a TRAN_ID no row of its filing holds, or a purpose
-    saying IN-KIND."""
-    return bool(named_tran_id(row) and row["SUB_ID"] not in spending_parents()) or bool(
-        re.search(r"IN[- ]?KIND", row["PURPOSE"].upper())
+    naming a gift received: IN-KIND, but no in-kind contribution the committee made or pays ahead
+    for, or crypto received (NEU-2464)."""
+    purpose = row["PURPOSE"].upper()
+    gift = bool(re.search(r"IN[- ]?KIND", purpose)) and not re.search(
+        r"IN[- ]?KIND CONTRIBUTIONS? MADE|\bFOR\b.*\bIN[- ]?KIND CONTRIBUTIONS\b", purpose
+    )
+    crypto = re.search(
+        r"\b(BITCOINS?|ETHER(EUM)?|USDC|RIPPLE|CRYPTO\w*)\b.*\bRECEIVED\b"
+        r"|\bRECEIVED,? (NOT )?LIQUIDATED\b|\bNOT LIQUIDATED\b",
+        purpose,
+    )
+    return (
+        bool(named_tran_id(row) and row["SUB_ID"] not in spending_parents()) or gift or bool(crypto)
     )
 
 
@@ -1023,6 +1142,235 @@ def payee_is_person(row: Row) -> bool:
     return row["ENTITY_TP"] in ("IND", "CAN") or bool(
         not row["ENTITY_TP"] and row["NAME"] and not normalize.is_organization_name(row["NAME"])
     )
+
+
+# The outside-spending fixture files (NEU-2164; project spec §6). They plant the cases NEU-2165,
+# NEU-2166 and NEU-2167 test their silver models on; these tests hold the rows to what each case
+# needs, not to what silver makes of them.
+ONE_NATION, GUNPOWDER, NANTICOKE = "C90800206", "C90800209", "C00800210"
+STEAMFITTERS = "C70800208"
+# ie_24_48.csv's two spenders `cm` lacks: a hoax filing's web-form filer, and a real Form 5 filer.
+ABSENT_SPENDERS = frozenset({"C90899916", "C90899917"})
+# Case 11's amendment names a filing the file lacks.
+UNKNOWN_FILING = "1909999"
+# CommunicationCosts.csv's case 4: a row `pas2` lacks.
+UNPAIRED_COST = "4240200000000000090"
+# The one row each of CommunicationCosts.csv and pas2.csv repeats: case 6's higher SUB_ID.
+REPEATED_COST = "4240200000000000035"
+
+
+def reported_independent_expenditures(committee_id: str) -> Decimal:
+    (row,) = (r for r in rows("committee_summary") if r["CMTE_ID"] == committee_id)
+    return Decimal(row["INDT_EXP"])
+
+
+def test_the_24_48_hour_file_has_each_transaction_on_one_row_and_a_date() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    keys = [(r["file_num"], r["tran_id"]) for r in ies]
+
+    assert len(keys) == len(set(keys))
+    assert all(r["exp_date"] or r["dissem_dt"] for r in ies)
+    assert all(r["fec_election_yr"] == "2024" for r in ies)
+
+
+def test_the_24_48_hour_files_filings_are_in_no_other_fixture_file() -> None:
+    # A 24/48-hour report's file_num is its own filing, never a periodic report's (Q4f).
+    others = {r["FILE_NUM"] for file in ("pas2", "indiv", "oth", "oppexp") for r in rows(file)}
+
+    assert not {r["file_num"] for r in fec_fixture.read_rows("ie_24_48")} & others
+
+
+def test_every_amendment_in_the_24_48_hour_file_names_a_filing_of_its_own_spender() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    filings = {(r["spe_id"], r["file_num"]) for r in ies}
+    named = [(r["spe_id"], r["prev_file_num"]) for r in ies if r["prev_file_num"]]
+
+    assert [filing for filing in named if filing not in filings] == [(ONE_NATION, UNKNOWN_FILING)]
+
+
+def test_the_24_48_hour_file_names_two_spenders_cm_lacks() -> None:
+    spenders = {r["spe_id"] for r in fec_fixture.read_rows("ie_24_48")}
+
+    assert spenders - committee_ids() == ABSENT_SPENDERS
+
+
+def test_the_24_48_hour_files_screen_adds_one_form_5_filer_and_not_the_other() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    replaced = {r["prev_file_num"] for r in ies if r["prev_file_num"]}
+
+    def filed(spender: str) -> Decimal:
+        return sum(
+            (
+                Decimal(r["exp_amo"])
+                for r in ies
+                if r["spe_id"] == spender and r["file_num"] not in replaced
+            ),
+            Decimal(0),
+        )
+
+    assert 0 < filed(ONE_NATION) <= 10 * reported_independent_expenditures(ONE_NATION)
+    assert filed(GUNPOWDER) > 10 * reported_independent_expenditures(GUNPOWDER)
+    assert not any(r["CMTE_ID"] in (ONE_NATION, GUNPOWDER) for r in rows("pas2"))
+
+
+def test_a_timely_spenders_pas2_spending_is_all_by_its_period_end() -> None:
+    (summary,) = (r for r in rows("committee_summary") if r["CMTE_ID"] == NANTICOKE)
+    period_end = datetime.strptime(summary["CVG_END_DT"], "%Y%m%d").date()
+    spent = [
+        datetime.strptime(r["TRANSACTION_DT"], "%m%d%Y").date()
+        for r in rows("pas2")
+        if r["CMTE_ID"] == NANTICOKE and r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+    ]
+
+    assert period_end == date(2024, 9, 30)
+    assert len(spent) == 2
+    assert all(day <= period_end for day in spent)
+
+
+def test_one_electioneering_disbursement_has_more_rows_than_candidates() -> None:
+    by_disbursement: dict[tuple[str, ...], list[Row]] = defaultdict(list)
+    for r in fec_fixture.read_rows("ElectioneeringComm"):
+        disbursement = (
+            r["COMMITTEE_ID"],
+            r["SB_IMAGE_NUM"],
+            r["PAYEE_NAME"],
+            r["DISBURSEMENT_DATE"],
+            r["REPORTED_DISBURSEMENT_AMOUNT"],
+        )
+        by_disbursement[disbursement].append(r)
+
+    over = [rs for rs in by_disbursement.values() if len(rs) > int(rs[0]["NUMBER_OF_CANDIDATES"])]
+    assert len(over) == 1
+    (copies,) = over
+    assert {r["CANDIDATE_ID"] for r in copies} == {"H4MD05106"}
+    assert len({r["COMMUNICATION_DATE"] for r in copies}) == len(copies)
+
+
+def electioneering_candidate(row: Row) -> str | None:
+    """The candidate an electioneering row names (project spec §6.1): its CANDIDATE_ID, or the id
+    it is an alias of, when a candidate of the cycle; past the handoff, on a row dated on or after
+    it or undated, the candidate the committee was handed to."""
+    named = aliases().get(row["CANDIDATE_ID"], row["CANDIDATE_ID"])
+    if named not in race_ids():
+        return None
+    filed = row["DISBURSEMENT_DATE"]
+    day = datetime.strptime(filed, "%d-%b-%y").date() if filed else None
+    for before, after, handoff in HANDOFFS.values():
+        if named == before and not (day is not None and day < handoff):
+            return after
+    return named
+
+
+@functools.cache
+def electioneering_communications() -> Mapping[str, list[str | float | None]]:
+    """Silver electioneering_communication's rows by key, [committee_id, candidate_id, race_id,
+    amount]: every row of a spender in `cm` but a disbursement's rows beyond its candidate count, in
+    order of CANDIDATE_ID and then every column; each keyed by its place among its image number's
+    kept rows, in the same order (project spec §6.4)."""
+    by_disbursement: dict[tuple[str, ...], list[Row]] = defaultdict(list)
+    for r in fec_fixture.read_rows("ElectioneeringComm"):
+        if r["COMMITTEE_ID"] in committee_ids():
+            disbursement = (
+                r["COMMITTEE_ID"],
+                r["SB_IMAGE_NUM"],
+                r["PAYEE_NAME"],
+                r["DISBURSEMENT_DATE"],
+                r["REPORTED_DISBURSEMENT_AMOUNT"],
+            )
+            by_disbursement[disbursement].append(r)
+    columns = list(CATALOGUE["ElectioneeringComm"].columns)
+
+    def order(r: Row) -> tuple[tuple[bool, str], ...]:
+        # Blanks last, as DuckDB orders a NULL.
+        return tuple((not r[c], r[c]) for c in columns)
+
+    by_image: dict[str, list[Row]] = defaultdict(list)
+    for rs in by_disbursement.values():
+        for r in sorted(rs, key=order)[: int(rs[0]["NUMBER_OF_CANDIDATES"])]:
+            by_image[r["SB_IMAGE_NUM"]].append(r)
+    tallied: dict[str, list[str | float | None]] = {}
+    for image, rs in by_image.items():
+        for place, r in enumerate(sorted(rs, key=order), start=1):
+            candidate = electioneering_candidate(r)
+            tallied[f"{image}:{place}"] = [
+                r["COMMITTEE_ID"],
+                candidate,
+                None if candidate is None else race_ids()[candidate],
+                float(Decimal(r["CALCULATED_CANDIDATE_SHARE"])),
+            ]
+    return MappingProxyType(tallied)
+
+
+def test_the_expected_electioneering_rows_are_the_rules_on_the_fixture() -> None:
+    assert EXPECTED["electioneering_communications"] == electioneering_communications()
+
+
+def test_each_communication_cost_is_a_pas2_row_under_its_sub_id_but_one() -> None:
+    costs = fec_fixture.read_rows("CommunicationCosts")
+    sub_ids = [r["SUB_ID"] for r in costs]
+    pas2 = {r["SUB_ID"]: r for r in fec_fixture.read_rows("pas2")}
+
+    assert len(sub_ids) == len(set(sub_ids))
+    assert [s for s in sub_ids if s not in pas2] == [UNPAIRED_COST]
+    for cost in costs:
+        if cost["SUB_ID"] == UNPAIRED_COST:
+            continue
+        twin = pas2[cost["SUB_ID"]]
+        assert twin["CMTE_ID"] == cost["CMTE_ID"] == STEAMFITTERS
+        assert twin["TRANSACTION_TP"] == cost["TRANSACTION_TP"] in ("24F", "24N")
+        assert twin["CAND_ID"] == cost["CAND_ID"]
+        assert twin["FILE_NUM"] == cost["FILE_NUM"]
+        assert twin["TRAN_ID"] == cost["TRAN_ID"]
+        # FEC's pas2 drops a communication cost's cents.
+        assert Decimal(twin["TRANSACTION_AMT"]) == int(Decimal(cost["TRANSACTION_AMT"]))
+    paired = set(sub_ids)
+    unpaired = [
+        r for r in rows("pas2") if r["CMTE_ID"] == STEAMFITTERS and r["SUB_ID"] not in paired
+    ]
+    assert [r["CAND_ID"] for r in unpaired] == [""]
+
+
+def test_communication_costs_and_pas2_each_repeat_the_same_one_row() -> None:
+    assert fec_repeats("CommunicationCosts") == {REPEATED_COST}
+    assert REPEATED_COST in fec_repeats("pas2")
+
+
+def pas2_kind(transaction_types: tuple[str, ...]) -> dict[str, tuple[Row, str | None, str | None]]:
+    """`pas2`'s counted rows of `transaction_types` by SUB_ID, each with the candidate it names
+    (when one of the cycle) and that candidate's race, as silver attaches them."""
+    races = race_ids()
+    kept: dict[str, tuple[Row, str | None, str | None]] = {}
+    for r in rows("pas2"):
+        if r["TRANSACTION_TP"] in transaction_types and r["MEMO_CD"] != "X":
+            candidate = ie_candidate(r)
+            candidate = candidate if candidate in races else None
+            kept[r["SUB_ID"]] = (r, candidate, races[candidate] if candidate else None)
+    return kept
+
+
+def test_the_expected_communication_costs_are_pas2s_with_the_csvs_type_and_class() -> None:
+    # Counted from pas2 alone (project spec §6.2, NEU-2167): its amount and side by type; the CSV
+    # gives the type and class of the row under the same SUB_ID, and adds no row of its own.
+    described = {r["SUB_ID"]: r for r in rows("CommunicationCosts")}
+    assert EXPECTED["communication_costs"] == {
+        sub_id: [
+            r["CMTE_ID"],
+            candidate,
+            race,
+            "O" if r["TRANSACTION_TP"] == "24N" else "S",
+            amount(r),
+            (cost := described.get(sub_id, {})).get("COMMUNICATION_TP") or None,
+            cost.get("COMMUNICATION_CLASS") or None,
+        ]
+        for sub_id, (r, candidate, race) in sorted(pas2_kind(("24F", "24N")).items())
+    }
+
+
+def test_the_expected_party_coordinated_expenditures_are_pas2s_24cs() -> None:
+    assert EXPECTED["party_coordinated"] == {
+        sub_id: [r["CMTE_ID"], candidate, race, "S", amount(r)]
+        for sub_id, (r, candidate, race) in sorted(pas2_kind(("24C",)).items())
+    }
 
 
 def test_the_expected_operating_expenditures_match_the_fixture() -> None:
@@ -1756,7 +2104,8 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "candidate": len(rows("cn")),
         "candidate_committee_link": len(rows("ccl")),
         "contribution": len(contributions),
-        "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2),
+        "independent_expenditure": sum(r["TRANSACTION_TP"] != COMMITTEE_CONTRIBUTION for r in pas2)
+        + len(ie_24_48_added()),
         "committee_transfer": len(committee_receipts())
         + len(name_matched_gifts())
         + len(committee_contributions()),
@@ -1766,6 +2115,7 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "reported_total": len(reported_totals(CYCLE)),
         "candidate_reported_total": len(candidate_reported_totals(CYCLE)),
         "operating_expenditure": len(operating_expenditures()),
+        "electioneering_communication": len(electioneering_communications()),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}
@@ -1940,19 +2290,30 @@ def test_the_expected_race_committees_are_the_givers_and_the_spenders_on_its_can
         for (from_id, candidate), net in gift_pairs().items()
         if net >= 0 and (race := races.get(candidate)) is not None
     )
-    spent = sum_by(
-        ((race, r["CMTE_ID"]), amount(r))
-        for r in rows("pas2")
-        if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
-        and (race := races.get(ie_candidate(r) or "")) is not None
+    # A 24/48-hour row with no side is in no race's figure, so in no row here (NEU-2165).
+    spent = sum_dollars(
+        [
+            *(
+                ((race, r["CMTE_ID"]), Decimal(amount(r)))
+                for r in rows("pas2")
+                if r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+                and (race := races.get(ie_candidate(r) or "")) is not None
+            ),
+            *(
+                ((race, r["spe_id"]), Decimal(r["exp_amo"]))
+                for r, _ in ie_24_48_added()
+                if r["sup_opp"] in ("S", "O")
+                and (race := races.get(ie_24_48_candidate(r) or "")) is not None
+            ),
+        ]
     )
-    entries = [(race, "contribution", c, net) for (race, c), net in given.items()] + [
+    entries = [(race, "contribution", c, Decimal(net)) for (race, c), net in given.items()] + [
         (race, "ie", c, net) for (race, c), net in spent.items() if net >= 0
     ]
     # Ranked by amount, then committee id, then kind.
-    lists: dict[str, list[list[str | int]]] = defaultdict(list)
+    lists: dict[str, list[list[str | float]]] = defaultdict(list)
     for race, kind, committee_id, net in sorted(entries, key=lambda e: (-e[3], e[2], e[1])):
-        lists[race].append([kind, committee_id, net])
+        lists[race].append([kind, committee_id, float(net)])
     assert EXPECTED["race_top_committees"] == lists
 
 

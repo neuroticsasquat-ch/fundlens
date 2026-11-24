@@ -1260,16 +1260,30 @@
             "type": "string"
           },
           "support_oppose": {
-            "enum": [
-              "S",
-              "O"
+            "anyOf": [
+              {
+                "enum": [
+                  "S",
+                  "O"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Support Oppose",
-            "type": "string"
+            "title": "Support Oppose"
           },
           "transaction_type": {
-            "title": "Transaction Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Type"
           }
         },
         "required": [

@@ -11,7 +11,9 @@
 -- ActBlue and WinRed are in no list. An ie row is a spender's independent expenditures attached
 -- to the race (24E and 24A alike, silver's kind 'ie'), net of corrections, a spender netting
 -- below 0 left out, so the ie rows add up to the race's ie_support plus ie_oppose but for such a
--- spender. A committee both giving to a race's candidates and spending on it has a row of each.
+-- spender. A 24/48-hour row with no side (NEU-2165) is in neither of those, nor here
+-- (every-FEC-dollar spec §6.5). A committee both giving to a race's candidates and spending on it
+-- has a row of each.
 CREATE TABLE race_top_committee AS
 WITH pair AS (
     SELECT cycle, from_committee_id, candidate_id, sum(amount) AS amount
@@ -35,7 +37,7 @@ given AS (
 spent AS (
     SELECT race_id, cycle, committee_id, sum(amount) AS amount, 'ie' AS kind
     FROM silver.independent_expenditure
-    WHERE kind = 'ie' AND race_id IS NOT NULL
+    WHERE kind = 'ie' AND race_id IS NOT NULL AND support_oppose IN ('S', 'O')
     GROUP BY race_id, cycle, committee_id
     HAVING sum(amount) >= 0
 ),
