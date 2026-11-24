@@ -1035,6 +1035,138 @@ def payee_is_person(row: Row) -> bool:
     )
 
 
+# The outside-spending fixture files (NEU-2164; project spec §6). They plant the cases NEU-2165,
+# NEU-2166 and NEU-2167 test their silver models on; these tests hold the rows to what each case
+# needs, not to what silver makes of them.
+ONE_NATION, GUNPOWDER, NANTICOKE = "C90800206", "C90800209", "C00800210"
+STEAMFITTERS = "C70800208"
+# ie_24_48.csv's two spenders `cm` lacks: a hoax filing's web-form filer, and a real Form 5 filer.
+ABSENT_SPENDERS = frozenset({"C90899916", "C90899917"})
+# Case 11's amendment names a filing the file lacks.
+UNKNOWN_FILING = "1909999"
+# CommunicationCosts.csv's case 4: a row `pas2` lacks.
+UNPAIRED_COST = "4240200000000000090"
+# The one row each of CommunicationCosts.csv and pas2.csv repeats: case 6's higher SUB_ID.
+REPEATED_COST = "4240200000000000035"
+
+
+def reported_independent_expenditures(committee_id: str) -> Decimal:
+    (row,) = (r for r in rows("committee_summary") if r["CMTE_ID"] == committee_id)
+    return Decimal(row["INDT_EXP"])
+
+
+def test_the_24_48_hour_file_has_each_transaction_on_one_row_and_a_date() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    keys = [(r["file_num"], r["tran_id"]) for r in ies]
+
+    assert len(keys) == len(set(keys))
+    assert all(r["exp_date"] or r["dissem_dt"] for r in ies)
+    assert all(r["fec_election_yr"] == "2024" for r in ies)
+
+
+def test_the_24_48_hour_files_filings_are_in_no_other_fixture_file() -> None:
+    # A 24/48-hour report's file_num is its own filing, never a periodic report's (Q4f).
+    others = {r["FILE_NUM"] for file in ("pas2", "indiv", "oth", "oppexp") for r in rows(file)}
+
+    assert not {r["file_num"] for r in fec_fixture.read_rows("ie_24_48")} & others
+
+
+def test_every_amendment_in_the_24_48_hour_file_names_a_filing_of_its_own_spender() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    filings = {(r["spe_id"], r["file_num"]) for r in ies}
+    named = [(r["spe_id"], r["prev_file_num"]) for r in ies if r["prev_file_num"]]
+
+    assert [filing for filing in named if filing not in filings] == [(ONE_NATION, UNKNOWN_FILING)]
+
+
+def test_the_24_48_hour_file_names_two_spenders_cm_lacks() -> None:
+    spenders = {r["spe_id"] for r in fec_fixture.read_rows("ie_24_48")}
+
+    assert spenders - committee_ids() == ABSENT_SPENDERS
+
+
+def test_the_24_48_hour_files_screen_adds_one_form_5_filer_and_not_the_other() -> None:
+    ies = fec_fixture.read_rows("ie_24_48")
+    replaced = {r["prev_file_num"] for r in ies if r["prev_file_num"]}
+
+    def filed(spender: str) -> Decimal:
+        return sum(
+            (
+                Decimal(r["exp_amo"])
+                for r in ies
+                if r["spe_id"] == spender and r["file_num"] not in replaced
+            ),
+            Decimal(0),
+        )
+
+    assert 0 < filed(ONE_NATION) <= 10 * reported_independent_expenditures(ONE_NATION)
+    assert filed(GUNPOWDER) > 10 * reported_independent_expenditures(GUNPOWDER)
+    assert not any(r["CMTE_ID"] in (ONE_NATION, GUNPOWDER) for r in rows("pas2"))
+
+
+def test_a_timely_spenders_pas2_spending_is_all_by_its_period_end() -> None:
+    (summary,) = (r for r in rows("committee_summary") if r["CMTE_ID"] == NANTICOKE)
+    period_end = datetime.strptime(summary["CVG_END_DT"], "%Y%m%d").date()
+    spent = [
+        datetime.strptime(r["TRANSACTION_DT"], "%m%d%Y").date()
+        for r in rows("pas2")
+        if r["CMTE_ID"] == NANTICOKE and r["TRANSACTION_TP"] in (IE_SUPPORT, IE_OPPOSE)
+    ]
+
+    assert period_end == date(2024, 9, 30)
+    assert len(spent) == 2
+    assert all(day <= period_end for day in spent)
+
+
+def test_one_electioneering_disbursement_has_more_rows_than_candidates() -> None:
+    by_disbursement: dict[tuple[str, ...], list[Row]] = defaultdict(list)
+    for r in fec_fixture.read_rows("ElectioneeringComm"):
+        disbursement = (
+            r["COMMITTEE_ID"],
+            r["SB_IMAGE_NUM"],
+            r["PAYEE_NAME"],
+            r["DISBURSEMENT_DATE"],
+            r["REPORTED_DISBURSEMENT_AMOUNT"],
+        )
+        by_disbursement[disbursement].append(r)
+
+    over = [rs for rs in by_disbursement.values() if len(rs) > int(rs[0]["NUMBER_OF_CANDIDATES"])]
+    assert len(over) == 1
+    (copies,) = over
+    assert {r["CANDIDATE_ID"] for r in copies} == {"H4MD05106"}
+    assert len({r["COMMUNICATION_DATE"] for r in copies}) == len(copies)
+
+
+def test_each_communication_cost_is_a_pas2_row_under_its_sub_id_but_one() -> None:
+    costs = fec_fixture.read_rows("CommunicationCosts")
+    sub_ids = [r["SUB_ID"] for r in costs]
+    pas2 = {r["SUB_ID"]: r for r in fec_fixture.read_rows("pas2")}
+
+    assert len(sub_ids) == len(set(sub_ids))
+    assert [s for s in sub_ids if s not in pas2] == [UNPAIRED_COST]
+    for cost in costs:
+        if cost["SUB_ID"] == UNPAIRED_COST:
+            continue
+        twin = pas2[cost["SUB_ID"]]
+        assert twin["CMTE_ID"] == cost["CMTE_ID"] == STEAMFITTERS
+        assert twin["TRANSACTION_TP"] == cost["TRANSACTION_TP"] in ("24F", "24N")
+        assert twin["CAND_ID"] == cost["CAND_ID"]
+        assert twin["FILE_NUM"] == cost["FILE_NUM"]
+        assert twin["TRAN_ID"] == cost["TRAN_ID"]
+        # FEC's pas2 drops a communication cost's cents.
+        assert Decimal(twin["TRANSACTION_AMT"]) == int(Decimal(cost["TRANSACTION_AMT"]))
+    paired = set(sub_ids)
+    unpaired = [
+        r for r in rows("pas2") if r["CMTE_ID"] == STEAMFITTERS and r["SUB_ID"] not in paired
+    ]
+    assert [r["CAND_ID"] for r in unpaired] == [""]
+
+
+def test_communication_costs_and_pas2_each_repeat_the_same_one_row() -> None:
+    assert fec_repeats("CommunicationCosts") == {REPEATED_COST}
+    assert REPEATED_COST in fec_repeats("pas2")
+
+
 def test_the_expected_operating_expenditures_match_the_fixture() -> None:
     expected = EXPECTED["operating_expenditures"]
     kept = operating_expenditures()

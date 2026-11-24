@@ -83,32 +83,39 @@
 
 cycle: 2024
 
-# Data rows per bulk file, comment lines and header excluded.
+# Data rows per bulk file, comment lines and header excluded. The outside-spending files (NEU-2164)
+# are counted here and nowhere else: their rows' cases are in each file's comments, and what silver
+# makes of them is NEU-2165's (ie_24_48), NEU-2166's (ElectioneeringComm) and NEU-2167's
+# (CommunicationCosts) to record.
 rows:
-  cm: 23
+  cm: 26
   cn: 15
   ccl: 15
   indiv: 406
-  pas2: 30
+  pas2: 38
   oth: 32
   weball: 12
-  webk: 13
-  committee_summary: 27
+  webk: 14
+  committee_summary: 30
   oppexp: 55
+  ie_24_48: 38
+  ElectioneeringComm: 16
+  CommunicationCosts: 6
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
-# 24K committee contributions (24A/24E, and the 24C kept with its kind). committee_transfer is
+# 24K committee contributions and the row FEC's file repeats (24A/24E, and the 24C, 24F and 24N
+# kept with their kind). committee_transfer is
 # every `oth` receipt from a committee (recorded by the receiving committee, so filed by one in
 # `cm`, NEU-2281), every `indiv` row a committee's by the name rule (`name_matched` below), plus
 # every `pas2` 24K row not filed by a conduit (a disbursement, recorded by the giver): the one gift
 # on both sides, each side its own row. organization_receipt is one row per
 # `organization_receipts` receipt below.
 silver:
-  committee: 23
+  committee: 26
   candidate: 15
   candidate_committee_link: 15
   contribution: 347
-  independent_expenditure: 15
+  independent_expenditure: 22
   committee_transfer: 32
   organization_receipt: 19
   # One row per `attributions` line below.
@@ -118,7 +125,7 @@ silver:
   # several; fewer than the contributions.
   contributor: 133
   # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
-  reported_total: 23
+  reported_total: 26
   candidate_reported_total: 0
   # `operating_expenditures` below: every `oppexp` row but its three dropped ones.
   operating_expenditure: 52
@@ -635,6 +642,7 @@ race_top_committees:
     - [contribution, C00800202, 7500]
   2024-S-MD-00:
     - [ie, C00800201, 230000]
+    - [ie, C00800210, 100000]
     - [ie, C00800203, 45000]
     - [contribution, C00800202, 6000]
     - [contribution, C00800203, 5000]
@@ -666,8 +674,8 @@ races:
     total_individual: 93975
     total_committee: 11000
     total_jfc_transfers: 19500
-    ie_support: 150000
-    ie_oppose: 125000
+    ie_support: 190000
+    ie_oppose: 185000
   2024-H-MD-05:
     candidate_count: 4
     total_individual: 68050
@@ -741,7 +749,7 @@ candidates:
     total_committee: 5000
     total_jfc_transfers: 19500
     self_funding: 5000
-    ie_support: 150000
+    ie_support: 190000
     ie_oppose: 45000
   S4MD00104: # WHITLOCK: the self-funder: 250000 of his own, 1750000 lent, 100000 repaid (NEU-2071)
     race_id: 2024-S-MD-00
@@ -750,7 +758,7 @@ candidates:
     total_jfc_transfers: 0
     self_funding: 1900000
     ie_support: 0
-    ie_oppose: 80000
+    ie_oppose: 140000
   S4MD00105: # PELL
     race_id: 2024-S-MD-00
     total_individual: 3250
@@ -947,6 +955,24 @@ committees:
     total_from_committees: 0
     total_to_candidates: 0
     ie_total: 0
+  C70800208: # STEAMFITTERS LOCAL 486: a Form 7 filer, its communication costs in no total
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C90800209: # GUNPOWDER VALUES PROJECT: a Form 5 filer with no pas2 row
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
+  C00800210: # NANTICOKE ACTION: a super PAC whose last report ends 2024-09-30
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 100000
 
 # The donors behind the planted hard cases (spec §6), each with every one of their counted
 # contributions by SUB_ID and their label in tests/fixtures/dime/ (`bonica.cid`).
@@ -1188,6 +1214,9 @@ reported_totals:
       C00800205: [committee_summary, 2023-01-01, 2024-12-31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
       C90800206: [committee_summary+webk, 2023-01-01, 2024-12-31, 35000, 30000, 0, 5000, 0, null, null, null, 35000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 30000, 0, null, null]
       C90800207: [committee_summary, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+      C70800208: [committee_summary, 2023-01-01, 2024-12-31, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+      C90800209: [committee_summary, 2023-01-01, 2024-12-31, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 1000, null, null, null]
+      C00800210: [committee_summary, 2023-01-01, 2024-09-30, 120000, 100000, 0, 20000, 0, 0, 0, 120000, 120000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 100000, 0, 0, null]
     1998:
       C00298003: [webk, null, 1998-12-31, 6000, 2500, 4000, 7500, 0, null, null, null, 6000, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null]
       C00800203: [webk, null, 1998-12-31, 3500, 3000, 2000, 2500, 0, null, null, null, 3500, 0, null, 0, null, null, 0, null, 0, 0, 0, 0, 1500, null, null]
@@ -1237,6 +1266,9 @@ gold_reported:
     C00800205: [0, 0, 0, null]
     C90800206: [0, null, 5000, null]
     C90800207: [0, null, null, null]
+    C70800208: [0, null, null, null]
+    C90800209: [0, null, null, null]
+    C00800210: [0, 0, 20000, null]
   # [reported_receipts, reported_cash_on_hand_end, itemized_total, coverage,
   #  reported_includes_converted_committee]
   candidates:

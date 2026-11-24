@@ -52,7 +52,7 @@ Bulk files are catalogued only in `fundlens.fec.files`: a file outside the file 
 | `webk` | PAC summary | zip | `<yyyy>/webk<yy>.zip` | 1996 | M1 | NEU-2142 |
 | `committee_summary` | Committee summary | csv | `<yyyy>/committee_summary_<yyyy>.csv` | 2008 | M1 | NEU-2142 |
 | `oppexp` | Operating expenditures | zip | `<yyyy>/oppexp<yy>.zip` | 2004 | M2 | NEU-2151 |
-| `independent_expenditure` | Independent expenditures (24- and 48-Hour Reports) | csv | `<yyyy>/independent_expenditure_<yyyy>.csv` | 2010 | M3 | NEU-2164 |
+| `ie_24_48` | Independent expenditures (24- and 48-Hour Reports) | csv | `<yyyy>/independent_expenditure_<yyyy>.csv` | 2010 | M3 | NEU-2164 |
 | `ElectioneeringComm` | Electioneering communications | csv | `<yyyy>/ElectioneeringComm_<yyyy>.csv` | 2010 | M3 | NEU-2164 |
 | `CommunicationCosts` | Communication costs | csv | `<yyyy>/CommunicationCosts_<yyyy>.csv` | 2010 | M3 | NEU-2164 |
 | `leadership` | Leadership PACs and sponsors | csv | `data.fec.gov/leadership<yyyy>.csv` | 2010 | M4 | NEU-2174 |
@@ -62,6 +62,8 @@ Bulk files are catalogued only in `fundlens.fec.files`: a file outside the file 
 - The page links every file above for each cycle from its first to 2026, with no gap.
 - `weball` and `webk` have no header file on FEC's site: the page links one for `oppexp` and for each of v1's six, and `data_dictionaries/<file>_header_file.csv` was a 404 for both on 2026-11-05 (`docs/measurements/summary-files-2024.md`, its header-sources row). Their column lists are vendored from FEC's file descriptions (NEU-2142).
 - Every `oppexp` line, in every cycle, ends with a `|` after its last column, so it splits into 26 fields, the last empty: the entry is catalogued with `trailing_delimiter`, and `register_bulk` reads such a line under its 25 columns unchanged. The zip's one member is `oppexp.txt` in every cycle, and its dates are `MM/DD/YYYY`. Every cycle 2004 to 2026 was read through `register_bulk` on 2026-11-21 with no cast failing (`docs/specs/NEU-2151-oppexp-catalogue-extract-fixture.md` §5).
+- The 24/48-hour file is catalogued as `ie_24_48`, not under FEC's name: a file's DuckDB view is named for its entry, and silver's `independent_expenditure` table would be refused beside a view of that name in every cycle's transform (DuckDB 2.0.0, tried 2026-11-24). Its `url_pattern` still writes FEC's name. `ie_24_48` is its view, its bronze folder, its `--file`, its `gold.meta.source_dates` key and its rows' `source_file` (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §1.1).
+- Every cycle of the three outside-spending files, 2010 to 2026, was read through `register_bulk` on 2026-11-24 with no cast failing (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §5). The 24/48-hour file's header row is lower case. Dates are `DD-MON-YY` in `ie_24_48` and `ElectioneeringComm`, `YYYYMMDD` in `CommunicationCosts`. `CommunicationCosts` carries the itemized files' transaction key, so its view reads a repeated row once.
 - `ElectioneeringComm` starts in 2010, not 2008 as the Linear tickets said until this spec was written: the page links nine files, 2010 to 2026, and `2008/ElectioneeringComm_2008.csv` was a 404 on 2026-11-18.
 - `leadership` is linked for even years only. Whether a file exists for an odd year, and which cycles' rows each of the two undated files holds, is NEU-2173's to measure. This section states only what the page shows.
 
@@ -436,7 +438,7 @@ The rules below were written by NEU-2163 (`docs/specs/NEU-2163-outside-spending-
 | `date` | `TRANSACTION_DT` | `exp_date`, or `dissem_dt` where it is blank | NEU-2165 |
 | `transaction_type` | as filed | NULL: the file has none | NEU-2165 |
 | `kind` | by type, as v1 | `ie` | NEU-2165 |
-| `source_file` | `pas2` | `independent_expenditure` | NEU-2165 |
+| `source_file` | `pas2` | `ie_24_48` | NEU-2165 |
 | `payee_name` | `NAME` | `pay` | NEU-2165 |
 | `purpose` | NULL: `pas2` has none | `pur` | NEU-2165 |
 | `dissemination_date` | NULL | `dissem_dt` | NEU-2165 |
@@ -461,7 +463,7 @@ NEU-2167 adds `silver_independent_expenditure_communication.sql`: `communication
 
 ### 6.3 What the 24/48-hour file adds
 
-The **24/48-hour file** (`CONTEXT.md`; `independent_expenditure` in the file catalogue, 2010–) holds spenders' 24- and 48-hour reports of independent expenditures: estimates, filed within a day or two, which a periodic report later restates in `pas2` under the same `TRAN_ID` mostly, and under another id, amount or candidate id often enough (Q5). It also holds **hoax filings** (`CONTEXT.md`): sixteen rows of $100M or more hold $44.9B of 2024's $49.7B (Q1j). So the file is never a source of its own. Silver reads it in this order:
+The **24/48-hour file** (`CONTEXT.md`; `ie_24_48` in the file catalogue, 2010–) holds spenders' 24- and 48-hour reports of independent expenditures: estimates, filed within a day or two, which a periodic report later restates in `pas2` under the same `TRAN_ID` mostly, and under another id, amount or candidate id often enough (Q5). It also holds **hoax filings** (`CONTEXT.md`): sixteen rows of $100M or more hold $44.9B of 2024's $49.7B (Q1j). So the file is never a source of its own. Silver reads it in this order:
 
 1. **Amended filings are dropped: the filing chain** (Decision 2). A row whose `file_num` is named by another row's `prev_file_num` is not read. A chain of amendments needs no walking: each filing but the last is named by its successor. 2024: 61,426 rows kept, 12,023 dropped ($1,340,305,331) (Q3).
    - `prev_file_num` names a filing of the same spender in the file for 1,169 of 1,186 amendments; 17 ($2,539,495) name one the file lacks, and two `A1` filings name none. All are kept. One original is named by two amendments, both kept ($26,315 counted twice) (Q3).
@@ -488,7 +490,7 @@ The **24/48-hour file** (`CONTEXT.md`; `independent_expenditure` in the file cat
    - **What it costs.** Where the file holds more than `pas2` for such a spender, the difference is not added: the NRCC's $14.1M of late lines in 2024 (Q5r).
    - The ladder, its fourth rung included, is the measurement's evidence that the rows are the same. No pipeline rule matches a row to a row.
 
-**2024 on this contract.** Rows with `source_file = 'independent_expenditure'` should come to the 14 spenders' $1,001,297, plus whatever timeliness adds at other spenders, at most $28,732. NEU-2165's definition of done is within 1% of $1,001,297 for the by-spender rows, with each timeliness row listed.
+**2024 on this contract.** Rows with `source_file = 'ie_24_48'` should come to the 14 spenders' $1,001,297, plus whatever timeliness adds at other spenders, at most $28,732. NEU-2165's definition of done is within 1% of $1,001,297 for the by-spender rows, with each timeliness row listed.
 
 **Every transform logs** the rows and dollars added by each of the two rules and the largest single added row with its spender, so a hoax filing that passes is seen in the run's log.
 
@@ -563,12 +565,12 @@ Adds to v1 §7.1. Every amount is net: rows' amounts added as filed. Built by NE
 | `electioneering_communication` | yes | yes; blank candidates from 2016; splits off by a cent in 2010, 2012, 2018 | an empty partition (§2) |
 | `reported_total` for the screen | yes | yes | — |
 
-No cycle breaks a 2024 rule as written (Q12; Decision 9). The screen and the track record apply in every cycle, not from 2020 alone: one rule, and a hoax filing can be filed for any cycle. The chain drops more in 2022 ($13.3B, hoax filings amended by hoax filings) and 2020 ($1.21B) (Q12d). Every CSV header equals 2024's in every cycle, and only 2016 and 2018 have cells that fail a cast, 12 and 1 (Q12a, Q12b): NEU-2164 reads them as NULL. 2026's coordinated expenditures are four times 2024's ($351,217,482) with the cycle not over (Q12h). **Asserted, not measured:** that (`file_num`, `tran_id`) is unique in every cycle's 24/48-hour file, as it is in 2024's; the key check fails a build where it is not, and NEU-2180's backfill finds out.
+No cycle breaks a 2024 rule as written (Q12; Decision 9). The screen and the track record apply in every cycle, not from 2020 alone: one rule, and a hoax filing can be filed for any cycle. The chain drops more in 2022 ($13.3B, hoax filings amended by hoax filings) and 2020 ($1.21B) (Q12d). Every CSV header equals 2024's in every cycle, and no cell of any cycle fails a cast under the catalogue's types: Q12b's 12 and 1 in 2016 and 2018 are blank `exp_amo` cells, NULL as any blank is (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §5). 2026's coordinated expenditures are four times 2024's ($351,217,482) with the cycle not over (Q12h). (`file_num`, `tran_id`) is unique in every cycle's 24/48-hour file, 2010 to 2026, as read on 2026-11-24 (the same spec's §5); the key check still fails a build where it is not.
 
 ### 6.7 Dataset and older builds
 
 - `electioneering_communication` joins the public dataset (§8): NEU-2166 adds it to `DATASET_TABLES`, `columns.yaml`, the schema, the changelog, the README and `paths.BACKFILL_PENDING` in the PR that builds it. Its README entry says: sum `amount`, never `disbursement_amount`; a row has no side; a restated report may be counted twice (§6.4); and outside spending is never to be added to `contribution` amounts.
-- `independent_expenditure`'s six columns are additive changes, each with a `CHANGELOG.md` entry and a `columns.yaml` description by the ticket that adds it (NEU-2165, NEU-2167). Its table description stops saying every row is from `pas2`. Its README entry says: tell the kinds apart by `kind`; a row with `source_file = 'independent_expenditure'` is a 24- or 48-hour report's estimate, and leaves the table when a periodic report restates it, so its `source_record_id` is not stable from one snapshot to the next.
+- `independent_expenditure`'s six columns are additive changes, each with a `CHANGELOG.md` entry and a `columns.yaml` description by the ticket that adds it (NEU-2165, NEU-2167). Its table description stops saying every row is from `pas2`. Its README entry says: tell the kinds apart by `kind`; a row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and leaves the table when a periodic report restates it, so its `source_record_id` is not stable from one snapshot to the next.
 - The table is in every build, so it is no backfill-pending table. A cycle built before a column existed has no such column and reads it as NULL, as `organization_receipt.is_returned_cost` was handled (changelog, 2026-11-20). Gold reads none of the six. NEU-2180's backfill rebuilds every cycle with them.
 
 ## 7. Leadership PACs and lobbyist bundling (M4)

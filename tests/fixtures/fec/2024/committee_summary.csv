@@ -57,4 +57,12 @@ https://www.fec.gov/data/committee/C00703975/?cycle=2024,C00703975,HARRIS FOR PR
 https://www.fec.gov/data/committee/C00800205/?cycle=2024,C00800205,RESTORATION PAC,O,U,Q,1500 WACKER DR,,CHICAGO,IL,60606,"DUNMORE, LEWIS",,2024,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20230101,0,20241231,0,0,0,0,,0,0,0,0,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,,,0,,,,0,,,,,,,,,,,,,,,,,,,,,,,,
 https://www.fec.gov/data/committee/C90800206/?cycle=2024,C90800206,ONE NATION,I,U,Q,1600 KING ST,,ALEXANDRIA,VA,22314,"SALTER, RUTH",,2024,,,,,,,,,,,,,,,,,,,20230101,,20241231,,,,,,,,,,,,,,,,,,,30000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 https://www.fec.gov/data/committee/C90800207/?cycle=2024,C90800207,RESTORATION PAC,E,U,Q,1500 WACKER DR,,CHICAGO,IL,60606,"DUNMORE, LEWIS",,2024,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+# Three committees of the outside-spending fixture (NEU-2164): STEAMFITTERS LOCAL 486, a Form 7
+# filer, carries only its communication costs, the sum of its pas2.csv rows read once; GUNPOWDER
+# VALUES PROJECT, a Form 5 filer, only its $1,000 of independent expenditures; NANTICOKE ACTION's
+# last report ends 2024-09-30, its INDT_EXP its two pas2.csv rows. Neither Form 5 or Form 7 filer
+# is in webk, so neither takes a figure from it.
+https://www.fec.gov/data/committee/C70800208/?cycle=2024,C70800208,STEAMFITTERS LOCAL 486,C,U,Q,1700 HOLABIRD AVE,,BALTIMORE,MD,21224,"KOWALCZYK, DENNIS",,2024,,,,,,,,,,,,,,,,,,,20230101,,20241231,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,7936,,,L
+https://www.fec.gov/data/committee/C90800209/?cycle=2024,C90800209,GUNPOWDER VALUES PROJECT,I,U,Q,1800 HARFORD RD,,BALTIMORE,MD,21214,"TREADWELL, MAUREEN",,2024,,,,,,,,,,,,,,,,,,,20230101,,20241231,,,,,,,,,,,,,,,,,,,1000,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+https://www.fec.gov/data/committee/C00800210/?cycle=2024,C00800210,NANTICOKE ACTION,O,U,Q,1900 SALISBURY BLVD,,SALISBURY,MD,21801,"PRITCHETT, OLIVIA",,2024,120000,0,0,120000,0,0,0,120000,0,0,0,0,0,0,100000,120000,0,0,20230101,20000,20240930,0,0,0,120000,,0,0,0,0,,,0,120000,0,0,0,0,0,100000,0,0,0,0,0,0,100000,,,0,,,,0,,,,,,,,,,,,,,,,,,,,,,,,
 https://www.fec.gov/data/committee/C00899998/?cycle=2024,C00899998,COMMITTEE NOT IN CM,Q,U,T,,,,,,,,2024,,,,,,,,0,,,,,,,0,,,,20230101,,20230331,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

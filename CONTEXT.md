@@ -274,7 +274,7 @@ A regulator bulk file published once for every cycle, not once per cycle. Bronze
 _Avoid_: global file, cycle-less file, shared file
 
 **24/48-hour file**:
-The regulator's file of 24- and 48-hour reports of independent expenditures: what a spender reports within a day or two of spending, often as an estimate, and restates later in a periodic report. It keeps a report beside the amendment that replaced it, and it holds hoax filings.
+The regulator's file of 24- and 48-hour reports of independent expenditures: what a spender reports within a day or two of spending, often as an estimate, and restates later in a periodic report. It keeps a report beside the amendment that replaced it, and it holds hoax filings. The file catalogue names it `ie_24_48`: the regulator's own name for it, `independent_expenditure`, is the table's.
 _Avoid_: the independent expenditure file (the table of that name holds more than this file gives it), 24-hour file, Schedule E file
 
 **Bronze**:
