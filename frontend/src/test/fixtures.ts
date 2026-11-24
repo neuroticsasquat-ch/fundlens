@@ -10,6 +10,7 @@ import type {
   IndependentExpenditure,
   Meta,
   OperatingExpenditure,
+  OutsideSpending,
   Payee,
   Problem,
   Race,
@@ -159,6 +160,17 @@ export const RACES: RaceSummary[] = [
   }),
 ];
 
+/**
+ * Outside spending that is independent expenditures alone, v1's `ie_support` and `ie_oppose`: no
+ * communication cost, party coordinated expenditure or electioneering communication.
+ */
+const outsideSpending = (ie_support: number, ie_oppose: number): OutsideSpending => ({
+  independent_expenditure: { support: ie_support, oppose: ie_oppose },
+  communication_cost: { support: 0, oppose: 0 },
+  party_coordinated: 0,
+  electioneering_communication: null,
+});
+
 const candidate = (
   candidate: Pick<RaceCandidate, "candidate_id" | "name" | "party" | "principal_committee_id"> &
     Partial<RaceCandidate>,
@@ -170,6 +182,7 @@ const candidate = (
   self_funding: 0,
   ie_support: 0,
   ie_oppose: 0,
+  outside_spending: outsideSpending(candidate.ie_support ?? 0, candidate.ie_oppose ?? 0),
   total_operating_expenditures: null,
   reported: null,
   itemized_total: null,
@@ -227,6 +240,9 @@ const OKAFOR_TOP_DONORS: TopDonor[] = [
  */
 export const RACE_SENATE_MD: Race = {
   ...RACES[1],
+  outside_spending: outsideSpending(RACES[1].ie_support, RACES[1].ie_oppose),
+  outside_spending_total: RACES[1].ie_support + RACES[1].ie_oppose,
+  top_spenders: [],
   candidates: [
     candidate({
       candidate_id: "S4MD00104",
@@ -347,8 +363,11 @@ export const RACE_PAGES: Record<string, Race> = Object.fromEntries(
     RACE_SENATE_MD,
     ...RACES.filter((race) => race.candidate_count === 0).map((race) => ({
       ...race,
+      outside_spending: outsideSpending(0, 0),
+      outside_spending_total: 0,
       candidates: [],
       top_committees: [],
+      top_spenders: [],
       top_donors: [],
     })),
   ].map((race) => [race.slug, race]),
@@ -403,6 +422,7 @@ export const CANDIDATE_OKAFOR: Candidate = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
+      outside_spending: outsideSpending(150000, 45000),
       contributor_count: 61,
       // OKAFOR FOR MARYLAND's and her authorized committee's (C00800113) rows added up.
       reported: reported("committee_summary", [
@@ -515,6 +535,10 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   total_non_contribution_account: 0,
   total_refunds: 0,
   ie_total: 0,
+  communication_cost_total: 0,
+  party_coordinated_total: 0,
+  electioneering_total: null,
+  outside_spending_total: cycle.ie_total ?? 0,
   reported: null,
   itemized_total: 0,
   coverage: null,
@@ -752,6 +776,7 @@ export const CANDIDATE_CALDER_1998: Candidate = {
       self_funding: 0,
       ie_support: 0,
       ie_oppose: 0,
+      outside_spending: outsideSpending(0, 0),
       contributor_count: 1,
       reported: reported(
         "weball",
@@ -1055,6 +1080,7 @@ const expenditure = (
   race_id: string,
   support_oppose: "S" | "O",
   transaction_type: string,
+  payee_name: string,
 ): IndependentExpenditure => ({
   cycle: 2024,
   source_record_id,
@@ -1066,6 +1092,9 @@ const expenditure = (
   race_id,
   support_oppose,
   transaction_type,
+  source_file: "pas2",
+  payee_name,
+  purpose: null,
 });
 
 /**
@@ -1073,12 +1102,12 @@ const expenditure = (
  * first: they add up to its ie_total.
  */
 export const EXPENDITURES: IndependentExpenditure[] = [
-  expenditure("4240200000000000006", "2024-10-28", 400000, "P40000101", "HARGROVE, ELLEN", "2024-P-US-00", "S", "24E"),
-  expenditure("4240200000000000002", "2024-10-22", 30000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E"),
-  expenditure("4240200000000000005", "2024-10-14", 15000, "H4MD05107", "DRISCOLL, PETER", "2024-H-MD-05", "O", "24A"),
-  expenditure("4240200000000000004", "2024-10-12", 25000, "H4MD05106", "CALLOWAY, RUTH", "2024-H-MD-05", "S", "24E"),
-  expenditure("4240200000000000003", "2024-10-05", 80000, "S4MD00104", "WHITLOCK, GORDON", "2024-S-MD-00", "O", "24A"),
-  expenditure("4240200000000000001", "2024-09-20", 120000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E"),
+  expenditure("4240200000000000006", "2024-10-28", 400000, "P40000101", "HARGROVE, ELLEN", "2024-P-US-00", "S", "24E", "BLUE CRAB MEDIA LLC"),
+  expenditure("4240200000000000002", "2024-10-22", 30000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E", "BLUE CRAB MEDIA LLC"),
+  expenditure("4240200000000000005", "2024-10-14", 15000, "H4MD05107", "DRISCOLL, PETER", "2024-H-MD-05", "O", "24A", "CHESAPEAKE MAIL CO"),
+  expenditure("4240200000000000004", "2024-10-12", 25000, "H4MD05106", "CALLOWAY, RUTH", "2024-H-MD-05", "S", "24E", "CHESAPEAKE MAIL CO"),
+  expenditure("4240200000000000003", "2024-10-05", 80000, "S4MD00104", "WHITLOCK, GORDON", "2024-S-MD-00", "O", "24A", "BLUE CRAB MEDIA LLC"),
+  expenditure("4240200000000000001", "2024-09-20", 120000, "S4MD00103", "OKAFOR, DIANA", "2024-S-MD-00", "S", "24E", "BLUE CRAB MEDIA LLC"),
 ];
 
 const DATA = "https://data.fundlens.org/v1/";

@@ -137,6 +137,9 @@
             ],
             "title": "Itemized Total"
           },
+          "outside_spending": {
+            "$ref": "#/components/schemas/OutsideSpending"
+          },
           "race_id": {
             "anyOf": [
               {
@@ -207,6 +210,7 @@
           "self_funding",
           "ie_support",
           "ie_oppose",
+          "outside_spending",
           "contributor_count",
           "reported",
           "reported_includes_converted_committee",
@@ -308,6 +312,10 @@
       "CommitteeCycle": {
         "description": "`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who\ngave most to it.",
         "properties": {
+          "communication_cost_total": {
+            "title": "Communication Cost Total",
+            "type": "number"
+          },
           "coverage": {
             "anyOf": [
               {
@@ -323,12 +331,31 @@
             "title": "Cycle",
             "type": "integer"
           },
+          "electioneering_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Electioneering Total"
+          },
           "ie_total": {
             "title": "Ie Total",
             "type": "number"
           },
           "itemized_total": {
             "title": "Itemized Total",
+            "type": "number"
+          },
+          "outside_spending_total": {
+            "title": "Outside Spending Total",
+            "type": "number"
+          },
+          "party_coordinated_total": {
+            "title": "Party Coordinated Total",
             "type": "number"
           },
           "reported": {
@@ -431,6 +458,10 @@
           "total_non_contribution_account",
           "total_refunds",
           "ie_total",
+          "communication_cost_total",
+          "party_coordinated_total",
+          "electioneering_total",
+          "outside_spending_total",
           "reported",
           "itemized_total",
           "coverage",
@@ -1244,6 +1275,28 @@
             ],
             "title": "Date"
           },
+          "payee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Name"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
           "race_id": {
             "anyOf": [
               {
@@ -1254,6 +1307,14 @@
               }
             ],
             "title": "Race Id"
+          },
+          "source_file": {
+            "enum": [
+              "pas2",
+              "ie_24_48"
+            ],
+            "title": "Source File",
+            "type": "string"
           },
           "source_record_id": {
             "title": "Source Record Id",
@@ -1296,7 +1357,10 @@
           "candidate_name",
           "race_id",
           "support_oppose",
-          "transaction_type"
+          "transaction_type",
+          "source_file",
+          "payee_name",
+          "purpose"
         ],
         "title": "IndependentExpenditure",
         "type": "object"
@@ -1771,6 +1835,49 @@
         "title": "OperatingExpenditurePage",
         "type": "object"
       },
+      "OutsideSpending": {
+        "description": "Spending on a candidate or race by anyone but its candidates' own committees, by kind\n(every-FEC-dollar spec \u00a76.5): never a contribution and in no receipt total. A row filed with no\nside is in none of these.\n\n`independent_expenditure` is v1's `ie_support` and `ie_oppose`, the 24/48-hour file's rows\nincluded. Party coordinated expenditures are always in support. An electioneering communication\nsays neither: its figure is None, never 0, where there is no row, as before 2010 or on a build\nloaded before the table existed.",
+        "properties": {
+          "communication_cost": {
+            "$ref": "#/components/schemas/SupportOppose"
+          },
+          "electioneering_communication": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Electioneering Communication"
+          },
+          "independent_expenditure": {
+            "$ref": "#/components/schemas/SupportOppose"
+          },
+          "party_coordinated": {
+            "title": "Party Coordinated",
+            "type": "number"
+          }
+        },
+        "required": [
+          "independent_expenditure",
+          "communication_cost",
+          "party_coordinated",
+          "electioneering_communication"
+        ],
+        "title": "OutsideSpending",
+        "type": "object"
+      },
+      "OutsideSpendingKind": {
+        "enum": [
+          "independent_expenditure",
+          "communication_cost",
+          "party_coordinated",
+          "electioneering_communication"
+        ],
+        "type": "string"
+      },
       "Payee": {
         "description": "A payee page: `gold.payee`, the payments committees reported to one payee key, grouped by\nnormalized name and never resolved (ADR-0012), a row per cycle, newest first, and who paid it\nmost in `cycle`. A sub-item and an in-kind outlay reach no payee (every-FEC-dollar spec\n\u00a75.4).",
         "properties": {
@@ -1969,7 +2076,7 @@
         "type": "object"
       },
       "Race": {
-        "description": "A race page: the race, its candidates (most money first), its top committees and its top\ndonors.",
+        "description": "A race page: the race, its candidates (most money first), its outside spending, its top\ncommittees, top spenders and top donors.",
         "properties": {
           "candidate_count": {
             "title": "Candidate Count",
@@ -2004,6 +2111,13 @@
           },
           "office": {
             "$ref": "#/components/schemas/Office"
+          },
+          "outside_spending": {
+            "$ref": "#/components/schemas/OutsideSpending"
+          },
+          "outside_spending_total": {
+            "title": "Outside Spending Total",
+            "type": "number"
           },
           "race_id": {
             "title": "Race Id",
@@ -2040,6 +2154,13 @@
               "$ref": "#/components/schemas/RaceTopDonor"
             },
             "title": "Top Donors",
+            "type": "array"
+          },
+          "top_spenders": {
+            "items": {
+              "$ref": "#/components/schemas/RaceTopSpender"
+            },
+            "title": "Top Spenders",
             "type": "array"
           },
           "total_committee": {
@@ -2082,8 +2203,11 @@
           "ie_oppose",
           "reported_cash_on_hand",
           "total_operating_expenditures",
+          "outside_spending",
+          "outside_spending_total",
           "candidates",
           "top_committees",
+          "top_spenders",
           "top_donors"
         ],
         "title": "Race",
@@ -2147,6 +2271,9 @@
               }
             ],
             "title": "Name"
+          },
+          "outside_spending": {
+            "$ref": "#/components/schemas/OutsideSpending"
           },
           "party": {
             "anyOf": [
@@ -2220,6 +2347,7 @@
           "self_funding",
           "ie_support",
           "ie_oppose",
+          "outside_spending",
           "total_operating_expenditures",
           "reported",
           "itemized_total",
@@ -2492,6 +2620,72 @@
           "amount"
         ],
         "title": "RaceTopDonorCandidate",
+        "type": "object"
+      },
+      "RaceTopSpender": {
+        "description": "`gold.race_top_spender`: one of the race's 100 biggest lines of outside spending, a line\nbeing one spender's spending of one kind on one of its candidates, on one side (every-FEC-dollar\nspec \u00a76.5).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "is_committee": {
+            "title": "Is Committee",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OutsideSpendingKind"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "support_oppose": {
+            "anyOf": [
+              {
+                "enum": [
+                  "S",
+                  "O"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Oppose"
+          }
+        },
+        "required": [
+          "rank",
+          "committee_id",
+          "name",
+          "candidate_id",
+          "is_committee",
+          "kind",
+          "support_oppose",
+          "amount"
+        ],
+        "title": "RaceTopSpender",
         "type": "object"
       },
       "Reconciliation": {
@@ -3007,6 +3201,25 @@
           "unclassified"
         ],
         "type": "string"
+      },
+      "SupportOppose": {
+        "description": "One kind of outside spending naming a candidate, for them and against them, net as filed.",
+        "properties": {
+          "oppose": {
+            "title": "Oppose",
+            "type": "number"
+          },
+          "support": {
+            "title": "Support",
+            "type": "number"
+          }
+        },
+        "required": [
+          "support",
+          "oppose"
+        ],
+        "title": "SupportOppose",
+        "type": "object"
       },
       "TopDonor": {
         "description": "`gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave\nmost in a cycle, the candidate's own money left out (spec \u00a77.1).",

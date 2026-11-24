@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from psycopg.rows import class_row, dict_row
 
 from fundlens.api.deps import Conn
+from fundlens.api.outside_spending import (
+    NON_COMMITTEE_TYPES,
+    outside_spending_columns,
+    pop_outside_spending,
+)
 from fundlens.api.reported import (
     RACE_CANDIDATE_REPORTED_FIELDS,
     pop_race_candidate_reported,
@@ -21,6 +26,7 @@ from fundlens.api.schemas import (
     RaceCandidate,
     RaceTopCommittee,
     RaceTopDonor,
+    RaceTopSpender,
     problem_responses,
 )
 
@@ -44,11 +50,16 @@ def get_race(
     slug = f"{cycle}/{office}/{place}{'-special' if special else ''}"
     race = (
         conn.cursor(row_factory=dict_row)
-        .execute(f"SELECT {RACE_COLUMNS} FROM gold.race WHERE slug = %s", (slug,))
+        .execute(
+            f"SELECT {RACE_COLUMNS}, {outside_spending_columns('race', ie=False)},"
+            " race.outside_spending_total FROM gold.race WHERE slug = %s",
+            (slug,),
+        )
         .fetchone()
     )
     if race is None:
         raise HTTPException(404, f"No race {slug}.")
+    outside_spending = pop_outside_spending(race)
     # The source file and itemized_total are candidate_cycle's, whose figures race_candidate's
     # reported fields and coverage copy (every-FEC-dollar spec §4.4).
     rows = (
@@ -58,7 +69,7 @@ def get_race(
             " race_candidate.incumbent_challenger_open, race_candidate.principal_committee_id,"
             " race_candidate.total_individual, race_candidate.total_committee,"
             " race_candidate.total_jfc_transfers, race_candidate.self_funding,"
-            " race_candidate.ie_support, race_candidate.ie_oppose,"
+            f" {outside_spending_columns('race_candidate')},"
             " race_candidate.total_operating_expenditures,"
             " candidate_cycle.reported_source_file,"
             f" {reported_columns('race_candidate', RACE_CANDIDATE_REPORTED_FIELDS[1:])},"
@@ -76,10 +87,11 @@ def get_race(
         .fetchall()
     )
     candidates = [
-        RaceCandidate(reported=reported, **row)
+        RaceCandidate(reported=reported, outside_spending=outside, **row)
         for row in rows
-        # Popped first, so `row` holds no `reported_*` column when it is spread.
+        # Popped first, so `row` holds neither's columns when it is spread.
         for reported in [pop_race_candidate_reported(row)]
+        for outside in [pop_outside_spending(row)]
     ]
     top_committees = (
         conn.cursor(row_factory=class_row(RaceTopCommittee))
@@ -87,6 +99,24 @@ def get_race(
             "SELECT rank, committee_id, name, amount, kind"
             " FROM gold.race_top_committee WHERE race_id = %s ORDER BY rank",
             (race["race_id"],),
+        )
+        .fetchall()
+    )
+    # A spender's flag is gold.committee's type, the one its page shows: every spender has a row
+    # there (spec §6.5). That is the newest cycle's `cm`, not necessarily the line's cycle's; FEC
+    # gives a Form 5, 7 or 9 filer an id of its own, so an id is taken not to change between a
+    # committee's type and these (asserted, not measured).
+    top_spenders = (
+        conn.cursor(row_factory=class_row(RaceTopSpender))
+        .execute(
+            "SELECT spender.rank, spender.committee_id, spender.name, spender.candidate_id,"
+            # Only I, C and E are non-committee spenders (§6.1), so a blank type is not one.
+            " coalesce(committee.type <> ALL(%s::text[]), true) AS is_committee,"
+            " spender.kind, spender.support_oppose, spender.amount"
+            " FROM gold.race_top_spender AS spender"
+            " LEFT JOIN gold.committee USING (committee_id)"
+            " WHERE spender.race_id = %s ORDER BY spender.rank",
+            (list(NON_COMMITTEE_TYPES), race["race_id"]),
         )
         .fetchall()
     )
@@ -99,4 +129,11 @@ def get_race(
         )
         .fetchall()
     )
-    return Race(**race, candidates=candidates, top_committees=top_committees, top_donors=top_donors)
+    return Race(
+        **race,
+        outside_spending=outside_spending,
+        candidates=candidates,
+        top_committees=top_committees,
+        top_spenders=top_spenders,
+        top_donors=top_donors,
+    )

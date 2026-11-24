@@ -366,6 +366,7 @@ export interface components {
             ie_support: number;
             /** Itemized Total */
             itemized_total: number | null;
+            outside_spending: components["schemas"]["OutsideSpending"];
             /** Race Id */
             race_id: string | null;
             /** Race Slug */
@@ -412,14 +413,22 @@ export interface components {
          *     gave most to it.
          */
         CommitteeCycle: {
+            /** Communication Cost Total */
+            communication_cost_total: number;
             /** Coverage */
             coverage: number | null;
             /** Cycle */
             cycle: number;
+            /** Electioneering Total */
+            electioneering_total: number | null;
             /** Ie Total */
             ie_total: number;
             /** Itemized Total */
             itemized_total: number;
+            /** Outside Spending Total */
+            outside_spending_total: number;
+            /** Party Coordinated Total */
+            party_coordinated_total: number;
             reported: components["schemas"]["ReportedTotals"] | null;
             /** Self Funding */
             self_funding: number;
@@ -713,8 +722,17 @@ export interface components {
             cycle: number;
             /** Date */
             date: string | null;
+            /** Payee Name */
+            payee_name: string | null;
+            /** Purpose */
+            purpose: string | null;
             /** Race Id */
             race_id: string | null;
+            /**
+             * Source File
+             * @enum {string}
+             */
+            source_file: "pas2" | "ie_24_48";
             /** Source Record Id */
             source_record_id: string;
             /** Support Oppose */
@@ -850,6 +868,27 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * OutsideSpending
+         * @description Spending on a candidate or race by anyone but its candidates' own committees, by kind
+         *     (every-FEC-dollar spec §6.5): never a contribution and in no receipt total. A row filed with no
+         *     side is in none of these.
+         *
+         *     `independent_expenditure` is v1's `ie_support` and `ie_oppose`, the 24/48-hour file's rows
+         *     included. Party coordinated expenditures are always in support. An electioneering communication
+         *     says neither: its figure is None, never 0, where there is no row, as before 2010 or on a build
+         *     loaded before the table existed.
+         */
+        OutsideSpending: {
+            communication_cost: components["schemas"]["SupportOppose"];
+            /** Electioneering Communication */
+            electioneering_communication: number | null;
+            independent_expenditure: components["schemas"]["SupportOppose"];
+            /** Party Coordinated */
+            party_coordinated: number;
+        };
+        /** @enum {string} */
+        OutsideSpendingKind: "independent_expenditure" | "communication_cost" | "party_coordinated" | "electioneering_communication";
+        /**
          * Payee
          * @description A payee page: `gold.payee`, the payments committees reported to one payee key, grouped by
          *     normalized name and never resolved (ADR-0012), a row per cycle, newest first, and who paid it
@@ -927,8 +966,8 @@ export interface components {
         };
         /**
          * Race
-         * @description A race page: the race, its candidates (most money first), its top committees and its top
-         *     donors.
+         * @description A race page: the race, its candidates (most money first), its outside spending, its top
+         *     committees, top spenders and top donors.
          */
         Race: {
             /** Candidate Count */
@@ -946,6 +985,9 @@ export interface components {
             /** Is Special */
             is_special: boolean;
             office: components["schemas"]["Office"];
+            outside_spending: components["schemas"]["OutsideSpending"];
+            /** Outside Spending Total */
+            outside_spending_total: number;
             /** Race Id */
             race_id: string;
             /** Reported Cash On Hand */
@@ -958,6 +1000,8 @@ export interface components {
             top_committees: components["schemas"]["RaceTopCommittee"][];
             /** Top Donors */
             top_donors: components["schemas"]["RaceTopDonor"][];
+            /** Top Spenders */
+            top_spenders: components["schemas"]["RaceTopSpender"][];
             /** Total Committee */
             total_committee: number;
             /** Total Individual */
@@ -986,6 +1030,7 @@ export interface components {
             itemized_total: number | null;
             /** Name */
             name: string | null;
+            outside_spending: components["schemas"]["OutsideSpending"];
             /** Party */
             party: string | null;
             /** Principal Committee Id */
@@ -1097,6 +1142,29 @@ export interface components {
             amount: number;
             /** Candidate Id */
             candidate_id: string;
+        };
+        /**
+         * RaceTopSpender
+         * @description `gold.race_top_spender`: one of the race's 100 biggest lines of outside spending, a line
+         *     being one spender's spending of one kind on one of its candidates, on one side (every-FEC-dollar
+         *     spec §6.5).
+         */
+        RaceTopSpender: {
+            /** Amount */
+            amount: number;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Committee Id */
+            committee_id: string;
+            /** Is Committee */
+            is_committee: boolean;
+            kind: components["schemas"]["OutsideSpendingKind"];
+            /** Name */
+            name: string | null;
+            /** Rank */
+            rank: number;
+            /** Support Oppose */
+            support_oppose: ("S" | "O") | null;
         };
         /**
          * Reconciliation
@@ -1231,6 +1299,16 @@ export interface components {
         /** @enum {string} */
         SpendingCategorySource: "purpose_rule" | "fec" | "unclassified";
         /**
+         * SupportOppose
+         * @description One kind of outside spending naming a candidate, for them and against them, net as filed.
+         */
+        SupportOppose: {
+            /** Oppose */
+            oppose: number;
+            /** Support */
+            support: number;
+        };
+        /**
          * TopDonor
          * @description `gold.candidate_top_donor` or `gold.committee_top_donor`: a donor among the 100 who gave
          *     most in a cycle, the candidate's own money left out (spec §7.1).
@@ -1334,6 +1412,8 @@ export type MetaCycle = components['schemas']['MetaCycle'];
 export type Office = components['schemas']['Office'];
 export type OperatingExpenditure = components['schemas']['OperatingExpenditure'];
 export type OperatingExpenditurePage = components['schemas']['OperatingExpenditurePage'];
+export type OutsideSpending = components['schemas']['OutsideSpending'];
+export type OutsideSpendingKind = components['schemas']['OutsideSpendingKind'];
 export type Payee = components['schemas']['Payee'];
 export type PayeeCycle = components['schemas']['PayeeCycle'];
 export type PayeeTopPayer = components['schemas']['PayeeTopPayer'];
@@ -1345,6 +1425,7 @@ export type RaceSummary = components['schemas']['RaceSummary'];
 export type RaceTopCommittee = components['schemas']['RaceTopCommittee'];
 export type RaceTopDonor = components['schemas']['RaceTopDonor'];
 export type RaceTopDonorCandidate = components['schemas']['RaceTopDonorCandidate'];
+export type RaceTopSpender = components['schemas']['RaceTopSpender'];
 export type Reconciliation = components['schemas']['Reconciliation'];
 export type ReconciliationPage = components['schemas']['ReconciliationPage'];
 export type ReportedSourceFile = components['schemas']['ReportedSourceFile'];
@@ -1355,6 +1436,7 @@ export type Sort = components['schemas']['Sort'];
 export type SpendingByCategory = components['schemas']['SpendingByCategory'];
 export type SpendingCategory = components['schemas']['SpendingCategory'];
 export type SpendingCategorySource = components['schemas']['SpendingCategorySource'];
+export type SupportOppose = components['schemas']['SupportOppose'];
 export type TopDonor = components['schemas']['TopDonor'];
 export type TopOrganization = components['schemas']['TopOrganization'];
 export type TopPayee = components['schemas']['TopPayee'];

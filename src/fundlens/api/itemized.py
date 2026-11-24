@@ -107,7 +107,17 @@ INDEPENDENT_EXPENDITURE_COLUMNS: tuple[str, ...] = (
     "race_id",
     "support_oppose",
     "transaction_type",
+    "source_file",
+    "payee_name",
+    "purpose",
 )
+# The columns NEU-2165 appended, and what a build transformed before it reads in their place: such
+# a build holds `pas2` rows alone, and kept neither payee nor purpose (every-FEC-dollar spec §6.7).
+INDEPENDENT_EXPENDITURE_ADDED: Mapping[str, str] = {
+    "source_file": "'pas2'",
+    "payee_name": "NULL",
+    "purpose": "NULL",
+}
 
 # A committee's operating expenditures (every-FEC-dollar spec §5.1): every row, counted or not, so a
 # card bill's charges are listed under it. `parent_source_record_id` places a sub-item and is not
@@ -241,6 +251,8 @@ class Scan:
     sort: Sort = "date"
     # Any further parameters `where` names.
     params: Mapping[str, object] = field(default_factory=dict[str, object])
+    # The columns of `columns` the files lack, each with the SQL read in its place.
+    absent: Mapping[str, str] = field(default_factory=dict[str, str])
 
     def query(self) -> tuple[str, dict[str, object]]:
         """The SQL and its parameters."""
@@ -271,8 +283,13 @@ class Scan:
                     f" OR ({key} = $after_key AND {record} > $after_id))"
                 )
             where.append(f"(cycle < $after_cycle OR (cycle = $after_cycle AND {within}))")
+        # The expressions are this module's, never a request's.
         columns = (
-            "NULL AS donor_id" if column == "donor_id" and not self.donor_id else column
+            f"{self.absent[column]} AS {column}"
+            if column in self.absent
+            else "NULL AS donor_id"
+            if column == "donor_id" and not self.donor_id
+            else column
             for column in self.columns
         )
         query = (
@@ -316,6 +333,9 @@ class ItemizedReader:
         )
         # Each (cycle, build_id) whose files are known to have a `donor_id` column.
         self._with_donor_id: set[tuple[int, str]] = set()
+        # Each (table, cycle, build_id)'s columns: a transform writes them once, and nothing adds
+        # one to them in place but `donor_id`, which `_with_donor_id` asks after.
+        self._columns: dict[tuple[SilverTable, int, str], frozenset[str]] = {}
 
     def close(self) -> None:
         self._db.close()
@@ -355,17 +375,22 @@ class ItemizedReader:
 
         Raises `CycleNotLive`, `BadCursor`, or `BuildGone` for a cursor whose build is pruned.
         """
-        return self.read(
-            self._cycle_scan(
-                "independent_expenditure",
-                cycle,
-                where="committee_id = $value AND kind = 'ie'",
-                value=committee_id,
-                cursor=cursor,
-                limit=limit,
-                columns=INDEPENDENT_EXPENDITURE_COLUMNS,
-            )
+        scan = self._cycle_scan(
+            "independent_expenditure",
+            cycle,
+            where="committee_id = $value AND kind = 'ie'",
+            value=committee_id,
+            cursor=cursor,
+            limit=limit,
+            columns=INDEPENDENT_EXPENDITURE_COLUMNS,
         )
+        if scan.files:
+            present = self._file_columns(scan, cycle)
+            absent = {
+                c: sql for c, sql in INDEPENDENT_EXPENDITURE_ADDED.items() if c not in present
+            }
+            scan = replace(scan, absent=absent)
+        return self.read(scan)
 
     def operating_expenditures(
         self,
@@ -576,6 +601,18 @@ class ItemizedReader:
             # gold.meta names a build the volume does not hold: not the caller's doing.
             raise FileNotFoundError(f"live silver partition missing: {partition}")
         return partition
+
+    def _file_columns(self, scan: Scan, cycle: int) -> frozenset[str]:
+        """The columns of `scan`'s files, all of `cycle`'s one build of its table."""
+        key = (scan.table, cycle, scan.builds[cycle])
+        if key not in self._columns:
+            with self._pruned_is_gone(scan.after, scan.table), self._db.cursor() as con:
+                con.execute(
+                    "SELECT * FROM read_parquet($files, hive_partitioning = false) LIMIT 0",
+                    {"files": scan.files},
+                )
+                self._columns[key] = frozenset(column[0] for column in con.description or [])
+        return self._columns[key]
 
     def _has_donor_id(
         self, cycle: int, build_id: str, files: list[str], after: Cursor | None
