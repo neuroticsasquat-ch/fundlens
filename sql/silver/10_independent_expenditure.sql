@@ -4,10 +4,19 @@
 -- to candidates, are committee_transfer's disbursements (05_committee_transfer.sql).
 --
 -- kind tells the rows apart, and only kind 'ie' is an independent expenditure: 24E for the
--- candidate (support_oppose 'S') and 24A against (support_oppose 'O'). The rest are kept for the
--- outside-spending tickets (NEU-2167), in no total yet: a party's coordinated expenditure (24C,
--- 'coordinated', for its candidate) and a Form 7 filer's communication cost (24F for, 24N against,
--- 'communication_cost').
+-- candidate (support_oppose 'S') and 24A against (support_oppose 'O'). The other two kinds of
+-- outside spending are `pas2`'s alone (every-FEC-dollar spec §6.1, §6.2; NEU-2167): a party's
+-- coordinated expenditure (24C, 'coordinated', for its candidate) and a Form 7 filer's
+-- communication cost (24F for, 24N against, 'communication_cost').
+--
+-- Every row of `CommunicationCosts` (2010 on) is a `pas2` 24F or 24N under the same SUB_ID, its
+-- amount with the cents `pas2` drops. So it adds no row and no money: it gives a communication
+-- cost its COMMUNICATION_TP and COMMUNICATION_CLASS, as filed, joined by SUB_ID, and the amount
+-- and side stay `pas2`'s. A `pas2` communication cost the CSV lacks (2024: 20 rows, $59,480)
+-- counts with both columns NULL, and a CSV row `pas2` lacks adds nothing. Both views drop FEC's
+-- repeats by one rule, each keeping the lower SUB_ID: a row the CSV repeats and `pas2` does not
+-- would leave the higher one's columns NULL (2016's one repeat is in both files). Every other row
+-- has neither column (silver_independent_expenditure_communication.sql).
 --
 -- A memo line (MEMO_CD 'X') is no expenditure: it notes an unpaid invoice or debt (Schedule D),
 -- itemizes a credit card's or vendor's payment, or restates an in-kind gift, and is dropped as
@@ -146,11 +155,16 @@ WITH filed AS (
         'pas2' AS source_file,
         pas2.NAME AS payee_name,
         CAST(NULL AS VARCHAR) AS purpose,
-        CAST(NULL AS DATE) AS dissemination_date
+        CAST(NULL AS DATE) AS dissemination_date,
+        cost.COMMUNICATION_TP AS communication_type,
+        cost.COMMUNICATION_CLASS AS communication_class
     FROM pas2
     LEFT JOIN ie_candidate_correction AS corrected
         ON corrected.sub_id = pas2.SUB_ID
         AND corrected.pas2_candidate_id = trim(pas2.CAND_ID)
+    LEFT JOIN CommunicationCosts AS cost
+        ON cost.SUB_ID = pas2.SUB_ID
+        AND pas2.TRANSACTION_TP IN ('24F', '24N')
     WHERE pas2.TRANSACTION_TP IN ('24A', '24E', '24C', '24F', '24N')
         AND coalesce(pas2.MEMO_CD, '') <> 'X'
         AND pas2.CMTE_ID IN (SELECT committee_id FROM committee)
@@ -167,7 +181,9 @@ WITH filed AS (
         'ie_24_48' AS source_file,
         payee_name,
         purpose,
-        dissemination_date
+        dissemination_date,
+        CAST(NULL AS VARCHAR) AS communication_type,
+        CAST(NULL AS VARCHAR) AS communication_class
     FROM ie_24_48_added
 ),
 spending AS (
@@ -195,7 +211,9 @@ SELECT
     spending.source_file,
     spending.payee_name,
     spending.purpose,
-    spending.dissemination_date
+    spending.dissemination_date,
+    spending.communication_type,
+    spending.communication_class
 FROM spending
 LEFT JOIN handed_off
     ON handed_off.from_candidate_id = spending.named_candidate_id

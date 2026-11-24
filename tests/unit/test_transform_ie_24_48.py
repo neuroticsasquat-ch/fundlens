@@ -49,6 +49,10 @@ def build(con: duckdb.DuckDBPyConnection) -> None:
         " CAST(NULL AS VARCHAR) AS MEMO_CD, 'HARBOR LIGHT MEDIA' AS NAME"
     )
     con.execute(
+        "CREATE TABLE CommunicationCosts (SUB_ID UBIGINT, COMMUNICATION_TP VARCHAR,"
+        " COMMUNICATION_CLASS VARCHAR)"
+    )
+    con.execute(
         "CREATE TABLE reported_total AS SELECT committee_id, DATE '2024-09-30' AS period_end,"
         " CAST(figure AS DECIMAL(14, 2)) AS independent_expenditures FROM (VALUES"
         f" ('{AT_TENFOLD}', 100), ('{PAST_TENFOLD}', 100), ('{REPORTED_ONLY}', 50),"
@@ -156,6 +160,9 @@ def test_a_24_48_hour_row_is_an_independent_expenditure_keyed_by_its_filing_and_
         "payee_name": "Harbor Light Media",
         "purpose": "TV advertising",
         "dissemination_date": date(2024, 10, 1),
+        # Only a communication cost has a type and class (NEU-2167).
+        "communication_type": None,
+        "communication_class": None,
     }
     assert pas2 == ("1", "pas2", "HARBOR LIGHT MEDIA", None, None)
 

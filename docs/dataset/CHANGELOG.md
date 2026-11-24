@@ -4,6 +4,14 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-24 — `independent_expenditure.communication_type` and `communication_class` added
+
+Two columns, an additive change: a communication cost's (`kind = 'communication_cost'`) type and
+class, as filed on the FEC's communication costs file, joined to the `pas2` row of the same
+`SUB_ID`. That file adds no rows and no money: every communication cost is still `pas2`'s, its
+amount and side included. Both are null on every other kind, on a communication cost that file
+lacks, and before 2010. A cycle built before the change has neither column: read both as null.
+
 ## 2026-11-24 — `electioneering_communication` added
 
 One table, an additive change: `electioneering_communication`, every electioneering

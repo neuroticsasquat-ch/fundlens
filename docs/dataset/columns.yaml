@@ -236,6 +236,14 @@ independent_expenditure:
     dissemination_date: >-
       The date the communication was first publicly distributed, as filed on a 24/48-hour row.
       Null on a `pas2` row, which has none.
+    communication_type: >-
+      The communication cost's type, a code as filed on the FEC's communication costs file, from
+      2010 (`DM` is direct mail, most of 2024's dollars). Null on every other kind, and on a
+      communication cost that file lacks. The row's amount and side are `pas2`'s, never that
+      file's.
+    communication_class: >-
+      The communication cost's class, a code as filed on the FEC's communication costs file, from
+      2010. Null where `communication_type` is.
 
 committee_transfer:
   description: >-

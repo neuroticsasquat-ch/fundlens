@@ -443,6 +443,8 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         "payee_name",
         "purpose",
         "dissemination_date",
+        "communication_type",
+        "communication_class",
     ]
     assert {
         sub_id: (
@@ -607,6 +609,10 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         # ACTION's $12,000 after its period end, a hoax filing's place had one passed the screen.
         "independent_expenditure 2024: 24/48-hour rows added: by spender 20 rows, $30,185.75;"
         " timeliness 3 rows, $27,500.00; largest $12,000.00 by C00800210 (1910022:SE.00343)",
+        # The figures NEU-2167's definition of done is measured by: STEAMFITTERS LOCAL 486's five
+        # communication costs, four the CSV gives a type, and the party's one 24C.
+        "independent_expenditure 2024: communication costs 5 rows, $7,936.00, 4 with a type;"
+        " party coordinated 1 rows, $20,000.00",
         # The figures NEU-2166's definition of done is measured by: the fixture's 14 rows, the
         # $36,000 of its three naming no candidate of the cycle reaching no race, and case 2's copy.
         "electioneering_communication 2024: 14 rows, $249,819.25; $213,819.25 reaching a race;"
@@ -1519,6 +1525,42 @@ def test_electioneering_communications_are_each_candidates_share_less_a_disburse
     assert (unknown["payee_name"], unknown["description"]) == (
         "Tidewater Digital LLC",
         "DIGITAL AD PLACEMENT",
+    )
+
+
+def test_communication_costs_and_party_coordinated_spending_are_each_counted_once_from_pas2(
+    fixture_silver: Path,
+) -> None:
+    # Every-FEC-dollar spec §6.2 (NEU-2167): the union's communication costs are pas2's rows, each
+    # once, the CSV's type and class joined on by SUB_ID; the 24C is the party's spending for the
+    # candidate it names, in that candidate's race. No other row has a type or class.
+    rows = local_silver(fixture_silver, "independent_expenditure")
+    expected = fec_fixture.expected()
+
+    def by_kind(kind: str) -> dict[str, list[object]]:
+        return {
+            str(row["source_record_id"]): [
+                row["committee_id"],
+                row["candidate_id"],
+                row["race_id"],
+                row["support_oppose"],
+                int(cast(Decimal, row["amount"])),
+                *(
+                    (row["communication_type"], row["communication_class"])
+                    if kind == "communication_cost"
+                    else ()
+                ),
+            ]
+            for row in rows
+            if row["kind"] == kind
+        }
+
+    assert by_kind("communication_cost") == expected["communication_costs"]
+    assert by_kind("coordinated") == expected["party_coordinated"]
+    assert all(
+        row["communication_type"] is None and row["communication_class"] is None
+        for row in rows
+        if row["kind"] != "communication_cost"
     )
 
 

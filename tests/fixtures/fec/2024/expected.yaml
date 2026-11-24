@@ -89,8 +89,8 @@ cycle: 2024
 
 # Data rows per bulk file, comment lines and header excluded. The outside-spending files' rows'
 # cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
-# below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166); of
-# CommunicationCosts, NEU-2167's to record.
+# below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166), and of
+# CommunicationCosts `communication_costs` (NEU-2167).
 rows:
   cm: 26
   cn: 15
@@ -716,6 +716,27 @@ ie_24_48:
       - "1910022:SE.00343"
       - "1910022:SE.00344"
       - "1910026:SE.00346"
+
+# Silver independent_expenditure's communication costs (project spec §6.2, NEU-2167), by SUB_ID:
+# [committee_id, candidate_id, race_id, support_oppose, amount, communication_type,
+# communication_class]. STEAMFITTERS LOCAL 486's pas2.csv 24F and 24N rows, each counted once,
+# from pas2: its amount, whole dollars, and its side by type. CommunicationCosts.csv adds no row and
+# no money; it gives each row it holds under the same SUB_ID its type and class, as filed. Its
+# case 3, the 24F naming no candidate the CSV lacks, counts with both NULL; its case 4, a row pas2
+# lacks, adds nothing; case 5's side as filed is its type, and the row's is pas2's; case 6's repeat
+# is read once in both files.
+communication_costs:
+  "1091820230265311901": [C70800208, S4MD00103, 2024-S-MD-00, S, 2974, DM, M]
+  "4240200000000000031": [C70800208, S4MD00103, 2024-S-MD-00, S, 1250, DM, M]
+  "4240200000000000032": [C70800208, S4MD00104, 2024-S-MD-00, O, 2400, O, E]
+  "4240200000000000033": [C70800208, null, null, S, 800, null, null]
+  "4240200000000000034": [C70800208, H4MD05106, 2024-H-MD-05, S, 512, DM, M]
+
+# Silver independent_expenditure's party coordinated expenditures (project spec §6.2, NEU-2167), by
+# SUB_ID: [committee_id, candidate_id, race_id, support_oppose, amount]. pas2.csv's one 24C, always
+# in support of the candidate it names, and in that candidate's race.
+party_coordinated:
+  "4240200000000000009": [C00800203, S4MD00104, 2024-S-MD-00, S, 20000]
 
 # Silver electioneering_communication's rows (project spec §6.4, NEU-2166), by key
 # (`<SB_IMAGE_NUM>:<n>`): [committee_id, candidate_id, race_id, amount]. ElectioneeringComm.csv's

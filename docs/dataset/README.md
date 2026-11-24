@@ -55,7 +55,9 @@ A few things to know before you add anything up:
 - **Tell `independent_expenditure`'s kinds apart by `kind`.** Only `kind = 'ie'` is independent
   expenditure. A row with `source_file = 'ie_24_48'` is a 24- or 48-hour report's estimate, and
   leaves the table when a periodic report restates it, so its `source_record_id` is not stable
-  from one snapshot to the next. Outside spending is never to be added to `contribution` amounts.
+  from one snapshot to the next. A communication cost is counted once, from `pas2`; the FEC's
+  communication costs file only adds its `communication_type` and `communication_class`. Outside
+  spending is never to be added to `contribution` amounts.
 - **Sum `electioneering_communication`'s `amount`, never `disbursement_amount`.** A disbursement
   naming several candidates is one row per candidate, each with the FEC's equal share in
   `amount`; `disbursement_amount` is the whole disbursement, on each of its rows. A row has no
