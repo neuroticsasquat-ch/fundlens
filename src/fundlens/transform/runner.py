@@ -8,10 +8,11 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   header, and a CSV, whose header row must be the catalogue's columns, are both copied under
   `scratch/` for the run, rewritten as UTF-8 without NUL bytes on the way (`copy_as_utf8`), and
   deleted after it (`fetch_bulk`). An `indiv` text file that disagrees in size with the same rows
-  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321). The itemized
-  files, `indiv`, `oth` and `pas2`, read each transaction of a filing once: a row FEC's file
-  repeats, the same in every column but SUB_ID, is in `<file>_repeat` and not the view, which
-  reads `<file>_published` (`_drop_fec_repeats`, NEU-2401);
+  split under `by_date/` is read from those files instead (`copy_bulk`, NEU-2321). The files
+  that carry the itemized files' transaction key, `indiv`, `oth`, `pas2`, `oppexp` and
+  `CommunicationCosts`, read each transaction of a filing once: a row FEC's file repeats, the
+  same in every column but SUB_ID, is in `<file>_repeat` and not the view, which reads
+  `<file>_published` (`_drop_fec_repeats`, NEU-2401);
   A catalogued file FEC does not publish for the cycle (`ccl` before 2000, spec §4) is an empty
   table of the same columns, so the SQL reads it as a file with no rows;
 - `race`, the cycle's seat calendar (`transform.seats`), which candidates attach to;

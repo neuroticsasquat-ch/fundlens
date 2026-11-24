@@ -8,9 +8,11 @@ from typing import Any, cast, get_args
 
 import pytest
 
+from fundlens import paths
 from fundlens.fec.files import (
     AMOUNT,
     CATALOGUE,
+    COUNT,
     CSV_HEADER_BYTES,
     FILE_NUM,
     SUB_ID,
@@ -65,6 +67,10 @@ def test_the_vendored_header_names_the_catalogued_columns(name: FecFile) -> None
         ("webk", 2024, f"{BASE}/2024/webk24.zip"),
         ("committee_summary", 2008, f"{BASE}/2008/committee_summary_2008.csv"),
         ("oppexp", 2004, f"{BASE}/2004/oppexp04.zip"),
+        # The 24/48-hour file keeps FEC's name in its URL, not the catalogue's (NEU-2164).
+        ("ie_24_48", 2024, f"{BASE}/2024/independent_expenditure_2024.csv"),
+        ("ElectioneeringComm", 2010, f"{BASE}/2010/ElectioneeringComm_2010.csv"),
+        ("CommunicationCosts", 2024, f"{BASE}/2024/CommunicationCosts_2024.csv"),
     ],
 )
 def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -> None:
@@ -87,6 +93,10 @@ def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -
         ("committee_summary", 2008),
         # FEC publishes operating expenditures from 2004 (every-FEC-dollar spec §3.1).
         ("oppexp", 2004),
+        # The outside-spending files, as FEC's bulk-data page linked them on 2026-11-18.
+        ("ie_24_48", 2010),
+        ("ElectioneeringComm", 2010),
+        ("CommunicationCosts", 2010),
     ],
 )
 def test_each_files_first_cycle_is_the_first_fec_publishes(name: FecFile, first_cycle: int) -> None:
@@ -117,7 +127,20 @@ def test_files_for_leaves_out_files_fec_did_not_yet_publish() -> None:
         "webk",
         "oppexp",
     ]
-    assert [file.name for file in files_for(2008)] == list(get_args(FecFile))
+    assert [file.name for file in files_for(2008)] == [
+        "cm",
+        "cn",
+        "ccl",
+        "indiv",
+        "pas2",
+        "oth",
+        "weball",
+        "webk",
+        "committee_summary",
+        "oppexp",
+    ]
+    assert [file.name for file in files_for(2010)] == list(get_args(FecFile))
+    assert list(get_args(FecFile))[-3:] == ["ie_24_48", "ElectioneeringComm", "CommunicationCosts"]
 
 
 @pytest.mark.parametrize(
@@ -143,6 +166,70 @@ def test_oppexp_has_its_25_columns_four_of_them_typed() -> None:
     assert len(columns) == 25
     typed = {"RPT_YR": YEAR, "TRANSACTION_AMT": AMOUNT, "SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM}
     assert {name: kind for name, kind in columns.items() if kind != VARCHAR} == typed
+
+
+@pytest.mark.parametrize(
+    ("name", "count", "typed"),
+    [
+        (
+            "ie_24_48",
+            23,
+            {
+                "exp_amo": AMOUNT,
+                "agg_amo": AMOUNT,
+                "file_num": FILE_NUM,
+                "fec_election_yr": YEAR,
+                "prev_file_num": FILE_NUM,
+            },
+        ),
+        (
+            "ElectioneeringComm",
+            19,
+            {
+                "REPORTED_DISBURSEMENT_AMOUNT": AMOUNT,
+                "NUMBER_OF_CANDIDATES": COUNT,
+                "CALCULATED_CANDIDATE_SHARE": AMOUNT,
+            },
+        ),
+        (
+            "CommunicationCosts",
+            25,
+            {"TRANSACTION_AMT": AMOUNT, "SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM, "RPT_YR": YEAR},
+        ),
+    ],
+)
+def test_the_outside_spending_csvs_have_their_columns_typed(
+    name: FecFile, count: int, typed: dict[str, str]
+) -> None:
+    file = CATALOGUE[name]
+
+    assert file.format == "csv"
+    assert file.member is None
+    assert len(file.columns) == count
+    assert {column: kind for column, kind in file.columns.items() if kind != VARCHAR} == typed
+
+
+def test_communication_costs_has_the_transaction_key_and_the_other_two_do_not() -> None:
+    # The key `transform.runner._drop_fec_repeats` reads a repeated row once by.
+    key = {"CMTE_ID", "FILE_NUM", "TRAN_ID", "SUB_ID"}
+
+    assert key <= CATALOGUE["CommunicationCosts"].columns.keys()
+    assert not key <= CATALOGUE["ie_24_48"].columns.keys()
+    assert not key <= CATALOGUE["ElectioneeringComm"].columns.keys()
+
+
+def test_no_entrys_view_is_named_as_a_silver_table_or_another_entrys_views() -> None:
+    # A file's view is named for its entry, beside silver's tables in one DuckDB schema, and an
+    # itemized file's `<name>_published` and `<name>_repeat` beside it: DuckDB refuses a table
+    # named as a view (`independent_expenditure`, NEU-2164). DuckDB's names ignore case.
+    entries = [name.lower() for name in CATALOGUE]
+    silver = {table.lower() for table in get_args(paths.SilverTable)}
+    derived = {f"{name}{suffix}" for name in entries for suffix in ("_published", "_repeat")}
+
+    assert len(set(entries)) == len(entries)
+    assert not set(entries) & silver
+    assert not set(entries) & derived
+    assert not derived & silver
 
 
 def test_only_oppexp_has_a_trailing_delimiter() -> None:

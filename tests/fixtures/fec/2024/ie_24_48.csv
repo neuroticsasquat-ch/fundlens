@@ -1,0 +1,94 @@
+# ie_24_48: FEC's 24/48-hour file, independent_expenditure_2024.csv (project spec §3, §6.3;
+# NEU-2164). Read by tests/fec_fixture.py, which drops these comment lines and writes the rest as
+# FEC serves the file: the header row unquoted and lower case, every data field double-quoted.
+# Dates are DD-MON-YY. file_nums run 1910001 upward, one per filing, a block no other fixture file
+# uses. Which rows NEU-2165 adds to silver independent_expenditure, by project spec §6.3's steps:
+# 1. A filing another's prev_file_num names is not read: its replacement is.
+# 2. A row whose spender cm lacks is dropped.
+# 3. A spender with a period_end (committee_summary.csv) has its rows dated after it added.
+# 4. A spender with no pas2 independent expenditure has all its rows added when they add up to
+#    more than $0 and no more than ten times the independent expenditures it reports.
+# 5. Every other row is not read: pas2 holds the spending.
+cand_id,cand_name,spe_id,spe_nam,ele_type,can_office_state,can_office_dis,can_office,cand_pty_aff,exp_amo,exp_date,agg_amo,sup_opp,pur,pay,file_num,amndt_ind,tran_id,image_num,receipt_dat,fec_election_yr,prev_file_num,dissem_dt
+# Case 1, added by spender: ONE NATION, a Form 5 filer reporting $30,000 of independent
+# expenditures (committee_summary.csv) and no pas2 row, on an original filing (N), amounts with
+# cents. Step 4: added.
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,4250.50,02-OCT-24,4250.50,S,Digital advertising,Tidewater Digital LLC,1910001,N,SE.4128,202410009100000001,03-OCT-24,2024,,
+S4MD00104,Gordon Whitlock,C90800206,One Nation,G,MD,00,S,REPUBLICAN PARTY,3100.25,02-OCT-24,3100.25,O,Direct mail,Chesapeake Mail Co,1910001,N,SE.4129,202410009100000002,03-OCT-24,2024,,
+# Cases 2 to 6, one ONE NATION filing, every row added by step 4. Case 2: exp_date blank, so its
+# date is dissem_dt. Case 3: sup_opp blank, in no candidate's or race's figure. Case 4: cand_id
+# blank, cand_name filled: candidate and race NULL. Case 5: an id cn lacks: candidate and race
+# NULL. Case 6: H6MD05113, H4MD05107's alias: DRISCOLL's.
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,2000,,6250.50,S,Digital advertising,Tidewater Digital LLC,1910002,N,SE.4201,202410009100000003,07-OCT-24,2024,,05-OCT-24
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,85,06-OCT-24,6335.50,,Online ad placement fee,Tidewater Digital LLC,1910002,N,SE.4202,202410009100000004,07-OCT-24,2024,,
+,"Okafor, Diana",C90800206,One Nation,G,,,,,1500,06-OCT-24,1500,S,Canvassing,Bayside Field Services,1910002,N,SE.4203,202410009100000005,07-OCT-24,2024,,
+H4MD03120,Owen Lindquist,C90800206,One Nation,G,MD,03,H,DEMOCRATIC PARTY,1200,06-OCT-24,1200,S,Direct mail,Chesapeake Mail Co,1910002,N,SE.4204,202410009100000006,07-OCT-24,2024,,
+H6MD05113,Peter J. Driscoll,C90800206,One Nation,G,MD,05,H,REPUBLICAN PARTY,1300,06-OCT-24,1300,O,Direct mail,Chesapeake Mail Co,1910002,N,SE.4205,202410009100000007,07-OCT-24,2024,,
+# Case 7, the handoff: two ONE NATION rows naming BIDEN's P80000722, the day before and the day
+# of 2024-07-21 (fec/handoffs.csv). Step 4: added, the first BIDEN's, the second HARRIS's.
+P80000722,Joseph R. Biden Jr.,C90800206,One Nation,P,US,00,P,DEMOCRATIC PARTY,500,20-JUL-24,500,S,Digital advertising,Tidewater Digital LLC,1910003,N,F57.000003,202410009100000008,22-JUL-24,2024,,
+P80000722,Joseph R. Biden Jr.,C90800206,One Nation,P,US,00,P,DEMOCRATIC PARTY,750,21-JUL-24,1250,S,Digital advertising,Tidewater Digital LLC,1910003,N,F57.000004,202410009100000009,22-JUL-24,2024,,
+# Case 8, a negative amount and a $0 row, both kept as filed. Step 4: added.
+S4MD00104,Gordon Whitlock,C90800206,One Nation,G,MD,00,S,REPUBLICAN PARTY,-500,09-OCT-24,2600.25,O,Refund of unused ad time,Chesapeake Mail Co,1910004,N,SE.4301,202410009100000010,10-OCT-24,2024,,
+S4MD00104,Gordon Whitlock,C90800206,One Nation,G,MD,00,S,REPUBLICAN PARTY,0,09-OCT-24,2600.25,O,In-kind: volunteer literature,Chesapeake Mail Co,1910004,N,SE.4302,202410009100000011,10-OCT-24,2024,,
+# Case 9, the filing chain: filing A (N) with two rows, and filing B (A1, prev_file_num A), which
+# restates the first under the same tran_id with another amount and the second under a new
+# tran_id. Step 1: A's rows are not read; B's are added.
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,5000,11-OCT-24,11335.50,S,TV advertising,Harbor Light Media,1910005,N,SE.5001,202410009100000012,12-OCT-24,2024,,
+H4MD05106,Ruth Calloway,C90800206,One Nation,G,MD,05,H,DEMOCRATIC PARTY,1500,11-OCT-24,1500,S,Direct mail,Chesapeake Mail Co,1910005,N,SE.5002,202410009100000013,12-OCT-24,2024,,
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,5200,11-OCT-24,11535.50,S,TV advertising,Harbor Light Media,1910006,A1,SE.5001,202410009100000014,13-OCT-24,2024,1910005,
+H4MD05106,Ruth Calloway,C90800206,One Nation,G,MD,05,H,DEMOCRATIC PARTY,1500,11-OCT-24,1500,S,Direct mail,Chesapeake Mail Co,1910006,A1,SE.5003,202410009100000015,13-OCT-24,2024,1910005,
+# Case 10, a chain of two: C (N), D (A1, naming C), E (A2, naming D), one row each. Step 1: only
+# E's row is read, and added.
+H4MD05107,Peter Driscoll,C90800206,One Nation,G,MD,05,H,REPUBLICAN PARTY,2500,16-OCT-24,4250,O,Direct mail,Chesapeake Mail Co,1910007,N,SE.6001,202410009100000016,17-OCT-24,2024,,
+H4MD05107,Peter Driscoll,C90800206,One Nation,G,MD,05,H,REPUBLICAN PARTY,2600,16-OCT-24,4350,O,Direct mail,Chesapeake Mail Co,1910008,A1,SE.6001,202410009100000017,17-OCT-24,2024,1910007,
+H4MD05107,Peter Driscoll,C90800206,One Nation,G,MD,05,H,REPUBLICAN PARTY,2700,16-OCT-24,4450,O,Direct mail,Chesapeake Mail Co,1910009,A2,SE.6001,202410009100000018,18-OCT-24,2024,1910008,
+# Case 11, an amendment naming a filing the file lacks: kept, and added.
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,1000,23-OCT-24,12535.50,S,Digital advertising,Tidewater Digital LLC,1910010,A1,SE.6101,202410009100000019,25-OCT-24,2024,1909999,
+# Case 12, an A1 naming no filing (prev_file_num blank), and an agg_amo left blank: kept, added.
+S4MD00103,Diana Okafor,C90800206,One Nation,G,MD,00,S,DEMOCRATIC PARTY,750,24-OCT-24,,S,Digital advertising,Tidewater Digital LLC,1910011,A1,SE.6201,202410009100000020,25-OCT-24,2024,,
+# Case 13, one original named by two amendments: F (N), and two A1 filings each naming F, one
+# row each. F's row is not read; both amendments' rows are added, counted twice as filed (Q3d).
+H4MD05106,Ruth Calloway,C90800206,One Nation,G,MD,05,H,DEMOCRATIC PARTY,1800,28-OCT-24,3300,S,Canvassing,Bayside Field Services,1910012,N,SE.7001,202410009100000021,29-OCT-24,2024,,
+H4MD05106,Ruth Calloway,C90800206,One Nation,G,MD,05,H,DEMOCRATIC PARTY,1900,28-OCT-24,3400,S,Canvassing,Bayside Field Services,1910013,A1,SE.7001,202410009100000022,30-OCT-24,2024,1910012,
+H4MD05106,Ruth Calloway,C90800206,One Nation,G,MD,05,H,DEMOCRATIC PARTY,1900,28-OCT-24,3400,S,Canvassing,Bayside Field Services,1910014,A1,SE.7001,202410009100000023,30-OCT-24,2024,1910012,
+# Case 14, one tran_id on two filings: SE.1 on two original filings, neither naming the other,
+# two different expenditures. Both added; their source_record_ids differ by file_num.
+S4MD00104,Gordon Whitlock,C90800206,One Nation,G,MD,00,S,REPUBLICAN PARTY,600,30-OCT-24,3800.25,O,Phone banking,Severn Call Center,1910015,N,SE.1,202410009100000024,31-OCT-24,2024,,
+S4MD00104,Gordon Whitlock,C90800206,One Nation,G,MD,00,S,REPUBLICAN PARTY,450,01-NOV-24,4700.25,O,Text messaging,Severn Call Center,1910016,N,SE.1,202410009100000025,02-NOV-24,2024,,
+# Case 15, the tenfold screen: GUNPOWDER VALUES PROJECT reports $1,000 (committee_summary.csv)
+# and has no pas2 row; its two rows add up to $11,500, over ten times that, both by its
+# period_end. Step 4: not added. A row after its period_end would not be added by timeliness
+# either: its reported figure is its track record, and it has none.
+H4MD05107,Peter Driscoll,C90800209,Gunpowder Values Project,G,MD,05,H,REPUBLICAN PARTY,6500,10-OCT-24,6500,O,Radio advertising,Patapsco Radio Group,1910017,N,4C1F7E2A9B3D5E6F8A0B,202410009100000026,11-OCT-24,2024,,
+H4MD05107,Peter Driscoll,C90800209,Gunpowder Values Project,G,MD,05,H,REPUBLICAN PARTY,5000,14-OCT-24,11500,O,Radio advertising,Patapsco Radio Group,1910017,N,4C1F7E2A9B3D5E6F8A0C,202410009100000027,15-OCT-24,2024,,
+# Case 16, a hoax filing at a spender cm lacks: a web form's row for HARGROVE, 2024's largest
+# row's amount (Q1j), agg_amo below it. Step 2: dropped.
+P40000101,Ellen Hargrove,C90899916,Dale Pruitt,G,US,00,P,DEMOCRATIC PARTY,9978412568,12-SEP-24,1000000,S,Political Contribution,Ellen Hargrove,1910018,N,WFT20243201436-1,202410009100000028,13-SEP-24,2024,,
+# Case 17, a real spender cm lacks: one Form 5 line of a few thousand dollars (Casey Family
+# Farms' shape, Q2b), its name beginning with a space as 2024's " Go America PAC" does.
+# Step 2: dropped.
+S4MD00104,Gordon Whitlock,C90899917, Hollowell Family Farms,G,MD,00,S,REPUBLICAN PARTY,3250,19-OCT-24,3250,S,Newspaper advertising,Eastern Shore Gazette,1910019,N,F57.000001,202410009100000029,21-OCT-24,2024,,
+# Case 18, a hoax filing at a committee that reports none: RESTORATION PAC (C00800205) reports
+# $0 of independent expenditures. Step 4: not added (no figure above $0).
+P40000102,Blake Stratton,C00800205,Restoration PAC,G,US,00,P,REPUBLICAN PARTY,255000000,25-SEP-24,255000000,O,Political Contribution,Blake Stratton,1910020,N,WFT20243120911-1,202410009100000030,26-SEP-24,2024,,
+# Case 19, a spender with no period end: RESTORATION PAC's Form 9 filer (C90800207) reports
+# nothing. Not added by step 3 or 4.
+H4MD05106,Ruth Calloway,C90800207,Restoration PAC,G,MD,05,H,DEMOCRATIC PARTY,4000,02-OCT-24,4000,S,Digital advertising,Tidewater Digital LLC,1910021,N,SE.8001,202410009100000031,03-OCT-24,2024,,
+# Case 20, timeliness: NANTICOKE ACTION's last report ends 2024-09-30. A row dated after it, and
+# one with exp_date blank and dissem_dt after it. Step 3: both added.
+S4MD00103,Diana Okafor,C00800210,Nanticoke Action,G,MD,00,S,DEMOCRATIC PARTY,12000,15-OCT-24,52000,S,TV advertising,Shorebird Media Group,1910022,N,SE.00343,202410009100000032,16-OCT-24,2024,,
+S4MD00103,Diana Okafor,C00800210,Nanticoke Action,G,MD,00,S,DEMOCRATIC PARTY,8000,,60000,S,Digital advertising,Shorebird Media Group,1910022,N,SE.00344,202410009100000033,21-OCT-24,2024,,20-OCT-24
+# Case 21, before the period end: the 48-hour report of NANTICOKE ACTION's pas2 24A (SE.00342),
+# under its tran_id, its amount an estimate that differs. Step 5: not read.
+S4MD00104,Gordon Whitlock,C00800210,Nanticoke Action,G,MD,00,S,REPUBLICAN PARTY,58000,15-SEP-24,58000,O,TV advertising,Shorebird Media Group,1910023,N,SE.00342,202410009100000034,16-SEP-24,2024,,
+# Case 22, on the period end: a row dated 2024-09-30 is not after it. Step 5: not read.
+S4MD00103,Diana Okafor,C00800210,Nanticoke Action,G,MD,00,S,DEMOCRATIC PARTY,3000,30-SEP-24,43000,S,Digital advertising,Shorebird Media Group,1910024,N,SE.00345,202410009100000035,01-OCT-24,2024,,
+# Case 23, the chain before timeliness: a row after the period end on a filing an A1 replaces,
+# and the amendment's row, another amount. The first is not read (step 1); the amendment's is
+# added (step 3).
+S4MD00104,Gordon Whitlock,C00800210,Nanticoke Action,G,MD,00,S,REPUBLICAN PARTY,7000,22-OCT-24,67000,O,Direct mail,Chesapeake Mail Co,1910025,N,SE.00346,202410009100000036,23-OCT-24,2024,,
+S4MD00104,Gordon Whitlock,C00800210,Nanticoke Action,G,MD,00,S,REPUBLICAN PARTY,7500,22-OCT-24,67500,O,Direct mail,Chesapeake Mail Co,1910026,A1,SE.00346,202410009100000037,24-OCT-24,2024,1910025,
+# Case 24, a spender pas2 holds: MARYLAND FORWARD PAC's 48-hour report of pas2's SE.00301
+# ($120,000, 2024-09-20), the same tran_id, an estimate dated two days earlier. Step 5: not read.
+S4MD00103,Diana Okafor,C00800201,Maryland Forward PAC,G,MD,00,S,DEMOCRATIC PARTY,118500,18-SEP-24,118500,S,TV advertising,Blue Crab Media LLC,1910027,N,SE.00301,202410009100000038,19-SEP-24,2024,,

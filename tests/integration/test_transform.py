@@ -455,8 +455,20 @@ def test_transform_writes_the_fixture_tables_and_the_marker(
         4240200000000000009: ("C00800203", "S4MD00104", "2024-S-MD-00", "S", "coordinated"),
     }
     # Spending is never money given: no 24K is here, and no expenditure is a contribution or a
-    # committee transfer.
-    assert {row["transaction_type"] for row in spending.values()} == {"24A", "24E", "24C"}
+    # committee transfer. A Form 7 filer's communication costs (24F, 24N) are kept with their kind
+    # (NEU-2164's rows), the one FEC's file repeats read once.
+    assert {row["transaction_type"] for row in spending.values()} == {
+        "24A",
+        "24E",
+        "24C",
+        "24F",
+        "24N",
+    }
+    assert {
+        row["kind"] for row in spending.values() if row["transaction_type"] in ("24F", "24N")
+    } == {"communication_cost"}
+    assert 4240200000000000034 in spending
+    assert 4240200000000000035 not in spending
     assert not set(spending) & {row["source_record_id"] for row in transfers}
     assert not set(spending) & {row["source_record_id"] for row in contributions}
 

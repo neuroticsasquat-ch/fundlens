@@ -1,0 +1,25 @@
+# CommunicationCosts: FEC's communication costs, CommunicationCosts_2024.csv (project spec §3,
+# §6.2; NEU-2164). Read by tests/fec_fixture.py, which drops these comment lines and writes the
+# rest as FEC serves the file: the header row unquoted, every data field double-quoted. Dates are
+# YYYYMMDD. The filer is STEAMFITTERS LOCAL 486 (C70800208), a union filing Form 7. Each row but
+# case 4's is a pas2.csv 24F or 24N row under the same SUB_ID, whose amount is this one's with the
+# cents dropped; NEU-2167 counts the money from pas2 and joins the type and class on from here.
+CMTE_ID,CMTE_NM,CAND_ID,CAND_NAME,CAND_OFFICE,CAND_STATE,CAND_OFFICE_DISTRICT,CAND_PTY_AFFILIATION,TRANSACTION_DT,TRANSACTION_AMT,TRANSACTION_TP,COMMUNICATION_TP,COMMUNICATION_CLASS,SUPPORT_OPPOSE_IND,IMAGE_NUM,LINE_NUM,FORM_TP_CD,SCHED_TP_CD,TRAN_ID,SUB_ID,FILE_NUM,RPT_YR,CAND_STATE_DESCRIPTION,CAND_PTY_AFFILIATION_DESCRIPTION,PURPOSE
+# Case 1, a communication cost in both files: pas2.csv's 24F under the same SUB_ID, its amount
+# this one with the cents dropped. Counted once, from pas2; its type and class from here.
+C70800208,STEAMFITTERS LOCAL 486,S4MD00103,"OKAFOR, DIANA",S,MD,00,DEM,20241001,1250.40,24F,DM,M,S,http://docquery.fec.gov/cgi-bin/fecimg/?202410219000000201,,F7,F76,F76.000001,4240200000000000031,1800208,2024,MARYLAND,DEMOCRATIC PARTY,
+# Case 2, one against: pas2.csv's 24N under the same SUB_ID. Counted once, from pas2.
+C70800208,STEAMFITTERS LOCAL 486,S4MD00104,"WHITLOCK, GORDON",S,MD,00,REP,20241008,2400,24N,O,E,O,http://docquery.fec.gov/cgi-bin/fecimg/?202410219000000202,,F7,F76,F76.000002,4240200000000000032,1800208,2024,MARYLAND,REPUBLICAN PARTY,
+# Case 3 is pas2.csv's 24F naming no candidate (SUB_ID 4240200000000000033), which this file
+# lacks: it counts, its type and class NULL.
+# Case 4, a row pas2 lacks: no pas2.csv row has its SUB_ID. Adds nothing.
+C70800208,STEAMFITTERS LOCAL 486,H4MD05106,"CALLOWAY, RUTH",H,MD,05,DEM,20241018,600,24F,PB,M,S,http://docquery.fec.gov/cgi-bin/fecimg/?202410219000000205,,F7,F76,F76.000005,4240200000000000090,1800208,2024,MARYLAND,DEMOCRATIC PARTY,
+# Case 5, a line of no electronic filing: a negative FILE_NUM, no TRAN_ID, RPT_YR 2023, and the
+# transaction type where the side belongs, as on some of 2022's and 2024's rows (Q1i). Its pas2
+# twin is written as FEC's pas2 writes one. Counted from pas2; no repeat.
+C70800208,STEAMFITTERS LOCAL 486,S4MD00103,"OKAFOR, DIANA",S,MD,00,DEM,20230601,2974,24F,DM,M,24F,http://docquery.fec.gov/cgi-bin/fecimg/?202307140300445901,,F7,F76,,1091820230265311901,-1104901,2023,MARYLAND,DEMOCRATIC PARTY,
+# Case 6, a repeated row: two rows equal in every column but SUB_ID, on an electronic filing
+# under one TRAN_ID (2016's F7612291673341), and the same two in pas2.csv. Each view reads the
+# lower SUB_ID; CommunicationCosts_repeat and pas2_repeat hold the higher.
+C70800208,STEAMFITTERS LOCAL 486,H4MD05106,"CALLOWAY, RUTH",H,MD,05,DEM,20241014,512.52,24F,DM,M,S,http://docquery.fec.gov/cgi-bin/fecimg/?202410219000000204,,F7,F76,F7612291673341,4240200000000000034,1800208,2024,MARYLAND,DEMOCRATIC PARTY,
+C70800208,STEAMFITTERS LOCAL 486,H4MD05106,"CALLOWAY, RUTH",H,MD,05,DEM,20241014,512.52,24F,DM,M,S,http://docquery.fec.gov/cgi-bin/fecimg/?202410219000000204,,F7,F76,F7612291673341,4240200000000000035,1800208,2024,MARYLAND,DEMOCRATIC PARTY,

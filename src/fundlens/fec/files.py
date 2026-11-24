@@ -10,7 +10,8 @@ A bulk file comes in one of two formats (`Format`):
   lines end with a `|` after their last column (`oppexp`) says so (`trailing_delimiter`).
 - `csv`: a comma-separated file, not zipped, whose first line is a header row. That row must be
   the entry's `columns` exactly, in order; extract and transform both check it
-  (`read_csv_header`).
+  (`read_csv_header`). An entry's name is its DuckDB view's and its bronze folder's, and need
+  not be FEC's file name (`ie_24_48`).
 
 Its URL below `FEC_BULK_URL` is the entry's `url_pattern`, in one of three shapes: per cycle in
 the cycle's folder (`2024/committee_summary_2024.csv`), per cycle under `data.fec.gov/`
@@ -28,7 +29,19 @@ from pathlib import Path
 from typing import Literal
 
 FecFile = Literal[
-    "cm", "cn", "ccl", "indiv", "pas2", "oth", "weball", "webk", "committee_summary", "oppexp"
+    "cm",
+    "cn",
+    "ccl",
+    "indiv",
+    "pas2",
+    "oth",
+    "weball",
+    "webk",
+    "committee_summary",
+    "oppexp",
+    "ie_24_48",
+    "ElectioneeringComm",
+    "CommunicationCosts",
 ]
 
 # How a bulk file is published: a zipped pipe-delimited text file, or a CSV with a header row.
@@ -41,7 +54,8 @@ CSV_HEADER_BYTES = 64 * 1024
 
 # The DuckDB type each column is cast to after it is read as VARCHAR (spec §5.3), from FEC's
 # data dictionaries. Dates stay VARCHAR: the itemized receipt files write them MMDDYYYY, `oppexp`
-# and the summary zips MM/DD/YYYY, and `sql/silver/` parses them.
+# and the summary zips MM/DD/YYYY, `committee_summary` and `CommunicationCosts` YYYYMMDD,
+# `ie_24_48` and `ElectioneeringComm` DD-MON-YY (`20-APR-24`), and `sql/silver/` parses them.
 VARCHAR = "VARCHAR"
 YEAR = "SMALLINT"  # NUMBER(4)
 AMOUNT = "DECIMAL(14,2)"  # NUMBER(14,2)
@@ -50,6 +64,8 @@ PERCENT = "DECIMAL(7,4)"  # NUMBER(7,4)
 SUB_ID = "UBIGINT"
 FILE_NUM = "BIGINT"  # NUMBER(22), in practice seven digits
 LINKAGE_ID = "BIGINT"  # NUMBER(12)
+# A small count: `ElectioneeringComm`'s NUMBER_OF_CANDIDATES, 22 at most in any cycle.
+COUNT = "SMALLINT"
 
 
 def _varchar(*names: str) -> dict[str, str]:
@@ -456,6 +472,104 @@ CATALOGUE: dict[FecFile, BulkFile] = {
             | {"SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM}
             | _varchar("TRAN_ID", "BACK_REF_TRAN_ID"),
             trailing_delimiter=True,
+        ),
+        # FEC's `independent_expenditure_<yyyy>.csv`: the 24/48-hour file (every-FEC-dollar spec
+        # §3, §6). It is not catalogued under FEC's name because a file's view is named for its
+        # entry, and `independent_expenditure` is silver's table: DuckDB refuses a table named
+        # as a view. Its header row is lower case. Its dates are DD-MON-YY (`20-APR-24`), as
+        # `ElectioneeringComm`'s are, and `CommunicationCosts`' YYYYMMDD; `exp_date` or
+        # `dissem_dt` may be blank, never both.
+        BulkFile(
+            "ie_24_48",
+            2010,
+            None,
+            _varchar(
+                "cand_id",
+                "cand_name",
+                "spe_id",
+                "spe_nam",
+                "ele_type",
+                "can_office_state",
+                "can_office_dis",
+                "can_office",
+                "cand_pty_aff",
+            )
+            | {"exp_amo": AMOUNT, "exp_date": VARCHAR, "agg_amo": AMOUNT}
+            | _varchar("sup_opp", "pur", "pay")
+            | {"file_num": FILE_NUM}
+            | _varchar("amndt_ind", "tran_id", "image_num", "receipt_dat")
+            | {"fec_election_yr": YEAR, "prev_file_num": FILE_NUM, "dissem_dt": VARCHAR},
+            format="csv",
+            url_pattern="{yyyy}/independent_expenditure_{yyyy}.csv",
+        ),
+        # Electioneering communications (every-FEC-dollar spec §3, §6.4). A disbursement for
+        # several candidates is one row per candidate, each with its share. Dates are DD-MON-YY.
+        BulkFile(
+            "ElectioneeringComm",
+            2010,
+            None,
+            _varchar(
+                "CANDIDATE_ID",
+                "CANDIDATE_NAME",
+                "CANDIDATE_OFFICE",
+                "CANDIDATE_STATE",
+                "CANDIDATE_DISTRICT",
+                "COMMITTEE_ID",
+                "COMMITTEE_NAME",
+                "SB_IMAGE_NUM",
+                "PAYEE_NAME",
+                "PAYEE_STREET",
+                "PAYEE_CITY",
+                "PAYEE_STATE",
+                "DISBURSEMENT_DESCRIPTION",
+                "DISBURSEMENT_DATE",
+                "COMMUNICATION_DATE",
+                "PUBLIC_DISBURSEMENT_DATE",
+            )
+            | {
+                "REPORTED_DISBURSEMENT_AMOUNT": AMOUNT,
+                "NUMBER_OF_CANDIDATES": COUNT,
+                "CALCULATED_CANDIDATE_SHARE": AMOUNT,
+            },
+            format="csv",
+            url_pattern="{yyyy}/ElectioneeringComm_{yyyy}.csv",
+        ),
+        # Communication costs (every-FEC-dollar spec §3, §6.2): `pas2`'s 24F and 24N rows under
+        # the same SUB_ID, with the communication's type and class. It carries the itemized
+        # files' transaction key, so its view reads a repeated row once
+        # (`transform.runner._drop_fec_repeats`). A row of no electronic filing has a negative or
+        # blank FILE_NUM and no TRAN_ID. Dates are YYYYMMDD.
+        BulkFile(
+            "CommunicationCosts",
+            2010,
+            None,
+            _varchar(
+                "CMTE_ID",
+                "CMTE_NM",
+                "CAND_ID",
+                "CAND_NAME",
+                "CAND_OFFICE",
+                "CAND_STATE",
+                "CAND_OFFICE_DISTRICT",
+                "CAND_PTY_AFFILIATION",
+                "TRANSACTION_DT",
+            )
+            | {"TRANSACTION_AMT": AMOUNT}
+            | _varchar(
+                "TRANSACTION_TP",
+                "COMMUNICATION_TP",
+                "COMMUNICATION_CLASS",
+                "SUPPORT_OPPOSE_IND",
+                "IMAGE_NUM",
+                "LINE_NUM",
+                "FORM_TP_CD",
+                "SCHED_TP_CD",
+                "TRAN_ID",
+            )
+            | {"SUB_ID": SUB_ID, "FILE_NUM": FILE_NUM, "RPT_YR": YEAR}
+            | _varchar("CAND_STATE_DESCRIPTION", "CAND_PTY_AFFILIATION_DESCRIPTION", "PURPOSE"),
+            format="csv",
+            url_pattern="{yyyy}/CommunicationCosts_{yyyy}.csv",
         ),
     )
 }
