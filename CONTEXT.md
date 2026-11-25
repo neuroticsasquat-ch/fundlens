@@ -125,6 +125,14 @@ _Avoid_: coverage dates, coverage period, as-of date
 A donor's net gifts to one candidate's committees in a cycle, the amount that places the donor in a bucket: twenty $50 gifts are one $1,000 donor. Never the amount of a single contribution. Unitemized money has no donors and is a bucket of its own.
 _Avoid_: contribution size, donation size, small-dollar donor
 
+**Bundled contributions**:
+Contributions that registered lobbyists, registrants or their PACs collected from others and passed to a committee, or were credited by it with raising, as the committee reports them to the regulator in total. Each gift is already counted as its giver's contribution: a bundled total is context, never added to a receipt total, and it names no bundler and no donor.
+_Avoid_: lobbyist contributions (a lobbyist's own gift is an ordinary contribution), bundled receipts, bundle
+
+**Bundling report**:
+One report of bundled contributions a committee filed with the regulator, covering a month, a quarter, a stretch before or after an election, or a half-year, and the half-year it falls in. The two periods overlap, so a half-year's bundled total is the larger of its half-year figure and its shorter periods' figures added up, never the two together.
+_Avoid_: bundled contribution (a report holds totals, not gifts), bundle record
+
 ### Parties
 
 **Donor**:
@@ -152,6 +160,18 @@ _Avoid_: sponsor (the regulator's word for an electioneering communication's spe
 **Non-committee spender**:
 A spender that is no political committee: a person, group, corporation or union that reports only its outside spending to the regulator, on Form 5 (independent expenditures), Form 7 (communication costs) or Form 9 (electioneering communications). It has a regulator ID and a page like a committee's.
 _Avoid_: outside group, dark money group, individual spender
+
+**Leadership PAC**:
+A committee a candidate or officeholder sets up beside their own campaign, mostly to give to other candidates. Its money is its own: its page and its sponsor's link to each other, and none of it is counted as the sponsor's campaign money.
+_Avoid_: member PAC, the candidate's PAC, affiliated committee
+
+**Sponsor**:
+The candidate or officeholder a leadership PAC is set up by, as the regulator names them: in its list of leadership PACs, or, where that list leaves the name blank, on the committee's statement of organization. A link from the committee to a person, never a claim on its money. A leadership PAC the regulator names nobody for has no sponsor.
+_Avoid_: owner, leader (most sponsors hold no leadership post); never an electioneering communication's spender, which the regulator also calls a sponsor
+
+**Lobbyist/registrant PAC**:
+A committee set up or run by a registered lobbyist, or by a firm or organization registered to lobby, as it declares itself to the regulator. A fact about who runs the committee: it says nothing of what was lobbied for, for whom or at what cost.
+_Avoid_: lobbying PAC, K Street PAC, lobbyist bundler (that is whoever a bundling report credits, and the report names none)
 
 **Candidate**:
 A person seeking an office in a cycle, identified by their regulator ID.
