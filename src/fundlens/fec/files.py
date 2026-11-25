@@ -42,6 +42,9 @@ FecFile = Literal[
     "ie_24_48",
     "ElectioneeringComm",
     "CommunicationCosts",
+    "leadership",
+    "lobbyist",
+    "lobbyist_bundle",
 ]
 
 # How a bulk file is published: a zipped pipe-delimited text file, or a CSV with a header row.
@@ -55,7 +58,8 @@ CSV_HEADER_BYTES = 64 * 1024
 # The DuckDB type each column is cast to after it is read as VARCHAR (spec §5.3), from FEC's
 # data dictionaries. Dates stay VARCHAR: the itemized receipt files write them MMDDYYYY, `oppexp`
 # and the summary zips MM/DD/YYYY, `committee_summary` and `CommunicationCosts` YYYYMMDD,
-# `ie_24_48` and `ElectioneeringComm` DD-MON-YY (`20-APR-24`), and `sql/silver/` parses them.
+# `ie_24_48`, `ElectioneeringComm` and the leadership and lobbyist files DD-MON-YY (`20-APR-24`),
+# and `sql/silver/` parses them.
 VARCHAR = "VARCHAR"
 YEAR = "SMALLINT"  # NUMBER(4)
 AMOUNT = "DECIMAL(14,2)"  # NUMBER(14,2)
@@ -570,6 +574,56 @@ CATALOGUE: dict[FecFile, BulkFile] = {
             | _varchar("CAND_STATE_DESCRIPTION", "CAND_PTY_AFFILIATION_DESCRIPTION", "PURPOSE"),
             format="csv",
             url_pattern="{yyyy}/CommunicationCosts_{yyyy}.csv",
+        ),
+        # Leadership PACs and their sponsors (every-FEC-dollar spec §3.1, §7.1): one row per
+        # leadership PAC of the cycle, under `data.fec.gov/`, for even years only (2008 and odd
+        # years are 404s). `Sponsor_Name` is `LAST, FIRST` or blank; `Link_Image` is the
+        # committee's image page (`?C00747766`), no image number. Its money figures are
+        # `reported_total`'s and not read (§7.1). Dates are DD-MON-YY.
+        BulkFile(
+            "leadership",
+            2010,
+            None,
+            _varchar("Committee_Id", "Committee_Name", "Link_Image", "Sponsor_Name")
+            | {"Cash_on_Hand": AMOUNT, "Coverage_End_Date": VARCHAR}
+            | _amount("Total_Disbursement", "Total_Receipt"),
+            format="csv",
+            url_pattern="data.fec.gov/leadership{yyyy}.csv",
+        ),
+        # Lobbyist/registrant committees (§7.1, §7.2): one undated file, kept under each cycle
+        # extracted. One row per Form 1 a committee filed, the lobbyist/registrant box `Y` or
+        # blank; `Link_Image` carries the filing's image number (`?_202407199661302879+0`), the
+        # tie-break between two Form 1s of one day. Dates are DD-MON-YY.
+        BulkFile(
+            "lobbyist",
+            2010,
+            None,
+            _varchar("Link_Image", "Committee_Name", "Committee_Id", "Date_Filed", "Is_Lobbyist"),
+            format="csv",
+            url_pattern="data.fec.gov/lobbyist.csv",
+        ),
+        # Lobbyist bundled contributions (§7.1, §7.5): one undated file, kept under each cycle
+        # extracted. One Form 3L report per row as filed, amendments as further rows; the covered
+        # period's amount and the semi-annual amount are both as filed, and never add (§7.6).
+        # Coverage_Start_Date or Coverage_End_Date may be blank. Dates are DD-MON-YY.
+        BulkFile(
+            "lobbyist_bundle",
+            2010,
+            None,
+            _varchar(
+                "Committee_Id",
+                "Committee_Name",
+                "Link_Image",
+                "Committee_Election_State",
+                "Committee_Election_District",
+                "Report_Type",
+                "Receipt_Date",
+                "Coverage_Start_Date",
+                "Coverage_End_Date",
+            )
+            | _amount("Quarterly_Contribution", "Semi_Annual_Contribution"),
+            format="csv",
+            url_pattern="data.fec.gov/lobbyist_bundle.csv",
         ),
     )
 }

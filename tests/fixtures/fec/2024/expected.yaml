@@ -90,9 +90,10 @@ cycle: 2024
 # Data rows per bulk file, comment lines and header excluded. The outside-spending files' rows'
 # cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
 # below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166), and of
-# CommunicationCosts `communication_costs` (NEU-2167).
+# CommunicationCosts `communication_costs` (NEU-2167). The leadership and lobbyist files' cases
+# are in theirs too (NEU-2174); NEU-2175's silver reads them.
 rows:
-  cm: 26
+  cm: 27
   cn: 15
   ccl: 15
   indiv: 406
@@ -100,11 +101,14 @@ rows:
   oth: 32
   weball: 12
   webk: 14
-  committee_summary: 30
+  committee_summary: 31
   oppexp: 55
   ie_24_48: 38
   ElectioneeringComm: 16
   CommunicationCosts: 6
+  leadership: 2
+  lobbyist: 8
+  lobbyist_bundle: 12
 
 # Rows per silver table after transform. independent_expenditure is every `pas2` row but the
 # 24K committee contributions and the row FEC's file repeats (24A/24E, and the 24C, 24F and 24N
@@ -115,7 +119,7 @@ rows:
 # on both sides, each side its own row. organization_receipt is one row per
 # `organization_receipts` receipt below.
 silver:
-  committee: 26
+  committee: 27
   candidate: 15
   candidate_committee_link: 15
   contribution: 347
@@ -129,7 +133,7 @@ silver:
   # several; fewer than the contributions.
   contributor: 133
   # `reported_totals` below: every 2024 committee with a summary row, and no candidate.
-  reported_total: 26
+  reported_total: 27
   candidate_reported_total: 0
   # `operating_expenditures` below: every `oppexp` row but its three dropped ones.
   operating_expenditure: 52
@@ -1068,6 +1072,12 @@ committees:
     total_from_committees: 0
     total_to_candidates: 5000
     ie_total: 0
+  C00800117: # SEVERN RIVER PAC: a leadership PAC with no money, its sponsor blank (NEU-2174)
+    total_individual: 0
+    self_funding: 0
+    total_from_committees: 0
+    total_to_candidates: 0
+    ie_total: 0
   C00800107: # DRISCOLL FOR CONGRESS: the blank-type OLD LINE REPUBLICAN COMMITTEE's gift a receipt
     total_individual: 25825
     self_funding: 0
@@ -1376,6 +1386,7 @@ reported_totals:
       C00800111: [committee_summary, 2023-01-01, 2024-12-31, 9500, 7600, 0, 1900, 0, 0, 8175, 1325, 9500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 7600, null]
       C00800106: [committee_summary, 2023-01-01, 2024-12-31, 51000, 40800, 8000, 18200, 0, 500, 36825, 4175, 41000, 1000, 0, 10000, 0, 0, 0, 0, 0, 0, 0, null, null, 39800, null]
       C00800114: [committee_summary, 2023-01-01, 2024-12-31, 4000, 5000, 6000, 5000, 0, 0, 4000, 0, 4000, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
+      C00800117: [committee_summary, 2023-01-01, 2024-12-31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, null, 0, 0, 0, 0, 0, 0, null]
       C00800107: [committee_summary, 2023-01-01, 2024-12-31, 44500, 35600, 0, 8900, 0, 0, 26325, 3675, 30000, 500, 0, 4500, 0, 0, 10000, 0, 4000, 0, 0, null, null, 31100, null]
       C00800108: [committee_summary, 2023-01-01, 2024-12-31, 7000, 5600, 0, 1400, 0, 0, 6350, 650, 7000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 5600, null]
       C00800109: [committee_summary, 2023-01-01, 2024-12-31, 6000, 4800, 0, 1200, 0, 0, 3700, 1300, 5000, 0, 0, 1000, 0, 0, 0, 0, 0, 0, 0, null, null, 4800, null]
@@ -1429,6 +1440,7 @@ gold_reported:
     C00800111: [8175, 8175, 1900, 1.0]
     C00800106: [36825, 36825, 18200, 1.0]
     C00800114: [4000, 4000, 5000, 1.0]
+    C00800117: [0, 0, 0, null]
     C00800107: [26325, 26325, 8900, 1.0]
     C00800108: [6400, 6350, 1400, 1.0079]
     C00800109: [3800, 3700, 1200, 1.027]
