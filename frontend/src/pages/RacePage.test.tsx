@@ -567,6 +567,18 @@ describe("RacePage", () => {
     expect(electioneering.axisLabel.formatter(70000)).toBe("$70K");
   });
 
+  it("leaves out an amount on any panel's axis that would run into the one before it", async () => {
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Candidates" });
+
+    // Three panels share the width, so a narrow one cannot fit every tick's amount.
+    expect(lastOption().xAxis).toMatchObject([
+      { axisLabel: { hideOverlap: true } },
+      { axisLabel: { hideOverlap: true } },
+      { axisLabel: { hideOverlap: true } },
+    ]);
+  });
+
   it("charts the candidates by what they raised, whatever order the API gives them in", async () => {
     // BRANNIGAN, out-raised by OKAFOR in individual gifts, out-raises her via joint fundraising.
     // PELL, attacked with more than anyone raised, stays last of those who raised money, and
