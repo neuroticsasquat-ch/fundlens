@@ -114,7 +114,9 @@ export function candidateTotalsOption(candidates: RaceCandidate[], theme: ChartT
   const valueAxis = (gridIndex: number, formatter: (value: number) => string) => ({
     type: "value" as const,
     gridIndex,
-    axisLabel: { color: theme.dimmed, formatter },
+    // Three panels share the width, so a narrow one has room for fewer amounts than ECharts
+    // ticks: a label that would run into the one before it is left out.
+    axisLabel: { color: theme.dimmed, formatter, hideOverlap: true },
     splitLine: { lineStyle: { color: theme.grid } },
   });
   const categoryAxis = (gridIndex: number, labelled: boolean) => ({

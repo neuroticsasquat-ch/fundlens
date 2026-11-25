@@ -233,6 +233,7 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
       "axisLabel": {
         "color": "#828282",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 0,
       "splitLine": {
@@ -246,6 +247,7 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
       "axisLabel": {
         "color": "#828282",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 1,
       "splitLine": {
@@ -259,6 +261,7 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
       "axisLabel": {
         "color": "#828282",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 2,
       "splitLine": {
@@ -573,6 +576,7 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
       "axisLabel": {
         "color": "#868e96",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 0,
       "splitLine": {
@@ -586,6 +590,7 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
       "axisLabel": {
         "color": "#868e96",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 1,
       "splitLine": {
@@ -599,6 +604,7 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
       "axisLabel": {
         "color": "#868e96",
         "formatter": [Function],
+        "hideOverlap": true,
       },
       "gridIndex": 2,
       "splitLine": {
