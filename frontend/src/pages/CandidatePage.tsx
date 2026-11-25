@@ -14,6 +14,7 @@ import { candidateTotal } from "../domain/candidates";
 import { officeLabel, raceLabel, raceSlugLabel } from "../domain/states";
 import { raceRoute } from "../search/target";
 import { partyColour } from "../theme";
+import CandidateOutsideSpending from "./CandidateOutsideSpending";
 import CycleHeading from "./CycleHeading";
 import CycleTotalsChart from "./CycleTotalsChart";
 import type { CycleSeries } from "./cycleTotalsOption";
@@ -75,8 +76,9 @@ const CYCLE_COLUMNS: Column<CandidateCycle>[] = [
     render: (row) => money(candidateTotal(row)),
     sortValue: candidateTotal,
   },
-  // Spent by committees for or against the candidate, never theirs, so after their Total and in
-  // no bar of the chart.
+  // Independent expenditures, by committees and non-committee spenders, for or against the
+  // candidate, never theirs, so after their Total and in no bar of the chart. The cycle's other
+  // kinds of outside spending are in its own section.
   {
     key: "ie-support",
     header: "Independent expenditures for",
@@ -245,6 +247,9 @@ function CandidateDetail({ candidate }: { candidate: Candidate }) {
                 emptyMessage={`No resolved individual donors in ${shown.cycle}.`}
               />
             </section>
+            {/* Others' money, never the candidate's: after what they received, before the long
+                list of it. */}
+            <CandidateOutsideSpending spending={shown.outside_spending} cycle={shown.cycle} />
             <section aria-labelledby="contributions">
               <Title order={3} id="contributions" mb="sm">
                 Contributions

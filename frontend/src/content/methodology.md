@@ -92,6 +92,31 @@ puts together: when it is low, different people have been merged. Recall is the 
 DIME puts together that fundlens also does: when it is low, one person is split across several
 donors.
 
+## Outside spending
+
+Race and candidate pages show what others spent on a race, beyond what its candidates' own
+committees raised and spent. It is never a contribution and never in what a candidate raised.
+There are four kinds:
+
+- **Independent expenditures** call for a candidate's election or defeat without the campaign's
+  cooperation. Committees report them, and so do people and groups that registered no committee
+  (on Form 5). They come from the periodic reports. The 24- and 48-hour reports filed close to an
+  election add what those do not hold: the spending of a spender whose periodic reports hold
+  none, and spending since a spender's last periodic report. A row from one of them is marked an
+  estimate, and is replaced when a periodic report restates it.
+- **Communication costs** are what a corporation or union spent urging its own members, or its
+  executives and shareholders, to vote for or against a candidate (Form 7).
+- **Party coordinated expenditures** are what a party committee spent in cooperation with its own
+  candidate, within a legal limit. They are always in support.
+- **Electioneering communications** are broadcast ads that name a candidate shortly before an
+  election without calling for a vote (Form 9), so they are for neither side. An ad naming several
+  candidates is split equally among them. The FEC's file starts in 2010.
+
+The kinds are never added up for a candidate: money for a candidate and against them point
+opposite ways, and an electioneering communication points neither. A race's top outside spenders
+lists each spender's spending of one kind on one candidate, on one side. A spender that is not a
+committee still has a page.
+
 ## Known limitations
 
 - **Resolution errs in both directions.** Several people sharing a common name in one area can be

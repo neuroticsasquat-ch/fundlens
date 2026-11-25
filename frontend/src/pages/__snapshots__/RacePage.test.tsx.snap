@@ -12,32 +12,44 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
   "backgroundColor": "transparent",
   "grid": [
     {
-      "bottom": 8,
+      "bottom": 40,
       "containLabel": true,
       "left": 8,
-      "right": "44%",
-      "top": 56,
+      "right": "64%",
+      "top": 32,
     },
     {
-      "bottom": 8,
+      "bottom": 40,
       "containLabel": true,
-      "left": "60%",
+      "left": "40%",
+      "right": "24%",
+      "top": 32,
+    },
+    {
+      "bottom": 40,
+      "containLabel": true,
+      "left": "80%",
       "right": 24,
-      "top": 56,
+      "top": 32,
     },
   ],
   "legend": {
+    "bottom": 0,
     "data": [
       "Independent expenditures against",
+      "Communication costs against",
       "Independent expenditures for",
+      "Communication costs for",
+      "Party coordinated expenditures",
+      "Electioneering communications",
     ],
-    "formatter": [Function],
-    "left": "60%",
+    "left": 8,
+    "right": 24,
     "show": true,
     "textStyle": {
       "color": "#C9C9C9",
     },
-    "top": 26,
+    "type": "scroll",
   },
   "series": [
     {
@@ -74,22 +86,6 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
     },
     {
       "data": [
-        0,
-        150000,
-        0,
-        0,
-      ],
-      "itemStyle": {
-        "color": "#38d9a9",
-      },
-      "name": "Independent expenditures for",
-      "stack": "independent",
-      "type": "bar",
-      "xAxisIndex": 1,
-      "yAxisIndex": 1,
-    },
-    {
-      "data": [
         -80000,
         -45000,
         0,
@@ -99,13 +95,95 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         "color": "#ffa94d",
       },
       "name": "Independent expenditures against",
-      "stack": "independent",
+      "stack": "signed",
       "tooltip": {
         "valueFormatter": [Function],
       },
       "type": "bar",
       "xAxisIndex": 1,
       "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        -2400,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#ffd8a8",
+      },
+      "name": "Communication costs against",
+      "stack": "signed",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        150000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#38d9a9",
+      },
+      "name": "Independent expenditures for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        4224,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#96f2d7",
+      },
+      "name": "Communication costs for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        20000,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#40c057",
+      },
+      "name": "Party coordinated expenditures",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        26409.5,
+        71409.5,
+        0,
+        3500,
+      ],
+      "itemStyle": {
+        "color": "#da77f2",
+      },
+      "name": "Electioneering communications",
+      "type": "bar",
+      "xAxisIndex": 2,
+      "yAxisIndex": 2,
     },
   ],
   "textStyle": {
@@ -123,8 +201,18 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
       "top": 0,
     },
     {
-      "left": "60%",
-      "text": "Independent expenditures",
+      "left": "40%",
+      "text": "For and against",
+      "textStyle": {
+        "color": "#C9C9C9",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+    {
+      "left": "80%",
+      "text": "Electioneering",
       "textStyle": {
         "color": "#C9C9C9",
         "fontSize": 14,
@@ -160,6 +248,19 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         "formatter": [Function],
       },
       "gridIndex": 1,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#3b3b3b",
+        },
+      },
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#828282",
+        "formatter": [Function],
+      },
+      "gridIndex": 2,
       "splitLine": {
         "lineStyle": {
           "color": "#3b3b3b",
@@ -210,6 +311,28 @@ exports[`RacePage > renders the candidate-totals chart in the dark scheme 1`] = 
         "PELL, MARCUS",
       ],
       "gridIndex": 1,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": false,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#696969",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 2,
       "inverse": true,
       "type": "category",
     },
@@ -229,32 +352,44 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
   "backgroundColor": "transparent",
   "grid": [
     {
-      "bottom": 8,
+      "bottom": 40,
       "containLabel": true,
       "left": 8,
-      "right": "44%",
-      "top": 56,
+      "right": "64%",
+      "top": 32,
     },
     {
-      "bottom": 8,
+      "bottom": 40,
       "containLabel": true,
-      "left": "60%",
+      "left": "40%",
+      "right": "24%",
+      "top": 32,
+    },
+    {
+      "bottom": 40,
+      "containLabel": true,
+      "left": "80%",
       "right": 24,
-      "top": 56,
+      "top": 32,
     },
   ],
   "legend": {
+    "bottom": 0,
     "data": [
       "Independent expenditures against",
+      "Communication costs against",
       "Independent expenditures for",
+      "Communication costs for",
+      "Party coordinated expenditures",
+      "Electioneering communications",
     ],
-    "formatter": [Function],
-    "left": "60%",
+    "left": 8,
+    "right": 24,
     "show": true,
     "textStyle": {
       "color": "#000",
     },
-    "top": 26,
+    "type": "scroll",
   },
   "series": [
     {
@@ -291,22 +426,6 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
     },
     {
       "data": [
-        0,
-        150000,
-        0,
-        0,
-      ],
-      "itemStyle": {
-        "color": "#12b886",
-      },
-      "name": "Independent expenditures for",
-      "stack": "independent",
-      "type": "bar",
-      "xAxisIndex": 1,
-      "yAxisIndex": 1,
-    },
-    {
-      "data": [
         -80000,
         -45000,
         0,
@@ -316,13 +435,95 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         "color": "#fd7e14",
       },
       "name": "Independent expenditures against",
-      "stack": "independent",
+      "stack": "signed",
       "tooltip": {
         "valueFormatter": [Function],
       },
       "type": "bar",
       "xAxisIndex": 1,
       "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        -2400,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#ffc078",
+      },
+      "name": "Communication costs against",
+      "stack": "signed",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        150000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#12b886",
+      },
+      "name": "Independent expenditures for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        4224,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#63e6be",
+      },
+      "name": "Communication costs for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        20000,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#2f9e44",
+      },
+      "name": "Party coordinated expenditures",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        26409.5,
+        71409.5,
+        0,
+        3500,
+      ],
+      "itemStyle": {
+        "color": "#be4bdb",
+      },
+      "name": "Electioneering communications",
+      "type": "bar",
+      "xAxisIndex": 2,
+      "yAxisIndex": 2,
     },
   ],
   "textStyle": {
@@ -340,8 +541,18 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
       "top": 0,
     },
     {
-      "left": "60%",
-      "text": "Independent expenditures",
+      "left": "40%",
+      "text": "For and against",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+    {
+      "left": "80%",
+      "text": "Electioneering",
       "textStyle": {
         "color": "#000",
         "fontSize": 14,
@@ -377,6 +588,19 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         "formatter": [Function],
       },
       "gridIndex": 1,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
+      },
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
+      },
+      "gridIndex": 2,
       "splitLine": {
         "lineStyle": {
           "color": "#e9ecef",
@@ -427,6 +651,28 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
         "PELL, MARCUS",
       ],
       "gridIndex": 1,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": false,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 2,
       "inverse": true,
       "type": "category",
     },

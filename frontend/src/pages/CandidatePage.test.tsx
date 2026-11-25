@@ -426,4 +426,69 @@ describe("CandidatePage", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to fundlens" })).toHaveAttribute("href", "/");
   });
+
+  it("shows the cycle's outside spending by kind and side, and says what each kind is", async () => {
+    renderApp("/candidate/S4MD00103");
+    const outside = await screen.findByRole("region", { name: "Outside spending in 2024" });
+
+    expect(
+      within(outside)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Kind", "For", "Against", "Neither side"]);
+    // No kind is added to another, and an electioneering communication is on no side.
+    expect(rows("Outside spending in 2024").map(cells)).toEqual([
+      ["Independent expenditures", "$150,000", "$45,000", "—"],
+      ["Communication costs", "$4,224", "$0", "—"],
+      ["Electioneering communications", "—", "—", "$71,410"],
+    ]);
+    expect(
+      within(outside).getByText(/^Electioneering communications: broadcast ads naming/),
+    ).toBeInTheDocument();
+    // Only the kinds she has are explained.
+    expect(
+      within(outside).queryByText(/^Party coordinated expenditures:/),
+    ).not.toBeInTheDocument();
+    expect(within(outside).getByRole("link", { name: "methodology" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
+  });
+
+  it("shows a party's coordinated expenditures as for the candidate, never against", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({
+        outside_spending: {
+          independent_expenditure: { support: 0, oppose: 0 },
+          communication_cost: { support: 0, oppose: 0 },
+          party_coordinated: 20000,
+          electioneering_communication: null,
+        },
+      }),
+    });
+    await screen.findByRole("region", { name: "Outside spending in 2024" });
+
+    expect(rows("Outside spending in 2024").map(cells)).toEqual([
+      ["Party coordinated expenditures", "$20,000", "—", "—"],
+    ]);
+  });
+
+  it("shows no outside spending for a candidate nobody spent anything on", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: okafor({
+        ie_support: 0,
+        ie_oppose: 0,
+        outside_spending: {
+          independent_expenditure: { support: 0, oppose: 0 },
+          communication_cost: { support: 0, oppose: 0 },
+          party_coordinated: 0,
+          electioneering_communication: null,
+        },
+      }),
+    });
+    await screen.findByRole("region", { name: "Reported to the FEC" });
+
+    expect(screen.queryByRole("region", { name: /^Outside spending/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Electioneering communications:/)).not.toBeInTheDocument();
+  });
 });
