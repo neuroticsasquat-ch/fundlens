@@ -922,3 +922,179 @@ Open one PR, `docs(runbooks): log the 2024 outside spending run (NEU-2171)`, wit
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-25 — 2024 with all outside spending (NEU-2171)
+
+Run 2026-11-25 01:23 to 16:00 UTC, on `2edb19ea0b824854ae80c29c6e4a7ca2e3903cb3`. Build `20261125T021311Z`; live
+before: `20261124T002500Z`. Before the run, `gold` was
+`20261123T224142Z|2026-11-24 22:05:32.456171+00|20261116T224205Z` and `gold_prev`
+`20261124T002500Z|2026-11-24 01:25:08.541796+00|20261116T224205Z`. After publish, `gold_prev` is
+`20261123T224142Z`. Seats (§3) waited for the nightly backup, which had ended by 02:13 UTC.
+
+**Bronze (step 1.3).** Nothing was extracted. The v1 files were the live build's: `cm`, `cn`, `ccl`, `indiv`,
+`pas2`, `oth`, `weball`, `webk` and `committee_summary` of 2026-11-23, and `oppexp` of 2026-11-22, each `same`. The
+three CSVs, `ie_24_48`, `ElectioneeringComm` and `CommunicationCosts`, were already in bronze from 2026-11-24 and
+had been read by no live build.
+
+| Step | Time | Notes |
+| --- | ---: | --- |
+| extract | — | nothing extracted |
+| seats | 5.2 s | 441 House, 35 Senate (2 special), 1 presidential race; 49 unmatched filings |
+| transform | 1800.4 s (30m0s) | against the reference `20261124T201924Z`, no table moved; against the live build, `independent_expenditure` 75,452 → 75,552 and `electioneering_communication` none → 67 |
+| resolve | 418.2 s (7m3s) | `0 new contributor keys of 5504649`; crosswalk 0 new donors, 0 re-pointed, 0 redirects |
+| load | 1370.3 s (22m56s) | aggregates 679.67 s, copy 664.48 s; every gold check passed; `race_top_spender` 98,518 rows (NEU-2168: 98,511) |
+| publish | 143.9 s (2m38s) | pruned 1 silver build (268 objects); 177 GB free after it |
+
+**Step 4's three lines:**
+
+- `independent_expenditure 2024: 24/48-hour rows added: by spender 65 rows, $997,843.85; timeliness 35 rows,
+  $3,453.50; largest $90,000.00 by C90020447 (1845232:F57.000001)`
+- `independent_expenditure 2024: communication costs 799 rows, $7,157,987.00, 779 with a type; party coordinated
+  812 rows, $89,161,724.00`
+- `electioneering_communication 2024: 67 rows, $9,442,373.94; $7,230,615.02 reaching a race; disbursements'
+  copies dropped: 2`
+
+**Memory (step 4.1).** Peak resident 28.73 GiB, set in `write contribution 2024`, where DuckDB first spilled
+(0.90 GiB): 1.07 GiB under DuckDB's 29.80 GiB limit, and 0.20 GiB over NEU-2160's 28.53 GiB, inside the run-to-run
+spread. The three models' lines:
+
+- `silver reported_total 2024`: DuckDB 19.43 GiB;
+- `silver independent_expenditure 2024`: DuckDB 19.44 GiB (+0.01);
+- `silver electioneering_communication 2024`: DuckDB 20.13 GiB. The +0.69 GiB is `operating_expenditure`'s, which
+  runs between them (`silver operating_expenditure 2024`: 20.13 GiB; NEU-2160: 0.69 GiB). The electioneering model
+  itself moved DuckDB by 0.00 GiB.
+
+**Step 7.1, the 24/48-hour rows by rule and spender.** `by_spender` 65 rows, 13 spenders, $997,843.85 ($247,770.66
+reaching a race); `timeliness` 35 rows, 1 spender, $3,453.50 (all reaching a race). The 14 spenders are Q6f's,
+each at Q6f's dollars:
+
+| Id | Spender | Type | Rows | Dollars | Q6f | Reported IE | Period end | Rule | Race |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| C90022781 | EARTHJUSTICE ACTION | I | 18 | 293,576.92 | 293,577 | 293,576.96 | 2024-12-31 | by_spender | — |
+| C90020447 | FLIC VOTES INC. | I | 8 | 207,175.03 | 207,175 | 209,322.19 | 2024-12-31 | by_spender | — |
+| C90020058 | RED WINE AND BLUE | I | 5 | 134,694.99 | 134,695 | 134,694.99 | 2024-12-31 | by_spender | 2024-S-OH-00 ($96,841.23) |
+| C90022567 | SOMOS THE FUTURE | I | 5 | 90,020.33 | 90,020 | 90,020.31 | 2024-12-31 | by_spender | 2024-P-US-00 |
+| C90020454 | FREEDOM ACTION NOW INC. | I | 5 | 84,468.19 | 84,468 | 84,695.65 | 2024-12-31 | by_spender | — |
+| C90022997 | PAC FOR GEORGIA'S YOUTH | I | 2 | 76,999.29 | 76,999 | 76,999.29 | 2024-12-31 | by_spender | — |
+| C00892117 | BEYONDROE.COM POLITICAL FUND | O | 3 | 50,000.00 | 50,000 | 59,792.00 | 2024-12-31 | by_spender | — |
+| C90018391 | THE FAMILY FOUNDATION ACTION | I | 7 | 33,892.12 | 33,892 | 6,900.32 | 2024-12-31 | by_spender | 2024-H-VA-07 |
+| C90021841 | PRIVATE EQUITY STAKEHOLDER ACTION | I | 6 | 11,479.00 | 11,479 | 11,479.00 | 2024-11-05 | by_spender | 2024-S-OH-00 |
+| C90022146 | SEATTLE DSA | I | 3 | 7,832.99 | 7,833 | 15,362.62 | 2024-03-31 | by_spender | 2024-P-US-00 |
+| C90018771 | FORFACT, LLC | I | 35 | 3,453.50 | 3,454 | 759.00 | 2024-09-30 | timeliness | 2024-P-US-00 |
+| C90023094 | INTERNATIONAL BROTHERHOOD OF 42 JOINT COUNCIL | I | 1 | 3,020.85 | 3,021 | 3,020.85 | 2024-12-31 | by_spender | 2024-P-US-00 |
+| C90023003 | HERR, STEVEN | I | 1 | 2,614.14 | 2,614 | 2,614.14 | 2024-11-11 | by_spender | 2024-P-US-00 |
+| C90022948 | U.S. VETERANS FOR UKRAINE INC. | I | 1 | 2,070.00 | 2,070 | 7,120.00 | 2024-12-31 | by_spender | 2024-P-US-00 |
+
+PRIVATE EQUITY STAKEHOLDER ACTION files as FINANCIAL SERVICES STAKEHOLDER ACTION NFP. The largest added row is
+FLIC VOTES INC.'s $90,000.00 of 2024-10-30, against Trump with no candidate id, to Imaginart Media Productions for
+`Haitian Radio`, `1845232:F57.000001`: step 4's line named the same row.
+
+**Step 7.2, each row against its filing.** 100 rows read from 33 filings on docquery: `NOT THE SPENDER'S` 0, `NOT
+FOUND` 0, `amount on the line: NO` 0, `not read` 0. Every filing was the spender's own: 30 Form 5s (`F5N`) and
+BEYONDROE.COM's three 24-hour reports (`F24N`, third field `24`). The largest row's line reads `F57 | C90020447 |
+F57.000001 | ORG | Imaginart Media Productions | 17814 SW 47th St | Miramar | FL | 33029 | G2024 | 20241030 |
+90000.00 | .00 | Haitian Radio | 004 | O | TRUMP | DONALD | P`. Every spender is real:
+
+- **FLIC VOTES** (6 filings): Haitian radio, canvassing for Mucarsel-Powell (Hard Knocks Strategies), billboards
+  (Outfront), radio (iHeartMedia), Meta and Vibe Stream ads, robocalls (Stones' Phones). The lines carry no
+  candidate id, so no row reaches a race.
+- **EARTHJUSTICE ACTION:** mailers (Pendulum Creative Group), phone banking (Stones' Phones), message targeting
+  (Sedgwick Group) and its own staff time, for Harris, Casey, Brown and Slotkin, against Trump and McCormick. No
+  candidate ids.
+- **RED WINE AND BLUE:** Google, Meta and ViralGains digital ads for Brown with `S6OH00163` ($96,841.23, the three
+  rows reaching Ohio); two Katz Audio digital lines for Brown without an id ($37,853.76, no race).
+- **SOMOS THE FUTURE:** mail (NEON Strategies), phone banking, yard signs and handouts (COPAL), for Harris. COPAL's
+  lines carry Biden's id `P80000722` beside Harris's name. Silver holds Harris's `P00009423`, as the 24/48-hour file
+  reads them.
+- **FREEDOM ACTION NOW:** mailers and postcards against Trump in Wisconsin (Staples Direct Mail), digital ads
+  (Bedrock Media).
+- **PAC FOR GEORGIA'S YOUTH:** Moxie Media mailers, for Harris and against Trump.
+- **BEYONDROE.COM POLITICAL FUND:** $50,000 of advertising (Winton Campaign Associates, Innonde, Inspiration
+  Strategies) opposing South Dakota's Amendment G, a state ballot measure, not a federal candidate: the candidate
+  fields read `amend g`. Real and as filed, and it reaches no race. Nothing is filed: FEC's own reported figure
+  ($59,792) includes it.
+- **THE FAMILY FOUNDATION ACTION:** digital ads and texts against Vindman (`H4VA07234`, Winning Republican
+  Strategies) and door-knockers paid for Derrick Anderson (`H2VA07170`), VA-07. Its rows are 4.9 times its
+  reported $6,900.32, inside the screen's 10 times, and every line is ordinary field or digital spending.
+- **PRIVATE EQUITY STAKEHOLDER ACTION:** web ads for Brown (Speakeasy Political, Ross Turner Design), and four
+  lines of $42–$104 to individuals at the spender's own address, purpose `web advertisement`. Small, and its rows
+  equal its reported $11,479.
+- **SEATTLE DSA:** text and phone banking paid to Democratic Socialists of America, against Biden, March 2024
+  (`P2024`).
+- **FORFACT, LLC** (3 filings, `timeliness`): 35 Facebook ad lines of $1.58–$222.30, for Harris and against Trump.
+  One, $85.29 on 2024-10-28, has no support or oppose mark.
+- **INTERNATIONAL BROTHERHOOD OF 42 JOINT COUNCIL:** Harris campaign buttons (A to Z Printing). **HERR, STEVEN:**
+  billboards for Harris (Lamar). **U.S. VETERANS FOR UKRAINE:** a newspaper ad against Trump (Gannett).
+
+**Step 7.3, the five races against Q13: equal.** Per candidate: Q13b's 16 candidates and no other. Brown's
+independent expenditures for him are $24,404,163.23, Q13b's $24,295,843 plus the $108,320 the 24/48-hour file adds.
+Electioneering: Moreno $29,500, LaRose $63,000 and Baldwin $42,000, and no other candidate. The per-candidate
+differences table has no row. Per race:
+
+| Race | IE for | IE against | Communication costs | Party coordinated | Electioneering | Total | Difference from Q13 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 2024-S-OH-00 | 99,690,042.23 | 207,925,152.00 | 188,618.00 | 4,204,697.00 | 92,500.00 | 312,101,009.23 | `d_ie_for` 0.23, every other 0 |
+| 2024-S-PA-00 | 48,905,307.00 | 182,843,050.00 | 347,577.00 | 5,008,643.00 | — | 237,104,577.00 | 0 |
+| 2024-S-MT-00 | 35,153,092.00 | 126,988,445.00 | 86,450.00 | 466,276.00 | — | 162,694,263.00 | 0 |
+| 2024-S-MI-00 | 48,717,439.00 | 93,075,675.00 | 13,128.00 | 3,548,974.00 | — | 145,355,216.00 | 0 |
+| 2024-S-WI-00 | 18,497,971.00 | 101,385,628.00 | 54,854.00 | 2,238,372.00 | 42,000.00 | 122,218,825.00 | 0 |
+
+Ohio's $0.23 is the cents of RED WINE AND BLUE's $49,341.23 Google row: Q13's figures are whole dollars.
+
+**Step 7.4, kinds and non-committee spenders.** The top 100 lines by kind:
+
+| Race | Independent expenditure | Communication cost | Party coordinated | Electioneering | Non-committee lines |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2024-S-OH-00 | 93 | 3 | 2 | 2 | 15 |
+| 2024-S-WI-00 | 91 | 5 | 3 | 1 | 21 |
+| 2024-S-PA-00 | 92 | 6 | 2 | 0 | 13 |
+| 2024-S-MT-00 | 95 | 3 | 2 | 0 | 11 |
+| 2024-S-MI-00 | 96 | 2 | 2 | 0 | 12 |
+
+Ohio held 12 non-committee lines before the run and 15 after. The three new ones are RED WINE AND BLUE (`I`, #67,
+$96,841.23 for Brown), PATRIOTIC VETERANS, INC (`E`, #76, $63,000 of electioneering naming LaRose) and AMERICAN
+RESOLVE PAC INC. (`E`, #90, $29,500 naming Moreno). In Wisconsin, AMERICANS FOR PHARMA REFORM INC. (`E`, #57,
+$42,000 naming Baldwin). WORKING AMERICA (`I`) is in all five. **The page: Ohio.**
+
+**Step 7.5, nothing else moved.**
+
+- `committee_cycle`, `candidate_cycle`, `race`, `cycle`: each `missing` 0, `moved` 0.
+- Committees, one row: `2024 | ie_moved 14 | ie_change 1001297.35 | pas2_kinds_moved 0 |
+  electioneering_committees 25 | electioneering 9442373.94`.
+- Candidates: `ie_moved 6 | ie_change 251138.87 | electioneering_candidates 12 | electioneering 7230615.02`. The
+  candidates' `ie_change` is $85.29 under the $251,224.16 the added rows reaching a race sum to: FORFACT's row with
+  no support or oppose mark reaches the race but counts for no candidate and against none.
+
+**Steps 9.1 and 9.2.**
+
+- `/v1/meta` served `20261125T021311Z`, published 2026-11-25 15:35:30 UTC, model `20261116T224205Z`. `gold.race`
+  2024: 477 races, 8 with an electioneering figure.
+- Ohio, before and after:
+
+  | | Before (`20261124T002500Z`) | After (`20261125T021311Z`) |
+  | --- | ---: | ---: |
+  | IE for | 99,581,722 | 99,690,042.23 |
+  | IE against | 207,925,152 | 207,925,152 |
+  | Communication costs, for / against | 187,457 / 1,161 | 187,457 / 1,161 |
+  | Party coordinated | 4,204,697 | 4,204,697 |
+  | Electioneering | none | 92,500 |
+  | Total | 311,900,189 | 312,101,009.23 |
+  | Non-committee lines in the top 100 | 12 | 15 |
+
+- RED WINE AND BLUE's 24/48-hour rows from the API: `1837129:F57.000001` Meta $30,000, `…000002` Google
+  $49,341.23 and `…000003` ViralGains $17,500, each for Brown (`S6OH00163`), `Estimated Cost for Digital
+  Advertising`; `1848329:F57.000001` Katz Audio $19,667.31 and `…000002` $18,186.45, for, no candidate, `Digital
+  Advertising`.
+- `https://fundlens.org/race/2024/senate/OH` showed the Outside spending table with all four kinds and Top outside
+  spenders with Not a committee rows.
+- `https://fundlens.org/committee/C90020058?cycle=2024` listed the five rows, each marked `24/48-HOUR ESTIMATE`.
+- Bugsink: nothing new. Publish logged no Kuma line: `heartbeat.py` logs only a failed push.
+
+**Deviations, none filed.**
+
+- Dependabot's workflow was re-enabled at 02:14 UTC and disabled again before the transform started. Nothing
+  merged.
+- At step 9.3 `gh workflow enable dependencies` failed twice, HTTP 500 then 502, during a GitHub incident with
+  Actions degraded. It was enabled from the Actions page at about 16:00 UTC.
+- The runbook's step 7.5 expected the candidates' `ie_change` at about $251,224. The measured $251,138.87 is
+  explained above.
