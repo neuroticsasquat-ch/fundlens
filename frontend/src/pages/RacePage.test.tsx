@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { OutsideSpending } from "../api/client";
 import { http } from "../test/api";
-import { allOptions, lastOption } from "../test/echarts";
+import { allOptions, lastChartElement, lastOption } from "../test/echarts";
 import { renderApp } from "../test/app";
 import { RACE_SENATE_MD } from "../test/fixtures";
 import { matchMedia } from "../test/media";
@@ -577,6 +577,48 @@ describe("RacePage", () => {
       { axisLabel: { hideOverlap: true } },
       { axisLabel: { hideOverlap: true } },
     ]);
+  });
+
+  it("stacks the chart's panels on a phone, each the full width and naming the candidates", async () => {
+    vi.stubGlobal("matchMedia", matchMedia({ dark: false, narrow: true }));
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Candidates" });
+
+    // Side by side, "Raised" would get a third of a phone's width, and the names would fill it.
+    const option = lastOption();
+    const names = ["WHITLOCK, GORDON", "OKAFOR, DIANA", "BRANNIGAN, TESS", "PELL, MARCUS"];
+    // Each panel is 248px: a 32px heading, 40px a candidate and 40px for the axis, and a 16px gap.
+    expect(option.title).toEqual([
+      expect.objectContaining({ text: "Raised", left: 8, top: 0 }),
+      expect.objectContaining({ text: "For and against", left: 8, top: 248 }),
+      expect.objectContaining({ text: "Electioneering", left: 8, top: 496 }),
+    ]);
+    expect(option.grid).toEqual([
+      { left: 8, right: 24, top: 32, height: 200, containLabel: true },
+      { left: 8, right: 24, top: 280, height: 200, containLabel: true },
+      { left: 8, right: 24, top: 528, height: 200, containLabel: true },
+    ]);
+    expect(option.yAxis).toMatchObject([
+      { gridIndex: 0, data: names, axisLabel: { show: true } },
+      { gridIndex: 1, data: names, axisLabel: { show: true } },
+      { gridIndex: 2, data: names, axisLabel: { show: true } },
+    ]);
+    // Every entry on its own line, below the last panel, rather than one line scrolled.
+    expect(option.legend).toMatchObject({ type: "plain", orient: "vertical", bottom: 0 });
+    // The same series as side by side: nothing stacked onto "Raised", no kind across sides.
+    const series = option.series as { name: string; stack?: string; xAxisIndex: number }[];
+    expect(series.map(({ name, stack, xAxisIndex }) => [name, stack, xAxisIndex])).toEqual([
+      ["Raised", undefined, 0],
+      ["Independent expenditures against", "signed", 1],
+      ["Communication costs against", "signed", 1],
+      ["Independent expenditures for", "signed", 1],
+      ["Communication costs for", "signed", 1],
+      ["Party coordinated expenditures", "signed", 1],
+      ["Electioneering communications", undefined, 2],
+    ]);
+    // Three panels and six legend entries, 24px each.
+    expect(lastChartElement()).toHaveStyle({ height: "888px" });
+    expect(option).toMatchSnapshot();
   });
 
   it("charts the candidates by what they raised, whatever order the API gives them in", async () => {

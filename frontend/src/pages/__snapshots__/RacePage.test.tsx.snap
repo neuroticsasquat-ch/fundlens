@@ -685,3 +685,347 @@ exports[`RacePage > renders the candidate-totals chart in the light scheme 1`] =
   ],
 }
 `;
+
+exports[`RacePage > stacks the chart's panels on a phone, each the full width and naming the candidates 1`] = `
+{
+  "axisPointer": {
+    "link": [
+      {
+        "yAxisIndex": "all",
+      },
+    ],
+  },
+  "backgroundColor": "transparent",
+  "grid": [
+    {
+      "containLabel": true,
+      "height": 200,
+      "left": 8,
+      "right": 24,
+      "top": 32,
+    },
+    {
+      "containLabel": true,
+      "height": 200,
+      "left": 8,
+      "right": 24,
+      "top": 280,
+    },
+    {
+      "containLabel": true,
+      "height": 200,
+      "left": 8,
+      "right": 24,
+      "top": 528,
+    },
+  ],
+  "legend": {
+    "bottom": 0,
+    "data": [
+      "Independent expenditures against",
+      "Communication costs against",
+      "Independent expenditures for",
+      "Communication costs for",
+      "Party coordinated expenditures",
+      "Electioneering communications",
+    ],
+    "itemGap": 10,
+    "left": 8,
+    "orient": "vertical",
+    "show": true,
+    "textStyle": {
+      "color": "#000",
+    },
+    "type": "plain",
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "itemStyle": {
+            "color": "#fa5252",
+          },
+          "value": 1786850,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 79200,
+        },
+        {
+          "itemStyle": {
+            "color": "#228be6",
+          },
+          "value": 7175,
+        },
+        {
+          "itemStyle": {
+            "color": "#868e96",
+          },
+          "value": 3250,
+        },
+      ],
+      "name": "Raised",
+      "type": "bar",
+      "xAxisIndex": 0,
+      "yAxisIndex": 0,
+    },
+    {
+      "data": [
+        -80000,
+        -45000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#fd7e14",
+      },
+      "name": "Independent expenditures against",
+      "stack": "signed",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        -2400,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#ffc078",
+      },
+      "name": "Communication costs against",
+      "stack": "signed",
+      "tooltip": {
+        "valueFormatter": [Function],
+      },
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        150000,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#12b886",
+      },
+      "name": "Independent expenditures for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        0,
+        4224,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#63e6be",
+      },
+      "name": "Communication costs for",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        20000,
+        0,
+        0,
+        0,
+      ],
+      "itemStyle": {
+        "color": "#2f9e44",
+      },
+      "name": "Party coordinated expenditures",
+      "stack": "signed",
+      "type": "bar",
+      "xAxisIndex": 1,
+      "yAxisIndex": 1,
+    },
+    {
+      "data": [
+        26409.5,
+        71409.5,
+        0,
+        3500,
+      ],
+      "itemStyle": {
+        "color": "#be4bdb",
+      },
+      "name": "Electioneering communications",
+      "type": "bar",
+      "xAxisIndex": 2,
+      "yAxisIndex": 2,
+    },
+  ],
+  "textStyle": {
+    "color": "#000",
+  },
+  "title": [
+    {
+      "left": 8,
+      "text": "Raised",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 0,
+    },
+    {
+      "left": 8,
+      "text": "For and against",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 248,
+    },
+    {
+      "left": 8,
+      "text": "Electioneering",
+      "textStyle": {
+        "color": "#000",
+        "fontSize": 14,
+        "fontWeight": 600,
+      },
+      "top": 496,
+    },
+  ],
+  "tooltip": {
+    "axisPointer": {
+      "type": "shadow",
+    },
+    "trigger": "axis",
+    "valueFormatter": [Function],
+  },
+  "xAxis": [
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
+        "hideOverlap": true,
+      },
+      "gridIndex": 0,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
+      },
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
+        "hideOverlap": true,
+      },
+      "gridIndex": 1,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
+      },
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#868e96",
+        "formatter": [Function],
+        "hideOverlap": true,
+      },
+      "gridIndex": 2,
+      "splitLine": {
+        "lineStyle": {
+          "color": "#e9ecef",
+        },
+      },
+      "type": "value",
+    },
+  ],
+  "yAxis": [
+    {
+      "axisLabel": {
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 0,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 1,
+      "inverse": true,
+      "type": "category",
+    },
+    {
+      "axisLabel": {
+        "show": true,
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#adb5bd",
+        },
+      },
+      "axisTick": {
+        "show": false,
+      },
+      "data": [
+        "WHITLOCK, GORDON",
+        "OKAFOR, DIANA",
+        "BRANNIGAN, TESS",
+        "PELL, MARCUS",
+      ],
+      "gridIndex": 2,
+      "inverse": true,
+      "type": "category",
+    },
+  ],
+}
+`;
