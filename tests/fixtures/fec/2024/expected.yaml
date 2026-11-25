@@ -91,7 +91,8 @@ cycle: 2024
 # cases are in each file's comments (NEU-2164). What silver makes of ie_24_48 is `ie_24_48`
 # below (NEU-2165), of ElectioneeringComm `electioneering_communications` (NEU-2166), and of
 # CommunicationCosts `communication_costs` (NEU-2167). The leadership and lobbyist files' cases
-# are in theirs too (NEU-2174); NEU-2175's silver reads them.
+# are in theirs too (NEU-2174); what silver makes of them is `leadership_pacs`, `lobbyist_pacs`
+# and `bundling_reports` below (NEU-2175).
 rows:
   cm: 27
   cn: 15
@@ -140,6 +141,10 @@ silver:
   # `electioneering_communications` below: every ElectioneeringComm row but a disbursement's copy
   # and the row of a spender `cm` lacks.
   electioneering_communication: 14
+  # `leadership_pacs`, `lobbyist_pacs` and `bundling_reports` below (NEU-2175).
+  leadership_pac: 2
+  lobbyist_pac: 2
+  bundling_report: 11
 
 # Operating expenditures (every-FEC-dollar spec §5, NEU-2152): silver operating_expenditure on
 # oppexp.csv, whose comments say which rule (§5.2) counts or leaves out each row. A sub-item
@@ -777,6 +782,46 @@ electioneering_communications:
 # too (STEAMFITTERS' $800, RESTORATION PAC's $36,000), and the total with its ie_total; a committee
 # not listed has 0, 0, null and its ie_total. A Form 7 filer's and a Form 9 filer's spending is
 # theirs, in no receipt figure.
+# Silver leadership_pac (project spec §7.3, §7.4, NEU-2175), by committee: [sponsor_name,
+# sponsor_candidate_id, sponsor_source]. leadership.csv's two rows. CALLOWAY LEADERSHIP FUND's
+# sponsor, `CALLOWAY, RUTH`, is one person of the cycle by last and first given name: the rule's.
+# SEVERN RIVER PAC's is blank: tests/fixtures/fec/leadership_sponsors.csv's 2024 row names it, and
+# its 2022 row is not read. STRATTON 2024, designated D in `cm`, is not in the file: no row.
+leadership_pacs:
+  C00800114: ["CALLOWAY, RUTH", H4MD05106, rule]
+  C00800117: ["WHITLOCK, GORDON", S4MD00104, list]
+
+# Silver lobbyist_pac (project spec §7.2, §7.3, NEU-2175), by committee: [filed_date, image_num],
+# the deciding Form 1's: each committee's latest Form 1 filed by 2024-12-31, then the higher image
+# number, when its box is ticked. lobbyist.csv's comments give each case: BRICKLAYERS UNITED PAC by
+# its 2023 Form 1, its 2025 one not read; TIDEWATER ACTION FUND by the higher image number of one
+# day. MARYLAND FORWARD PAC's latest Form 1 unticks the box, and CHESAPEAKE REALTORS PAC is no
+# committee of the cycle.
+lobbyist_pacs:
+  C00800202: [2023-02-08, "202302089150123456"]
+  C00800204: [2017-05-16, "201705169106000002"]
+
+# Silver bundling_report (project spec §7.5, §7.6, NEU-2175), by key (the image number):
+# [committee_id, half_year, is_superseded, amount]. lobbyist_bundle.csv's comments give each case;
+# its 2012 report is 2012's. OLD LINE REPUBLICAN COMMITTEE's months add their period amounts, and
+# its June report carrying the half-year figure adds what $82,000 exceeds their $61,500 by too.
+# OKAFOR FOR MARYLAND's first April report is superseded. CALLOWAY FOR CONGRESS's year-end report
+# holds its October quarterly, so adds nothing of its own, and its half-year figure, $14,000, is the
+# quarter's. HARGROVE FOR AMERICA's report has no coverage end: 2024's by its receipt date, in no
+# half. Bundled: $118,500 at three recipients.
+bundling_reports:
+  "202402209160000001": [C00800203, 2024-1, false, 12000]
+  "202403199160000002": [C00800203, 2024-1, false, 9000]
+  "202404189160000003": [C00800203, 2024-1, false, 0]
+  "202405209160000004": [C00800203, 2024-1, false, 18000]
+  "202406189160000005": [C00800203, 2024-1, false, 7500]
+  "202407199160000006": [C00800203, 2024-1, false, 35500]
+  "202404159160000007": [C00800103, 2024-1, true, 0]
+  "202405029160000008": [C00800103, 2024-1, false, 22500]
+  "202410159160000009": [C00800106, 2024-2, false, 14000]
+  "202501319160000010": [C00800106, 2024-2, false, 0]
+  "202407229160000011": [C00800101, null, false, 0]
+
 outside_spending:
   by_candidate:
     H4MD05106: [512, 0, 0, 18000] # CALLOWAY

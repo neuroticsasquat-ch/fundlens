@@ -2,9 +2,10 @@
 
 Federal campaign-finance money for every cycle since 1980, from the FEC's bulk files, as open
 Parquet files: contributions, committees, candidates, races, committee transfers, organizations'
-gifts, independent expenditures, electioneering communications, committees' spending and the
-totals committees report, with **individual donors resolved** across the name, employer and address
-variants they are reported under. It is the data behind [fundlens.org](https://fundlens.org).
+gifts, independent expenditures, electioneering communications, committees' spending, the
+totals committees report, leadership PACs, lobbyist-run PACs and lobbyist bundling reports, with
+**individual donors resolved** across the name, employer and address variants they are reported
+under. It is the data behind [fundlens.org](https://fundlens.org).
 
 Served from `https://data.fundlens.org/v1/`. License: [CC BY 4.0](LICENSE). Read the
 [notice on contributor information](#notice-contributor-information-and-the-fec) before you use
@@ -29,6 +30,9 @@ it.
 | `candidate_reported_total` | candidate's own reported totals for a cycle, before 2008 | `candidate_reported_total/cycle=<c>/*.parquet` |
 | `operating_expenditure` | payment a committee itemized as spending (from 2004), counted or not | `operating_expenditure/cycle=<c>/*.parquet` |
 | `electioneering_communication` | electioneering communication's share for one candidate (from 2010) | `electioneering_communication/cycle=<c>/*.parquet` |
+| `leadership_pac` | leadership PAC in a cycle, with its sponsor (from 2010) | `leadership_pac/cycle=<c>/*.parquet` |
+| `lobbyist_pac` | committee run by a lobbyist or registrant in a cycle (from 2010) | `lobbyist_pac/cycle=<c>/*.parquet` |
+| `bundling_report` | lobbyist bundling report (Form 3L) a committee filed, amendments included (from 2010) | `bundling_report/cycle=<c>/*.parquet` |
 
 Every column of every table is described in its JSON Schema, `schema/<table>.json` (for
 example [`schema/contribution.json`](schema/contribution.json)), and every change to them is in
@@ -64,6 +68,13 @@ A few things to know before you add anything up:
   side: the filing does not say whether the ad is for or against the candidate. The FEC's file
   shows no amendment, so a report a later one restates may be counted twice (0.36% of 2024's
   dollars). Outside spending is never to be added to `contribution` amounts.
+- **Sum `bundling_report`'s `amount`, never `period_amount` or `semi_annual_amount`.** The two
+  filed amounts repeat each other: a six-month report restates its quarters, and the half-year
+  amount restates both. An amended report is kept and marked `is_superseded`, and adds 0. Every
+  bundled gift is already an individual's contribution, so a bundled amount is never to be added
+  to `contribution` amounts, nor to any other receipt. No row names a bundler or a donor.
+- **A leadership PAC's money is its own.** `leadership_pac.sponsor_candidate_id` links a PAC to
+  its sponsor; never add the PAC's money to the sponsor's.
 - **Organizations are not resolved.** Their gifts are grouped by `organization_key`, the
   normalized name.
 - **Sum `operating_expenditure` only where `counted` is true.** A sub-item, a card bill's charge

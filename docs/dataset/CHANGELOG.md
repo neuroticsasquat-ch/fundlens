@@ -4,6 +4,17 @@ Every change to the dataset's tables or columns, newest first: a table or column
 renamed or retyped, or a column whose meaning changed. Each entry is dated by the change's merge
 and reaches the bucket with the next snapshot. Each table's schema is at `schema/<table>.json`.
 
+## 2026-11-25 — `leadership_pac`, `lobbyist_pac` and `bundling_report` added
+
+Three tables, an additive change, each from 2010 on, as their schemas describe them:
+`leadership_pac`, each leadership PAC the FEC lists for a cycle, with its sponsor and, where
+fundlens can tell it, the sponsor's candidate id; `lobbyist_pac`, each committee run by a
+registered lobbyist or lobbying registrant in a cycle; and `bundling_report`, each lobbyist
+bundling report (Form 3L), amendments included. Sum `bundling_report.amount`, never its two filed
+amounts, and never add it to `contribution`: every bundled gift is already a contribution. A cycle
+built before the tables existed has no files of them until the backfill rebuilds it: read a
+table's cycles from `manifest.json`.
+
 ## 2026-11-24 — `independent_expenditure.communication_type` and `communication_class` added
 
 Two columns, an additive change: a communication cost's (`kind = 'communication_cost'`) type and

@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/bundling_report.json",
+  "title": "bundling_report",
+  "description": "One report of lobbyist bundled contributions (Form 3L) a committee filed, from the FEC's lobbyist bundling file (from 2010): contributions registered lobbyists and lobbyist PACs bundled to a campaign, party committee or leadership PAC. Amendments are rows too, marked `is_superseded`. Sum `amount`, never `period_amount` or `semi_annual_amount`. Every bundled gift is already an individual's contribution, so never add these amounts to `contribution` or any receipt amount. No row names a bundler or a donor. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "source_record_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year: the coverage end's year, rounded up to even; with no coverage end, the receipt date's.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source_record_id": {
+      "description": "The report's FEC image number.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "committee_id": {
+      "description": "The FEC id of the committee the contributions were bundled to.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "report_type": {
+      "description": "The report's type, as filed.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "receipt_date": {
+      "description": "The date the FEC received the report.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "coverage_start": {
+      "description": "The first day the report covers; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "coverage_end": {
+      "description": "The last day the report covers; null when the filer gave none.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "half_year": {
+      "description": "The half-year the coverage end falls in, `<yyyy>-1` (January to June) or `<yyyy>-2` (July to December); null with no coverage end.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "period_amount": {
+      "description": "The amount bundled in the report's covered period, as filed. Never sum it: a report covering six months repeats its quarters.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "semi_annual_amount": {
+      "description": "The amount bundled in the half-year, as filed. Never sum it: it repeats the half's period amounts.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    },
+    "is_superseded": {
+      "description": "True when a later report of the same committee and covered period (latest receipt date, then higher image number) replaces it.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "x-duckdb-type": "BOOLEAN"
+    },
+    "amount": {
+      "description": "What the report adds to its committee's bundled total. Per committee and half-year these sum to the greater of the half-year amount and the period amounts of the reports that hold no other; a superseded report, or one with no coverage end, adds 0. Sum this.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-duckdb-type": "DECIMAL(14,2)"
+    }
+  },
+  "required": [
+    "cycle",
+    "source",
+    "source_record_id",
+    "jurisdiction",
+    "committee_id",
+    "report_type",
+    "receipt_date",
+    "coverage_start",
+    "coverage_end",
+    "half_year",
+    "period_amount",
+    "semi_annual_amount",
+    "is_superseded",
+    "amount"
+  ],
+  "additionalProperties": false
+}

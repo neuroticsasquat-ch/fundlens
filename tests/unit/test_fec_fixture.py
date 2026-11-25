@@ -2116,6 +2116,9 @@ def test_the_expected_counts_match_the_fixture() -> None:
         "candidate_reported_total": len(candidate_reported_totals(CYCLE)),
         "operating_expenditure": len(operating_expenditures()),
         "electioneering_communication": len(electioneering_communications()),
+        "leadership_pac": len(leadership_pacs()),
+        "lobbyist_pac": len(lobbyist_pacs()),
+        "bundling_report": len(bundling_reports()),
     }
     conduits = sum_by((c, 1) for r in contributions if (c := conduit(r)) is not None)
     committees = {row["CMTE_ID"] for row in rows("cm")}
@@ -2671,3 +2674,149 @@ def test_each_lobbyist_rows_image_number_is_its_own(file: FecFile) -> None:
 def test_the_bundling_reports_recipients_are_the_cycles_committees() -> None:
     # A recipient no committee of its cycle is dropped (§7.5); the fixture plants none of those.
     assert {r["Committee_Id"] for r in rows("lobbyist_bundle")} <= committee_ids()
+
+
+def image_number(row: Row) -> str:
+    """The image number a leadership or lobbyist file's Link_Image ends in: the digits after `?_`
+    (or `?`)."""
+    found = re.search(r"\?_?(\d+)", row["Link_Image"])
+    assert found is not None, row["Link_Image"]
+    return found.group(1)
+
+
+def dmy(value: str) -> date | None:
+    """A DD-MON-YY date, as the leadership and lobbyist files write them; None when blank."""
+    return datetime.strptime(value, "%d-%b-%y").date() if value else None
+
+
+SPONSORS = Path(__file__).resolve().parents[1] / "fixtures" / "fec" / "leadership_sponsors.csv"
+
+
+@functools.cache
+def leadership_pacs() -> Mapping[str, list[str | None]]:
+    """Silver leadership_pac's rows by committee, [sponsor_name, sponsor_candidate_id,
+    sponsor_source] (project spec §7.4): the fixture's sponsor list row for the cycle where there is
+    one; else the one person of the cycle, through their alias, whose last name and first given
+    name are the sponsor's."""
+    with SPONSORS.open() as src:
+        listed = {r["committee_id"]: r for r in csv.DictReader(src) if int(r["cycle"]) == CYCLE}
+    people: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for r in rows("cn"):
+        people[person(r["CAND_NAME"])].add(aliases().get(r["CAND_ID"], r["CAND_ID"]))
+    tallied: dict[str, list[str | None]] = {}
+    for r in rows("leadership"):
+        sponsor = r["Sponsor_Name"].strip() or None
+        entry = listed.get(r["Committee_Id"])
+        if entry is not None:
+            tallied[r["Committee_Id"]] = [
+                sponsor or entry["sponsor_name"],
+                entry["candidate_id"],
+                "list",
+            ]
+            continue
+        key = person(sponsor) if sponsor else ("", "")
+        matched: set[str] = people.get(key, set()) if key[1] else set()
+        rule = next(iter(matched)) if len(matched) == 1 else None
+        tallied[r["Committee_Id"]] = [sponsor, rule, None if rule is None else "rule"]
+    return MappingProxyType(tallied)
+
+
+@functools.cache
+def lobbyist_pacs() -> Mapping[str, list[date | str]]:
+    """Silver lobbyist_pac's rows by committee, [filed_date, image_num] (project spec §7.2): each
+    committee of the cycle whose latest Form 1 filed by the cycle's last day, then the higher image
+    number, has the box ticked."""
+    latest: dict[str, tuple[date, int, Row]] = {}
+    for r in rows("lobbyist"):
+        filed = dmy(r["Date_Filed"])
+        assert filed is not None
+        if filed > date(CYCLE, 12, 31):
+            continue
+        order = (filed, int(image_number(r)), r)
+        best = latest.get(r["Committee_Id"])
+        if best is None or order[:2] > best[:2]:
+            latest[r["Committee_Id"]] = order
+    return MappingProxyType(
+        {
+            committee: [filed, image_number(r)]
+            for committee, (filed, _, r) in latest.items()
+            if r["Is_Lobbyist"] == "Y" and committee in committee_ids()
+        }
+    )
+
+
+def half_year(day: date) -> str:
+    return f"{day.year}-{1 if day.month <= 6 else 2}"
+
+
+@functools.cache
+def bundling_reports() -> Mapping[str, list[str | bool | float | None]]:
+    """Silver bundling_report's rows by image number, [committee_id, half_year, is_superseded,
+    amount] (project spec §7.5, §7.6): the cycle's reports, amendments resolved by the latest
+    receipt date, then the higher image number; each kept report adding its period amount unless
+    its covered period holds another kept report, and the one carrying the half-year figure adding
+    what it exceeds those by."""
+    reports = rows("lobbyist_bundle")
+    superseded: set[str] = set()
+    by_period: dict[tuple[str, date, date], list[Row]] = defaultdict(list)
+    for r in reports:
+        start, end = dmy(r["Coverage_Start_Date"]), dmy(r["Coverage_End_Date"])
+        if start is not None and end is not None:
+            by_period[(r["Committee_Id"], start, end)].append(r)
+    for same in by_period.values():
+        same.sort(key=lambda r: (dmy(r["Receipt_Date"]), int(image_number(r))))
+        superseded.update(image_number(r) for r in same[:-1])
+    kept = [r for r in reports if image_number(r) not in superseded and r["Coverage_End_Date"]]
+
+    def period(r: Row) -> tuple[date | None, date]:
+        end = dmy(r["Coverage_End_Date"])
+        assert end is not None
+        return dmy(r["Coverage_Start_Date"]), end
+
+    def holds_another(r: Row) -> bool:
+        start, end = period(r)
+        return start is not None and any(
+            o["Committee_Id"] == r["Committee_Id"]
+            and (inner := period(o))[0] is not None
+            and start <= inner[0] <= inner[1] <= end
+            and inner != (start, end)
+            for o in kept
+        )
+
+    own = {
+        image_number(r): 0 if holds_another(r) else float(Decimal(r["Quarterly_Contribution"]))
+        for r in kept
+    }
+    halves: dict[tuple[str, str], list[Row]] = defaultdict(list)
+    for r in kept:
+        halves[(r["Committee_Id"], half_year(period(r)[1]))].append(r)
+    for half in halves.values():
+        carriers = [r for r in half if Decimal(r["Semi_Annual_Contribution"]) > 0]
+        if carriers:
+            carrier = max(
+                carriers,
+                key=lambda r: (period(r)[1], period(r)[0] or date.min, int(image_number(r))),
+            )
+            figure = float(Decimal(carrier["Semi_Annual_Contribution"]))
+            innermost = sum(own[image_number(r)] for r in half)
+            own[image_number(carrier)] += max(figure - innermost, 0)
+    tallied: dict[str, list[str | bool | float | None]] = {}
+    for r in reports:
+        end, received = dmy(r["Coverage_End_Date"]), dmy(r["Receipt_Date"])
+        year = (end or received or date.min).year
+        if year + year % 2 != CYCLE or r["Committee_Id"] not in committee_ids():
+            continue
+        image = image_number(r)
+        tallied[image] = [
+            r["Committee_Id"],
+            None if end is None else half_year(end),
+            image in superseded,
+            own.get(image, 0),
+        ]
+    return MappingProxyType(tallied)
+
+
+def test_the_expected_leadership_and_lobbyist_rows_are_the_rules_on_the_fixture() -> None:
+    assert EXPECTED["leadership_pacs"] == leadership_pacs()
+    assert EXPECTED["lobbyist_pacs"] == lobbyist_pacs()
+    assert EXPECTED["bundling_reports"] == bundling_reports()
