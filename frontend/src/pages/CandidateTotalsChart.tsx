@@ -1,4 +1,5 @@
-import { Stack, Text } from "@mantine/core";
+import { Stack, Text, useMantineTheme } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useMemo } from "react";
 import type { RaceCandidate } from "../api/client";
 import EChart from "../components/charts/EChart";
@@ -18,10 +19,16 @@ const CHARTED = 15;
  * them in panels beside it. Others' spending never orders them: a candidate who raised nothing is
  * charted, below everyone who raised money, only when there was outside spending on them, and its
  * dollars, of every kind and side, order such candidates among themselves. A candidate with
- * neither is left out, and so is the chart when nobody has any.
+ * neither is left out, and so is the chart when nobody has any. Below the `sm` breakpoint (a
+ * phone) the panels are stacked, one above the next, rather than side by side.
  */
 function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
   const theme = useChartTheme();
+  const { breakpoints } = useMantineTheme();
+  // Read on the first render, not after it, so a phone never draws the side-by-side chart first.
+  const stacked = useMediaQuery(`(max-width: ${breakpoints.sm})`, undefined, {
+    getInitialValueInEffect: false,
+  });
   const charted = useMemo(
     () =>
       candidates
@@ -37,11 +44,17 @@ function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
         .slice(0, CHARTED),
     [candidates],
   );
-  const option = useMemo(() => candidateTotalsOption(charted, theme), [charted, theme]);
+  const option = useMemo(
+    () => candidateTotalsOption(charted, theme, { stacked }),
+    [charted, theme, stacked],
+  );
   if (charted.length === 0) return null;
   return (
     <Stack gap={4}>
-      <EChart option={option} style={{ width: "100%", height: candidateTotalsHeight(charted) }} />
+      <EChart
+        option={option}
+        style={{ width: "100%", height: candidateTotalsHeight(charted, { stacked }) }}
+      />
       {charted.length < candidates.length && (
         <Text size="sm" c="dimmed">
           The {count(charted.length)} candidates who raised the most, of{" "}

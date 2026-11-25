@@ -9,7 +9,19 @@ import type { ChartOption } from "../components/charts/echarts";
 const setOption = vi.fn<(option: ChartOption) => void>();
 const on = vi.fn<(event: string, handler: (params: object) => void) => void>();
 
-export const init = vi.fn(() => ({ setOption, on, resize: vi.fn(), dispose: vi.fn() }));
+export const init = vi.fn((_element: HTMLElement) => ({
+  setOption,
+  on,
+  resize: vi.fn(),
+  dispose: vi.fn(),
+}));
+
+/** The element the chart most recently mounted draws in, which its page sizes. */
+export function lastChartElement(): HTMLElement {
+  const element = init.mock.lastCall?.[0];
+  if (!element) throw new Error("No chart has mounted");
+  return element;
+}
 
 /** The option most recently set on any mocked chart. */
 export function lastOption(): ChartOption {
