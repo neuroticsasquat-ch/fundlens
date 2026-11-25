@@ -21,6 +21,7 @@ pipeline must make of them.
 import csv
 import functools
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypedDict, cast
@@ -358,6 +359,12 @@ class Expected(TypedDict):
     communication_costs: dict[str, list[str | int | None]]
     party_coordinated: dict[str, list[str | int | None]]
     outside_spending: OutsideSpending
+    # Silver leadership_pac by committee: [sponsor_name, sponsor_candidate_id, sponsor_source];
+    # lobbyist_pac by committee: [filed_date, image_num]; bundling_report by key: [committee_id,
+    # half_year, is_superseded, amount] (NEU-2175).
+    leadership_pacs: dict[str, list[str | None]]
+    lobbyist_pacs: dict[str, list[date | str]]
+    bundling_reports: dict[str, list[str | bool | float | None]]
     # Gold's race_top_spender per race, by rank: [committee_id, candidate_id, kind,
     # support_oppose, amount] (NEU-2168).
     race_top_spenders: dict[str, list[list[str | float | None]]]

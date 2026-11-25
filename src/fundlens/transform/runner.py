@@ -27,6 +27,8 @@ Plain SQL over DuckDB, no dbt. The runner gives the SQL these tables and views t
   second's on and after it (NEU-2126);
 - `ie_candidate_correction`, the vendored independent expenditures FEC's `pas2` credits to a
   candidate other than the one the filing names (`fec/ie_candidate_corrections.csv`, NEU-2279);
+- `leadership_sponsor`, the cycle's vendored leadership PAC sponsors, the candidate each names
+  (`fec/leadership_sponsors.csv`, every-FEC-dollar spec §7.4, NEU-2175);
 - `unmatched_filing`, the cycle's `app.unmatched_filing` rows, written by `fundlens seats
   --report`, which must therefore run first;
 - the contributor normalizers of `resolve.normalize` as SQL functions (`normalize_name`, `zip5`,
@@ -64,6 +66,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from importlib.resources import files as package_files
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import IO, Literal, get_args
 
@@ -97,6 +100,9 @@ TRANSACTION_KEY = ("CMTE_ID", "FILE_NUM", "TRAN_ID", "SUB_ID")
 # `operating_expenditure` is 0.87 GiB of 2024's, so it goes first (every-FEC-dollar spec §5.1,
 # NEU-2152).
 WRITTEN_FIRST: tuple[SilverTable, ...] = ("operating_expenditure",)
+# The vendored leadership PAC sponsors (every-FEC-dollar spec §7.4, NEU-2173): real committees, so
+# the fixture cycle's tests point this at a list of the fixture's own.
+LEADERSHIP_SPONSORS: Traversable = package_files("fundlens.fec").joinpath("leadership_sponsors.csv")
 
 
 type DuckDBConfig = dict[str, str | bool | int | float | list[str]]
@@ -457,6 +463,23 @@ def _register_ie_candidate_corrections(con: duckdb.DuckDBPyConnection) -> None:
     con.executemany("INSERT INTO ie_candidate_correction VALUES (?, ?, ?)", rows)
 
 
+def _register_leadership_sponsors(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    # The cycle's rows alone: the list is keyed by cycle and committee, and a PAC's sponsor may
+    # differ from one cycle to the next.
+    rows = [
+        (row["committee_id"], row["sponsor_name"] or None, row["candidate_id"])
+        for row in csv.DictReader(io.StringIO(LEADERSHIP_SPONSORS.read_text()))
+        if int(row["cycle"]) == cycle
+    ]
+    con.execute(
+        "CREATE TABLE leadership_sponsor"
+        " (committee_id VARCHAR, sponsor_name VARCHAR, candidate_id VARCHAR)"
+    )
+    # DuckDB's executemany refuses an empty list, and a cycle before 2010 has no leadership file.
+    if rows:
+        con.executemany("INSERT INTO leadership_sponsor VALUES (?, ?, ?)", rows)
+
+
 def _register_unmatched(
     con: duckdb.DuckDBPyConnection, conn: Connection[TupleRow], cycle: int
 ) -> None:
@@ -636,6 +659,47 @@ def _log_electioneering(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
     )
 
 
+def _log_leadership_lobbyist(con: duckdb.DuckDBPyConnection, cycle: int) -> None:
+    """Log the cycle's leadership PACs, how many have a sponsor by the name rule, by the list and
+    by neither (every-FEC-dollar spec §7.4), and the committees `cm` designates D that the file
+    lacks; the lobbyist/registrant PACs (§7.2); and the bundling reports, how many are superseded,
+    and the bundled total with its recipients (§7.6): the figures a cycle's three tables are checked
+    against (NEU-2175). A new leadership PAC no list row names yet shows under neither."""
+    [(pacs, by_rule, by_list, designated)] = con.execute(
+        "SELECT count(*), count(*) FILTER (WHERE sponsor_source = 'rule'),"
+        " count(*) FILTER (WHERE sponsor_source = 'list'),"
+        " (SELECT count(*) FROM committee WHERE designation = 'D'"
+        "  AND committee_id NOT IN (SELECT committee_id FROM leadership_pac))"
+        " FROM leadership_pac"
+    ).fetchall()
+    [(lobbyist,)] = con.execute("SELECT count(*) FROM lobbyist_pac").fetchall()
+    [(reports, superseded, bundled, recipients)] = con.execute(
+        "SELECT count(*), count(*) FILTER (WHERE is_superseded), coalesce(sum(amount), 0),"
+        " count(DISTINCT committee_id)"
+        "  FILTER (WHERE NOT is_superseded AND coverage_end IS NOT NULL)"
+        " FROM bundling_report"
+    ).fetchall()
+    log.info(
+        "leadership_pac %d: %s leadership PACs, sponsor by the rule %s, by the list %s,"
+        " neither %s; %s designated D the file lacks",
+        cycle,
+        f"{pacs:,}",
+        f"{by_rule:,}",
+        f"{by_list:,}",
+        f"{pacs - by_rule - by_list:,}",
+        f"{designated:,}",
+    )
+    log.info("lobbyist_pac %d: %s lobbyist/registrant PACs", cycle, f"{lobbyist:,}")
+    log.info(
+        "bundling_report %d: %s reports, %s superseded; bundled total $%s at %s recipients",
+        cycle,
+        f"{reports:,}",
+        f"{superseded:,}",
+        f"{bundled:,}",
+        f"{recipients:,}",
+    )
+
+
 def _write(
     con: duckdb.DuckDBPyConnection, table: SilverTable, *, cycle: int, build_id: str, data_dir: Path
 ) -> tuple[str, Path, int]:
@@ -701,6 +765,7 @@ def transform(
             _register_house_districts(con, cycle)
             _register_special_candidates(con, cycle)
             _register_ie_candidate_corrections(con)
+            _register_leadership_sponsors(con, cycle)
             _register_unmatched(con, conn, cycle)
             normalize.register(con)
             lines.register(con)
@@ -722,6 +787,7 @@ def transform(
             _log_ie_24_48(con, cycle)
             _log_pas2_kinds(con, cycle)
             _log_electioneering(con, cycle)
+            _log_leadership_lobbyist(con, cycle)
             written: dict[SilverTable, tuple[str, Path, int]] = {}
             for table in write_order([table for table, _ in models]):
                 written[table] = _write(

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/leadership_pac.json",
+  "title": "leadership_pac",
+  "description": "One leadership PAC of a cycle, as the FEC's leadership PAC file lists it (from 2010), with its sponsor: the member of Congress or candidate who set it up. The sponsor's candidate id is fundlens's, by name or from a vendored list checked against the FEC's own records; the PAC's money stays its own, and is never a candidate's. A committee the FEC designates a leadership PAC (`committee.designation` D) that the file does not list has no row. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "committee_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "committee_id": {
+      "description": "The leadership PAC's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "sponsor_name": {
+      "description": "The sponsor's name as the FEC's file gives it; where the file leaves it blank, the name fundlens's sponsor list gives; null when neither has one.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "sponsor_candidate_id": {
+      "description": "The FEC candidate id of the sponsor, null when fundlens cannot tell it. By name, the one candidate of the cycle with the sponsor's last name and first given name; or from fundlens's sponsor list, which may name a candidate of another cycle.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "sponsor_source": {
+      "description": "Where sponsor_candidate_id comes from: `rule`, the name match, or `list`, fundlens's sponsor list. Null when there is no id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "committee_id",
+    "source",
+    "jurisdiction",
+    "sponsor_name",
+    "sponsor_candidate_id",
+    "sponsor_source"
+  ],
+  "additionalProperties": false
+}

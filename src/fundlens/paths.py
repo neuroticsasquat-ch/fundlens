@@ -26,6 +26,9 @@ SilverTable = Literal[
     "candidate_reported_total",
     "operating_expenditure",
     "electioneering_communication",
+    "leadership_pac",
+    "lobbyist_pac",
+    "bundling_report",
 ]
 
 # The backfill-pending tables (CONTEXT.md): the silver tables a live build may lack, because it
@@ -40,6 +43,9 @@ BACKFILL_PENDING: frozenset[SilverTable] = frozenset(
         "candidate_reported_total",
         "operating_expenditure",
         "electioneering_communication",
+        "leadership_pac",
+        "lobbyist_pac",
+        "bundling_report",
     }
 )
 

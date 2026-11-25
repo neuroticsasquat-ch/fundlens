@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.fundlens.org/v1/schema/lobbyist_pac.json",
+  "title": "lobbyist_pac",
+  "description": "One committee of a cycle run by a registered lobbyist or a lobbying registrant (a lobbyist/registrant PAC), from the FEC's lobbyist/registrant committees file (from 2010): a committee whose latest statement of organization (Form 1) filed by the cycle's last day ticks the lobbyist/registrant box. A committee with no row is not one in the cycle. Partitioned by cycle.",
+  "x-key": [
+    "cycle",
+    "committee_id"
+  ],
+  "type": "object",
+  "properties": {
+    "cycle": {
+      "description": "The two-year election cycle, named by its even year.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-duckdb-type": "INTEGER"
+    },
+    "committee_id": {
+      "description": "The committee's FEC id.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "source": {
+      "description": "Where the row comes from. `fec` for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "jurisdiction": {
+      "description": "The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    },
+    "filed_date": {
+      "description": "The date the deciding Form 1 was filed.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "x-duckdb-type": "DATE"
+    },
+    "image_num": {
+      "description": "The FEC image number of the deciding Form 1.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-duckdb-type": "VARCHAR"
+    }
+  },
+  "required": [
+    "cycle",
+    "committee_id",
+    "source",
+    "jurisdiction",
+    "filed_date",
+    "image_num"
+  ],
+  "additionalProperties": false
+}

@@ -44,6 +44,9 @@ TABLES: tuple[SilverTable, ...] = (
     "candidate_reported_total",
     "operating_expenditure",
     "electioneering_communication",
+    "leadership_pac",
+    "lobbyist_pac",
+    "bundling_report",
 )
 # The fixture's filing for Maryland's 9th district, which the 2020 census did not draw.
 BAD = "H4MD09109"
@@ -587,6 +590,9 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         "operating_expenditure 2024: ",
         "independent_expenditure 2024: ",
         "electioneering_communication 2024: ",
+        "leadership_pac 2024: ",
+        "lobbyist_pac 2024: ",
+        "bundling_report 2024: ",
         "write ",
         "upload ",
     )
@@ -617,6 +623,13 @@ def test_transform_logs_each_check_write_and_upload_after_the_last_model(
         # $36,000 of its three naming no candidate of the cycle reaching no race, and case 2's copy.
         "electioneering_communication 2024: 14 rows, $249,819.25; $213,819.25 reaching a race;"
         " disbursements' copies dropped: 1",
+        # The figures NEU-2175's definition of done is measured by: CALLOWAY's PAC linked by the
+        # rule and SEVERN RIVER's by the list, STRATTON 2024 designated D and not in the file; two
+        # lobbyist/registrant PACs; and $118,500 bundled at three recipients, one report superseded.
+        "leadership_pac 2024: 2 leadership PACs, sponsor by the rule 1, by the list 1, neither 0;"
+        " 1 designated D the file lacks",
+        "lobbyist_pac 2024: 2 lobbyist/registrant PACs",
+        "bundling_report 2024: 11 reports, 1 superseded; bundled total $118,500.00 at 3 recipients",
         *(f"write {table} 2024" for table in write_order(tables)),
         *(
             f"upload {paths.silver_partition(table, 2024, BUILD)}/{paths.part(0)}"
@@ -1561,6 +1574,100 @@ def test_communication_costs_and_party_coordinated_spending_are_each_counted_onc
         row["communication_type"] is None and row["communication_class"] is None
         for row in rows
         if row["kind"] != "communication_cost"
+    )
+
+
+def test_leadership_and_lobbyist_pacs_and_bundling_reports_are_the_rules_on_the_fixture(
+    fixture_silver: Path,
+) -> None:
+    leadership = local_silver(fixture_silver, "leadership_pac")
+    lobbyist = local_silver(fixture_silver, "lobbyist_pac")
+    bundling = local_silver(fixture_silver, "bundling_report")
+    expected = fec_fixture.expected()
+
+    assert list(leadership[0]) == [
+        "cycle",
+        "committee_id",
+        "source",
+        "jurisdiction",
+        "sponsor_name",
+        "sponsor_candidate_id",
+        "sponsor_source",
+    ]
+    assert list(lobbyist[0]) == [
+        "cycle",
+        "committee_id",
+        "source",
+        "jurisdiction",
+        "filed_date",
+        "image_num",
+    ]
+    assert list(bundling[0]) == [
+        "cycle",
+        "source",
+        "source_record_id",
+        "jurisdiction",
+        "committee_id",
+        "report_type",
+        "receipt_date",
+        "coverage_start",
+        "coverage_end",
+        "half_year",
+        "period_amount",
+        "semi_annual_amount",
+        "is_superseded",
+        "amount",
+    ]
+    assert {
+        (row["cycle"], row["source"], row["jurisdiction"])
+        for row in (*leadership, *lobbyist, *bundling)
+    } == {(2024, "fec", "US")}
+    assert {
+        str(row["committee_id"]): [
+            row["sponsor_name"],
+            row["sponsor_candidate_id"],
+            row["sponsor_source"],
+        ]
+        for row in leadership
+    } == expected["leadership_pacs"]
+    assert {
+        str(row["committee_id"]): [row["filed_date"], row["image_num"]] for row in lobbyist
+    } == expected["lobbyist_pacs"]
+    assert {
+        str(row["source_record_id"]): [
+            row["committee_id"],
+            row["half_year"],
+            row["is_superseded"],
+            float(cast(Decimal, row["amount"])),
+        ]
+        for row in bundling
+    } == expected["bundling_reports"]
+    by_key = {str(row["source_record_id"]): row for row in bundling}
+    # Case 1's June report: both filed amounts as filed, beside what it adds.
+    june = by_key["202407199160000006"]
+    assert (
+        june["report_type"],
+        june["receipt_date"],
+        june["coverage_start"],
+        june["coverage_end"],
+        june["period_amount"],
+        june["semi_annual_amount"],
+        june["amount"],
+    ) == (
+        "JULY MONTHLY / SEMI-ANNUAL",
+        date(2024, 7, 19),
+        date(2024, 6, 1),
+        date(2024, 6, 30),
+        Decimal("15000.00"),
+        Decimal("82000.00"),
+        Decimal("35500.00"),
+    )
+    # Case 4: no coverage dates.
+    undated = by_key["202407229160000011"]
+    assert (undated["coverage_start"], undated["coverage_end"], undated["receipt_date"]) == (
+        None,
+        None,
+        date(2024, 7, 22),
     )
 
 

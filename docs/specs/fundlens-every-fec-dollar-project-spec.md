@@ -617,7 +617,7 @@ All three are in §3's CSV dialect; dates are `DD-MON-YY`; every cell of every c
 
 ### 7.3 Silver `leadership_pac` and `lobbyist_pac`
 
-`sql/silver/` models by NEU-2175, each with `cycle, source, jurisdiction` as every table has.
+`sql/silver/14_leadership_pac.sql` and `15_lobbyist_pac.sql` (NEU-2175), each with `cycle, source, jurisdiction` as every table has. The list is registered by the runner as `leadership_sponsor`, the cycle's rows.
 
 **`leadership_pac`**: key `(cycle, committee_id)`, one row per committee of the cycle's `leadership` file (2024: 833).
 
@@ -638,7 +638,7 @@ A committee `cm` designates `D` that the file lacks has no row: it is a leadersh
 | `filed_date` | The deciding Form 1's `Date_Filed` |
 | `image_num` | The deciding Form 1's image number in `Link_Image` |
 
-**Checks** (NEU-2175): each key unique; every `committee_id` in the cycle's `committee`; `sponsor_candidate_id`, where set, a candidate fundlens holds in some cycle; `sponsor_source` set exactly when `sponsor_candidate_id` is.
+**Checks** (NEU-2175): each key unique; every `committee_id` in the cycle's `committee`; `sponsor_source` `rule` or `list`, set exactly when `sponsor_candidate_id` is; an id the rule gave a candidate of the cycle and no alias. A cycle's transform holds no other cycle's candidates, so a list id is not checked against them there: `tests/unit/test_transform_leadership_lobbyist.py` holds the list to one row per cycle and committee, each naming a well-formed candidate id, and §7.7's gold checks, which see every cycle, hold the id to a candidate fundlens holds.
 
 Rejected: the user chose separate tables over `sponsor_name` and `sponsor_candidate_id` columns on `committee` (no join, no backfill-pending table), at the cost of one more public table; the ticket's long `committee_attribute` (mixed types in one column, a pivot on every read). `lobbyist_pac` follows `leadership_pac` for the same reason (**checkpoint**): `committee` stays v1's.
 
@@ -654,7 +654,7 @@ Rejected: the user chose separate tables over `sponsor_name` and `sponsor_candid
 
 ### 7.5 Silver `bundling_report`
 
-Key `(cycle, source_record_id)`, one row per Form 3L report in `lobbyist_bundle.csv` whose recipient is a committee of its cycle, amendments included (the user's choice over one row per committee and half-year, which hides the reports behind a figure; and over the tickets' `bundled_contribution`, which reads as one row per gift). 2024: 317 rows, 316 by coverage end (Q8a) and one with none (Q8f).
+`sql/silver/16_bundling_report.sql` (NEU-2175). Key `(cycle, source_record_id)`, one row per Form 3L report in `lobbyist_bundle.csv` whose recipient is a committee of its cycle, amendments included (the user's choice over one row per committee and half-year, which hides the reports behind a figure; and over the tickets' `bundled_contribution`, which reads as one row per gift). 2024: 317 rows, 316 by coverage end (Q8a) and one with none (Q8f).
 
 | Column | From | Notes |
 |---|---|---|
@@ -672,7 +672,8 @@ Key `(cycle, source_record_id)`, one row per Form 3L report in `lobbyist_bundle.
 - **A report's cycle** is its coverage end's year, rounded up to even; with no coverage end, its receipt date's (**checkpoint**; Decision 9). A report with no coverage end has `amount` 0: it falls in no half-year. 14 rows, $34,000 in period amounts and $224,684 semi-annual across 2010–2026 (Q8a, Q8f). A report with an end and no start (15 rows, $22,500 in period amounts and $304,440 semi-annual) counts in its end's half like any other, is never superseded, and holds no other report: Q10's figures count it so. Rejected: dropping blank-coverage reports, which loses filed reports for no gain.
 - **A report whose recipient is no committee of its cycle is dropped** (**checkpoint**), as an outside-spending spender `cm` lacks is (§6.1): 5 committees, five $0 reports under hoax-like names (Q8e). Rejected: keeping them, with no recipient check.
 - **Amendments** (Decision 7). Among a committee's reports with the same coverage start and end, the one with the latest `Receipt_Date`, then the higher image number, is kept; the rest are superseded, `amount` 0. 87 keys on 194 rows; 107 superseded ($51.8M period, $32.4M semi-annual); 4 keys tie on receipt date and are decided by image number (Q9a–c). A report with a blank coverage date is never superseded. Reports are amended late (DCCC's June 2024 report on 2026-10-23; 211 kept reports received after their cycle ended, Q9g), so a re-extract can change a past cycle's total.
-- **Checks** (NEU-2175): the key is unique; every recipient is in its cycle's `committee`; per committee and half-year, `amount` sums to §7.6's figure; a superseded row's `amount` is 0.
+- **Checks** (NEU-2175): the key is unique; every recipient is in its cycle's `committee`; per committee and half-year, `amount` sums to §7.6's figure, worked out again from the file (`silver_bundling_report_total.sql`); a superseded row's `amount` is 0, and so is a row's with no coverage end.
+- **Over the whole file.** Kept-ness, which report holds another and the half-year figure are read over every cycle's reports, as Q9 and Q10 read them, so a report spanning two cycles holds the reports inside it, and only then are the cycle's rows kept.
 
 ### 7.6 The bundled total
 
@@ -714,7 +715,7 @@ Adds to v1 §7.1 and to §6.5 above; built by NEU-2176. Gold's `committee` and `
 - **A candidate's leadership PACs** are the `committee_cycle` rows whose `sponsor_candidate_id` is the candidate or a candidate id redirecting to them (v1 §7.1's redirect), across every cycle. A page shows the selected cycle's values.
 - **No new search entity**: a leadership PAC is a committee and already searchable by name.
 - `bundled_total` is in no receipt total, no `cycle.total_amount`, no donor figure and no top list. A leadership PAC's money is credited to no candidate, its sponsor included; the six committees the `linked` rule credits are each the committee `cn` names principal, raising as a campaign (Never Surrender, $495.9M of 2024, Trump's; Q6).
-- **Checks** (gold): `bundled_total` equals its silver sum; a committee with a sponsor is a leadership PAC; no receipt total moves on the fixture.
+- **Checks** (gold): `bundled_total` equals its silver sum; a committee with a sponsor is a leadership PAC; every `sponsor_candidate_id` is a candidate fundlens holds in some cycle (§7.3: silver cannot check a list id against another cycle); no receipt total moves on the fixture.
 - **The API and pages** (NEU-2177, NEU-2178) read these fields: a candidate page links its leadership PACs; a committee page shows the flags, the sponsor and the bundled total, labelled as already counted in individual contributions. Listing a committee's bundling reports is not planned: the public dataset has them.
 
 ### 7.8 What each cycle range has

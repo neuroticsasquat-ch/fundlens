@@ -558,3 +558,78 @@ electioneering_communication:
     payee_name: Whom the spender paid, as reported.
     description: What the spender paid for, as reported.
     image_num: The FEC image number of the page the row is on.
+leadership_pac:
+  description: >-
+    One leadership PAC of a cycle, as the FEC's leadership PAC file lists it (from 2010), with its
+    sponsor: the member of Congress or candidate who set it up. The sponsor's candidate id is
+    fundlens's, by name or from a vendored list checked against the FEC's own records; the PAC's
+    money stays its own, and is never a candidate's. A committee the FEC designates a leadership
+    PAC (`committee.designation` D) that the file does not list has no row. Partitioned by cycle.
+  key: [cycle, committee_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    committee_id: The leadership PAC's FEC id.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    sponsor_name: >-
+      The sponsor's name as the FEC's file gives it; where the file leaves it blank, the name
+      fundlens's sponsor list gives; null when neither has one.
+    sponsor_candidate_id: >-
+      The FEC candidate id of the sponsor, null when fundlens cannot tell it. By name, the one
+      candidate of the cycle with the sponsor's last name and first given name; or from fundlens's
+      sponsor list, which may name a candidate of another cycle.
+    sponsor_source: >-
+      Where sponsor_candidate_id comes from: `rule`, the name match, or `list`, fundlens's sponsor
+      list. Null when there is no id.
+lobbyist_pac:
+  description: >-
+    One committee of a cycle run by a registered lobbyist or a lobbying registrant (a
+    lobbyist/registrant PAC), from the FEC's lobbyist/registrant committees file (from 2010): a
+    committee whose latest statement of organization (Form 1) filed by the cycle's last day ticks
+    the lobbyist/registrant box. A committee with no row is not one in the cycle. Partitioned by
+    cycle.
+  key: [cycle, committee_id]
+  columns:
+    cycle: The two-year election cycle, named by its even year.
+    committee_id: The committee's FEC id.
+    source: Where the row comes from. `fec` for every row of v1.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    filed_date: The date the deciding Form 1 was filed.
+    image_num: The FEC image number of the deciding Form 1.
+bundling_report:
+  description: >-
+    One report of lobbyist bundled contributions (Form 3L) a committee filed, from the FEC's
+    lobbyist bundling file (from 2010): contributions registered lobbyists and lobbyist PACs
+    bundled to a campaign, party committee or leadership PAC. Amendments are rows too, marked
+    `is_superseded`. Sum `amount`, never `period_amount` or `semi_annual_amount`. Every bundled
+    gift is already an individual's contribution, so never add these amounts to `contribution` or
+    any receipt amount. No row names a bundler or a donor. Partitioned by cycle.
+  key: [cycle, source_record_id]
+  columns:
+    cycle: >-
+      The two-year election cycle, named by its even year: the coverage end's year, rounded up to
+      even; with no coverage end, the receipt date's.
+    source: Where the row comes from. `fec` for every row of v1.
+    source_record_id: The report's FEC image number.
+    jurisdiction: The regulator whose rules and ids the row follows. `US` (the FEC) for every row of v1.
+    committee_id: The FEC id of the committee the contributions were bundled to.
+    report_type: The report's type, as filed.
+    receipt_date: The date the FEC received the report.
+    coverage_start: The first day the report covers; null when the filer gave none.
+    coverage_end: The last day the report covers; null when the filer gave none.
+    half_year: >-
+      The half-year the coverage end falls in, `<yyyy>-1` (January to June) or `<yyyy>-2` (July to
+      December); null with no coverage end.
+    period_amount: >-
+      The amount bundled in the report's covered period, as filed. Never sum it: a report covering
+      six months repeats its quarters.
+    semi_annual_amount: >-
+      The amount bundled in the half-year, as filed. Never sum it: it repeats the half's period
+      amounts.
+    is_superseded: >-
+      True when a later report of the same committee and covered period (latest receipt date, then
+      higher image number) replaces it.
+    amount: >-
+      What the report adds to its committee's bundled total. Per committee and half-year these sum
+      to the greater of the half-year amount and the period amounts of the reports that hold no
+      other; a superseded report, or one with no coverage end, adds 0. Sum this.

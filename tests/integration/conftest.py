@@ -28,6 +28,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from fundlens import cli
 from fundlens.r2 import R2
 from fundlens.settings import get_settings
+from fundlens.transform import runner
 
 
 def bucket_name(purpose: str = "") -> str:
@@ -43,6 +44,9 @@ TEST_BUCKET = bucket_name()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The overrides the CLI resolves with unless a test says otherwise: none (`fixtures/resolution/`).
 NO_OVERRIDES = REPO_ROOT / "tests" / "fixtures" / "resolution" / "none.yaml"
+# The fixture's leadership PAC sponsor list (every-FEC-dollar spec §7.4): the vendored one names
+# real committees, and the fixture's blank-sponsor PAC needs a row of its own (NEU-2175).
+FIXTURE_SPONSORS = REPO_ROOT / "tests" / "fixtures" / "fec" / "leadership_sponsors.csv"
 
 
 def empty_store(bucket: str = TEST_BUCKET) -> R2:
@@ -143,9 +147,10 @@ def cap_duckdb(env: pytest.MonkeyPatch) -> None:
 def point_cli_at(
     env: pytest.MonkeyPatch, *, conninfo: str, data_dir: Path, bucket: str = TEST_BUCKET
 ) -> None:
-    """Point the CLI's settings at `bucket`, the database `conninfo`, `data_dir`, no overrides
-    and the checkout's dataset docs."""
+    """Point the CLI's settings at `bucket`, the database `conninfo`, `data_dir`, no overrides,
+    the checkout's dataset docs and the fixture's leadership PAC sponsors."""
     env.setattr(cli, "configure_logging", leave_logging_alone)
+    env.setattr(runner, "LEADERSHIP_SPONSORS", FIXTURE_SPONSORS)
     env.setenv("R2_BUCKET", bucket)
     env.setenv("DATABASE_URL", conninfo)
     env.setenv("DATA_DIR", str(data_dir))
