@@ -116,8 +116,18 @@ def test_the_cli_extracts_every_file_once_and_a_second_run_uploads_nothing(
         f"bronze/cycle=2024/{name}" for name in FILES
     )
     # The summary files with the rest (NEU-2142): two zips, and a CSV kept as a CSV. The
-    # outside-spending CSVs too (NEU-2164), the 24/48-hour file under FEC's name.
-    csvs = ["committee_summary", "ie_24_48", "ElectioneeringComm", "CommunicationCosts"]
+    # outside-spending CSVs too (NEU-2164), the 24/48-hour file under FEC's name; and the
+    # leadership and lobbyist CSVs (NEU-2174), under `data.fec.gov/`, the lobbyist two undated
+    # but kept under the cycle extracted.
+    csvs = [
+        "committee_summary",
+        "ie_24_48",
+        "ElectioneeringComm",
+        "CommunicationCosts",
+        "leadership",
+        "lobbyist",
+        "lobbyist_bundle",
+    ]
     assert sorted(fec.gets()) == sorted(
         [
             *(f"/2024/{name}24.zip" for name in FILES if name not in csvs),
@@ -125,6 +135,9 @@ def test_the_cli_extracts_every_file_once_and_a_second_run_uploads_nothing(
             "/2024/independent_expenditure_2024.csv",
             "/2024/ElectioneeringComm_2024.csv",
             "/2024/CommunicationCosts_2024.csv",
+            "/data.fec.gov/leadership2024.csv",
+            "/data.fec.gov/lobbyist.csv",
+            "/data.fec.gov/lobbyist_bundle.csv",
         ]
     )
     assert all(re.search(r"/\d{4}-\d{2}-\d{2}\.(zip|csv)$", key) for key in uploaded)
@@ -290,6 +303,18 @@ def test_the_cli_rejects_the_24_48_hour_file_before_fec_published_it(
     result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2008", "--file", "ie_24_48"])
 
     assert result.exit_code == 2
+    assert fec.requests == []
+
+
+def test_the_cli_rejects_the_leadership_and_lobbyist_files_before_fec_published_them(
+    fec: FakeFec, store: R2, cli_env: Path
+) -> None:
+    # FEC publishes the leadership file from 2010, and the two undated files are read from 2010
+    # (every-FEC-dollar spec §3.1, §7.1; NEU-2174).
+    for name in ("leadership", "lobbyist", "lobbyist_bundle"):
+        result = CliRunner().invoke(cli.app, ["extract", "--cycle", "2008", "--file", name])
+
+        assert result.exit_code == 2, name
     assert fec.requests == []
 
 

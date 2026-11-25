@@ -1,0 +1,27 @@
+# lobbyist: FEC's lobbyist/registrant committees, data.fec.gov/lobbyist.csv (project spec §3,
+# §7.1; NEU-2174). Read by tests/fec_fixture.py, which drops these comment lines and writes the
+# rest as FEC serves the file: the header row unquoted, every data field double-quoted. The file is
+# undated, one for every cycle, kept under each cycle extracted: its Form 1s run from 2009 to the
+# day it is fetched. One row per Form 1 a committee filed, Is_Lobbyist `Y` where the
+# lobbyist/registrant box is ticked and blank where not. Link_Image carries the filing's image
+# number, 18 digits, or 11 on older filings. Dates are DD-MON-YY. What NEU-2175's silver
+# lobbyist_pac makes of each case for 2024 is in its comment: rule b, the latest Form 1 filed by
+# the cycle's last day, then the higher image number (§7.2).
+Link_Image,Committee_Name,Committee_Id,Date_Filed,Is_Lobbyist
+# Case 1, blank then `Y`: BRICKLAYERS UNITED PAC (cm designation B). Flagged in 2024 by its 2023
+# Form 1. Case 2, a Form 1 filed after the cycle's last day, blank: not read for 2024, so still
+# flagged; the 2026 cycle's latest Form 1, it unflags the committee there.
+http://docquery.fec.gov/cgi-bin/fecimg/?_201903149145678901+0,BRICKLAYERS UNITED PAC,C00800202,14-MAR-19,
+http://docquery.fec.gov/cgi-bin/fecimg/?_202302089150123456+0,BRICKLAYERS UNITED PAC,C00800202,08-FEB-23,Y
+http://docquery.fec.gov/cgi-bin/fecimg/?_202504179160234567+0,BRICKLAYERS UNITED PAC,C00800202,17-APR-25,
+# Case 3, `Y` then blank: MARYLAND FORWARD PAC, an 11-digit image number on its 2013 Form 1. Not
+# flagged in 2024: its latest Form 1 leaves the box blank.
+http://docquery.fec.gov/cgi-bin/fecimg/?_13940234567+0,MARYLAND FORWARD PAC,C00800201,10-JUN-13,Y
+http://docquery.fec.gov/cgi-bin/fecimg/?_202209219151234567+0,MARYLAND FORWARD PAC,C00800201,21-SEP-22,
+# Case 4, two Form 1s of one day that disagree, as C00396812's and C00640573's do (§7.2): the
+# higher image number, ticked, decides, though the file lists it first. Flagged.
+http://docquery.fec.gov/cgi-bin/fecimg/?_201705169106000002+0,TIDEWATER ACTION FUND,C00800204,16-MAY-17,Y
+http://docquery.fec.gov/cgi-bin/fecimg/?_201705169106000001+0,TIDEWATER ACTION FUND,C00800204,16-MAY-17,
+# Case 5, a committee cm does not hold: ticked, but no row, since lobbyist_pac holds only the
+# cycle's committees.
+http://docquery.fec.gov/cgi-bin/fecimg/?_11930345678+0,CHESAPEAKE REALTORS PAC,C00800290,22-AUG-11,Y

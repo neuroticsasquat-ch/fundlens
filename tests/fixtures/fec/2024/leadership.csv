@@ -1,0 +1,16 @@
+# leadership: FEC's leadership PACs and sponsors, data.fec.gov/leadership2024.csv (project spec
+# §3, §7.1; NEU-2174). Read by tests/fec_fixture.py, which drops these comment lines and writes the
+# rest as FEC serves the file: the header row unquoted, every data field double-quoted. One row
+# per leadership PAC of the cycle, each a committee cm holds with designation D. Link_Image is the
+# committee's image page, with no image number. The money figures are webk's ($0 with no webk
+# row), as they are reported_total's in FEC's file (§7.1), and no model reads them. Dates are DD-MON-YY. What
+# NEU-2175's silver leadership_pac makes of each case is in its comment.
+Committee_Id,Committee_Name,Link_Image,Sponsor_Name,Cash_on_Hand,Coverage_End_Date,Total_Disbursement,Total_Receipt
+# Case 1, a sponsor named as the incumbent is (`LAST, FIRST`): CALLOWAY, RUTH, cn's H4MD05106.
+# The name rule links it (§7.4.1).
+C00800114,CALLOWAY LEADERSHIP FUND,http://docquery.fec.gov/cgi-bin/fecimg/?C00800114,"CALLOWAY, RUTH",5000,31-DEC-24,5000,4000
+# Case 2, a blank sponsor: SEVERN RIVER PAC, with no money, and no CAND_ID in cm to fall back on.
+# The rule links nothing; only a list row can name a sponsor (§7.4.3).
+C00800117,SEVERN RIVER PAC,http://docquery.fec.gov/cgi-bin/fecimg/?C00800117,,0,31-DEC-24,0,0
+# Not here: STRATTON 2024, designated D in cm, which the file does not list. A leadership PAC with
+# no sponsor and no leadership_pac row (§7.2, §7.3).

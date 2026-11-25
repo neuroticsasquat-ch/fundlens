@@ -2641,3 +2641,33 @@ def test_the_expected_validation_labels_every_dated_counted_contribution_and_its
     assert validation["labelled_keys"] == len(
         {(contributor_key(r), cids[int(r["SUB_ID"])]) for r in dated}
     )
+
+
+def test_the_leadership_files_pacs_are_cms_leadership_pacs() -> None:
+    # Every PAC of FEC's leadership file is a committee `cm` holds (leadership-lobbyist
+    # measurement Q2), here each designated D; one sponsor is named as `cn` names the incumbent,
+    # and one is blank on a PAC whose `cm` row names no candidate either, so nothing but a list row
+    # can link it (NEU-2174). STRATTON 2024 is designated D and not listed (§7.3).
+    cm = {r["CMTE_ID"]: r for r in rows("cm")}
+    incumbents = {r["CAND_NAME"] for r in rows("cn") if r["CAND_ICI"] == "I"}
+    named, blank = rows("leadership")
+
+    assert {cm[r["Committee_Id"]]["CMTE_DSGN"] for r in (named, blank)} == {"D"}
+    assert named["Sponsor_Name"] in incumbents
+    assert blank["Sponsor_Name"] == cm[blank["Committee_Id"]]["CAND_ID"] == ""
+    assert cm["C00800102"]["CMTE_DSGN"] == "D"
+    assert "C00800102" not in {named["Committee_Id"], blank["Committee_Id"]}
+
+
+@pytest.mark.parametrize("file", ["lobbyist", "lobbyist_bundle"])
+def test_each_lobbyist_rows_image_number_is_its_own(file: FecFile) -> None:
+    # NEU-2175 keys `bundling_report` by the image number in Link_Image and breaks a Form 1 tie by
+    # it (every-FEC-dollar spec §7.2, §7.5): unique in FEC's file, so in the fixture's.
+    images = [r["Link_Image"] for r in rows(file)]
+
+    assert len(set(images)) == len(images)
+
+
+def test_the_bundling_reports_recipients_are_the_cycles_committees() -> None:
+    # A recipient no committee of its cycle is dropped (§7.5); the fixture plants none of those.
+    assert {r["Committee_Id"] for r in rows("lobbyist_bundle")} <= committee_ids()

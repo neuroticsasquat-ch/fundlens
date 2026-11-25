@@ -71,6 +71,14 @@ def test_the_vendored_header_names_the_catalogued_columns(name: FecFile) -> None
         ("ie_24_48", 2024, f"{BASE}/2024/independent_expenditure_2024.csv"),
         ("ElectioneeringComm", 2010, f"{BASE}/2010/ElectioneeringComm_2010.csv"),
         ("CommunicationCosts", 2024, f"{BASE}/2024/CommunicationCosts_2024.csv"),
+        # Under `data.fec.gov/`: the leadership file per cycle, the lobbyist files undated, one
+        # URL for every cycle (NEU-2174).
+        ("leadership", 2010, f"{BASE}/data.fec.gov/leadership2010.csv"),
+        ("leadership", 2024, f"{BASE}/data.fec.gov/leadership2024.csv"),
+        ("lobbyist", 2010, f"{BASE}/data.fec.gov/lobbyist.csv"),
+        ("lobbyist", 2024, f"{BASE}/data.fec.gov/lobbyist.csv"),
+        ("lobbyist_bundle", 2024, f"{BASE}/data.fec.gov/lobbyist_bundle.csv"),
+        ("lobbyist_bundle", 2026, f"{BASE}/data.fec.gov/lobbyist_bundle.csv"),
     ],
 )
 def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -> None:
@@ -97,6 +105,11 @@ def test_a_files_url_follows_fecs_pattern(name: FecFile, cycle: int, url: str) -
         ("ie_24_48", 2010),
         ("ElectioneeringComm", 2010),
         ("CommunicationCosts", 2010),
+        # The leadership file from 2010 (2008's is a 404), and the two undated files from 2010,
+        # though they hold filings from 2009 (every-FEC-dollar spec §3.1, §7.1).
+        ("leadership", 2010),
+        ("lobbyist", 2010),
+        ("lobbyist_bundle", 2010),
     ],
 )
 def test_each_files_first_cycle_is_the_first_fec_publishes(name: FecFile, first_cycle: int) -> None:
@@ -140,7 +153,14 @@ def test_files_for_leaves_out_files_fec_did_not_yet_publish() -> None:
         "oppexp",
     ]
     assert [file.name for file in files_for(2010)] == list(get_args(FecFile))
-    assert list(get_args(FecFile))[-3:] == ["ie_24_48", "ElectioneeringComm", "CommunicationCosts"]
+    assert list(get_args(FecFile))[-6:] == [
+        "ie_24_48",
+        "ElectioneeringComm",
+        "CommunicationCosts",
+        "leadership",
+        "lobbyist",
+        "lobbyist_bundle",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -207,6 +227,62 @@ def test_the_outside_spending_csvs_have_their_columns_typed(
     assert file.member is None
     assert len(file.columns) == count
     assert {column: kind for column, kind in file.columns.items() if kind != VARCHAR} == typed
+
+
+@pytest.mark.parametrize(
+    ("name", "columns"),
+    [
+        (
+            "leadership",
+            {
+                "Committee_Id": VARCHAR,
+                "Committee_Name": VARCHAR,
+                "Link_Image": VARCHAR,
+                "Sponsor_Name": VARCHAR,
+                "Cash_on_Hand": AMOUNT,
+                "Coverage_End_Date": VARCHAR,
+                "Total_Disbursement": AMOUNT,
+                "Total_Receipt": AMOUNT,
+            },
+        ),
+        (
+            "lobbyist",
+            {
+                "Link_Image": VARCHAR,
+                "Committee_Name": VARCHAR,
+                "Committee_Id": VARCHAR,
+                "Date_Filed": VARCHAR,
+                "Is_Lobbyist": VARCHAR,
+            },
+        ),
+        (
+            "lobbyist_bundle",
+            {
+                "Committee_Id": VARCHAR,
+                "Committee_Name": VARCHAR,
+                "Link_Image": VARCHAR,
+                "Committee_Election_State": VARCHAR,
+                "Committee_Election_District": VARCHAR,
+                "Report_Type": VARCHAR,
+                "Receipt_Date": VARCHAR,
+                "Coverage_Start_Date": VARCHAR,
+                "Coverage_End_Date": VARCHAR,
+                "Quarterly_Contribution": AMOUNT,
+                "Semi_Annual_Contribution": AMOUNT,
+            },
+        ),
+    ],
+)
+def test_the_leadership_and_lobbyist_csvs_have_their_header_rows_columns(
+    name: FecFile, columns: dict[str, str]
+) -> None:
+    # Each header row as FEC served it on 2026-11-25, in order (leadership-lobbyist measurement
+    # Q1, NEU-2174); dates stay VARCHAR, DD-MON-YY.
+    file = CATALOGUE[name]
+
+    assert file.format == "csv"
+    assert file.member is None
+    assert list(file.columns.items()) == list(columns.items())
 
 
 def test_communication_costs_has_the_transaction_key_and_the_other_two_do_not() -> None:
