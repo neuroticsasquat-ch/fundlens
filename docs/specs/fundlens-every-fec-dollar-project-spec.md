@@ -65,7 +65,7 @@ Bulk files are catalogued only in `fundlens.fec.files`: a file outside the file 
 - The 24/48-hour file is catalogued as `ie_24_48`, not under FEC's name: a file's DuckDB view is named for its entry, and silver's `independent_expenditure` table would be refused beside a view of that name in every cycle's transform (DuckDB 2.0.0, tried 2026-11-24). Its `url_pattern` still writes FEC's name. `ie_24_48` is its view, its bronze folder, its `--file`, its `gold.meta.source_dates` key and its rows' `source_file` (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §1.1).
 - Every cycle of the three outside-spending files, 2010 to 2026, was read through `register_bulk` on 2026-11-24 with no cast failing (`docs/specs/NEU-2164-outside-spending-csvs-catalogue-fixture.md` §5). The 24/48-hour file's header row is lower case. Dates are `DD-MON-YY` in `ie_24_48` and `ElectioneeringComm`, `YYYYMMDD` in `CommunicationCosts`. `CommunicationCosts` carries the itemized files' transaction key, so its view reads a repeated row once.
 - `ElectioneeringComm` starts in 2010, not 2008 as the Linear tickets said until this spec was written: the page links nine files, 2010 to 2026, and `2008/ElectioneeringComm_2008.csv` was a 404 on 2026-11-18.
-- `leadership` is linked for even years only. Whether a file exists for an odd year, and which cycles' rows each of the two undated files holds, is NEU-2173's to measure. This section states only what the page shows.
+- `leadership` exists for even years only, 2010–2026: `leadership2008.csv` and every odd year tried (2009, 2011, 2023, 2025) answered 404 on 2026-11-25. Each file holds one row per leadership PAC of its cycle. The two undated files hold every cycle from 2010: `lobbyist.csv` Form 1s filed from 2009-03-10, `lobbyist_bundle.csv` reports whose coverage ends from 2009-04-30, each placed in a cycle by its own date. All three are read through `register_bulk` with no cast failing (`docs/measurements/leadership-lobbyist-2024.md` Q1, Q12; §7.1).
 
 ### 3.2 On FEC's page and not read
 
@@ -593,10 +593,145 @@ The money around a member: the leadership PAC each sponsors (`leadership`), PACs
 
 - A leadership PAC's money stays the PAC's: linking it to its sponsor adds a link on the candidate's page, never a dollar to the candidate's totals.
 - Bundled contributions are already counted as the individuals' gifts in `contribution`. A bundled total is shown as context and is never added to a receipt total.
+- A bundled total names no bundler and no donor: the file holds neither (Q8). Named bundlers are §9's.
 
 The milestone ends with NEU-2180's backfill of every table this project adds, for every cycle FEC publishes its source for, which also empties §2's older-builds list.
 
-**Filled by** NEU-2173, with its own measurement.
+The rules below were written by NEU-2173 from its measurement (`docs/measurements/leadership-lobbyist-2024.md`; spec `docs/specs/NEU-2173-leadership-lobbyist-measurement-and-spec-section.md`). "Q" and "Decision" numbers are the measurement's. The decisions marked **checkpoint** were taken with the user on 2026-11-25, after the measurement and before this section was written, where a pinned 99% bar was missed or a finding overturned a planned rule; each states the alternative rejected. The tickets planned before the files were read (NEU-2172, NEU-2174 to NEU-2179) were corrected to this section.
+
+### 7.1 The three files
+
+| File (catalogue) | Grain | Key | 2024 | Cycles |
+|---|---|---|---|---|
+| `leadership` (`data.fec.gov/leadership<yyyy>.csv`) | One leadership PAC of the cycle | `Committee_Id` | 833 rows, 833 committees, every one in `cm` (Q1a, Q2) | 2010–2026, even years only: 2008 and odd years are 404s (Q12) |
+| `lobbyist` (`data.fec.gov/lobbyist.csv`) | One Form 1 a committee filed, with its lobbyist/registrant box ticked (`Y`) or not (blank) | `Link_Image` | One undated file: 14,186 rows, 2,774 committees, filed 2009-03-10 to 2026-11-24 (Q1d–e) | 2010– (the file starts in 2009) |
+| `lobbyist_bundle` (`data.fec.gov/lobbyist_bundle.csv`) | One Form 3L report a committee filed, as filed: amendments are further rows | none in the file; (committee, covered period) once amendments are resolved | One undated file: 1,929 rows, 433 recipients, coverage ending 2009-04-30 to 2026-10-14 (Q1f, Q8a) | 2010– |
+
+All three are in §3's CSV dialect; dates are `DD-MON-YY`; every cell of every cycle casts (Q1, Q12a). No file names a lobbyist, a bundler or a donor (Q8), and no bulk file gives a sponsor's candidate id: `ccl` links 18 of 2024's 839 leadership PACs to a candidate and `cm`'s `CAND_ID` is filled on 16, for 7 of the file's 545 named sponsors (Q4i–l). `leadership`'s money figures (`Cash_on_Hand`, `Total_Receipt`, `Total_Disbursement`, `Coverage_End_Date`) equal `reported_total`'s within $1 for 99.5% or more of the committees both hold and are not read (Q3; Decision 2).
+
+### 7.2 Leadership PACs and lobbyist/registrant PACs
+
+- **A committee is a leadership PAC in a cycle** when `cm` designates it `D` or the cycle's `leadership` file lists it (**checkpoint**; Decision 1). The two agree at 99% or more both ways in 2010, 2012, 2018, 2020, 2022 and 2024, and miss by 4 to 11 committees in 2014, 2016 and 2026 (Q12c). Rejected: the file alone, the spec's fallback for a missed bar, which leaves 1980–2008 with no leadership PACs; `D` alone, which drops up to 10 committees a cycle that the file lists with a sponsor.
+- **A committee is a lobbyist/registrant PAC in a cycle** when its latest Form 1 in `lobbyist.csv` filed on or before the cycle's last day has the box ticked (rule b; **checkpoint**; Decision 6): the latest `Date_Filed`, then the higher image number in `Link_Image`. Two committees filed Form 1s that disagree on their latest day, and in both the higher image number is ticked (C00396812 on 2020-10-02, C00640573 on 2017-05-16; read from the file on 2026-11-25); the measurement broke those ties by file order, so its counts may differ from the rule by those two. A blank box is read as unticked: the file cannot show otherwise (asserted, not measured). 2010 onward; no committee is flagged before 2010. Against `cm`'s designation `B`, rule b finds 94.5–98.8% of its committees `B`, and `cm` designates 26 to 445 committees a cycle `B` that never filed a Form 1 with the box ticked, mostly super PACs, hybrid PACs and union and trade PACs: 80 in 2024 (Q7f–i). Rejected: designation `B`, of whose committees the file lacks 2–22% a cycle; rule a (any ticked Form 1 by then), which keeps a committee that has since unticked the box and finds fewer of its committees `B` in every cycle.
+- Both are facts about who runs the committee (`CONTEXT.md`), told apart from the designation a page already shows.
+
+### 7.3 Silver `leadership_pac` and `lobbyist_pac`
+
+`sql/silver/` models by NEU-2175, each with `cycle, source, jurisdiction` as every table has.
+
+**`leadership_pac`**: key `(cycle, committee_id)`, one row per committee of the cycle's `leadership` file (2024: 833).
+
+| Column | From | Notes |
+|---|---|---|
+| `committee_id` | `Committee_Id` | Always a committee of the cycle (Q2, Q12c) |
+| `sponsor_name` | `Sponsor_Name`, else the list's | As filed; for a blank one, the name `leadership_sponsors.csv` gives; NULL when neither has one |
+| `sponsor_candidate_id` | §7.4 | NULL when the rule and the list give none |
+| `sponsor_source` | | `rule` or `list`; NULL with no sponsor id |
+
+A committee `cm` designates `D` that the file lacks has no row: it is a leadership PAC (§7.2) with no sponsor.
+
+**`lobbyist_pac`**: key `(cycle, committee_id)`, one row per committee rule b flags in the cycle and the cycle's `committee` holds (2024: 1,459, Q7f).
+
+| Column | From |
+|---|---|
+| `committee_id` | `Committee_Id` |
+| `filed_date` | The deciding Form 1's `Date_Filed` |
+| `image_num` | The deciding Form 1's image number in `Link_Image` |
+
+**Checks** (NEU-2175): each key unique; every `committee_id` in the cycle's `committee`; `sponsor_candidate_id`, where set, a candidate fundlens holds in some cycle; `sponsor_source` set exactly when `sponsor_candidate_id` is.
+
+Rejected: the user chose separate tables over `sponsor_name` and `sponsor_candidate_id` columns on `committee` (no join, no backfill-pending table), at the cost of one more public table; the ticket's long `committee_attribute` (mixed types in one column, a pivot on every read). `lobbyist_pac` follows `leadership_pac` for the same reason (**checkpoint**): `committee` stays v1's.
+
+### 7.4 The sponsor
+
+1. **The name rule** (**checkpoint**; Decision 3). A `Sponsor_Name` is matched to the cycle's silver `candidate`, each resolved through `alias_of`, on last name and first given name, compared as `03_candidate_committee_link.sql`'s alias rule and `04_contribution.sql`'s self-funding test compare them (`HOVDE, ERIC D` is `HOVDE, ERIC`). A name matching one person takes that person's id, the one `alias_of` points to when the match is an alias. A sponsor name with no first given name (nothing after the comma) matches nobody. A name matching several people, or one name under several ids, or no candidate, takes none.
+   - 2024: 545 named sponsors; 460 match one person, 41 one name under several ids, 15 several people, 29 none (Q4d). Rung 1, the whole normalized name, takes 96 fewer ids (405 against 501) and is rejected (Q4e, Q5c).
+   - **The check.** OpenFEC's `sponsor_candidate_ids` (from each PAC's Form 1) was the measurement's check and is never a pipeline source: it is no bulk file (§2, files read) and would put an API key and rate limits in the weekly run. By id it agrees with the rule at 99.19% in 2024 and 92.8–98.7% in other cycles (Q12b), because it gives a sponsor's current id: Schiff's Senate id on his House-era PAC. Read by person across 2010–2026, a name matching one person is confirmed in 2,649 of 2,721 checked cases, names the same person under another office's id in 49, and in 23 differs, each one OpenFEC's error or one person's older id (Q14). The 99% bar, set on 2024 and every profiled cycle, was missed by id; the checkpoint scored it by person, across 2010–2026.
+   - **Several ids.** A name matching one name under several ids is where taking the one standing in a race goes wrong: it picks Dan Sullivan of Massachusetts for the Alaska senator's PAC, Michael Simpson of South Carolina for Idaho's, John Conyers III for John Conyers Jr.'s (Q14b). So such a name takes no id from the rule. Rejected: the in-race pick as tested, whose errors are found only by reading every one.
+2. **`src/fundlens/fec/leadership_sponsors.csv`** (Q16; Decisions 4 and 5): `cycle, committee_id, sponsor_name, candidate_id, source`, key `(cycle, committee_id)`, 2,582 rows for 2010–2026, committed by NEU-2173. A row overrides the rule for its committee and cycle. It has a row where the file leaves the sponsor blank (2,041), where the name matches no candidate (255), and where it matches several ids (286), each when OpenFEC names one person and fundlens holds a candidate under the id the row takes: among OpenFEC's ids (and, for several ids, the matched ones), the one standing in a race of the cycle, then a candidate of the cycle, then the lowest held. `source` cites the committee's FEC page. A case gets no row when OpenFEC names nobody (532 blanks, 42 others), several people (6), or an id outside the matched ones (4). `candidate_id` may be any id fundlens holds a candidate under in some cycle, so a retired member's PAC links to their page.
+3. **Blank sponsors are filled** (**checkpoint**; Decision 4). The file leaves 206 to 341 sponsors a cycle blank, and OpenFEC names one for 73–86% of them (Q12b): in 2024, 242 of 288, $198.8M of their $208.6M in file receipts, among them Save America (Trump), Jobs, Freedom and Security PAC (Cruz), Heartland Values (Thune), MC PAC (McCarthy), Eye of the Tiger (Scalise) and Bluegrass (McConnell) (Q5f–g). No bulk field names them: `cm`'s connected organization holds a fundraising committee's name (Q15). Rejected: the spec's pinned rule that a list row never names a sponsor the file leaves blank, which leaves the largest leadership PACs unlinked; filling only active members' PACs, a line that is ours and not FEC's.
+4. **Keeping the list.** A new leadership PAC whose sponsor the rule cannot link (blank, unmatched or several ids) has no link until a row is added; the transform logs the cycle's leadership PACs, how many the rule links, how many the list links and how many have none, so the current cycle's gap is seen in each run's log. A row is added from the committee's FEC page, which shows the Form 1's sponsor. Asserted, not measured: that a PAC's sponsor today, as OpenFEC gives it, was its sponsor in each earlier cycle the list covers; a leadership PAC rarely changes sponsor, and none in the measurement visibly did.
+
+### 7.5 Silver `bundling_report`
+
+Key `(cycle, source_record_id)`, one row per Form 3L report in `lobbyist_bundle.csv` whose recipient is a committee of its cycle, amendments included (the user's choice over one row per committee and half-year, which hides the reports behind a figure; and over the tickets' `bundled_contribution`, which reads as one row per gift). 2024: 317 rows, 316 by coverage end (Q8a) and one with none (Q8f).
+
+| Column | From | Notes |
+|---|---|---|
+| `source_record_id` | `Link_Image` | The image number, as text: the digits after `?_` (or `?`) in the URL, 11 digits on 637 rows and 18 on 1,292. Unique in the file (read 2026-11-25) |
+| `committee_id` | `Committee_Id` | The recipient |
+| `report_type` | `Report_Type` | As filed (34 strings, several for one report: Q1g) |
+| `receipt_date` | `Receipt_Date` | |
+| `coverage_start`, `coverage_end` | `Coverage_Start_Date`, `Coverage_End_Date` | `coverage_start` NULL on 29 rows, `coverage_end` on 14 of them (Q8a, Q8f) |
+| `half_year` | `coverage_end` | `<yyyy>-1` (January–June) or `<yyyy>-2`; NULL with no coverage end |
+| `period_amount` | `Quarterly_Contribution` | As filed: the covered period's amount, which monthly filers fill too |
+| `semi_annual_amount` | `Semi_Annual_Contribution` | As filed |
+| `is_superseded` | | The amendment rule below |
+| `amount` | | What the row adds to the bundled total (§7.6). Sum this, never the two filed amounts |
+
+- **A report's cycle** is its coverage end's year, rounded up to even; with no coverage end, its receipt date's (**checkpoint**; Decision 9). A report with no coverage end has `amount` 0: it falls in no half-year. 14 rows, $34,000 in period amounts and $224,684 semi-annual across 2010–2026 (Q8a, Q8f). A report with an end and no start (15 rows, $22,500 in period amounts and $304,440 semi-annual) counts in its end's half like any other, is never superseded, and holds no other report: Q10's figures count it so. Rejected: dropping blank-coverage reports, which loses filed reports for no gain.
+- **A report whose recipient is no committee of its cycle is dropped** (**checkpoint**), as an outside-spending spender `cm` lacks is (§6.1): 5 committees, five $0 reports under hoax-like names (Q8e). Rejected: keeping them, with no recipient check.
+- **Amendments** (Decision 7). Among a committee's reports with the same coverage start and end, the one with the latest `Receipt_Date`, then the higher image number, is kept; the rest are superseded, `amount` 0. 87 keys on 194 rows; 107 superseded ($51.8M period, $32.4M semi-annual); 4 keys tie on receipt date and are decided by image number (Q9a–c). A report with a blank coverage date is never superseded. Reports are amended late (DCCC's June 2024 report on 2026-10-23; 211 kept reports received after their cycle ended, Q9g), so a re-extract can change a past cycle's total.
+- **Checks** (NEU-2175): the key is unique; every recipient is in its cycle's `committee`; per committee and half-year, `amount` sums to §7.6's figure; a superseded row's `amount` is 0.
+
+### 7.6 The bundled total
+
+Per committee and half-year, from its kept reports (**checkpoint**; Decision 8):
+
+- the **half-year figure**: the semi-annual amount on the kept report with the latest coverage end in the half that carries one above $0; between two such reports with the same end, the one with the later coverage start, then the higher image number (one case, C00003418's second half of 2011, where both carry $191,600);
+- the **innermost period amounts**: the period amounts added, of the kept reports whose covered period holds no other kept report of the committee;
+- the half-year's bundled total is the greater of the two. A cycle's is its four halves added.
+
+Form 3L asks for both because a lobbyist may cross its reporting threshold over a quarter or only over six months, so the two never add (`CONTEXT.md`, Bundling report). Kept reports nest: a six-month year-end report whose period amount equals its semi-annual figure sits beside the half's quarterly reports, holding 9.16% of the file's period dollars, over the 1% bar (Q9e). Read innermost, the halves whose semi-annual figure falls below the periods' sum drop from 55 ($13,582,066) to 8 ($267,586) (Q10c). Rejected: every kept report's period amounts, as the spec pinned, which counts the nested reports twice (2020: $47,029,810 against $36,828,085).
+
+`amount` is placed so it sums to this: a kept report adds its period amount unless it holds another kept report of its committee; the kept report carrying the half-year figure also adds what that figure exceeds the half's innermost period amounts by; every other row adds 0.
+
+| Cycle | Recipients | Bundled total | Half-year figures | Innermost period amounts |
+|---|---|---|---|---|
+| 2010 | 92 | $16,737,764 | $15,870,959 | $13,260,312 |
+| 2012 | 65 | $27,498,866 | $26,928,591 | $23,504,718 |
+| 2014 | 38 | $10,100,286 | $10,052,699 | $8,070,125 |
+| 2016 | 45 | $38,431,722 | $37,790,080 | $36,669,565 |
+| 2018 | 45 | $11,110,339 | $10,815,427 | $9,605,161 |
+| 2020 | 62 | $36,828,085 | $36,179,596 | $34,622,276 |
+| 2022 | 58 | $16,770,812 | $16,716,577 | $14,809,524 |
+| 2024 | 84 | **$57,262,231** | $56,544,915 | $52,156,278 |
+| 2026 | 88 | $52,879,635 | $48,715,087 | $48,141,602 |
+
+(Q10a; FEC's file of 2026-11-25.) NEU-2175's definition of done is within 1% of 2024's. Every 2024 recipient's total is within its counted individual contributions, $57.3M against $2.55B (Q11), as the shared contract assumes. Recipients, counted per cycle across 2010–2026, are mostly campaigns (318), party committees (7, $118.4M of period amounts), joint fundraising committees (23, $109.5M) and leadership PACs (27, $632,030); the rest are other PACs, nearly all $0 (Q8d). The total cannot show who bundled, for whom, or which gifts.
+
+### 7.7 Gold
+
+Adds to v1 §7.1 and to §6.5 above; built by NEU-2176. Gold's `committee` and `candidate` are one row across cycles, and every fact here is per cycle, so each lives on `committee_cycle` (**checkpoint**). Rejected: a separate gold `leadership_pac` table, a join the pages need for one link; the latest cycle's values on `committee`, which shows only the last sponsor of a PAC whose sponsor changed.
+
+| Field on `committee_cycle` | Definition |
+|---|---|
+| `is_leadership_pac` | §7.2: designation `D`, or a `leadership_pac` row |
+| `is_lobbyist_pac` | A `lobbyist_pac` row |
+| `sponsor_candidate_id`, `sponsor_name` | The `leadership_pac` row's; NULL without one |
+| `bundled_total` | The cycle's `bundling_report.amount` at the committee; 0 where there is no report and the cycle has the table (2010–), NULL before 2010 or where the build lacks it (§2, older builds) |
+
+- **A candidate's leadership PACs** are the `committee_cycle` rows whose `sponsor_candidate_id` is the candidate or a candidate id redirecting to them (v1 §7.1's redirect), across every cycle. A page shows the selected cycle's values.
+- **No new search entity**: a leadership PAC is a committee and already searchable by name.
+- `bundled_total` is in no receipt total, no `cycle.total_amount`, no donor figure and no top list. A leadership PAC's money is credited to no candidate, its sponsor included; the six committees the `linked` rule credits are each the committee `cn` names principal, raising as a campaign (Never Surrender, $495.9M of 2024, Trump's; Q6).
+- **Checks** (gold): `bundled_total` equals its silver sum; a committee with a sponsor is a leadership PAC; no receipt total moves on the fixture.
+- **The API and pages** (NEU-2177, NEU-2178) read these fields: a candidate page links its leadership PACs; a committee page shows the flags, the sponsor and the bundled total, labelled as already counted in individual contributions. Listing a committee's bundling reports is not planned: the public dataset has them.
+
+### 7.8 What each cycle range has
+
+| | 2010–2026 | 1980–2008 |
+|---|---|---|
+| Leadership PAC flag | designation `D` or the file | designation `D` |
+| Sponsor | the rule and the list | none: no file |
+| Lobbyist/registrant flag | `lobbyist.csv`, rule b | none |
+| Bundling reports, bundled total | yes | none: NULL |
+
+No cycle 2010–2026 needs a rule of its own: every leadership file's header equals 2024's and none has a committee on two rows (Q12a). Rung 2 matches 82–94% of named sponsors to a candidate, rising with the cycle (Q12a); a few of those match several ids and are the list's (41 in 2024, Q4d). The rule itself, one person only, links 77.8% (2010), 76.9%, 79.3%, 82.5%, 84.9%, 82.9%, 84.4%, 84.4% (2024) and 85.2% (2026): 168 to 548 sponsors, 2,861 in all, derived from Q12a and Q16a (rung 2's ids less the several-id names) and equal to Q4d for 2024 and Q14e in all.
+
+### 7.9 Dataset and older builds
+
+- `leadership_pac`, `lobbyist_pac` and `bundling_report` join the public dataset (§8) and `paths.BACKFILL_PENDING` in NEU-2175's PR. `bundling_report`'s README entry says: sum `amount`, never `period_amount` or `semi_annual_amount`; amounts are never to be added to `contribution` amounts, since every bundled gift is already a contribution; no row names a bundler or a donor.
+- A live build transformed before NEU-2175 has none of the three, and reads as having no rows until NEU-2180's backfill (§2).
 
 ## 8. Public dataset
 
@@ -606,7 +741,7 @@ Adds to v1 §9, whose layout, manifest and license stand.
 - The milestone's **spec ticket** (NEU-2141, NEU-2150, NEU-2163, NEU-2173) adds the table to v1 §9's table list.
 - The **silver ticket** that builds the table adds it to the dataset in the same PR: `DATASET_TABLES` in `publish/dataset.py`, its column descriptions in `docs/dataset/columns.yaml`, `schema/<table>.json` by `task dataset:schema`, a `docs/dataset/CHANGELOG.md` entry, the README where it lists tables, and `paths.BACKFILL_PENDING`. `tests/integration/test_dataset.py` already fails on a missing description or a stale schema. So a table is public from its first build. Rejected: the milestone's runbook ticket or one ticket at the project's end, both of which leave built tables unpublished for weeks.
 - Until NEU-2180's backfill, a snapshot's manifest lists a new table with only the cycles whose live build has it (§2, older builds).
-- A table that is context and in no total (M4's bundled contributions) is still published; its README entry says what it must not be added to.
+- A table that is context and in no total (M4's `bundling_report`) is still published; its README entry says what it must not be added to.
 
 ## 9. Raw filings (M5)
 
