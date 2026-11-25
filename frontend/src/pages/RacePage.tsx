@@ -15,6 +15,8 @@ import { parseCycle } from "../shell/cycleTarget";
 import { partyColour } from "../theme";
 import CandidateTotalsChart from "./CandidateTotalsChart";
 import NotFound from "./NotFound";
+import { outsideSpendingSummary } from "./outsideSpendingSummary";
+import RaceOutsideSpending from "./RaceOutsideSpending";
 
 /** The URL's office segment, as the API takes it, and its FEC office code. */
 const OFFICES = { president: "P", senate: "S", house: "H" } as const satisfies Record<
@@ -108,21 +110,6 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     render: (candidate) => availableMoney(candidate.total_operating_expenditures),
     sortValue: (candidate) => candidate.total_operating_expenditures,
   },
-  // Spent by committees for or against the candidate, never theirs, so after their Total.
-  {
-    key: "ie-support",
-    header: "Independent expenditures for",
-    align: "right",
-    render: (candidate) => money(candidate.ie_support),
-    sortValue: (candidate) => candidate.ie_support,
-  },
-  {
-    key: "ie-oppose",
-    header: "Independent expenditures against",
-    align: "right",
-    render: (candidate) => money(candidate.ie_oppose),
-    sortValue: (candidate) => candidate.ie_oppose,
-  },
   // FEC's reported figure, not fundlens's itemized money, so last and never in a total.
   {
     key: "cash-on-hand",
@@ -132,11 +119,6 @@ const CANDIDATE_COLUMNS: Column<RaceCandidate>[] = [
     sortValue: (candidate) => candidate.reported?.cash_on_hand_end ?? null,
   },
 ];
-
-const COMMITTEE_KINDS: Record<RaceTopCommittee["kind"], string> = {
-  contribution: "Contributions",
-  ie: "Independent expenditures",
-};
 
 const COMMITTEE_COLUMNS: Column<RaceTopCommittee>[] = [
   {
@@ -153,15 +135,6 @@ const COMMITTEE_COLUMNS: Column<RaceTopCommittee>[] = [
       <Anchor component={Link} to={`/committee/${committee.committee_id}`}>
         {committee.name ?? committee.committee_id}
       </Anchor>
-    ),
-  },
-  {
-    key: "kind",
-    header: "Kind",
-    render: (committee) => (
-      <Badge variant="outline" color="gray">
-        {COMMITTEE_KINDS[committee.kind]}
-      </Badge>
     ),
   },
   {
@@ -269,8 +242,24 @@ function RaceView({
   );
 }
 
+/**
+ * The committees that gave most to the race's candidates, ranked among themselves. Gold's list
+ * ranks their independent expenditures with them (spec §7.1), but the race's top outside
+ * spenders list those by candidate and side, which a committee's for and against summed would
+ * hide (every-FEC-dollar spec §6.5: the page decides which list it shows).
+ */
+const contributingCommittees = (committees: RaceTopCommittee[]): RaceTopCommittee[] =>
+  committees
+    .filter((committee) => committee.kind === "contribution")
+    .map((committee, index) => ({ ...committee, rank: index + 1 }));
+
 function RaceDetail({ race }: { race: Race }) {
   const donorColumns = useMemo(() => [givenToColumn(race.candidates)], [race.candidates]);
+  const committees = useMemo(
+    () => contributingCommittees(race.top_committees),
+    [race.top_committees],
+  );
+  const outside = outsideSpendingSummary(race.outside_spending);
   return (
     <Stack gap="xl">
       <Stack gap={4}>
@@ -286,12 +275,7 @@ function RaceDetail({ race }: { race: Race }) {
           {race.total_jfc_transfers > 0 &&
             ` · ${money(race.total_jfc_transfers)} via joint fundraising`}
         </Text>
-        {(race.ie_support !== 0 || race.ie_oppose !== 0) && (
-          <Text c="dimmed">
-            Independent expenditures: {money(race.ie_support)} for candidates,{" "}
-            {money(race.ie_oppose)} against
-          </Text>
-        )}
+        {outside && <Text c="dimmed">{outside}</Text>}
       </Stack>
       {race.candidates.length === 0 ? (
         <Text>
@@ -324,15 +308,16 @@ function RaceDetail({ race }: { race: Race }) {
               </Text>
             </Stack>
           </section>
+          <RaceOutsideSpending race={race} />
           <section aria-labelledby="top-committees">
             <Title order={2} id="top-committees" mb="sm">
-              Top committees
+              Top contributing committees
             </Title>
             <DataTable
               columns={COMMITTEE_COLUMNS}
-              rows={race.top_committees}
-              rowKey={(committee) => `${committee.kind}-${committee.committee_id}`}
-              emptyMessage="No committee has given to or spent on a candidate in this race."
+              rows={committees}
+              rowKey={(committee) => committee.committee_id}
+              emptyMessage="No committee has given to a candidate in this race."
             />
           </section>
           <section aria-labelledby="top-donors">

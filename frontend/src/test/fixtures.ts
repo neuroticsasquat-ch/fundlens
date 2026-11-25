@@ -16,6 +16,7 @@ import type {
   Race,
   RaceCandidate,
   RaceSummary,
+  RaceTopSpender,
   ReportedTotals,
   SearchResult,
   TopDonor,
@@ -161,14 +162,58 @@ export const RACES: RaceSummary[] = [
 ];
 
 /**
- * Outside spending that is independent expenditures alone, v1's `ie_support` and `ie_oppose`: no
- * communication cost, party coordinated expenditure or electioneering communication.
+ * Outside spending: v1's `ie_support` and `ie_oppose` as its independent expenditures and, unless
+ * `others` gives them, no communication cost, party coordinated expenditure or electioneering
+ * communication.
  */
-const outsideSpending = (ie_support: number, ie_oppose: number): OutsideSpending => ({
+const outsideSpending = (
+  ie_support: number,
+  ie_oppose: number,
+  others: Partial<Omit<OutsideSpending, "independent_expenditure">> = {},
+): OutsideSpending => ({
   independent_expenditure: { support: ie_support, oppose: ie_oppose },
   communication_cost: { support: 0, oppose: 0 },
   party_coordinated: 0,
   electioneering_communication: null,
+  ...others,
+});
+
+/**
+ * The Maryland Senate race's other kinds of outside spending, as expected.yaml's
+ * `outside_spending.by_candidate` has them: STEAMFITTERS LOCAL 486's communication costs, OLD LINE
+ * REPUBLICAN COMMITTEE's coordinated expenditure for WHITLOCK and RESTORATION PAC's
+ * electioneering communications.
+ */
+const OKAFOR_OTHERS = {
+  communication_cost: { support: 4224, oppose: 0 },
+  electioneering_communication: 71409.5,
+};
+const WHITLOCK_OTHERS = {
+  communication_cost: { support: 0, oppose: 2400 },
+  party_coordinated: 20000,
+  electioneering_communication: 26409.5,
+};
+const PELL_OTHERS = { electioneering_communication: 3500 };
+
+/** A line of `race_top_spender`. */
+const spender = (
+  rank: number,
+  committee_id: string,
+  name: string,
+  is_committee: boolean,
+  candidate_id: string,
+  kind: RaceTopSpender["kind"],
+  support_oppose: RaceTopSpender["support_oppose"],
+  amount: number,
+): RaceTopSpender => ({
+  rank,
+  committee_id,
+  name,
+  is_committee,
+  candidate_id,
+  kind,
+  support_oppose,
+  amount,
 });
 
 const candidate = (
@@ -240,9 +285,25 @@ const OKAFOR_TOP_DONORS: TopDonor[] = [
  */
 export const RACE_SENATE_MD: Race = {
   ...RACES[1],
-  outside_spending: outsideSpending(RACES[1].ie_support, RACES[1].ie_oppose),
-  outside_spending_total: RACES[1].ie_support + RACES[1].ie_oppose,
-  top_spenders: [],
+  outside_spending: outsideSpending(RACES[1].ie_support, RACES[1].ie_oppose, {
+    communication_cost: { support: 4224, oppose: 2400 },
+    party_coordinated: 20000,
+    electioneering_communication: 101319,
+  }),
+  outside_spending_total: RACES[1].ie_support + RACES[1].ie_oppose + 4224 + 2400 + 20000 + 101319,
+  // Every line of outside spending on the race, by amount. RESTORATION PAC files Form 9 and
+  // STEAMFITTERS LOCAL 486 Form 7: neither is a committee, and each has a page.
+  top_spenders: [
+    spender(1, "C00800201", "MARYLAND FORWARD PAC", true, "S4MD00103", "independent_expenditure", "S", 150000),
+    spender(2, "C00800201", "MARYLAND FORWARD PAC", true, "S4MD00104", "independent_expenditure", "O", 80000),
+    spender(3, "C90800207", "RESTORATION PAC", false, "S4MD00103", "electioneering_communication", null, 71409.5),
+    spender(4, "C00800203", "OLD LINE REPUBLICAN COMMITTEE", true, "S4MD00103", "independent_expenditure", "O", 45000),
+    spender(5, "C90800207", "RESTORATION PAC", false, "S4MD00104", "electioneering_communication", null, 26409.5),
+    spender(6, "C00800203", "OLD LINE REPUBLICAN COMMITTEE", true, "S4MD00104", "party_coordinated", "S", 20000),
+    spender(7, "C70800208", "STEAMFITTERS LOCAL 486", false, "S4MD00103", "communication_cost", "S", 4224),
+    spender(8, "C90800207", "RESTORATION PAC", false, "S4MD00105", "electioneering_communication", null, 3500),
+    spender(9, "C70800208", "STEAMFITTERS LOCAL 486", false, "S4MD00104", "communication_cost", "O", 2400),
+  ],
   candidates: [
     candidate({
       candidate_id: "S4MD00104",
@@ -253,6 +314,7 @@ export const RACE_SENATE_MD: Race = {
       total_committee: 5000,
       self_funding: 1750000,
       ie_oppose: 80000,
+      outside_spending: outsideSpending(0, 80000, WHITLOCK_OTHERS),
       total_operating_expenditures: 3900,
       ...raceReported(1942000, 1650700, 291300, 1250000, 31850),
     }),
@@ -267,6 +329,7 @@ export const RACE_SENATE_MD: Race = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
+      outside_spending: outsideSpending(150000, 45000, OKAFOR_OTHERS),
       // Her principal committee's $11,223.45 and FRIENDS OF DIANA OKAFOR's $1,000.
       total_operating_expenditures: 12223.45,
       ...raceReported(131000, 98900, 57100, 3000, 50700),
@@ -285,6 +348,7 @@ export const RACE_SENATE_MD: Race = {
       party: "LIB",
       principal_committee_id: "C00800105",
       total_individual: 3250,
+      outside_spending: outsideSpending(0, 0, PELL_OTHERS),
       ...raceReported(12200, 10900, 1300, 0, 11250),
     }),
   ],
@@ -422,7 +486,7 @@ export const CANDIDATE_OKAFOR: Candidate = {
       self_funding: 5000,
       ie_support: 150000,
       ie_oppose: 45000,
-      outside_spending: outsideSpending(150000, 45000),
+      outside_spending: outsideSpending(150000, 45000, OKAFOR_OTHERS),
       contributor_count: 61,
       // OKAFOR FOR MARYLAND's and her authorized committee's (C00800113) rows added up.
       reported: reported("committee_summary", [

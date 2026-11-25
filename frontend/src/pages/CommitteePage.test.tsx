@@ -9,6 +9,7 @@ import {
   COMMITTEE_BUILDERS_PAC_1998,
   COMMITTEE_OKAFOR,
   contribution,
+  EXPENDITURES,
   OPERATING_EXPENDITURES,
   PAYEE_IDS,
   problem,
@@ -226,6 +227,35 @@ describe("CommitteePage", () => {
       "href",
       "/candidate/S4MD00104",
     );
+  });
+
+  it("marks an independent expenditure from a 24- or 48-hour report an estimate", async () => {
+    const [latest, ...rest] = EXPENDITURES.filter((row) => row.committee_id === "C00800201");
+    renderApp("/committee/C00800201", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}/independent-expenditures", ({ response }) =>
+          response(200).json({
+            expenditures: [{ ...latest, source_file: "ie_24_48" }, ...rest],
+            next_cursor: null,
+          }),
+        ),
+      ],
+    });
+    const itemized = await screen.findByRole("region", { name: "Itemized" });
+    fireEvent.click(within(itemized).getByRole("tab", { name: "Independent expenditures" }));
+    const panel = await within(itemized).findByRole("tabpanel", {
+      name: "Independent expenditures",
+    });
+    await within(panel).findByText("6 independent expenditures, newest first");
+
+    const [estimate, periodic] = within(panel).getAllByRole("row").slice(1);
+    expect(cells(estimate)).toEqual([
+      "2024-10-28",
+      "HARGROVE, ELLEN",
+      "For",
+      "24/48-hour estimate$400,000",
+    ]);
+    expect(within(periodic).queryByText("24/48-hour estimate")).not.toBeInTheDocument();
   });
 
   it("lists a committee's contributions with no tabs when it made no independent expenditures", async () => {

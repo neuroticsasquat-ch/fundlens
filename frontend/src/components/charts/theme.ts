@@ -15,6 +15,11 @@ export type ChartTheme = {
   /** Independent expenditures for a candidate and against them: neither party's colour. */
   support: string;
   oppose: string;
+  /** The other kinds of outside spending: lighter shades of the sides, and one with no side. */
+  communicationSupport: string;
+  communicationOppose: string;
+  coordinated: string;
+  electioneering: string;
   /** A candidate's gift-size buckets: resolved donors' money, and FEC's unitemized lump. */
   itemized: string;
   unitemized: string;
@@ -52,6 +57,10 @@ function chartTheme(theme: MantineTheme, dark: boolean): ChartTheme {
     },
     support: theme.colors.teal[dark ? 4 : 6],
     oppose: theme.colors.orange[dark ? 4 : 6],
+    communicationSupport: theme.colors.teal[dark ? 2 : 3],
+    communicationOppose: theme.colors.orange[dark ? 2 : 3],
+    coordinated: theme.colors.green[dark ? 6 : 8],
+    electioneering: theme.colors.grape[dark ? 4 : 6],
     itemized: theme.colors.violet[dark ? 4 : 6],
     unitemized: theme.colors.gray[dark ? 5 : 4],
     spending: theme.colors.cyan[dark ? 4 : 6],

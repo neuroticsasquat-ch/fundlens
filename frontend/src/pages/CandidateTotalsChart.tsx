@@ -5,22 +5,20 @@ import EChart from "../components/charts/EChart";
 import { useChartTheme } from "../components/charts/theme";
 import { count } from "../components/format";
 import { candidateTotal } from "../domain/candidates";
+import { hasOutsideSpending, outsideSpendingVolume } from "../domain/outsideSpending";
 import { candidateTotalsHeight, candidateTotalsOption } from "./candidateTotalsOption";
 
 // The most bars charted. A presidential race lists every filer (1,602 in 2024, most with nothing),
 // and a bar each would make a canvas taller than the browser will draw.
 const CHARTED = 15;
 
-const independentExpenditures = (candidate: RaceCandidate) =>
-  candidate.ie_support + candidate.ie_oppose;
-
 /**
  * The race split: the candidates who raised the most, most first rather than in the API's order,
- * each a bar of what they raised, coloured by party, with the independent expenditures for and
- * against them in a panel beside it. Others' spending never orders them: a candidate who raised
- * nothing is charted, below everyone who raised money, only when there were independent
- * expenditures for or against them, and those order such candidates among themselves. A candidate
- * with neither is left out, and so is the chart when nobody has any.
+ * each a bar of what they raised, coloured by party, with the outside spending of every kind on
+ * them in panels beside it. Others' spending never orders them: a candidate who raised nothing is
+ * charted, below everyone who raised money, only when there was outside spending on them, and its
+ * dollars, of every kind and side, order such candidates among themselves. A candidate with
+ * neither is left out, and so is the chart when nobody has any.
  */
 function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
   const theme = useChartTheme();
@@ -29,12 +27,12 @@ function CandidateTotalsChart({ candidates }: { candidates: RaceCandidate[] }) {
       candidates
         .filter(
           (candidate) =>
-            candidateTotal(candidate) > 0 || candidate.ie_support > 0 || candidate.ie_oppose > 0,
+            candidateTotal(candidate) > 0 || hasOutsideSpending(candidate.outside_spending),
         )
         .sort(
           (a, b) =>
             candidateTotal(b) - candidateTotal(a) ||
-            independentExpenditures(b) - independentExpenditures(a),
+            outsideSpendingVolume(b.outside_spending) - outsideSpendingVolume(a.outside_spending),
         )
         .slice(0, CHARTED),
     [candidates],

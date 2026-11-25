@@ -1,6 +1,7 @@
 import { DEFAULT_THEME } from "@mantine/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { OutsideSpending } from "../api/client";
 import { http } from "../test/api";
 import { allOptions, lastOption } from "../test/echarts";
 import { renderApp } from "../test/app";
@@ -13,6 +14,20 @@ const cells = (row: HTMLElement) =>
   within(row)
     .getAllByRole("cell")
     .map((cell) => cell.textContent);
+
+/** No outside spending of any kind: a cycle with no electioneering row has `null`, never 0. */
+const NO_OUTSIDE_SPENDING: OutsideSpending = {
+  independent_expenditure: { support: 0, oppose: 0 },
+  communication_cost: { support: 0, oppose: 0 },
+  party_coordinated: 0,
+  electioneering_communication: null,
+};
+
+/** Spending on a candidate that is independent expenditures alone. */
+const independentOnly = (support: number, oppose: number): OutsideSpending => ({
+  ...NO_OUTSIDE_SPENDING,
+  independent_expenditure: { support, oppose },
+});
 
 describe("RacePage", () => {
   it("shows the race's header and every candidate's money, most first", async () => {
@@ -40,8 +55,6 @@ describe("RacePage", () => {
         "$1,750,000",
         "$1,786,850",
         "$3,900",
-        "$0",
-        "$80,000",
         "$291,300",
       ],
       [
@@ -54,8 +67,6 @@ describe("RacePage", () => {
         "$5,000",
         "$79,200",
         "$12,223",
-        "$150,000",
-        "$45,000",
         "$57,100",
       ],
       [
@@ -68,8 +79,6 @@ describe("RacePage", () => {
         "$0",
         "$7,175",
         "not available",
-        "$0",
-        "$0",
         "$1,900",
       ],
       [
@@ -82,13 +91,16 @@ describe("RacePage", () => {
         "$0",
         "$3,250",
         "not available",
-        "$0",
-        "$0",
         "$1,300",
       ],
     ]);
+    // Each kind on its own, never one figure for them all.
     expect(
-      screen.getByText("Independent expenditures: $150,000 for candidates, $125,000 against"),
+      screen.getByText(
+        "Outside spending: independent expenditures $150,000 for candidates and $125,000 against · " +
+          "communication costs $4,224 for candidates and $2,400 against · " +
+          "party coordinated expenditures $20,000 · electioneering communications $101,319",
+      ),
     ).toBeInTheDocument();
     expect(
       within(section("Candidates"))
@@ -102,8 +114,6 @@ describe("RacePage", () => {
       "Self-funding",
       "Total ▼",
       "Spending",
-      "Independent expenditures for",
-      "Independent expenditures against",
       "Cash on hand",
     ]);
     const candidates = section("Candidates");
@@ -144,22 +154,33 @@ describe("RacePage", () => {
     expect(screen.queryByText(/via joint fundraising/)).not.toBeInTheDocument();
   });
 
-  it("says nothing of independent expenditures in a race that had none", async () => {
+  it("says nothing of outside spending in a race that had none", async () => {
     const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
       ...candidate,
       ie_support: 0,
       ie_oppose: 0,
+      outside_spending: NO_OUTSIDE_SPENDING,
     }));
     renderApp("/race/2024/senate/MD", {
       handlers: [
         http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
-          response(200).json({ ...RACE_SENATE_MD, ie_support: 0, ie_oppose: 0, candidates }),
+          response(200).json({
+            ...RACE_SENATE_MD,
+            ie_support: 0,
+            ie_oppose: 0,
+            outside_spending: NO_OUTSIDE_SPENDING,
+            outside_spending_total: 0,
+            top_spenders: [],
+            candidates,
+          }),
         ),
       ],
     });
     await screen.findByRole("region", { name: "Candidates" });
 
-    expect(screen.queryByText(/^Independent expenditures:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Outside spending:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Outside spending" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Top outside spenders" })).not.toBeInTheDocument();
     // The "Raised" panel alone: a bar of what each raised, and no legend.
     const option = lastOption();
     expect(option.series).toMatchObject([{ name: "Raised" }]);
@@ -168,11 +189,167 @@ describe("RacePage", () => {
     expect(option.title).toBeUndefined();
   });
 
-  it("has a fixture whose candidates' independent expenditures add up to the race's", () => {
-    const sum = (key: "ie_support" | "ie_oppose") =>
-      RACE_SENATE_MD.candidates.reduce((total, candidate) => total + candidate[key], 0);
-    expect(sum("ie_support")).toBe(RACE_SENATE_MD.ie_support);
-    expect(sum("ie_oppose")).toBe(RACE_SENATE_MD.ie_oppose);
+  it("has a fixture whose candidates' outside spending adds up to the race's, kind by kind", () => {
+    const sum = (value: (spending: OutsideSpending) => number) =>
+      RACE_SENATE_MD.candidates.reduce(
+        (total, candidate) => total + value(candidate.outside_spending),
+        0,
+      );
+    const kinds: ((spending: OutsideSpending) => number)[] = [
+      (spending) => spending.independent_expenditure.support,
+      (spending) => spending.independent_expenditure.oppose,
+      (spending) => spending.communication_cost.support,
+      (spending) => spending.communication_cost.oppose,
+      (spending) => spending.party_coordinated,
+      (spending) => spending.electioneering_communication ?? 0,
+    ];
+    for (const kind of kinds) expect(sum(kind)).toBe(kind(RACE_SENATE_MD.outside_spending));
+    expect(RACE_SENATE_MD.outside_spending.independent_expenditure).toEqual({
+      support: RACE_SENATE_MD.ie_support,
+      oppose: RACE_SENATE_MD.ie_oppose,
+    });
+    for (const candidate of RACE_SENATE_MD.candidates) {
+      expect(candidate.outside_spending.independent_expenditure).toEqual({
+        support: candidate.ie_support,
+        oppose: candidate.ie_oppose,
+      });
+    }
+    expect(kinds.reduce((total, kind) => total + kind(RACE_SENATE_MD.outside_spending), 0)).toBe(
+      RACE_SENATE_MD.outside_spending_total,
+    );
+    // Every top spender's lines on a candidate add up to that candidate's, kind by kind.
+    const lines = (candidateId: string, kind: string, side: "S" | "O" | null) =>
+      RACE_SENATE_MD.top_spenders
+        .filter(
+          (line) =>
+            line.candidate_id === candidateId && line.kind === kind && line.support_oppose === side,
+        )
+        .reduce((total, line) => total + line.amount, 0);
+    for (const candidate of RACE_SENATE_MD.candidates) {
+      const spending = candidate.outside_spending;
+      const id = candidate.candidate_id;
+      expect(lines(id, "independent_expenditure", "S")).toBe(
+        spending.independent_expenditure.support,
+      );
+      expect(lines(id, "independent_expenditure", "O")).toBe(
+        spending.independent_expenditure.oppose,
+      );
+      expect(lines(id, "communication_cost", "S")).toBe(spending.communication_cost.support);
+      expect(lines(id, "communication_cost", "O")).toBe(spending.communication_cost.oppose);
+      expect(lines(id, "party_coordinated", "S")).toBe(spending.party_coordinated);
+      expect(lines(id, "electioneering_communication", null)).toBe(
+        spending.electioneering_communication ?? 0,
+      );
+    }
+  });
+
+  it("shows each candidate's outside spending by kind and side, and says what each kind is", async () => {
+    renderApp("/race/2024/senate/MD");
+    const outside = await screen.findByRole("region", { name: "Outside spending" });
+
+    expect(
+      within(outside)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+        // The top spenders' table is the section's too.
+        .slice(0, 7),
+    ).toEqual([
+      "Candidate",
+      "Independent expenditures for",
+      "Independent expenditures against",
+      "Communication costs for",
+      "Communication costs against",
+      "Party coordinated expenditures",
+      "Electioneering communications",
+    ]);
+    // BRANNIGAN, on whom nobody spent anything, is not listed.
+    const [table] = within(outside).getAllByRole("table");
+    expect(within(table).getAllByRole("row").slice(1).map(cells)).toEqual([
+      ["WHITLOCK, GORDON", "$0", "$80,000", "$0", "$2,400", "$20,000", "$26,410"],
+      ["OKAFOR, DIANA", "$150,000", "$45,000", "$4,224", "$0", "$0", "$71,410"],
+      ["PELL, MARCUS", "$0", "$0", "$0", "$0", "$0", "$3,500"],
+    ]);
+    for (const line of [
+      /^Independent expenditures: advertising and other spending/,
+      /^Communication costs: what a corporation or union spent urging/,
+      /^Party coordinated expenditures: what a party committee spent/,
+      /^Electioneering communications: broadcast ads naming a candidate/,
+    ]) {
+      expect(within(outside).getByText(line)).toBeInTheDocument();
+    }
+    expect(within(outside).getByRole("link", { name: "methodology" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
+  });
+
+  it("shows only the kinds of outside spending a race had, and a dash for a cycle with no electioneering file", async () => {
+    const candidates = RACE_SENATE_MD.candidates.map((candidate) => ({
+      ...candidate,
+      outside_spending: independentOnly(candidate.ie_support, candidate.ie_oppose),
+    }));
+    renderApp("/race/2024/senate/MD", {
+      handlers: [
+        http.get("/v1/races/{cycle}/{office}/{place}", ({ response }) =>
+          response(200).json({
+            ...RACE_SENATE_MD,
+            outside_spending: independentOnly(RACE_SENATE_MD.ie_support, RACE_SENATE_MD.ie_oppose),
+            outside_spending_total: RACE_SENATE_MD.ie_support + RACE_SENATE_MD.ie_oppose,
+            top_spenders: RACE_SENATE_MD.top_spenders.filter(
+              (line) => line.kind === "independent_expenditure",
+            ),
+            candidates,
+          }),
+        ),
+      ],
+    });
+    const outside = await screen.findByRole("region", { name: "Outside spending" });
+
+    expect(
+      screen.getByText(
+        "Outside spending: independent expenditures $150,000 for candidates and $125,000 against",
+      ),
+    ).toBeInTheDocument();
+    const [table] = within(outside).getAllByRole("table");
+    expect(within(table).getAllByRole("row").slice(1).map(cells)).toEqual([
+      ["WHITLOCK, GORDON", "$0", "$80,000"],
+      ["OKAFOR, DIANA", "$150,000", "$45,000"],
+    ]);
+    expect(within(outside).queryByText(/^Electioneering communications:/)).not.toBeInTheDocument();
+    // The chart's two panels: no electioneering one.
+    expect(lastOption().title).toMatchObject([{ text: "Raised" }, { text: "For and against" }]);
+  });
+
+  it("lists the top outside spenders, a spender that is not a committee badged and linked to its page", async () => {
+    renderApp("/race/2024/senate/MD");
+    await screen.findByRole("region", { name: "Top outside spenders" });
+
+    expect(rows("Top outside spenders").map(cells)).toEqual([
+      ["1", "MARYLAND FORWARD PAC", "OKAFOR, DIANA", "Independent expenditures", "For", "$150,000"],
+      ["2", "MARYLAND FORWARD PAC", "WHITLOCK, GORDON", "Independent expenditures", "Against", "$80,000"],
+      ["3", "RESTORATION PACNot a committee", "OKAFOR, DIANA", "Electioneering communications", "—", "$71,410"],
+      ["4", "OLD LINE REPUBLICAN COMMITTEE", "OKAFOR, DIANA", "Independent expenditures", "Against", "$45,000"],
+      ["5", "RESTORATION PACNot a committee", "WHITLOCK, GORDON", "Electioneering communications", "—", "$26,410"],
+      ["6", "OLD LINE REPUBLICAN COMMITTEE", "WHITLOCK, GORDON", "Party coordinated expenditures", "For", "$20,000"],
+      ["7", "STEAMFITTERS LOCAL 486Not a committee", "OKAFOR, DIANA", "Communication costs", "For", "$4,224"],
+      ["8", "RESTORATION PACNot a committee", "PELL, MARCUS", "Electioneering communications", "—", "$3,500"],
+      ["9", "STEAMFITTERS LOCAL 486Not a committee", "WHITLOCK, GORDON", "Communication costs", "Against", "$2,400"],
+    ]);
+    const [, , restoration] = rows("Top outside spenders");
+    expect(within(restoration).getByRole("link", { name: "RESTORATION PAC" })).toHaveAttribute(
+      "href",
+      "/committee/C90800207",
+    );
+    expect(within(restoration).getByText("Not a committee")).toBeInTheDocument();
+    expect(within(restoration).getByRole("link", { name: "OKAFOR, DIANA" })).toHaveAttribute(
+      "href",
+      "/candidate/S4MD00103",
+    );
+    const [forward] = rows("Top outside spenders");
+    expect(within(forward).queryByText("Not a committee")).not.toBeInTheDocument();
+    expect(
+      within(section("Top outside spenders")).getByText(/^Not a committee: a non-committee spender/),
+    ).toBeInTheDocument();
   });
 
   it("has a fixture whose candidates' cash on hand adds up to the race's", () => {
@@ -246,22 +423,20 @@ describe("RacePage", () => {
     ]);
   });
 
-  it("lists the top committees with their kind, linked to their pages", async () => {
+  it("lists the committees that gave most, ranked among themselves, linked to their pages", async () => {
     renderApp("/race/2024/senate/MD");
-    await screen.findByRole("region", { name: "Top committees" });
+    await screen.findByRole("region", { name: "Top contributing committees" });
 
-    expect(rows("Top committees").map(cells)).toEqual([
-      ["1", "MARYLAND FORWARD PAC", "Independent expenditures", "$230,000"],
-      ["2", "OLD LINE REPUBLICAN COMMITTEE", "Independent expenditures", "$45,000"],
-      ["3", "BRICKLAYERS UNITED PAC", "Contributions", "$5,000"],
-      ["4", "OLD LINE REPUBLICAN COMMITTEE", "Contributions", "$5,000"],
+    // Independent expenditures are the top outside spenders', by candidate and side.
+    expect(rows("Top contributing committees").map(cells)).toEqual([
+      ["1", "BRICKLAYERS UNITED PAC", "$5,000"],
+      ["2", "OLD LINE REPUBLICAN COMMITTEE", "$5,000"],
     ]);
     expect(
-      within(section("Top committees")).getByRole("link", { name: "BRICKLAYERS UNITED PAC" }),
+      within(section("Top contributing committees")).getByRole("link", {
+        name: "BRICKLAYERS UNITED PAC",
+      }),
     ).toHaveAttribute("href", "/committee/C00800202");
-    expect(
-      within(section("Top committees")).getByRole("link", { name: "MARYLAND FORWARD PAC" }),
-    ).toHaveAttribute("href", "/committee/C00800201");
   });
 
   it("lists the top donors with what each gave each candidate, and no self-funder", async () => {
@@ -293,19 +468,25 @@ describe("RacePage", () => {
     expect(rows("Top donors").map((row) => cells(row)[1])).not.toContain("WHITLOCK, GORDON");
   });
 
-  it("charts what each candidate raised, and beside it the independent expenditures against them left of zero and for them right of it", async () => {
+  it("charts what each candidate raised, and beside it every kind of outside spending on them", async () => {
     renderApp("/race/2024/senate/MD");
     await screen.findByRole("region", { name: "Candidates" });
 
     const option = lastOption();
     const names = ["WHITLOCK, GORDON", "OKAFOR, DIANA", "BRANNIGAN, TESS", "PELL, MARCUS"];
-    // Two panels side by side, the candidates down each one's category axis in one order.
-    expect(option.title).toMatchObject([{ text: "Raised" }, { text: "Independent expenditures" }]);
-    expect(option.grid).toHaveLength(2);
+    // Three panels side by side, the candidates down each one's category axis in one order.
+    expect(option.title).toMatchObject([
+      { text: "Raised" },
+      { text: "For and against" },
+      { text: "Electioneering" },
+    ]);
+    expect(option.grid).toHaveLength(3);
     expect(option.yAxis).toMatchObject([
       { gridIndex: 0, data: names },
       { gridIndex: 1, data: names, axisLabel: { show: false } },
+      { gridIndex: 2, data: names, axisLabel: { show: false } },
     ]);
+    const signed = { type: "bar", stack: "signed", xAxisIndex: 1, yAxisIndex: 1 };
     expect(option.series).toEqual([
       expect.objectContaining({
         type: "bar",
@@ -319,47 +500,71 @@ describe("RacePage", () => {
           expect.objectContaining({ value: 3250 }),
         ],
       }),
+      // Against a candidate left of zero, for them right of it, each kind stacked on its side.
       expect.objectContaining({
-        type: "bar",
-        name: "Independent expenditures for",
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: [0, 150000, 0, 0],
+        ...signed,
+        name: "Independent expenditures against",
+        data: [-80000, -45000, 0, 0],
       }),
       expect.objectContaining({
+        ...signed,
+        name: "Communication costs against",
+        data: [-2400, 0, 0, 0],
+      }),
+      expect.objectContaining({
+        ...signed,
+        name: "Independent expenditures for",
+        data: [0, 150000, 0, 0],
+      }),
+      expect.objectContaining({ ...signed, name: "Communication costs for", data: [0, 4224, 0, 0] }),
+      expect.objectContaining({
+        ...signed,
+        name: "Party coordinated expenditures",
+        data: [20000, 0, 0, 0],
+      }),
+      // On no side, so a bar of its own, stacked on nothing.
+      expect.objectContaining({
         type: "bar",
-        name: "Independent expenditures against",
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: [-80000, -45000, 0, 0],
+        name: "Electioneering communications",
+        xAxisIndex: 2,
+        yAxisIndex: 2,
+        data: [26409.5, 71409.5, 0, 3500],
       }),
     ]);
     // Nothing others spent is stacked onto what a candidate raised.
-    expect((option.series as object[])[0]).not.toHaveProperty("stack");
+    const series = option.series as object[];
+    expect(series[0]).not.toHaveProperty("stack");
+    expect(series.at(-1)).not.toHaveProperty("stack");
     expect(option.legend).toMatchObject({
       show: true,
-      data: ["Independent expenditures against", "Independent expenditures for"],
+      data: [
+        "Independent expenditures against",
+        "Communication costs against",
+        "Independent expenditures for",
+        "Communication costs for",
+        "Party coordinated expenditures",
+        "Electioneering communications",
+      ],
     });
   });
 
-  it("shows the independent expenditures against a candidate as positive amounts", async () => {
+  it("shows the outside spending against a candidate as positive amounts", async () => {
     renderApp("/race/2024/senate/MD");
     await screen.findByRole("region", { name: "Candidates" });
 
     const option = lastOption();
     // Drawn below zero, "against" is told and labelled as the positive amount spent.
-    const [, , against] = option.series as {
+    const [, independent, communication] = option.series as {
       tooltip: { valueFormatter: (value: number) => string };
     }[];
-    expect(against.tooltip.valueFormatter(-80000)).toBe("$80,000");
-    const [, independent] = option.xAxis as {
+    expect(independent.tooltip.valueFormatter(-80000)).toBe("$80,000");
+    expect(communication.tooltip.valueFormatter(-2400)).toBe("$2,400");
+    const [, signed, electioneering] = option.xAxis as {
       axisLabel: { formatter: (value: number) => string };
     }[];
-    expect(independent.axisLabel.formatter(-50000)).toBe("$50K");
-    expect(independent.axisLabel.formatter(150000)).toBe("$150K");
-    const legend = option.legend as { formatter: (name: string) => string };
-    expect(legend.formatter("Independent expenditures for")).toBe("For");
-    expect(legend.formatter("Independent expenditures against")).toBe("Against");
+    expect(signed.axisLabel.formatter(-50000)).toBe("$50K");
+    expect(signed.axisLabel.formatter(150000)).toBe("$150K");
+    expect(electioneering.axisLabel.formatter(70000)).toBe("$70K");
   });
 
   it("charts the candidates by what they raised, whatever order the API gives them in", async () => {
@@ -371,7 +576,12 @@ describe("RacePage", () => {
       ...RACE_SENATE_MD.candidates.map((candidate) => {
         if (candidate.candidate_id === "S4MD00111")
           return { ...candidate, total_jfc_transfers: 300000 };
-        if (candidate.candidate_id === "S4MD00105") return { ...candidate, ie_oppose: 5000000 };
+        if (candidate.candidate_id === "S4MD00105")
+          return {
+            ...candidate,
+            ie_oppose: 5000000,
+            outside_spending: independentOnly(0, 5000000),
+          };
         return candidate;
       }),
       {
@@ -384,6 +594,7 @@ describe("RacePage", () => {
         self_funding: 0,
         ie_support: 10000,
         ie_oppose: 0,
+        outside_spending: independentOnly(10000, 0),
       },
     ].reverse();
     renderApp("/race/2024/senate/MD", {
@@ -406,6 +617,7 @@ describe("RacePage", () => {
         ],
       },
       {},
+      {},
     ]);
   });
 
@@ -423,6 +635,7 @@ describe("RacePage", () => {
       self_funding: 0,
       ie_support: 0,
       ie_oppose: 0,
+      outside_spending: NO_OUTSIDE_SPENDING,
     }));
     renderApp("/race/2024/senate/MD", {
       handlers: [
@@ -452,6 +665,7 @@ describe("RacePage", () => {
       self_funding: 0,
       ie_support: 0,
       ie_oppose: 0,
+      outside_spending: NO_OUTSIDE_SPENDING,
     }));
     renderApp("/race/2024/senate/MD", {
       handlers: [
