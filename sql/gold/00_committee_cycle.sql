@@ -46,6 +46,19 @@
 -- live build predates the table (§2, older builds), reads as not available, not as nothing spent;
 -- counted rows netting to $0 are 0.
 --
+-- Who runs it and what lobbyists bundled to it, each the cycle's (every-FEC-dollar spec §7.7,
+-- NEU-2176): is_leadership_pac where `cm` designates it D or the cycle's leadership file lists
+-- it (silver leadership_pac, §7.2), so from `cm` alone before 2010; is_lobbyist_pac where silver
+-- lobbyist_pac has its row (rule b, §7.2), never before 2010. sponsor_candidate_id and
+-- sponsor_name are its leadership_pac row's, NULL without one: the id as silver gives it, an alias
+-- too, which a candidate's leadership PACs are found through (v1 §7.1's redirect). A leadership
+-- PAC's money stays its own, credited to no candidate, its sponsor included. bundled_total is
+-- its silver bundling_report rows' amount (§7.6), 0 where it has none in a cycle whose build holds
+-- the table (`silver_held`) from lobbyist_bundle's first cycle, 2010; NULL in any other cycle,
+-- before 2010 or where the build predates the table (§2, older builds), so "not available" never
+-- reads as "$0". Bundled gifts are already counted as individuals' contributions: bundled_total
+-- is context, in no receipt figure and no total.
+--
 -- The reported_* fields are FEC's figures for the committee as filed, its silver reported_total row
 -- (every-FEC-dollar spec §4.1, §4.4): NULL where it has no row or the cycle's file lacks the
 -- measure, never 0, and never added to any figure above. itemized_total is fundlens's figure to
@@ -149,6 +162,24 @@ spent AS (
     WHERE counted
     GROUP BY cycle, committee_id
 ),
+leadership AS (
+    SELECT cycle, committee_id, sponsor_candidate_id, sponsor_name, true AS is_listed
+    FROM silver.leadership_pac
+),
+lobbyist AS (
+    SELECT cycle, committee_id, true AS is_lobbyist_pac
+    FROM silver.lobbyist_pac
+),
+bundled AS (
+    SELECT cycle, committee_id, sum(amount) AS bundled_total
+    FROM silver.bundling_report
+    GROUP BY cycle, committee_id
+),
+bundling_cycle AS (
+    SELECT DISTINCT cycle, true AS has_bundling
+    FROM silver_held
+    WHERE silver_table = 'bundling_report' AND cycle >= 2010
+),
 totals AS (
     SELECT
         committee.committee_id,
@@ -187,6 +218,15 @@ totals AS (
             AS DECIMAL(16, 2)
         ) AS outside_spending_total,
         CAST(spent.total_operating_expenditures AS DECIMAL(16, 2)) AS total_operating_expenditures,
+        coalesce(committee.designation = 'D', false) OR coalesce(leadership.is_listed, false)
+            AS is_leadership_pac,
+        coalesce(lobbyist.is_lobbyist_pac, false) AS is_lobbyist_pac,
+        leadership.sponsor_candidate_id,
+        leadership.sponsor_name,
+        CASE
+            WHEN bundling_cycle.has_bundling
+                THEN CAST(coalesce(bundled.bundled_total, 0) AS DECIMAL(16, 2))
+        END AS bundled_total,
         committee.is_conduit
     FROM silver.committee AS committee
     LEFT JOIN received USING (cycle, committee_id)
@@ -196,6 +236,10 @@ totals AS (
     LEFT JOIN independent USING (cycle, committee_id)
     LEFT JOIN electioneering USING (cycle, committee_id)
     LEFT JOIN spent USING (cycle, committee_id)
+    LEFT JOIN leadership USING (cycle, committee_id)
+    LEFT JOIN lobbyist USING (cycle, committee_id)
+    LEFT JOIN bundled USING (cycle, committee_id)
+    LEFT JOIN bundling_cycle USING (cycle)
 ),
 itemized AS (
     SELECT

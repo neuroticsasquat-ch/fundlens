@@ -23,7 +23,9 @@ A build may lack a backfill-pending table (`paths.BACKFILL_PENDING`, CONTEXT.md)
 before the table existed. Its cycle reads as having no rows of it: `silver.<table>` is over the
 partitions of the builds that have it, or, when none has, an empty view typed from the table's
 committed dataset schema (`docs/dataset/schema/<table>.json`), so the gold SQL never asks which
-cycles have it. Any other table a build lacks fails the load.
+cycles have it, but for a figure that must tell "no rows" from "no table": `silver_held` lists
+each table each cycle's build holds, and `bundled_total` reads it (every-FEC-dollar spec §7.7).
+Any other table a build lacks fails the load.
 """
 
 import csv
@@ -98,7 +100,8 @@ FROM_POSTGRES: frozenset[GoldTable] = frozenset({"meta", "donor_redirect"})
 # (every-FEC-dollar spec §4.3): silver `contribution` carries the candidate of each row, not of a
 # committee with no counted money. `operating_expenditure` is spending (every-FEC-dollar spec §5.5),
 # in no receipt figure. `electioneering_communication` is outside spending (every-FEC-dollar spec
-# §6.5), as `independent_expenditure` is.
+# §6.5), as `independent_expenditure` is. `leadership_pac`, `lobbyist_pac` and `bundling_report` are
+# facts about a committee and its bundled total (every-FEC-dollar spec §7.7), in no receipt figure.
 INPUTS: dict[SilverTable, str] = {
     "committee": "transform",
     "candidate": "transform",
@@ -113,6 +116,9 @@ INPUTS: dict[SilverTable, str] = {
     "reported_total": "transform",
     "candidate_reported_total": "transform",
     "operating_expenditure": "transform",
+    "leadership_pac": "transform",
+    "lobbyist_pac": "transform",
+    "bundling_report": "transform",
     "race": "seats",
 }
 
@@ -295,6 +301,17 @@ def _register_silver(
             )
     # DuckDB's CSV writer prints a list as `[…]`; Postgres reads an array as `{…}`.
     con.execute("CREATE MACRO pg_array(l) AS '{' || array_to_string(l, ',') || '}'")
+
+
+def _register_held(con: duckdb.DuckDBPyConnection, held: Iterable[tuple[SilverTable, int]]) -> None:
+    """`silver_held`: each silver table of `INPUTS` and each cycle whose build holds it, for a
+    figure that is NULL, not 0, where a build lacks a backfill-pending table (every-FEC-dollar
+    spec §2, older builds)."""
+    con.execute("CREATE TABLE silver_held (silver_table VARCHAR, cycle INTEGER)")
+    rows = list(held)
+    # DuckDB's executemany refuses an empty list.
+    if rows:
+        con.executemany("INSERT INTO silver_held VALUES (?, ?)", rows)
 
 
 def _register_handoffs(con: duckdb.DuckDBPyConnection) -> None:
@@ -509,9 +526,11 @@ def load(
     builds = live_builds | {cycle: build_id}
     # Every table of `INPUTS`, with no partitions when no build has it.
     local_dirs: dict[SilverTable, list[Path]] = {table: [] for table in INPUTS}
+    held: list[tuple[SilverTable, int]] = []
     for each, each_build in sorted(builds.items()):
         for table, local in _require_inputs(store, each, each_build, data_dir=data_dir).items():
             local_dirs[table].append(local)
+            held.append((table, each))
     scratch = paths.scratch_dir(data_dir)
     work = scratch / f"load-{cycle}-{build_id}"
     work.mkdir(parents=True, exist_ok=True)
@@ -521,6 +540,7 @@ def load(
         aggregate_started = time.monotonic()
         with duckdb.connect(config=limits.duckdb_config(scratch)) as con:
             _register_silver(con, local_dirs, docs_dir=docs_dir)
+            _register_held(con, held)
             _register_handoffs(con)
             _register_payee_no_page(con)
             for table, path in models:

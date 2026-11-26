@@ -21,6 +21,7 @@ from typer.testing import CliRunner, Result
 
 from fundlens import cli, markers, paths
 from fundlens.api.app import create_app
+from fundlens.paths import SilverTable
 from fundlens.publish import dataset
 from fundlens.publish import gold as gold_publish
 from fundlens.publish.dataset import DATASET_TABLES, BuildNotReady, Manifest
@@ -312,7 +313,7 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     gift-size row (every-FEC-dollar spec §4.3 to §4.7). `oppexp` starts in 2004, so a 1998
     committee, candidate and race has a NULL total_operating_expenditures, never 0, and no category,
     top-payee, payee-cycle or top-payer row (§5.5); 2024's beside it keep theirs. Nor has it an
-    electioneering figure (§6.5)."""
+    electioneering figure (§6.5), nor a bundled total, a sponsor or a lobbyist flag (§7.8)."""
     columns = EXPECTED["reported_totals"]["columns"]
     weball = EXPECTED["reported_totals"]["candidate_reported_total"][EARLY]
     webk = EXPECTED["reported_totals"]["reported_total"][EARLY]
@@ -363,6 +364,15 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
             " FROM (VALUES (%s), (2024)) AS c(cycle) ORDER BY c.cycle",
             (EARLY,),
         ).fetchall()
+        # No leadership, lobbyist or bundling file before 2010 (§7.8): no sponsor, no lobbyist
+        # flag, and a NULL bundled_total, never 0, while 2024's committees each have a figure.
+        [bundling_early, bundling_current] = conn.execute(
+            "SELECT count(bundled_total), count(sponsor_candidate_id),"
+            " count(*) FILTER (WHERE is_lobbyist_pac), count(*)"
+            " FROM gold.committee_cycle WHERE cycle IN (%s, 2024)"
+            " GROUP BY cycle ORDER BY cycle",
+            (EARLY,),
+        ).fetchall()
 
     receipts, cash = columns.index("receipts"), columns.index("cash_on_hand_end")
     assert {row[0]: row[1:] for row in candidates} == {
@@ -384,6 +394,11 @@ def test_before_2008_gold_takes_a_candidates_weball_row_and_has_no_coverage(
     assert electioneering_early == (0, 0)
     assert electioneering_current[0] > 0
     assert electioneering_current[1] == 0
+    assert bundling_early[:3] == (0, 0, 0)
+    assert bundling_early[3] > 0
+    assert bundling_current[0] == bundling_current[3]
+    assert bundling_current[1] > 0
+    assert bundling_current[2] > 0
 
 
 # What a 1996-2006 `webk` row lacks and `committee_summary` has (every-FEC-dollar spec §4.7).
@@ -466,12 +481,12 @@ def test_a_resolved_candidate_page_has_its_gift_sizes_in_bucket_order(client: Te
 
 # The stand-in backfill-pending table: a dataset table, not resolved, which the 2024 fixture has
 # rows of and 1998 none.
-PENDING = "independent_expenditure"
+PENDING: SilverTable = "independent_expenditure"
 DAY = date(2026, 11, 22)
 
 
-def _partition(cycle: int) -> str:
-    return paths.silver_partition(PENDING, cycle, BUILD) + "/"
+def _partition(cycle: int, table: SilverTable = PENDING) -> str:
+    return paths.silver_partition(table, cycle, BUILD) + "/"
 
 
 def test_transform_writes_a_partition_with_no_rows_for_a_cycle_with_none(
@@ -515,12 +530,20 @@ def copied(two_cycles: Snapshot, tmp_path_factory: pytest.TempPathFactory) -> It
 
 
 @contextmanager
-def _without(copy: Copy, cycles: Sequence[int], *, stray: bytes | None = None) -> Generator[None]:
-    """`PENDING`'s partition of each of `cycles` deleted from R2, its local cache left as it is
+def _without(
+    copy: Copy,
+    cycles: Sequence[int],
+    *,
+    stray: bytes | None = None,
+    table: SilverTable = PENDING,
+) -> Generator[None]:
+    """`table`'s partition of each of `cycles` deleted from R2, its local cache left as it is
     (R2 decides what a build holds); with `stray`, one object of those bytes put in its place that
     is not Parquet. Put back as it was on exit."""
-    deleted = [key for cycle in cycles for key in copy.store.list_keys(_partition(cycle))]
-    strays = [_partition(cycle) + "notes.txt" for cycle in cycles] if stray is not None else []
+    deleted = [key for cycle in cycles for key in copy.store.list_keys(_partition(cycle, table))]
+    strays = (
+        [_partition(cycle, table) + "notes.txt" for cycle in cycles] if stray is not None else []
+    )
     try:
         copy.store.delete_keys(deleted)
         for key in strays:
@@ -609,6 +632,32 @@ def test_a_cycle_whose_build_lacks_a_backfill_pending_table_loads_with_no_rows_o
             assert loaded == live, cycle
     # Not vacuous: the 2024 fixture's live gold has independent expenditures.
     assert not _none(_ie_figures(load_env.conninfo, "gold", FIXTURE_CYCLE))
+
+
+def test_a_build_lacking_bundling_report_has_no_bundled_total_rather_than_0(
+    load_env: Copy,
+) -> None:
+    """Every-FEC-dollar spec §7.7: a cycle whose build predates the table reads its bundled totals
+    as not available, NULL, while the cycle's other figures stand."""
+    with _without(load_env, [FIXTURE_CYCLE], table="bundling_report"):
+        result = _load_1998()
+
+    assert result.exit_code == 0, result.output
+    query: LiteralString = (
+        "SELECT count(*), count(bundled_total), count(*) FILTER (WHERE is_lobbyist_pac),"
+        " sum(total_individual) FROM {schema}.committee_cycle WHERE cycle = %s"
+    )
+    with psycopg.connect(load_env.conninfo) as conn:
+        loaded, live = (
+            conn.execute(
+                sql.SQL(query).format(schema=sql.Identifier(schema)), (FIXTURE_CYCLE,)
+            ).fetchone()
+            for schema in ("gold_build", "gold")
+        )
+    assert loaded is not None and live is not None
+    assert loaded[1] == 0
+    assert live[1] == live[0] > 0
+    assert (loaded[0], *loaded[2:]) == (live[0], *live[2:])
 
 
 def test_a_build_lacking_a_table_not_backfill_pending_fails_the_load(load_env: Copy) -> None:

@@ -822,6 +822,24 @@ bundling_reports:
   "202501319160000010": [C00800106, 2024-2, false, 0]
   "202407229160000011": [C00800101, null, false, 0]
 
+# Gold committee_cycle's leadership, lobbyist and bundling fields (project spec §7.7, NEU-2176), by
+# committee: [is_leadership_pac, is_lobbyist_pac, sponsor_candidate_id, sponsor_name,
+# bundled_total]. The incumbent's leadership PAC names CALLOWAY its sponsor; SEVERN RIVER PAC
+# names WHITLOCK, from the list; STRATTON 2024 is a leadership PAC by its D designation alone, with
+# no sponsor. Each recipient's bundled_total is its bundling_reports amounts added, HARGROVE FOR
+# AMERICA's report with no coverage end adding 0; $118,500 in all. A committee not listed is
+# neither, has no sponsor and a bundled_total of 0: 2024's build holds the table. No receipt figure
+# includes any of it.
+committee_leadership:
+  C00800114: [true, false, H4MD05106, "CALLOWAY, RUTH", 0] # CALLOWAY LEADERSHIP FUND
+  C00800117: [true, false, S4MD00104, "WHITLOCK, GORDON", 0] # SEVERN RIVER PAC
+  C00800102: [true, false, null, null, 0] # STRATTON 2024
+  C00800202: [false, true, null, null, 0] # BRICKLAYERS UNITED PAC
+  C00800204: [false, true, null, null, 0] # TIDEWATER ACTION FUND
+  C00800203: [false, false, null, null, 82000] # OLD LINE REPUBLICAN COMMITTEE
+  C00800103: [false, false, null, null, 22500] # OKAFOR FOR MARYLAND
+  C00800106: [false, false, null, null, 14000] # CALLOWAY FOR CONGRESS
+
 outside_spending:
   by_candidate:
     H4MD05106: [512, 0, 0, 18000] # CALLOWAY

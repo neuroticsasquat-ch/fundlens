@@ -233,6 +233,19 @@ def test_load_builds_every_gold_table_to_the_expected_totals(
         ] == outside["by_committee"].get(
             committee_id, [0, 0, None, expected["committees"][committee_id]["ie_total"]]
         ), committee_id
+    # Who runs each committee and what lobbyists bundled to it (every-FEC-dollar spec §7.7): the
+    # leadership PACs with their sponsors, the lobbyist/registrant PACs, and each recipient's
+    # bundled total; 0, never NULL, at a committee with no report, since 2024 has the table. The
+    # receipt figures asserted above are unchanged by them.
+    leadership = expected["committee_leadership"]
+    for committee_id, row in committee_cycles.items():
+        assert [
+            row["is_leadership_pac"],
+            row["is_lobbyist_pac"],
+            row["sponsor_candidate_id"],
+            row["sponsor_name"],
+            whole(row["bundled_total"]),
+        ] == leadership.get(committee_id, [False, False, None, None, 0]), committee_id
     # Every spender is a committee, a non-committee spender (types I, C and E) too, named as `cm`
     # names it.
     committees_by_id = {
