@@ -71,6 +71,25 @@ publish, in decimal GB.
 | 2024 | 2026-11-16 | `20261116T005426Z` | `1250468` | 4.23 | 469 | 5 | 1728 | — | — | 4.76 | 2.29 | 3.37 | 26.48 GiB, write contribution | 32GB | 260 |Transform only, rebuilt after NEU-2324; loaded and published with every cycle (Per cycle, 2026-11-17). Its earlier transform-only build `20261115T182139Z` peaked at 28.97 GiB, the backfill's highest. |
 | 2026 | 2026-11-16 | `20261116T013416Z` | `1250468` | 2.60 | 7 | 5 | 981 | 223 (87.88 + 121.79) | 91 | 2.83 | 1.36 | 3.37 | 20.36 GiB, write contribution | 32GB | 258 |Resumed at `load` after NEU-2323, then rebuilt after NEU-2324 (MP-00 had no candidates). |
 
+## Every-FEC-dollar backfill
+
+One row per cycle rebuilt with the every-FEC-dollar project's seven silver tables
+([every-fec-dollar-backfill.md](runbooks/every-fec-dollar-backfill.md) step 2.4, NEU-2180), newest first, each from
+one `fundlens run`: extract, seats, transform, incremental resolve, load and publish under one build. *v1 transform
+s* is the transform of the build the cycle was live from before, its row under Backfill above, and *Added s* the
+difference: the new tables' cost, with whatever else changed in the transform since. *New bronze* is the newest
+download of each of the project's files the cycle has (`files_for`), *new silver* the seven tables' partitions in R2,
+and *silver* every table's partition of the build in R2, not the local cache the header's silver is: the cache
+holds only what the last steps left there. *Gold* is all of gold after the cycle's publish, and *new
+gold* this project's eight gold tables in it (`reconciliation`, `candidate_gift_size`, `committee_spending_category`,
+`committee_top_payee`, `payee`, `payee_cycle`, `payee_top_payer`, `race_top_spender`); a row's gold less the row
+before's is what the cycle added. The peak is `pipeline`'s from the run's 10 s sampler, with the step whose log line
+came last before it; the transform's own peak resident memory is in the Notes. Load is written as under Per cycle.
+Free disk is on `/` after the publish, in decimal GB. Filled in by NEU-2180's run.
+
+| Cycle | Date | Build | SHA | Extract s | Transform s | v1 transform s | Added s | Resolve s | Load s | Publish s | New bronze GB | New silver GB | Silver GB | Gold GB | New gold GB | Peak `pipeline` memory | Free disk GB | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
 ## Resolution
 
 One `fundlens resolve --full` per row (spec §6.3–§6.6): every cycle's contributor keys linked, clustered and
