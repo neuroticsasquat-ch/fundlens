@@ -619,7 +619,7 @@ All three are in §3's CSV dialect; dates are `DD-MON-YY`; every cell of every c
 
 `sql/silver/14_leadership_pac.sql` and `15_lobbyist_pac.sql` (NEU-2175), each with `cycle, source, jurisdiction` as every table has. The list is registered by the runner as `leadership_sponsor`, the cycle's rows.
 
-**`leadership_pac`**: key `(cycle, committee_id)`, one row per committee of the cycle's `leadership` file (2024: 833).
+**`leadership_pac`**: key `(cycle, committee_id)`, one row per committee of the cycle's `leadership` file (2024: 833). Measured by NEU-2175 on a hand transform of 2024 on the VM (build `20261126T011839Z`, FEC's files of 2026-11-25): **833 rows, 460 with a sponsor by the rule, 324 by the list and 49 with none**, Q4d's and Q16's figures exactly; `cm` designates 6 more committees `D` that the file lacks.
 
 | Column | From | Notes |
 |---|---|---|
@@ -630,7 +630,7 @@ All three are in §3's CSV dialect; dates are `DD-MON-YY`; every cell of every c
 
 A committee `cm` designates `D` that the file lacks has no row: it is a leadership PAC (§7.2) with no sponsor.
 
-**`lobbyist_pac`**: key `(cycle, committee_id)`, one row per committee rule b flags in the cycle and the cycle's `committee` holds (2024: 1,459, Q7f).
+**`lobbyist_pac`**: key `(cycle, committee_id)`, one row per committee rule b flags in the cycle and the cycle's `committee` holds (2024: 1,459, Q7f). Measured by NEU-2175 on a hand transform of 2024 on the VM (build `20261126T011839Z`, FEC's files of 2026-11-25): **1,461 rows**, Q7f's 1,459 and the two committees whose same-day Form 1s disagree (§7.2), each flagged by its higher, ticked image number where the measurement's file order left it unflagged.
 
 | Column | From |
 |---|---|
@@ -699,7 +699,7 @@ Form 3L asks for both because a lobbyist may cross its reporting threshold over 
 | 2024 | 84 | **$57,262,231** | $56,544,915 | $52,156,278 |
 | 2026 | 88 | $52,879,635 | $48,715,087 | $48,141,602 |
 
-(Q10a; FEC's file of 2026-11-25.) NEU-2175's definition of done is within 1% of 2024's. Every 2024 recipient's total is within its counted individual contributions, $57.3M against $2.55B (Q11), as the shared contract assumes. Recipients, counted per cycle across 2010–2026, are mostly campaigns (318), party committees (7, $118.4M of period amounts), joint fundraising committees (23, $109.5M) and leadership PACs (27, $632,030); the rest are other PACs, nearly all $0 (Q8d). The total cannot show who bundled, for whom, or which gifts.
+(Q10a; FEC's file of 2026-11-25.) NEU-2175's definition of done is within 1% of 2024's. Measured by NEU-2175 on a hand transform of 2024 on the VM (build `20261126T011839Z`, FEC's files of 2026-11-25): **317 `bundling_report` rows, 6 superseded, bundled total $57,262,231.23 at 84 recipients**, Q10a's figures exactly. So C00839324's report with no coverage end, 2024's by its receipt date, is a 2024 committee's, and none of Q8e's five dropped recipients is 2024's. DuckDB held 20.12 GiB after `13_electioneering_communication.sql` and 20.13 GiB after `16_bundling_report.sql`, peak resident 23.04 GiB across the three models, so they cost about 0.01 GiB and `docs/capacity.md` has no entry for them. Every 2024 recipient's total is within its counted individual contributions, $57.3M against $2.55B (Q11), as the shared contract assumes. Recipients, counted per cycle across 2010–2026, are mostly campaigns (318), party committees (7, $118.4M of period amounts), joint fundraising committees (23, $109.5M) and leadership PACs (27, $632,030); the rest are other PACs, nearly all $0 (Q8d). The total cannot show who bundled, for whom, or which gifts.
 
 ### 7.7 Gold
 
