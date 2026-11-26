@@ -807,3 +807,126 @@ redeploys `pipeline`, which is safe now that nothing is running.
 ## Log
 
 <!-- Append entries below; never rewrite one. -->
+
+### 2026-11-26 — 2024 with leadership PACs and lobbyist bundling (NEU-2179)
+
+Run 2026-11-26 19:09 to 22:05 UTC, on `cf5980cb21b432b051f4cb7dad45ce9a60fab4d2`. Build `20261126T191724Z`; live
+before: `20261125T021311Z`. Before the run, `gold` was
+`20261123T224142Z|2026-11-26 18:17:41.34821+00|20261116T224205Z` and `gold_prev`
+`20261125T021311Z|2026-11-25 15:35:30.960564+00|20261116T224205Z`. After publish, `gold` is
+`20261126T191724Z|2026-11-26 21:54:59.416511+00|20261116T224205Z` and `gold_prev` `20261123T224142Z`. Dependabot's
+workflow was disabled from step 1.1 to step 9.3, and nothing merged in between. The reference build
+`20261126T011839Z` (NEU-2175) had 833/1461/317 rows, and its `contribution` and the live build's were both 50,085,819.
+
+**Bronze (step 1.3).** Nothing was extracted. Every file the live build read was the newest download, each `same`:
+`cm`, `cn`, `ccl`, `indiv`, `pas2`, `oth`, `weball`, `webk` and `committee_summary` of 2026-11-23, `oppexp` of
+2026-11-22, and `ie_24_48`, `ElectioneeringComm` and `CommunicationCosts` of 2026-11-24. The three new files,
+`leadership`, `lobbyist` and `lobbyist_bundle`, were in bronze from 2026-11-25 and read by no live build
+(`DIFFERENT`).
+
+| Step | Time | Notes |
+| --- | ---: | --- |
+| extract | — | nothing extracted |
+| seats | 5.4 s | 441 House, 35 Senate (2 special), 1 presidential race; 49 unmatched filings |
+| transform | 1823.1 s (30m28s) | against the reference `20261126T011839Z`, no table moved; against the live build, `leadership_pac`, `lobbyist_pac` and `bundling_report` none → 833, 1,461 and 317 |
+| resolve | 454.9 s (7m41s) | `0 new contributor keys of 5504649`; crosswalk 0 new donors, 0 re-pointed, 0 redirects; the live model `20261116T224205Z`, untrained |
+| load | 1520.4 s (25m27s) | aggregates 711.41 s, copy 774.24 s; every gold check passed, `gold_committee_cycle_bundled_total.sql` and `gold_committee_cycle_sponsor.sql` among them; `committee_cycle` 298,732 rows |
+| publish | 195.3 s (3m35s) | pruned 3 silver builds (296 objects); no failed Kuma push; 202 GB free after it |
+
+Load's quality line: precision 0.8122, recall 0.8993 (top 0.9834/0.7591), 30,148,695 matched rows, DIME v4.0.
+Resolution: release `cf5980c`, 1 override, 4 adjudications applied.
+
+**Step 4's three lines:**
+
+- `leadership_pac 2024: 833 leadership PACs, sponsor by the rule 460, by the list 324, neither 49; 6 designated D
+  the file lacks`
+- `lobbyist_pac 2024: 1,461 lobbyist/registrant PACs`
+- `bundling_report 2024: 317 reports, 6 superseded; bundled total $57,262,231.23 at 84 recipients`
+
+**Memory (step 4.1).** Peak resident 28.76 GiB, set in `write contribution 2024`, where DuckDB first spilled
+(0.78 GiB): 1.04 GiB under DuckDB's 29.80 GiB limit, and 0.03 GiB over NEU-2171's 28.73 GiB. The three models cost
+nothing measurable: DuckDB held 20.11 GiB at `silver electioneering_communication 2024`, the model before them, and
+20.11 GiB after each of `silver leadership_pac`, `silver lobbyist_pac` and `silver bundling_report`.
+
+**Step 7.1, the ten leadership PACs and the list-linked one.** The build's silver `leadership_pac` by
+`sponsor_source`:
+
+| Source | PACs | Named | Linked |
+| --- | ---: | ---: | ---: |
+| `list` | 324 | 324 | 324 |
+| `rule` | 460 | 460 | 460 |
+| none | 49 | 3 | 0 |
+
+Each of Q13a's ten is `rule`, with Q13a's id, and Eye of the Tiger is the list's. In `gold_build`, each is a
+leadership PAC with the sponsor silver gave it, `agree` with Q13a, and a candidate page under its own id (no alias):
+
+| Who | PAC | Name | Sponsor | Id | Source | Page name |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hoyer | C00271338 | AMERIPAC: THE FUND FOR A GREATER AMERICA | HOYER, STENY | H2MD05155 | rule | HOYER, STENY |
+| Pelosi | C00344234 | PAC TO THE FUTURE | PELOSI, NANCY | H8CA05035 | rule | PELOSI, NANCY |
+| Hunt | C00807412 | HELLFIRE PAC | HUNT, WESLEY | H0TX07170 | rule | HUNT, WESLEY |
+| Jayapal | C00685552 | MEDICARE FOR ALL | JAYAPAL, PRAMILA | H6WA07458 | rule | JAYAPAL, PRAMILA |
+| DeSantis | C00841148 | GREAT AMERICAN COMEBACK | DESANTIS, RON | P40013039 | rule | DESANTIS, RON |
+| Jeffries | C00617803 | JOBS, EDUCATION, & FAMILIES FIRST  JEFF PAC | JEFFRIES, HAKEEM | H2NY10092 | rule | JEFFRIES, HAKEEM |
+| Clark | C00574970 | FAIR SHOT PAC | CLARK, KATHERINE | H4MA05084 | rule | CLARK, KATHERINE |
+| Franken | C00416131 | MIDWEST VALUES PAC | FRANKEN, AL | S8MN00438 | rule | FRANKEN, AL |
+| Cornyn | C00387464 | ALAMO PAC | CORNYN, JOHN | S2TX00106 | rule | CORNYN, JOHN SEN |
+| Gabbard | C00872804 | DEFEND FREEDOM, INC. | GABBARD, TULSI | H2HI02508 | rule | GABBARD, TULSI |
+| Scalise | C00467431 | THE EYE OF THE TIGER POLITICAL ACTION COMMITTEE | SCALISE, STEVE MR | H0LA01087 | list | SCALISE, STEVE MR |
+
+Each sponsor's page lists its PAC with `{2024}` alone. Two pages list a second 2024 leadership PAC, each one
+OpenFEC also designates a leadership PAC with that sponsor (`sponsor_candidate_ids`):
+
+- Jayapal: `C00629576` BUILD OUR MOVEMENT PAC, beside MEDICARE FOR ALL;
+- Cornyn: `C00570861` R SENATE PAC, beside ALAMO PAC.
+
+**Step 7.2, the five recipients' bundled totals.** Each within $1 of Q13b, which writes whole dollars, and each
+under the recipient's individual contributions:
+
+| Recipient | Committee | `bundled_total` | Q13b | Difference | Individual |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Trump 47 Committee | C00867937 | 10,293,939.08 | 10,293,939 | 0.08 | 341,694,710.00 |
+| DSCC | C00042366 | 9,841,143.26 | 9,841,143 | 0.26 | 99,816,495.00 |
+| Harris Victory Fund | C00744946 | 9,699,650.33 | 9,699,650 | 0.33 | 914,308,933.00 |
+| DCCC | C00000935 | 8,104,057.50 | 8,104,058 | −0.50 | 102,018,297.00 |
+| Bell for Missouri | C00842336 | 3,167,971.03 | 3,167,971 | 0.03 | 4,684,102.00 |
+
+`gold_build` ranks the five first, in Q13b's order; the sixth is `C00606939` ROSEN FOR NEVADA, $1,829,265.15. 2024:
+20,937 committees, every one with a figure, 67 above 0, total $57,262,231.23, `pct_off_q10a` 0.0000. The other 17
+of step 4's 84 recipients are at 0: their reports add to $0, since 2024's total is silver's to the cent. Every other
+cycle has `bundled_total` NULL on all its committees (`with_figure` 0, 1980 to 2022 and 2026).
+
+**Step 7.3, nothing else moved.**
+
+- `committee_cycle` (but the five fields), `candidate_cycle`, `race`, `race_candidate`, `cycle`, `committee` and
+  `candidate`: each `missing` 0, `moved` 0.
+- What did move, one row: `2024 | leadership_moved 0 | leadership_pacs 839 | named 787 | linked 784 |
+  lobbyist_pacs 1461 | with_bundled_total 20937 | bundled 57262231.23`. `named` is the 324, 460 and 3 of step 7.1;
+  the 839 leadership PACs are the live gold's, every one designated `D` already.
+
+**Steps 9.1 and 9.2.**
+
+- `/v1/meta` served `20261126T191724Z`, published 2026-11-26 21:54:59 UTC, model `20261116T224205Z`.
+- Before (step 1.2): Jeffries `{"name":"JEFFRIES, HAKEEM","leadership_pacs":[]}`; Trump 47 Committee's 2024
+  `{"is_leadership_pac":false,"sponsor":null,"is_lobbyist_pac":false,"bundled_total":null}`.
+- After:
+  - Jeffries: `{"name":"JEFFRIES, HAKEEM","leadership_pacs":[{"committee_id":"C00617803","name":"JOBS, EDUCATION, &
+    FAMILIES FIRST  JEFF PAC","cycles":[2024]}]}`;
+  - Hoyer: `{"name":"HOYER, STENY","leadership_pacs":[{"committee_id":"C00271338","name":"AMERIPAC: THE FUND FOR A
+    GREATER AMERICA","cycles":[2024]}]}`;
+  - JEFF PAC's 2024: `{"is_leadership_pac":true,"sponsor":{"candidate_id":"H2NY10092","name":"JEFFRIES,
+    HAKEEM"},"is_lobbyist_pac":false,"bundled_total":0.0}`;
+  - Eye of the Tiger's 2024: `{"is_leadership_pac":true,"sponsor":{"candidate_id":"H0LA01087","name":"SCALISE, STEVE
+    MR"}}`;
+  - Trump 47 Committee's 2024: `{"is_leadership_pac":false,"sponsor":null,"is_lobbyist_pac":false,
+    "bundled_total":10293939.08}`.
+- `https://fundlens.org/candidate/H2NY10092` showed `Leadership PAC: JOBS, EDUCATION, & FAMILIES FIRST  JEFF PAC
+  (2024)` and its note. The PAC's link opened `/committee/C00617803?cycle=2024`, with the **Leadership PAC in 2024**
+  badge and the sponsor line linking back to Jeffries. `https://fundlens.org/committee/C00867937?cycle=2024` showed
+  `Bundled by lobbyists: $10,293,939` with its note.
+- Bugsink: nothing new.
+
+**Deviations, none filed.**
+
+- Step 9.1 expected Trump 47 Committee's `bundled_total` as `10293939` or `10293939.0`. The API serves
+  `10293939.08`, step 7.2's figure: silver keeps the reports' cents, and Q13b's figure is whole dollars.
