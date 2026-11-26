@@ -352,6 +352,7 @@ def test_a_candidate_page_names_the_candidate(client: TestClient) -> None:
         "office": "S",
         "state": "MD",
         "district": "00",
+        "leadership_pacs": [],
     }
     assert candidate["cycles"][0]["race_slug"] == "2024/senate/MD"
 
@@ -442,6 +443,106 @@ def test_a_committee_page_has_its_refunds(client: TestClient, committee_id: str)
     [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
 
     assert cycle["total_refunds"] == EXPECTED["refunds"]["by_committee"].get(committee_id, 0)
+
+
+LEADERSHIP = EXPECTED["committee_leadership"]
+
+
+@pytest.mark.parametrize("committee_id", sorted(set(EXPECTED["committees"]) | set(LEADERSHIP)))
+def test_a_committee_page_has_who_runs_it_and_its_bundled_total(
+    client: TestClient, gold_db: str, committee_id: str
+) -> None:
+    # The incumbent's leadership PAC names her its sponsor, SEVERN RIVER PAC its sponsor from the
+    # list; STRATTON 2024 is one by designation alone, with none. The two lobbyist PACs are flagged.
+    # A recipient's bundled total is gold's, and every other 2024 committee's 0: the build holds
+    # the reports (every-FEC-dollar spec §7.7).
+    [cycle] = ok(client.get(f"/v1/committees/{committee_id}"))["cycles"]
+    is_leadership_pac, is_lobbyist_pac, sponsor_id, sponsor_name, bundled_total = LEADERSHIP.get(
+        committee_id, [False, False, None, None, 0]
+    )
+    with psycopg.connect(gold_db) as conn:
+        gold = conn.execute(
+            "SELECT bundled_total FROM gold.committee_cycle WHERE committee_id = %s AND cycle = %s",
+            (committee_id, CYCLE),
+        ).fetchone()
+
+    assert [cycle["is_leadership_pac"], cycle["is_lobbyist_pac"]] == [
+        is_leadership_pac,
+        is_lobbyist_pac,
+    ]
+    assert cycle["sponsor"] == (
+        None
+        if sponsor_id is None and sponsor_name is None
+        else {"candidate_id": sponsor_id, "name": sponsor_name}
+    )
+    assert gold is not None
+    assert cycle["bundled_total"] == float(gold[0]) == bundled_total
+
+
+# Each sponsor's leadership PACs, by candidate id.
+SPONSORED: dict[str, list[str]] = {
+    sponsor_id: sorted(
+        committee_id for committee_id, row in LEADERSHIP.items() if row[2] == sponsor_id
+    )
+    for sponsor_id in {row[2] for row in LEADERSHIP.values() if isinstance(row[2], str)}
+}
+
+
+@pytest.mark.parametrize("candidate_id", sorted(set(EXPECTED["candidates"]) | set(SPONSORED)))
+def test_a_candidate_page_lists_the_leadership_pacs_they_sponsor(
+    client: TestClient, candidate_id: str
+) -> None:
+    # CALLOWAY, the incumbent, by the name rule; WHITLOCK by the sponsor list. Every other
+    # candidate sponsors none. A leadership PAC's money is in none of its sponsor's totals.
+    candidate = ok(client.get(f"/v1/candidates/{candidate_id}"))
+
+    assert candidate["leadership_pacs"] == [
+        {
+            "committee_id": committee_id,
+            "name": ok(client.get(f"/v1/committees/{committee_id}"))["name"],
+            "cycles": [CYCLE],
+        }
+        for committee_id in SPONSORED.get(candidate_id, [])
+    ]
+
+
+def test_the_incumbents_page_lists_her_leadership_pac(client: TestClient) -> None:
+    candidate = ok(client.get("/v1/candidates/H4MD05106"))
+
+    assert candidate["leadership_pacs"] == [
+        {"committee_id": "C00800114", "name": "CALLOWAY LEADERSHIP FUND", "cycles": [CYCLE]}
+    ]
+
+
+def test_a_leadership_pac_sponsored_under_an_alias_is_on_the_persons_page(
+    client: TestClient, gold_db: str
+) -> None:
+    """A sponsor id may be a candidate alias (every-FEC-dollar spec §7.4's list takes any id
+    fundlens holds): the PAC is listed on the page of the id the alias redirects to, and the PAC's
+    sponsor links there with no 301. The fixture plants none, so SEVERN RIVER PAC's is set to
+    DRISCOLL's alias for the test."""
+    [(alias, person)] = EXPECTED["aliases"].items()
+    severn_river, whitlock = "C00800117", "S4MD00104"
+    with psycopg.connect(gold_db, autocommit=True) as conn:
+        conn.execute(
+            "UPDATE gold.committee_cycle SET sponsor_candidate_id = %s"
+            " WHERE committee_id = %s AND cycle = %s",
+            (alias, severn_river, CYCLE),
+        )
+        try:
+            listed = ok(client.get(f"/v1/candidates/{person}"))["leadership_pacs"]
+            [cycle] = ok(client.get(f"/v1/committees/{severn_river}"))["cycles"]
+            former = ok(client.get(f"/v1/candidates/{whitlock}"))["leadership_pacs"]
+        finally:
+            conn.execute(
+                "UPDATE gold.committee_cycle SET sponsor_candidate_id = %s"
+                " WHERE committee_id = %s AND cycle = %s",
+                (whitlock, severn_river, CYCLE),
+            )
+
+    assert listed == [{"committee_id": severn_river, "name": "SEVERN RIVER PAC", "cycles": [CYCLE]}]
+    assert cycle["sponsor"] == {"candidate_id": person, "name": "WHITLOCK, GORDON"}
+    assert former == []
 
 
 def test_a_super_pac_page_lists_the_organizations_that_gave_to_it(client: TestClient) -> None:

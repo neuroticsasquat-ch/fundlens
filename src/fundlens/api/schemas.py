@@ -416,6 +416,17 @@ class CandidateCycle(BaseModel):
     gift_sizes: list[GiftSize]
 
 
+class LeadershipPac(BaseModel):
+    """A committee whose `gold.committee_cycle` names the candidate its sponsor, under their id or
+    an alias redirecting to it (every-FEC-dollar spec §7.7). Its money stays the PAC's: in none of
+    the candidate's totals."""
+
+    committee_id: str
+    name: str | None
+    # The cycles it was theirs, newest first.
+    cycles: list[int]
+
+
 class Candidate(BaseModel):
     """A candidate page: `gold.candidate` and a row per cycle, newest first."""
 
@@ -426,6 +437,9 @@ class Candidate(BaseModel):
     state: str | None
     district: str | None
     cycles: list[CandidateCycle]
+    # Across every cycle, the most recently sponsored first; empty for a candidate who sponsors
+    # none.
+    leadership_pacs: list[LeadershipPac]
 
 
 class CommitteeTopRecipient(BaseModel):
@@ -471,6 +485,18 @@ class TopPayee(BaseModel):
     # which have none.
     payee_id: str | None
     amount: float
+
+
+class Sponsor(BaseModel):
+    """The candidate or officeholder a leadership PAC is linked to in a cycle (every-FEC-dollar
+    spec §7.4)."""
+
+    # Their candidate page, `/v1/candidates/{candidate_id}`, an alias resolved to the id holding
+    # their money; None when only a name links them, which names no candidate fundlens holds.
+    candidate_id: str | None
+    # As filed, or as the sponsor list gives it for a blank one: never their candidate page's
+    # name, which can be spelled differently (`HOVDE, ERIC D` filed for `HOVDE, ERIC`).
+    name: str | None
 
 
 class CommitteeCycle(BaseModel):
@@ -521,6 +547,17 @@ class CommitteeCycle(BaseModel):
     # Its counted operating expenditures, net as filed (every-FEC-dollar spec §5.2, §5.5): None,
     # never 0, with no counted one in the cycle, as before 2004 or on a build that lacks them.
     total_operating_expenditures: float | None
+    # Who runs it (every-FEC-dollar spec §7.2): a leadership PAC by designation `D` or FEC's
+    # leadership file; a lobbyist/registrant PAC by its latest Form 1 by the cycle's end, never
+    # before 2010. A leadership PAC's sponsor, None for any other committee and before 2010, and
+    # for a leadership PAC that names nobody.
+    is_leadership_pac: bool
+    sponsor: Sponsor | None
+    is_lobbyist_pac: bool
+    # What lobbyists bundled to it in the cycle (Form 3L, §7.6): 0 with no report, None before
+    # 2010 or on a build that lacks the reports. Already counted in total_individual: never add
+    # it to a receipt figure. It names no bundler and no donor.
+    bundled_total: float | None
     # By category, most first; adding up to total_operating_expenditures, and empty where it is
     # None.
     spending_by_category: list[SpendingByCategory]

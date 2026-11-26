@@ -23,6 +23,7 @@ from fundlens.api.schemas import (
     OperatingExpenditurePage,
     SpendingByCategory,
     SpendingCategory,
+    Sponsor,
     TopDonor,
     TopOrganization,
     TopPayee,
@@ -94,7 +95,14 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
             " communication_cost_total, party_coordinated_total, electioneering_total,"
             " outside_spending_total,"
             f" {reported_columns('committee_cycle')}, itemized_total, coverage,"
-            " total_operating_expenditures"
+            " total_operating_expenditures, is_leadership_pac, is_lobbyist_pac,"
+            # The sponsor's id, an alias resolved to the id holding their money, so a page's
+            # link lands on it with no 301.
+            " coalesce("
+            "(SELECT candidate_id FROM gold.candidate_redirect"
+            " WHERE old_candidate_id = committee_cycle.sponsor_candidate_id),"
+            " sponsor_candidate_id) AS sponsor_candidate_id,"
+            " sponsor_name, bundled_total"
             " FROM gold.committee_cycle WHERE committee_id = %s ORDER BY cycle DESC",
             (committee_id,),
         )
@@ -105,6 +113,7 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
         cycles=[
             CommitteeCycle(
                 reported=reported,
+                sponsor=sponsor,
                 **row,
                 spending_by_category=spending_by_category[row["cycle"]],
                 top_payees=top_payees[row["cycle"]],
@@ -115,8 +124,17 @@ def get_committee(conn: Conn, committee_id: str) -> Committee:
             for row in cycles
             # Popped first, so `row` holds no `reported_*` column when it is spread.
             for reported in [pop_reported(row)]
+            for sponsor in [_pop_sponsor(row)]
         ],
     )
+
+
+def _pop_sponsor(row: dict[str, Any]) -> Sponsor | None:
+    """`row`'s sponsor columns, removed from it, as a `Sponsor`; None when it names nobody."""
+    candidate_id, name = row.pop("sponsor_candidate_id"), row.pop("sponsor_name")
+    if candidate_id is None and name is None:
+        return None
+    return Sponsor(candidate_id=candidate_id, name=name)
 
 
 @router.get(

@@ -24,6 +24,7 @@ from fundlens.api.schemas import (
     ContributionPage,
     GiftSize,
     GiftSizeBucket,
+    LeadershipPac,
     TopDonor,
     problem_responses,
 )
@@ -110,8 +111,21 @@ def get_candidate(conn: Conn, request: Request, candidate_id: str) -> Candidate 
         )
         .fetchall()
     )
+    # Their leadership PACs, sponsored under this id or an alias redirecting to it (every-FEC-dollar
+    # spec §7.7): the partial index on sponsor_candidate_id finds the few rows.
+    leadership_pacs = conn.cursor(row_factory=dict_row).execute(
+        "SELECT committee_cycle.committee_id, committee.name,"
+        " array_agg(committee_cycle.cycle ORDER BY committee_cycle.cycle DESC) AS cycles"
+        " FROM gold.committee_cycle JOIN gold.committee USING (committee_id)"
+        " WHERE committee_cycle.sponsor_candidate_id = ANY(%s::text[] || ARRAY("
+        "SELECT old_candidate_id FROM gold.candidate_redirect WHERE candidate_id = %s))"
+        " GROUP BY committee_cycle.committee_id, committee.name"
+        " ORDER BY max(committee_cycle.cycle) DESC, committee_cycle.committee_id",
+        ([candidate_id], candidate_id),
+    )
     return Candidate(
         **candidate,
+        leadership_pacs=[LeadershipPac(**row) for row in leadership_pacs],
         cycles=[
             CandidateCycle(
                 reported=reported,
