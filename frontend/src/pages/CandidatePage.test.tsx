@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CandidateCycle } from "../api/client";
+import type { CandidateCycle, LeadershipPac } from "../api/client";
 import type { ChartOption } from "../components/charts/echarts";
 import { http } from "../test/api";
 import { renderApp } from "../test/app";
@@ -490,5 +490,89 @@ describe("CandidatePage", () => {
 
     expect(screen.queryByRole("region", { name: /^Outside spending/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/^Electioneering communications:/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CandidatePage leadership PACs", () => {
+  /** OKAFOR, sponsoring `pacs`. */
+  const sponsoring = (pacs: LeadershipPac[]) => [
+    http.get("/v1/candidates/{candidate_id}", ({ response }) =>
+      response(200).json({ ...CANDIDATE_OKAFOR, leadership_pacs: pacs }),
+    ),
+  ];
+
+  it("links the PAC the candidate sponsors in the cycle shown, and says its money is not theirs", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: sponsoring([
+        { committee_id: "C00800114", name: "CALLOWAY LEADERSHIP FUND", cycles: [2024] },
+      ]),
+    });
+    await screen.findByRole("heading", { level: 1, name: "OKAFOR, DIANA" });
+
+    expect(screen.getByText(/^Leadership PAC:/)).toHaveTextContent(
+      "Leadership PAC: CALLOWAY LEADERSHIP FUND (2024)",
+    );
+    expect(screen.getByRole("link", { name: "CALLOWAY LEADERSHIP FUND" })).toHaveAttribute(
+      "href",
+      "/committee/C00800114?cycle=2024",
+    );
+    expect(
+      screen.getByText("A PAC this member sponsors; its money is not counted as the campaign's."),
+    ).toBeInTheDocument();
+  });
+
+  it("lists every PAC the candidate sponsors, each with its cycles and opened in its latest", async () => {
+    renderApp("/candidate/S4MD00103", {
+      handlers: sponsoring([
+        { committee_id: "C00800114", name: "CALLOWAY LEADERSHIP FUND", cycles: [2024, 2022] },
+        { committee_id: "C00800117", name: null, cycles: [2020, 2018, 2012] },
+      ]),
+    });
+    await screen.findByRole("heading", { level: 1, name: "OKAFOR, DIANA" });
+
+    expect(screen.getByText(/^Leadership PACs:/)).toHaveTextContent(
+      "Leadership PACs: CALLOWAY LEADERSHIP FUND (2022–2024); C00800117 (2012, 2018–2020)",
+    );
+    // Not theirs in 2024, the cycle shown: opened in 2020, when it last was.
+    expect(screen.getByRole("link", { name: "C00800117" })).toHaveAttribute(
+      "href",
+      "/committee/C00800117?cycle=2020",
+    );
+    expect(
+      screen.getByText("PACs this member sponsors; their money is not counted as the campaign's."),
+    ).toBeInTheDocument();
+  });
+
+  it("names no leadership PAC for a candidate who sponsors none", async () => {
+    renderApp("/candidate/S4MD00103");
+    await screen.findByRole("heading", { level: 1, name: "OKAFOR, DIANA" });
+
+    expect(screen.queryByText(/^Leadership PAC/)).toBeNull();
+  });
+
+  it("goes to the PAC's page, which links back to the sponsor's", async () => {
+    renderApp("/candidate/H4MD05106", {
+      handlers: [
+        http.get("/v1/candidates/{candidate_id}", ({ response }) =>
+          response(200).json({
+            ...CANDIDATE_OKAFOR,
+            candidate_id: "H4MD05106",
+            name: "CALLOWAY, RUTH",
+            leadership_pacs: [
+              { committee_id: "C00800114", name: "CALLOWAY LEADERSHIP FUND", cycles: [2024] },
+            ],
+          }),
+        ),
+      ],
+    });
+    fireEvent.click(await screen.findByRole("link", { name: "CALLOWAY LEADERSHIP FUND" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "CALLOWAY LEADERSHIP FUND" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "CALLOWAY, RUTH" })).toHaveAttribute(
+      "href",
+      "/candidate/H4MD05106?cycle=2024",
+    );
   });
 });

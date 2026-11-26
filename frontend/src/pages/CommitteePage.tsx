@@ -174,6 +174,57 @@ const CONDUIT_COVERAGE =
   "No coverage for a conduit: its reported itemized figure includes the earmarks fundlens counts " +
   "at their recipients.";
 
+/**
+ * Who runs the committee in the cycle and what lobbyists bundled to it (every-FEC-dollar spec
+ * §7.7): fundlens's flags for the cycle, told apart from the designation the header shows; a
+ * leadership PAC's sponsor, linked when fundlens holds them as a candidate; and the bundled
+ * total, never added to a receipt figure. Nothing for a committee with none of these, and no
+ * bundled total where it is 0 or there are no bundling reports (before 2010).
+ */
+function CycleRole({ shown }: { shown: CommitteeCycle }) {
+  const { sponsor, bundled_total: bundled } = shown;
+  const flagged = shown.is_leadership_pac || shown.is_lobbyist_pac;
+  if (!flagged && !sponsor && !bundled) return null;
+  return (
+    <Stack gap="xs">
+      {flagged && (
+        <Group gap="xs">
+          {/* Named with the cycle: the header's designation is one for every cycle (§7.7). */}
+          {shown.is_leadership_pac && (
+            <Badge variant="light">Leadership PAC in {shown.cycle}</Badge>
+          )}
+          {shown.is_lobbyist_pac && (
+            <Badge variant="light">Lobbyist/registrant PAC in {shown.cycle}</Badge>
+          )}
+        </Group>
+      )}
+      {sponsor && (
+        <Text>
+          Sponsored by{" "}
+          {sponsor.candidate_id ? (
+            <Anchor component={Link} to={`/candidate/${sponsor.candidate_id}?cycle=${shown.cycle}`}>
+              {sponsor.name ?? sponsor.candidate_id}
+            </Anchor>
+          ) : (
+            sponsor.name
+          )}
+          . Its money is counted as no candidate&apos;s, not even the sponsor&apos;s.
+        </Text>
+      )}
+      {bundled ? (
+        <Stack gap={0}>
+          <Text>Bundled by lobbyists: {money(bundled)}</Text>
+          <Text size="sm" c="dimmed">
+            Contributions registered lobbyists and their PACs gathered and passed on to the
+            committee, as it reported them. Already counted in individual contributions, so added
+            to no total here.
+          </Text>
+        </Stack>
+      ) : null}
+    </Stack>
+  );
+}
+
 /** `/committee/:id`: a committee's money in every cycle; whom it gave to and got from in one. */
 function CommitteePage() {
   const id = useParams().id ?? "";
@@ -308,6 +359,7 @@ function CommitteeDetail({ committee }: { committee: Committee }) {
         <section aria-labelledby="in-cycle">
           <Stack gap="lg">
             <CycleHeading cycles={cycles} cycle={shown.cycle} onChange={showCycle} />
+            <CycleRole shown={shown} />
             <ReportedPanel
               cycle={shown.cycle}
               reported={shown.reported}

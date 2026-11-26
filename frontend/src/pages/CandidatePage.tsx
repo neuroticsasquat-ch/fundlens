@@ -1,7 +1,7 @@
 import { Anchor, Badge, Group, Stack, Text, Title } from "@mantine/core";
 import { Link, useParams } from "react-router";
 import { $api } from "../api/client";
-import type { Candidate, CandidateCycle } from "../api/client";
+import type { Candidate, CandidateCycle, LeadershipPac } from "../api/client";
 import { CONTRIBUTION_PAGES } from "../api/contributions";
 import ContributionsTable from "../components/ContributionsTable";
 import DataTable from "../components/DataTable";
@@ -133,6 +133,52 @@ function missingReported(row: CandidateCycle): string {
   );
 }
 
+/** `cycles`, in any order, as "2024"; "2018–2024" for a run of cycles; "2012, 2018–2024" with a gap. */
+function cycleSpans(cycles: number[]): string {
+  const spans: [number, number][] = [];
+  for (const cycle of [...cycles].sort((a, b) => a - b)) {
+    const last = spans.at(-1);
+    if (last && cycle === last[1] + 2) last[1] = cycle;
+    else spans.push([cycle, cycle]);
+  }
+  return spans.map(([from, to]) => (from === to ? String(from) : `${from}–${to}`)).join(", ");
+}
+
+/**
+ * The leadership PACs the candidate sponsors, in any cycle (every-FEC-dollar spec §7.7), each
+ * with the cycles it was theirs. A link opens the PAC in the cycle shown here when it was theirs
+ * then, else in the latest cycle it was. Across cycles, not the shown one's alone: a retired
+ * member's PAC is theirs in cycles they ran in none.
+ */
+function LeadershipPacs({ pacs, cycle }: { pacs: LeadershipPac[]; cycle: number | undefined }) {
+  const many = pacs.length > 1;
+  return (
+    <Stack gap={0}>
+      <Text>
+        {many ? "Leadership PACs" : "Leadership PAC"}:{" "}
+        {pacs.map((pac, index) => {
+          const opened =
+            cycle !== undefined && pac.cycles.includes(cycle) ? cycle : Math.max(...pac.cycles);
+          return (
+            <span key={pac.committee_id}>
+              {index > 0 && "; "}
+              <Anchor component={Link} to={`/committee/${pac.committee_id}?cycle=${opened}`}>
+                {pac.name ?? pac.committee_id}
+              </Anchor>{" "}
+              ({cycleSpans(pac.cycles)})
+            </span>
+          );
+        })}
+      </Text>
+      <Text size="sm" c="dimmed">
+        {many
+          ? "PACs this member sponsors; their money is not counted as the campaign's."
+          : "A PAC this member sponsors; its money is not counted as the campaign's."}
+      </Text>
+    </Stack>
+  );
+}
+
 /** `/candidate/:id`: a candidate's money in every cycle, and what they received in one. */
 function CandidatePage() {
   const id = useParams().id ?? "";
@@ -186,6 +232,9 @@ function CandidateDetail({ candidate }: { candidate: Candidate }) {
         <Text c="dimmed">
           {seat ? `${seat} · ` : ""}FEC {candidate.candidate_id}
         </Text>
+        {candidate.leadership_pacs.length > 0 && (
+          <LeadershipPacs pacs={candidate.leadership_pacs} cycle={cycle} />
+        )}
       </Stack>
       <section aria-labelledby="by-cycle">
         <Title order={2} id="by-cycle" mb="sm">
