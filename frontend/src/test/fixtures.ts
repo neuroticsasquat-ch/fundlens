@@ -475,6 +475,7 @@ export const CANDIDATE_OKAFOR: Candidate = {
   office: "S",
   state: "MD",
   district: "00",
+  leadership_pacs: [],
   cycles: [
     {
       cycle: 2024,
@@ -607,6 +608,12 @@ const committeeCycle = (cycle: Partial<CommitteeCycle>): CommitteeCycle => ({
   itemized_total: 0,
   coverage: null,
   total_operating_expenditures: null,
+  // Neither a leadership PAC nor a lobbyist PAC, and nothing bundled to it: 2024's build holds
+  // the bundling reports (every-FEC-dollar spec §7.7).
+  is_leadership_pac: false,
+  sponsor: null,
+  is_lobbyist_pac: false,
+  bundled_total: 0,
   spending_by_category: [],
   top_payees: [],
   top_recipients: [],
@@ -656,6 +663,8 @@ export const COMMITTEE_OKAFOR: Committee = {
       ]),
       itemized_total: 38550,
       coverage: 1,
+      // Lobbyists' bundling reports to it, already counted in total_individual.
+      bundled_total: 22500,
       top_donors: OKAFOR_TOP_DONORS,
       ...OKAFOR_SPENDING,
     }),
@@ -675,6 +684,7 @@ export const COMMITTEE_BRICKLAYERS: Committee = {
     committeeCycle({
       total_individual: 4050,
       total_to_candidates: 17500,
+      is_lobbyist_pac: true,
       ie_total: 3000,
       reported: reported("committee_summary", [
         6000, 47000, 60000, 19000, 0, 0, 4550, 1450, 6000, 0, 0, 0, null, null, 0, null, 0, 0, 0,
@@ -779,6 +789,7 @@ export const COMMITTEE_TIDEWATER_FUND: Committee = {
     committeeCycle({
       total_individual: 6250,
       total_from_organizations: 0,
+      is_lobbyist_pac: true,
       total_non_contribution_account: 4815000,
       reported: reported("committee_summary", [
         255000, 153000, 0, 102000, 0, 0, 4000, 251000, 255000, 5250, 0, 0, null, null, 0, null, 0,
@@ -809,6 +820,8 @@ export const COMMITTEE_BUILDERS_PAC_1998: Committee = {
     committeeCycle({
       cycle: 1998,
       total_to_candidates: 2000,
+      // No bundling file before 2010: no figure, never 0 (every-FEC-dollar spec §7.8).
+      bundled_total: null,
       reported: reported(
         "webk",
         [
@@ -829,6 +842,7 @@ export const CANDIDATE_CALDER_1998: Candidate = {
   office: "H",
   state: "MD",
   district: "05",
+  leadership_pacs: [],
   cycles: [
     {
       cycle: 1998,

@@ -441,6 +441,19 @@ def test_a_1998_committee_page_has_webks_figures_and_null_only_where_webk_has_no
     )
 
 
+def test_a_committee_page_has_no_bundled_total_or_lobbyist_flag_before_2010(
+    client: TestClient,
+) -> None:
+    """The party committee lobbyists bundled to in 2024 has a figure that cycle and None in 1998,
+    never 0: no bundling file before 2010, nor any lobbyist flag or sponsor (every-FEC-dollar spec
+    §7.8)."""
+    [newest, early] = ok(client.get(f"/v1/committees/{BOTH_CYCLES_COMMITTEE}"))["cycles"]
+
+    assert newest["bundled_total"] == EXPECTED["committee_leadership"][BOTH_CYCLES_COMMITTEE][4]
+    assert (early["cycle"], early["bundled_total"]) == (EARLY, None)
+    assert (early["is_lobbyist_pac"], early["sponsor"]) == (False, None)
+
+
 def test_a_pac_page_has_every_measure_webk_files_before_2008(client: TestClient) -> None:
     [cycle] = ok(client.get("/v1/committees/C00298003"))["cycles"]
 

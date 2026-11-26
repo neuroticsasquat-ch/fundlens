@@ -339,6 +339,8 @@ export interface components {
             cycles: components["schemas"]["CandidateCycle"][];
             /** District */
             district: string | null;
+            /** Leadership Pacs */
+            leadership_pacs: components["schemas"]["LeadershipPac"][];
             /** Name */
             name: string | null;
             office: components["schemas"]["Office"] | null;
@@ -413,6 +415,8 @@ export interface components {
          *     gave most to it.
          */
         CommitteeCycle: {
+            /** Bundled Total */
+            bundled_total: number | null;
             /** Communication Cost Total */
             communication_cost_total: number;
             /** Coverage */
@@ -423,6 +427,10 @@ export interface components {
             electioneering_total: number | null;
             /** Ie Total */
             ie_total: number;
+            /** Is Leadership Pac */
+            is_leadership_pac: boolean;
+            /** Is Lobbyist Pac */
+            is_lobbyist_pac: boolean;
             /** Itemized Total */
             itemized_total: number;
             /** Outside Spending Total */
@@ -434,6 +442,7 @@ export interface components {
             self_funding: number;
             /** Spending By Category */
             spending_by_category: components["schemas"]["SpendingByCategory"][];
+            sponsor: components["schemas"]["Sponsor"] | null;
             /** Top Donors */
             top_donors: components["schemas"]["TopDonor"][];
             /** Top Organizations */
@@ -750,6 +759,20 @@ export interface components {
             expenditures: components["schemas"]["IndependentExpenditure"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /**
+         * LeadershipPac
+         * @description A committee whose `gold.committee_cycle` names the candidate its sponsor, under their id or
+         *     an alias redirecting to it (every-FEC-dollar spec §7.7). Its money stays the PAC's: in none of
+         *     the candidate's totals.
+         */
+        LeadershipPac: {
+            /** Committee Id */
+            committee_id: string;
+            /** Cycles */
+            cycles: number[];
+            /** Name */
+            name: string | null;
         };
         /**
          * Meta
@@ -1299,6 +1322,17 @@ export interface components {
         /** @enum {string} */
         SpendingCategorySource: "purpose_rule" | "fec" | "unclassified";
         /**
+         * Sponsor
+         * @description The candidate or officeholder a leadership PAC is linked to in a cycle (every-FEC-dollar
+         *     spec §7.4).
+         */
+        Sponsor: {
+            /** Candidate Id */
+            candidate_id: string | null;
+            /** Name */
+            name: string | null;
+        };
+        /**
          * SupportOppose
          * @description One kind of outside spending naming a candidate, for them and against them, net as filed.
          */
@@ -1407,6 +1441,7 @@ export type GiftSizeBucket = components['schemas']['GiftSizeBucket'];
 export type Health = components['schemas']['Health'];
 export type IndependentExpenditure = components['schemas']['IndependentExpenditure'];
 export type IndependentExpenditurePage = components['schemas']['IndependentExpenditurePage'];
+export type LeadershipPac = components['schemas']['LeadershipPac'];
 export type Meta = components['schemas']['Meta'];
 export type MetaCycle = components['schemas']['MetaCycle'];
 export type Office = components['schemas']['Office'];
@@ -1436,6 +1471,7 @@ export type Sort = components['schemas']['Sort'];
 export type SpendingByCategory = components['schemas']['SpendingByCategory'];
 export type SpendingCategory = components['schemas']['SpendingCategory'];
 export type SpendingCategorySource = components['schemas']['SpendingCategorySource'];
+export type Sponsor = components['schemas']['Sponsor'];
 export type SupportOppose = components['schemas']['SupportOppose'];
 export type TopDonor = components['schemas']['TopDonor'];
 export type TopOrganization = components['schemas']['TopOrganization'];

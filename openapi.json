@@ -26,6 +26,13 @@
             ],
             "title": "District"
           },
+          "leadership_pacs": {
+            "items": {
+              "$ref": "#/components/schemas/LeadershipPac"
+            },
+            "title": "Leadership Pacs",
+            "type": "array"
+          },
           "name": {
             "anyOf": [
               {
@@ -77,7 +84,8 @@
           "office",
           "state",
           "district",
-          "cycles"
+          "cycles",
+          "leadership_pacs"
         ],
         "title": "Candidate",
         "type": "object"
@@ -312,6 +320,17 @@
       "CommitteeCycle": {
         "description": "`gold.committee_cycle`: a committee's money in one cycle, whom it gave most to, and who\ngave most to it.",
         "properties": {
+          "bundled_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundled Total"
+          },
           "communication_cost_total": {
             "title": "Communication Cost Total",
             "type": "number"
@@ -346,6 +365,14 @@
             "title": "Ie Total",
             "type": "number"
           },
+          "is_leadership_pac": {
+            "title": "Is Leadership Pac",
+            "type": "boolean"
+          },
+          "is_lobbyist_pac": {
+            "title": "Is Lobbyist Pac",
+            "type": "boolean"
+          },
           "itemized_total": {
             "title": "Itemized Total",
             "type": "number"
@@ -378,6 +405,16 @@
             },
             "title": "Spending By Category",
             "type": "array"
+          },
+          "sponsor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sponsor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "top_donors": {
             "items": {
@@ -466,6 +503,10 @@
           "itemized_total",
           "coverage",
           "total_operating_expenditures",
+          "is_leadership_pac",
+          "sponsor",
+          "is_lobbyist_pac",
+          "bundled_total",
           "spending_by_category",
           "top_payees",
           "top_recipients",
@@ -1392,6 +1433,40 @@
           "next_cursor"
         ],
         "title": "IndependentExpenditurePage",
+        "type": "object"
+      },
+      "LeadershipPac": {
+        "description": "A committee whose `gold.committee_cycle` names the candidate its sponsor, under their id or\nan alias redirecting to it (every-FEC-dollar spec \u00a77.7). Its money stays the PAC's: in none of\nthe candidate's totals.",
+        "properties": {
+          "committee_id": {
+            "title": "Committee Id",
+            "type": "string"
+          },
+          "cycles": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "committee_id",
+          "name",
+          "cycles"
+        ],
+        "title": "LeadershipPac",
         "type": "object"
       },
       "Meta": {
@@ -3201,6 +3276,39 @@
           "unclassified"
         ],
         "type": "string"
+      },
+      "Sponsor": {
+        "description": "The candidate or officeholder a leadership PAC is linked to in a cycle (every-FEC-dollar\nspec \u00a77.4).",
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "name"
+        ],
+        "title": "Sponsor",
+        "type": "object"
       },
       "SupportOppose": {
         "description": "One kind of outside spending naming a candidate, for them and against them, net as filed.",
