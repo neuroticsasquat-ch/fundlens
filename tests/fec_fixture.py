@@ -365,6 +365,9 @@ class Expected(TypedDict):
     leadership_pacs: dict[str, list[str | None]]
     lobbyist_pacs: dict[str, list[date | str]]
     bundling_reports: dict[str, list[str | bool | float | None]]
+    # Gold committee_cycle by committee: [is_leadership_pac, is_lobbyist_pac,
+    # sponsor_candidate_id, sponsor_name, bundled_total] (NEU-2176).
+    committee_leadership: dict[str, list[bool | str | int | None]]
     # Gold's race_top_spender per race, by rank: [committee_id, candidate_id, kind,
     # support_oppose, amount] (NEU-2168).
     race_top_spenders: dict[str, list[list[str | float | None]]]

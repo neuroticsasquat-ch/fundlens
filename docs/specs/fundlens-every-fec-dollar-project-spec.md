@@ -712,6 +712,8 @@ Adds to v1 §7.1 and to §6.5 above; built by NEU-2176. Gold's `committee` and `
 | `sponsor_candidate_id`, `sponsor_name` | The `leadership_pac` row's; NULL without one |
 | `bundled_total` | The cycle's `bundling_report.amount` at the committee; 0 where there is no report and the cycle has the table (2010–), NULL before 2010 or where the build lacks it (§2, older builds) |
 
+- **Which builds hold the table.** "No rows" (§2) cannot tell a build lacking `bundling_report` from a committee with no report, so `load` registers `silver_held`, each silver table each cycle's build holds, and `bundled_total` is the one gold figure that reads it (NEU-2176). Every other figure reads a missing table as no rows, as §2 has it.
+
 - **A candidate's leadership PACs** are the `committee_cycle` rows whose `sponsor_candidate_id` is the candidate or a candidate id redirecting to them (v1 §7.1's redirect), across every cycle. A page shows the selected cycle's values.
 - **No new search entity**: a leadership PAC is a committee and already searchable by name.
 - `bundled_total` is in no receipt total, no `cycle.total_amount`, no donor figure and no top list. A leadership PAC's money is credited to no candidate, its sponsor included; the six committees the `linked` rule credits are each the committee `cn` names principal, raising as a campaign (Never Surrender, $495.9M of 2024, Trump's; Q6).
