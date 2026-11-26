@@ -720,6 +720,8 @@ Adds to v1 §7.1 and to §6.5 above; built by NEU-2176. Gold's `committee` and `
 - **Checks** (gold): `bundled_total` equals its silver sum; a committee with a sponsor is a leadership PAC; every `sponsor_candidate_id` is a candidate fundlens holds in some cycle (§7.3: silver cannot check a list id against another cycle); no receipt total moves on the fixture.
 - **The API and pages** (NEU-2177, NEU-2178) read these fields: a candidate page links its leadership PACs; a committee page shows the flags, the sponsor and the bundled total, labelled as already counted in individual contributions. Listing a committee's bundling reports is not planned: the public dataset has them.
 
+**Checked against FEC.** Measured by NEU-2179 on 2024's first published build with §7's tables (`20261126T191724Z`, [leadership-bundling-run.md](../runbooks/leadership-bundling-run.md) Log): the ten sponsors as Q13a has them, each linked by the rule, and the list's Scalise for Eye of the Tiger, each with a candidate page that lists its PAC; the five bundled totals within $1 of Q13b, its whole dollars, and 2024's $57,262,231.23 equal to Q10a; no receipt total moved. Jayapal's and Cornyn's pages each list a second 2024 leadership PAC, Build Our Movement PAC and R Senate PAC, both OpenFEC's leadership PACs with that sponsor.
+
 ### 7.8 What each cycle range has
 
 | | 2010–2026 | 1980–2008 |
