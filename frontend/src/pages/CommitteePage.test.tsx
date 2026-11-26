@@ -7,6 +7,7 @@ import { renderApp } from "../test/app";
 import { allOptions } from "../test/echarts";
 import {
   COMMITTEE_BUILDERS_PAC_1998,
+  COMMITTEE_CALLOWAY_LEADERSHIP,
   COMMITTEE_OKAFOR,
   contribution,
   EXPENDITURES,
@@ -712,5 +713,87 @@ describe("CommitteePage spending", () => {
     expect(within(spending).getByText("not available")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Itemized spending" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Top payees" })).not.toBeInTheDocument();
+  });
+});
+
+describe("CommitteePage leadership PACs, lobbyist PACs and bundling", () => {
+  it("badges a leadership PAC and links its sponsor's page in the cycle", async () => {
+    renderApp("/committee/C00800114");
+    await screen.findByRole("heading", { level: 1, name: "CALLOWAY LEADERSHIP FUND" });
+    const cycle = section("In 2024");
+
+    expect(within(cycle).getByText("Leadership PAC in 2024")).toBeInTheDocument();
+    expect(within(cycle).getByRole("link", { name: "CALLOWAY, RUTH" })).toHaveAttribute(
+      "href",
+      "/candidate/H4MD05106?cycle=2024",
+    );
+    expect(
+      within(cycle).getByText(/^Sponsored by .*\. Its money is counted as no candidate's/),
+    ).toBeInTheDocument();
+    expect(within(cycle).queryByText(/^Lobbyist\/registrant PAC/)).toBeNull();
+  });
+
+  it("names a sponsor fundlens holds no candidate for, unlinked", async () => {
+    renderApp("/committee/C00800114", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}", ({ response }) =>
+          response(200).json({
+            ...COMMITTEE_CALLOWAY_LEADERSHIP,
+            cycles: [
+              {
+                ...COMMITTEE_CALLOWAY_LEADERSHIP.cycles[0],
+                sponsor: { candidate_id: null, name: "WHITLOCK, GORDON" },
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const cycle = await screen.findByRole("region", { name: "In 2024" });
+
+    expect(within(cycle).getByText(/^Sponsored by WHITLOCK, GORDON\./)).toBeInTheDocument();
+    expect(within(cycle).queryByRole("link", { name: "WHITLOCK, GORDON" })).toBeNull();
+  });
+
+  it("badges a lobbyist/registrant PAC in the cycle, apart from its designation", async () => {
+    renderApp("/committee/C00800202");
+    const cycle = await screen.findByRole("region", { name: "In 2024" });
+
+    expect(within(cycle).getByText("Lobbyist/registrant PAC in 2024")).toBeInTheDocument();
+    expect(within(cycle).queryByText(/^Leadership PAC/)).toBeNull();
+    expect(within(cycle).queryByText(/^Sponsored by/)).toBeNull();
+  });
+
+  it("shows what lobbyists bundled, as already counted in individual contributions", async () => {
+    renderApp("/committee/C00800103");
+    const cycle = await screen.findByRole("region", { name: "In 2024" });
+
+    expect(within(cycle).getByText("Bundled by lobbyists: $22,500")).toBeInTheDocument();
+    expect(
+      within(cycle).getByText(/Already counted in individual contributions, so added to no total/),
+    ).toBeInTheDocument();
+    // Context, never a receipt: the committee's totals are what they were.
+    expect(rows("Totals by cycle").map(cells)[0].slice(0, 2)).toEqual(["2024", "$37,550"]);
+  });
+
+  it("shows no bundled total for a committee no lobbyist bundled to", async () => {
+    renderApp("/committee/C00800114");
+    await screen.findByRole("region", { name: "In 2024" });
+
+    expect(screen.queryByText(/^Bundled by lobbyists/)).toBeNull();
+  });
+
+  it("shows no bundled total before 2010, when FEC has no bundling reports", async () => {
+    renderApp("/committee/C00298003", {
+      handlers: [
+        http.get("/v1/committees/{committee_id}", ({ response }) =>
+          response(200).json(COMMITTEE_BUILDERS_PAC_1998),
+        ),
+      ],
+    });
+    await screen.findByRole("region", { name: "In 1998" });
+
+    expect(screen.queryByText(/^Bundled by lobbyists/)).toBeNull();
+    expect(screen.queryByText(/^Leadership PAC/)).toBeNull();
   });
 });

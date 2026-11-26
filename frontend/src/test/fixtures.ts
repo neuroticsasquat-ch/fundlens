@@ -880,8 +880,33 @@ export const CANDIDATE_CALDER_1998: Candidate = {
   ],
 };
 
+/**
+ * CALLOWAY's leadership PAC, as expected.yaml's gold has it: `CALLOWAY, RUTH` its sponsor by the
+ * name rule. Its money is its own, credited to no candidate (every-FEC-dollar spec §7.7).
+ */
+export const COMMITTEE_CALLOWAY_LEADERSHIP: Committee = {
+  committee_id: "C00800114",
+  name: "CALLOWAY LEADERSHIP FUND",
+  type: "Q",
+  designation: "D",
+  party: null,
+  connected_org: null,
+  is_conduit: false,
+  cycles: [
+    committeeCycle({
+      total_individual: 4000,
+      // Its $5,000 to CALLOWAY, never counted as hers.
+      total_to_candidates: 5000,
+      is_leadership_pac: true,
+      sponsor: { candidate_id: "H4MD05106", name: "CALLOWAY, RUTH" },
+      itemized_total: 4000,
+    }),
+  ],
+};
+
 export const COMMITTEES: Committee[] = [
   COMMITTEE_ACTBLUE,
+  COMMITTEE_CALLOWAY_LEADERSHIP,
   COMMITTEE_OKAFOR,
   COMMITTEE_BRICKLAYERS,
   COMMITTEE_MARYLAND_FORWARD,
