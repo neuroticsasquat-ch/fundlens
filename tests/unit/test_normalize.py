@@ -8,6 +8,7 @@ from fundlens.resolve.normalize import (
     Name,
     contributor_key,
     is_organization_name,
+    is_payee_organization_name,
     normalize_employer,
     normalize_name,
     normalize_occupation,
@@ -313,6 +314,58 @@ def test_is_organization_name(raw: str | None, expected: bool) -> None:
     assert is_organization_name(raw) is expected
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # The firms 2018's blank-type payee rows lost their pages under (NEU-2541).
+        "CHAIN BRIDGE BANK, N.A.",
+        "DEMOCRACY ENGINE, INC. PAC",
+        "VERDOLINO & LOWEY, P.C.",
+        "FAIRBANK, MASLIN, MAULIN, METZ & ASSOCIATES",
+        "IMAGE DIRECT,LLN",
+        "MERKLE RESPONSE SERVICES ,LNC",
+        "IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION",
+        "MARCUS,CLEGG,BALS & ROSENTHAL,PA",
+        # A P.C. ends a firm's name among payees, where the contributor classifier reads a person's.
+        "WEITZ & LUXENBERG, P.C.",
+        # Whatever the contributor classifier calls an organization, this one does too.
+        "ACME HOLDINGS, L.L.C.",
+        "NEA ADVOCACY FUND, ASSOCIATION",
+        "HARBORVIEW DIGITAL",
+    ],
+)
+def test_a_payee_name_with_a_payee_suffix_is_an_organization(raw: str) -> None:
+    assert is_payee_organization_name(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "SMITH, JOHN",
+        "COX, JOHN T. MR. III",
+        "BANK, LISSY",
+        # CPA ends people's names among payees too (2018: a third of its filed dollars are IND).
+        "BLACKMAN, PERRY CPA",
+        # A suffix's word inside a name, not at its end or before a PAC or DBA.
+        "GROUPER, ANN",
+        "SMITH, PAC MAN",
+        None,
+        "",
+        " . ",
+    ],
+)
+def test_a_payee_name_without_one_stays_a_person(raw: str | None) -> None:
+    assert not is_payee_organization_name(raw)
+
+
+def test_payee_suffix_names_the_suffix_that_decides() -> None:
+    assert normalize.payee_suffix("CHAIN BRIDGE BANK, N.A.") == "NA"
+    assert normalize.payee_suffix("DEMOCRACY ENGINE, INC. PAC") == "PAC"
+    assert normalize.payee_suffix("IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION") == "LLC"
+    assert normalize.payee_suffix("SMITH, JOHN") is None
+    assert normalize.payee_suffix(None) is None
+
+
 def test_contributor_key_joins_the_four_values_with_an_absent_one_empty() -> None:
     assert (
         contributor_key("MARLOWE, AUGUSTINE", "90250", "ASTRAX", "CEO")
@@ -351,7 +404,9 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
             " normalize_employer('Space Exploration Technologies Corp.'),"
             " normalize_occupation('RETIRED'), normalize_name(NULL),"
             " organization_key('Koch Industries, Inc.'), organization_key(NULL),"
-            " is_organization_name('ACME WIDGETS INC'), is_organization_name(NULL)"
+            " is_organization_name('ACME WIDGETS INC'), is_organization_name(NULL),"
+            " is_payee_organization_name('VERDOLINO & LOWEY, P.C.'),"
+            " is_payee_organization_name(NULL)"
         ).fetchone()
     assert row == (
         {
@@ -367,6 +422,8 @@ def test_the_normalizers_are_duckdb_functions_once_registered() -> None:
         {"first": None, "middle": None, "last": None, "suffix": None, "norm": ""},
         "KOCH INDUSTRIES",
         None,
+        True,
+        False,
         True,
         False,
     )

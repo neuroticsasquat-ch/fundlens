@@ -339,7 +339,7 @@ operating_expenditures:
       - [AMERICAN EXPRESS, AMERICAN EXPRESS, "3620.00", true]
       - [CHESAPEAKE PRINT WORKS, CHESAPEAKE PRINT WORKS INC, "3500.00", true]
       - [MORRISON AVERY, "MORRISON, AVERY", "2500.00", false]
-      - [HARBORVIEW DIGITAL, HARBORVIEW DIGITAL, "1800.00", true]
+      - [HARBORVIEW DIGITAL PC, "HARBORVIEW DIGITAL, P.C.", "1800.00", true]
       - [DELGADO MARIA, "DELGADO, MARIA", "400.00", false]
       - [CALLOWAY RUTH, "CALLOWAY, RUTH", "312.40", false]
     C00800107:
@@ -381,7 +381,7 @@ operating_expenditures:
     CHESAPEAKE PRINTWORKS: {name: CHESAPEAKE PRINTWORKS, city: BALTIMORE, state: MD, total: "2200.00", committees: 1, payers: [[C00800107, H4MD05107, "2200.00"]]}
     FIRST MARINER CARD SERVICES: {name: FIRST MARINER CARD SERVICES, city: BALTIMORE, state: MD, total: "1250.00", committees: 1, payers: [[C00800103, S4MD00103, "1250.00"]]}
     HARBOR LIGHT POLLING: {name: HARBOR LIGHT POLLING, city: ALEXANDRIA, state: VA, total: "30000.00", committees: 2, payers: [[C00703975, P00009423, "25000.00"], [C00800102, P40000102, "5000.00"]]}
-    HARBORVIEW DIGITAL: {name: HARBORVIEW DIGITAL, city: BALTIMORE, state: MD, total: "1800.00", committees: 1, payers: [[C00800106, H4MD05106, "1800.00"]]}
+    HARBORVIEW DIGITAL PC: {name: "HARBORVIEW DIGITAL, P.C.", city: BALTIMORE, state: MD, total: "1800.00", committees: 1, payers: [[C00800106, H4MD05106, "1800.00"]]}
     PATUXENT EVENTS: {name: PATUXENT EVENTS, city: LAUREL, state: MD, total: "3500.00", committees: 2, payers: [[C00800115, null, "2500.00"], [C00800113, S4MD00103, "1000.00"]]}
     SKYLINE AIR: {name: SKYLINE AIR, city: ARLINGTON, state: VA, total: "1250.00", committees: 1, payers: [[C00703975, P00009423, "1250.00"]]}
     STERLING PAGE LLP: {name: "STERLING & PAGE LLP", city: WASHINGTON, state: DC, total: "4500.00", committees: 1, payers: [[C00800101, P40000101, "4500.00"]]}
