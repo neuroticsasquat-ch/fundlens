@@ -246,20 +246,20 @@ def is_organization_name(raw: str | None) -> bool:
 # ('VERDOLINO & LOWEY, P.C.', 'CHAIN BRIDGE BANK, N.A.', '… & ASSOCIATES'), and two typos of INC
 # and LLC ('MERKLE RESPONSE SERVICES ,LNC', 'IMAGE DIRECT,LLN'). A payee is paid by a committee, so
 # a PC or CO at its end is a firm's far more often than in `indiv`, where it ends people's names.
-# Change them only by measuring again (docs/measurements/payee-names-2018.md).
+# CPA and BANK are out: on 2018's filed rows CPA ends people's names a third of the time ('BLACKMAN,
+# PERRY CPA'), and BANK ends no name filed as an organization's that V8 misses. Change them only by
+# measuring again (docs/measurements/payee-names-2018.md).
 PAYEE_SUFFIXES = frozenset(
     {
         "PC",
         "PA",
         "NA",
-        "CPA",
         "PAC",
         "PLC",
         "CO",
         "COMPANY",
         "ASSOCIATES",
         "GROUP",
-        "BANK",
         "LNC",
         "LLN",
     }

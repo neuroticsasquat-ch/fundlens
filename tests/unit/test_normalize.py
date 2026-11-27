@@ -344,6 +344,8 @@ def test_a_payee_name_with_a_payee_suffix_is_an_organization(raw: str) -> None:
         "SMITH, JOHN",
         "COX, JOHN T. MR. III",
         "BANK, LISSY",
+        # CPA ends people's names among payees too (2018: a third of its filed dollars are IND).
+        "BLACKMAN, PERRY CPA",
         # A suffix's word inside a name, not at its end or before a PAC or DBA.
         "GROUPER, ANN",
         "SMITH, PAC MAN",

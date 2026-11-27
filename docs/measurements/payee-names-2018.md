@@ -12,9 +12,9 @@ P.C.`, `DEMOCRACY ENGINE, INC. PAC`). This measures the payee classifier NEU-254
 
 | What | Value |
 | --- | --- |
-| Run | **Not yet run.** Between two backfill cycles, by hand over SSH on `music-box-dancer` |
-| Silver | 2018's held build, `~/fundlens-efd-backfill/2018-held-<build>/build-id.txt` (built with the contributor classifier, not published) |
-| Code | The deployed `main`. Before NEU-2541 merges it lacks `payee_suffix`, and the script uses its own copy of the PR's rule (its first line says which) |
+| Run | 2026-11-27, between two backfill cycles, by hand over SSH on `music-box-dancer`; output in `~/fundlens-efd-backfill/2018-held-20261127T014447Z/payees2541.txt` (the first list) and `payees2541-final.txt` |
+| Silver | 2018's held build `20261127T014447Z`, built with the contributor classifier and not published (section A: all 1,254,329 payee rows agree with it) |
+| Code | The deployed `main`, before NEU-2541: the script used its own copy of the PR's rule, as its first line said |
 
 ## How to re-run
 
@@ -46,7 +46,8 @@ It prints sections A to I:
 - **E.** The 25 largest filed IND/CAN names the payee rule reads as an organization's.
 - **F.** Keys with blank-type person rows, and how many lose their page, under each rule.
 - **G.** The 25 largest keys with blank-type rows the payee rule still reads as a person's.
-  NEU-2541's bar: no firm among them with `loses_page` true.
+  NEU-2541's bar, as amended on 2026-11-27: no firm whose name ends in a payee suffix among them with
+  `loses_page` true. A suffix rule reaches no other.
 - **H.** The 25 largest keys the payee rule moves to an organization's: read them for a person.
 - **I.** Pages the payee rule gives back and takes away.
 
@@ -78,8 +79,7 @@ except ImportError:
     # The deployed code predates NEU-2541: its rule, as the PR writes it.
     RULE = "this script's copy of NEU-2541's"
     PAYEE_SUFFIXES = frozenset(
-        {"PC", "PA", "NA", "CPA", "PAC", "PLC", "CO", "COMPANY", "ASSOCIATES", "GROUP", "BANK",
-         "LNC", "LLN"}
+        {"PC", "PA", "NA", "PAC", "PLC", "CO", "COMPANY", "ASSOCIATES", "GROUP", "LNC", "LLN"}
     )
     FOLLOWERS = frozenset({"PAC", "DBA"})
 
@@ -143,13 +143,13 @@ print("A. Which rule the build's payee_is_person is: rows agreeing with each")
 con.sql(
     "SELECT count(*) AS rows, count(*) FILTER (WHERE payee_is_person = old_person) AS as_contributor_rule,"
     " count(*) FILTER (WHERE payee_is_person = new_person) AS as_payee_rule FROM r"
-).show()
+).show(max_rows=100)
 
 print("B. Payee dollars by ENTITY_TP: filed or blank")
 con.sql(
     "SELECT entity_type IS NOT NULL AS filed, count(*) AS rows, sum(amount) AS amount,"
     " round(100 * sum(amount) / sum(sum(amount)) OVER (), 2) AS pct FROM r GROUP BY ALL ORDER BY ALL"
-).show()
+).show(max_rows=100)
 
 print("C. Filed rows: each rule against ENTITY_TP, as a share of each side's dollars (gate: <= 1.00, not rising)")
 con.sql(
@@ -158,7 +158,7 @@ con.sql(
     " / sum(amount) FILTER (WHERE NOT person_tp), 2) AS organizations_read_as_persons"
     " FROM (SELECT amount, entity_type IN ('IND', 'CAN') AS person_tp, unnest(['contributor', 'payee']) AS rule,"
     " unnest([old_org, new_org]) AS org FROM r WHERE entity_type IS NOT NULL) GROUP BY rule ORDER BY rule"
-).show()
+).show(max_rows=100)
 
 print("D. Each suffix, on the names the contributor rule reads as a person's and the payee rule does not")
 con.sql(
@@ -170,14 +170,14 @@ con.sql(
     " count(*) FILTER (WHERE entity_type IS NULL) AS blank_rows,"
     " coalesce(sum(amount) FILTER (WHERE entity_type IS NULL), 0) AS blank_dollars"
     " FROM r WHERE NOT old_org AND suffix IS NOT NULL GROUP BY suffix ORDER BY blank_dollars DESC, suffix"
-).show(max_rows=100, max_width=250)
+).show(max_rows=100, max_width=300)
 
 print("E. The 25 largest filed IND/CAN names the payee rule reads as an organization's (by eye: what it misreads)")
 con.sql(
     "SELECT payee_name, entity_type, suffix, count(*) AS rows, sum(amount) AS amount FROM r"
     " WHERE NOT old_org AND new_org AND entity_type IN ('IND', 'CAN')"
     " GROUP BY ALL ORDER BY amount DESC, payee_name LIMIT 25"
-).show(max_width=250)
+).show(max_rows=100, max_width=300)
 
 # The page rule (spec §5.4) over this cycle's dollars alone: gold weighs every cycle, so a firm with
 # filed ORG rows in another cycle may keep a page this says it loses.
@@ -200,28 +200,85 @@ con.sql(
     " count(*) FILTER (WHERE old_blank_p > 0 AND old_loses) AS lose_page FROM k"
     " UNION ALL SELECT 'payee', count(*) FILTER (WHERE new_blank_p > 0), sum(new_blank_p),"
     " count(*) FILTER (WHERE new_blank_p > 0 AND new_loses) FROM k ORDER BY rule"
-).show()
+).show(max_rows=100)
 
 print("G. Under the payee rule: the 25 largest keys with blank-type rows read as a person's (DoD: no firm with loses_page)")
 con.sql(
     "SELECT payee_key, name, new_blank_p AS blank_person, total, new_loses AS loses_page, old_loses AS lost_before"
     " FROM k WHERE new_blank_p > 0 ORDER BY new_blank_p DESC, payee_key LIMIT 25"
-).show(max_width=250)
+).show(max_rows=100, max_width=300)
 
 print("H. The 25 largest keys whose blank-type rows the payee rule moves to an organization's (by eye: no person)")
 con.sql(
     "SELECT payee_key, name, suffix, flipped, total, filed_person, old_loses AS lost_before, new_loses AS loses_page"
     " FROM k WHERE flipped > 0 ORDER BY flipped DESC, payee_key LIMIT 25"
-).show(max_width=250)
+).show(max_rows=100, max_width=300)
 
 print("I. Pages the payee rule gives back and takes away, on this cycle's dollars")
 con.sql(
     "SELECT count(*) FILTER (WHERE old_loses AND NOT new_loses) AS pages_given_back,"
     " sum(total) FILTER (WHERE old_loses AND NOT new_loses) AS their_dollars,"
     " count(*) FILTER (WHERE new_loses AND NOT old_loses) AS pages_taken FROM k"
-).show()
+).show(max_rows=100)
 ```
 
 ## Results
 
-Not yet run.
+Payee rows, 2018: 1,254,329 rows and $4,192,100,980.91. `ENTITY_TP` is blank on 96,542 of them,
+$382,034,687.24 (9.11%), where the name decides.
+
+**The first list** had `CPA` and `BANK` too. On the names only it moves, `CPA` was 67.18% organization dollars on
+filed rows: `BLACKMAN, PERRY CPA` is $68,225 filed IND, and `HEINITZ, MARK CPA` and three more are people. `BANK`
+was 0%: 25 filed IND rows ($10,618.70) and no organization's, though those 'persons' are banks a filer typed IND
+(`FIRST, BANK`, `FRONTIER, BANK`). Both are out. With them the payee rule read 0.72% of person dollars as an
+organization's.
+
+**The final list** (`PC PA NA PAC PLC CO COMPANY ASSOCIATES GROUP LNC LLN`), on filed rows:
+
+| Rule | Person dollars read as an organization's | Organization dollars read as a person's |
+| --- | --- | --- |
+| Contributor (`is_organization_name`, V8) | 0.70% | 0.68% |
+| Payee (`is_payee_organization_name`) | 0.70% | 0.37% |
+
+Each suffix over the names only it moves (section D):
+
+| Suffix | Filed person $ | Filed organization $ | Organization share | Blank $ |
+| --- | --- | --- | --- | --- |
+| NA | 7,543 | 1,508,369 | 99.50% | 592,703 |
+| PC | 0 | 2,263,154 | 100% | 488,879 |
+| PAC | 0 | 91,560 | 100% | 478,202 |
+| COMPANY | 0 | 834,274 | 100% | 342,270 |
+| ASSOCIATES | 0 | 4,349,462 | 100% | 325,864 |
+| LLN | 0 | 0 | — | 157,307 |
+| GROUP | 0 | 35,235 | 100% | 64,741 |
+| LNC | 0 | 0 | — | 40,271 |
+| LLC, before DBA or PAC | 0 | 456,953 | 100% | 30,000 |
+| PA | 0 | 584,594 | 100% | 20,300 |
+| CO | 1,463 | 21,685 | 93.68% | 12,806 |
+| INC, before DBA or PAC | 0 | 235,712 | 100% | 1,696 |
+| PLC | 0 | 167,090 | 100% | 1,234 |
+
+The filed IND/CAN names it reads as an organization's are six, $9,006, every one a firm or a placeholder a filer typed
+as a person (`BARCLAYCARDUS, NA`, `APFEL, LEVY, ZLOTNICK & CO., -`, `SUMMARY, NA`, `FEDEX USA, NA`). Read by eye, none
+of the 25 largest keys it moves to an organization's is a person's (section H): `CHAIN BRIDGE BANK N.A.`
+($574,428), `DEMOCRACY ENGINE, INC. PAC`, `VERDOLINO & LOWEY, P.C.`, `FAIRBANK, MASLIN, MAULIN, METZ & ASSOCIATES`,
+`IMAGE DIRECT,LLN` first.
+
+**Pages, on 2018's dollars alone** (sections F, I):
+
+| Rule | Keys with blank-type person rows | Their blank person $ | Of them, losing their page |
+| --- | --- | --- | --- |
+| Contributor | 431 | 3,681,870.65 | 345 |
+| Payee | 362 | 1,125,597.42 | 309 |
+
+The payee rule gives 36 keys their page back ($2,962,949.18) and takes none away.
+
+**What it leaves** (section G). Of the 25 largest keys whose blank-type rows it still reads as a person's, 11 are
+firms that lose their page, and no payee suffix ends any of them: a split initial (`CHAIN BRIDGE BANK, N,A`,
+$55,440, beside `CHAIN BRIDGE BANK N.A.`'s own page), a name with no suffix (`LNEMARK, PRINTING` $46,078; `DEPT OF
+TREASURY, IRS,` $39,171), a suffix run into the word before it (`FLANAGAN,FULKERSON&CO.LLC`), `LP`, which V8 left out
+because people's names end in it (`1000 UNIVERSITY AVENUE PROPERTIES, LP`), and misspelt legal forms (`, ICN` twice,
+`,LIC`, `, LLCQ`, `, LL`, `, LLX`; $9,200 to $15,371 each). Five are people (`LAFAVE, LORI,`, `ROSS, BRITTON`,
+`JONES, JUSTIN C`, `THOMAS, STEVEN G`, `POSIN, JULIA JAYE`); the other nine keep their page. A suffix rule cannot
+reach the rest without reading people's names as firms, so they are left: gold weighs every cycle, and a firm
+with filed rows elsewhere keeps its page.
