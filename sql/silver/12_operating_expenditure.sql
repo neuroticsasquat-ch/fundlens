@@ -36,8 +36,9 @@
 --
 -- payee_key is organization_key over the payee's name (§5.4, ADR-0012): exact grouping, no
 -- linkage. The function is Python, so it runs once per distinct name, not per row; NULL for a
--- row with no name. payee_is_person: ENTITY_TP IND or CAN, or blank and the name one the
--- classifier (resolve.normalize.is_organization_name, NEU-2132) does not call an organization's,
+-- row with no name. payee_is_person: ENTITY_TP IND or CAN, or blank and the name one the payee
+-- classifier (resolve.normalize.is_payee_organization_name, NEU-2541: the contributor classifier
+-- of NEU-2132, or a payee suffix such as P.C., N.A. or PAC) does not call an organization's,
 -- asked once per distinct blank-typed name. is_in_kind: a row naming a TRAN_ID no row of its
 -- filing holds (most name a receipt on it, Q7c), or a purpose naming a gift received: IN-KIND,
 -- but not an in-kind contribution the committee made or pays ahead for, or crypto received
@@ -126,7 +127,7 @@ payee_name AS (
     FROM (SELECT DISTINCT NAME FROM spending WHERE NAME IS NOT NULL)
 ),
 payee_class AS (
-    SELECT NAME AS raw, is_organization_name(NAME) AS is_organization
+    SELECT NAME AS raw, is_payee_organization_name(NAME) AS is_organization
     FROM (
         SELECT DISTINCT NAME
         FROM spending

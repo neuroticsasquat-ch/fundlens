@@ -340,7 +340,8 @@ tail -3 verify.sql
 # VM, in tmux
 cat > silver.py <<'EOF'
 """One build's silver: outside spending by kind and source file; with --payees, the payee person
-rule against ENTITY_TP (every-FEC-dollar spec §5.4). `silver.py <cycle> <build> [--payees]`."""
+rule (is_payee_organization_name, NEU-2541) against ENTITY_TP (every-FEC-dollar spec §5.4).
+`silver.py <cycle> <build> [--payees]`."""
 
 import sys
 
@@ -376,7 +377,7 @@ if "--payees" in sys.argv[3:]:
     con.execute(f"CREATE TEMP TABLE oe AS SELECT payee_key, payee_name, entity_type, payee_is_person,"
                 f" amount FROM {parquet('operating_expenditure')}"
                 f" WHERE counted AND payee_key IS NOT NULL AND NOT is_in_kind")
-    con.execute("CREATE TEMP TABLE cls AS SELECT payee_name, is_organization_name(payee_name) AS org"
+    con.execute("CREATE TEMP TABLE cls AS SELECT payee_name, is_payee_organization_name(payee_name) AS org"
                 " FROM (SELECT DISTINCT payee_name FROM oe WHERE payee_name IS NOT NULL)")
     print("Payee dollars by ENTITY_TP: filed or blank")
     con.sql("SELECT entity_type IS NOT NULL AS filed, count(*) AS rows, sum(amount) AS amount,"

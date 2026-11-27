@@ -1137,10 +1137,12 @@ def spending_in_kind(row: Row) -> bool:
 
 
 def payee_is_person(row: Row) -> bool:
-    """Spec §5.4: typed IND or CAN, or untyped with a name the classifier calls no
+    """Spec §5.4: typed IND or CAN, or untyped with a name the payee classifier calls no
     organization's."""
     return row["ENTITY_TP"] in ("IND", "CAN") or bool(
-        not row["ENTITY_TP"] and row["NAME"] and not normalize.is_organization_name(row["NAME"])
+        not row["ENTITY_TP"]
+        and row["NAME"]
+        and not normalize.is_payee_organization_name(row["NAME"])
     )
 
 

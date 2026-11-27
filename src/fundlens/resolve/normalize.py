@@ -12,7 +12,8 @@ distinct value once rather than to every contribution row.
 
 `organization_key` (spec §4, ADR-0011) groups an organization's receipts by the same employer
 rule: no linkage, so two spellings share a key or they are two organizations. `is_organization_name`
-(spec §4, NEU-2132) decides whether a row FEC filed with no entity type is an organization's.
+(spec §4, NEU-2132) decides whether a row FEC filed with no entity type is an organization's;
+`is_payee_organization_name` (every-FEC-dollar spec §5.4, NEU-2541) decides it for a payee.
 """
 
 import re
@@ -240,6 +241,59 @@ def is_organization_name(raw: str | None) -> bool:
     return False
 
 
+# The payee classifier's own suffixes (every-FEC-dollar spec §5.4, NEU-2541): the forms a firm's
+# name ends in that `STRICT_LEGAL_SUFFIXES` leaves out, as committees write their payees
+# ('VERDOLINO & LOWEY, P.C.', 'CHAIN BRIDGE BANK, N.A.', '… & ASSOCIATES'), and two typos of INC
+# and LLC ('MERKLE RESPONSE SERVICES ,LNC', 'IMAGE DIRECT,LLN'). A payee is paid by a committee, so
+# a PC or CO at its end is a firm's far more often than in `indiv`, where it ends people's names.
+# Change them only by measuring again (docs/measurements/payee-names-2018.md).
+PAYEE_SUFFIXES = frozenset(
+    {
+        "PC",
+        "PA",
+        "NA",
+        "CPA",
+        "PAC",
+        "PLC",
+        "CO",
+        "COMPANY",
+        "ASSOCIATES",
+        "GROUP",
+        "BANK",
+        "LNC",
+        "LLN",
+    }
+)
+# Words a firm's name goes on after: its suffix is the word before ('DEMOCRACY ENGINE, INC. PAC',
+# 'IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION').
+_PAYEE_SUFFIX_FOLLOWERS = frozenset({"PAC", "DBA"})
+
+
+def payee_suffix(raw: str | None) -> str | None:
+    """The suffix that makes `raw`, a payee's name, a firm's: its last word, or a word before a PAC
+    or DBA, when that is a strict legal suffix or a payee suffix ('CHAIN BRIDGE BANK, N.A.' is
+    'NA'); None when there is none."""
+    if raw is None:
+        return None
+    tokens = _name_tokens(raw)
+    ends = [tokens[-1]] if tokens else []
+    ends += [tokens[i - 1] for i in range(1, len(tokens)) if tokens[i] in _PAYEE_SUFFIX_FOLLOWERS]
+    for end in ends:
+        if end in STRICT_LEGAL_SUFFIXES or end in PAYEE_SUFFIXES:
+            return end
+    return None
+
+
+def is_payee_organization_name(raw: str | None) -> bool:
+    """Whether `raw`, a payee's name FEC filed with a blank entity type, is an organization's
+    (every-FEC-dollar spec §5.4): `is_organization_name` says so, or it has a payee suffix
+    (`payee_suffix`). The contributor classifier is left as V8 measured it, since receipts and
+    resolution read it; this one reads spending's payees, where firms written with a comma and a
+    P.C., N.A. or PAC ('VERDOLINO & LOWEY, P.C.') are common and its comma rule took them for
+    persons."""
+    return is_organization_name(raw) or payee_suffix(raw) is not None
+
+
 def normalize_occupation(raw: str | None) -> str | None:
     """`raw` cleaned; None when it names no occupation ('RETIRED', 'N/A')."""
     if raw is None:
@@ -276,8 +330,9 @@ def _name_struct(raw: str | None) -> dict[str, str | None]:
 def register(con: duckdb.DuckDBPyConnection) -> None:
     """Make the normalizers DuckDB functions on `con`: `normalize_name` (a struct of the `Name`
     parts and its `norm`), `zip5`, `normalize_employer`, `normalize_occupation`,
-    `organization_key` and `is_organization_name`. They see a NULL as None, so a NULL name is a
-    struct of NULL parts with an empty `norm`, and no organization's."""
+    `organization_key`, `is_organization_name` and `is_payee_organization_name`. They see a NULL
+    as None, so a NULL name is a struct of NULL parts with an empty `norm`, and no
+    organization's."""
     udfs = (
         ("normalize_name", _name_struct, NAME_TYPE),
         ("zip5", zip5, "VARCHAR"),
@@ -285,6 +340,7 @@ def register(con: duckdb.DuckDBPyConnection) -> None:
         ("normalize_occupation", normalize_occupation, "VARCHAR"),
         ("organization_key", organization_key, "VARCHAR"),
         ("is_organization_name", is_organization_name, "BOOLEAN"),
+        ("is_payee_organization_name", is_payee_organization_name, "BOOLEAN"),
     )
     for name, function, returns in udfs:
         # DuckDB's stub leaves one overload's return type unknown.

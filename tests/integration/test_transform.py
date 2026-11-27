@@ -2490,6 +2490,8 @@ NAMES_ITSELF, YEAR_9201, UNDATED_SPENDING = (
     4240400000000000046,
     4240400000000000050,
 )
+# Its firm filed with no ENTITY_TP and written with a comma and a P.C. (NEU-2541).
+HARBORVIEW_PC = 4240400000000000040
 # Its purposes naming no IN-KIND or a gift the committee made (NEU-2464): crypto received, an
 # in-kind contribution made, and an advance for in-kind contributions to come.
 CRYPTO_RECEIVED, IN_KIND_MADE, IN_KIND_ADVANCE = (
@@ -2541,6 +2543,14 @@ def test_operating_expenditures_count_a_sub_itemized_payment_once_and_net_as_fil
         sorted(sub_id for sub_id, row in by_id.items() if row["payee_is_person"])
         == (expected["persons"])
     )
+    # The payee classifier reads a firm's P.C. as an organization's, where the contributor
+    # classifier's comma rule would take it for a person's (NEU-2541).
+    harborview = by_id[HARBORVIEW_PC]
+    assert (harborview["payee_name"], harborview["entity_type"]) == (
+        "HARBORVIEW DIGITAL, P.C.",
+        None,
+    )
+    assert not harborview["payee_is_person"]
     assert {
         sub_id: row["fec_category"]
         for sub_id, row in by_id.items()
