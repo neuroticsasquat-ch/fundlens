@@ -326,6 +326,17 @@ def test_is_organization_name(raw: str | None, expected: bool) -> None:
         "MERKLE RESPONSE SERVICES ,LNC",
         "IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION",
         "MARCUS,CLEGG,BALS & ROSENTHAL,PA",
+        # The firms whose 2018 blank-type payee rows still lost them their pages after NEU-2541
+        # (NEU-2566): a misspelt legal form, an LP, a CO fused to its LLC, and N,A split by a comma.
+        "CIVIS ANALYTICS, ICN",
+        "GORDON, AND SCHWENKMEYER, ICN",
+        "TRILOGY INTERACTIVE, LLCQ",
+        "BURDICK CONSULTING GROUP, LLX",
+        "NEW BLUE INTERACTIVE, LL",
+        "JOHNSON PRO SERVICES,LIC",
+        "1000 UNIVERSITY AVENUE PROPERTIES, LP",
+        "FLANAGAN,FULKERSON&CO.LLC",
+        "CHAIN BRIDGE BANK, N,A",
         # A P.C. ends a firm's name among payees, where the contributor classifier reads a person's.
         "WEITZ & LUXENBERG, P.C.",
         # Whatever the contributor classifier calls an organization, this one does too.
@@ -349,6 +360,11 @@ def test_a_payee_name_with_a_payee_suffix_is_an_organization(raw: str) -> None:
         # A suffix's word inside a name, not at its end or before a PAC or DBA.
         "GROUPER, ANN",
         "SMITH, PAC MAN",
+        # N and A split by anything but a comma is the N/A placeholder, which filers type as a
+        # person's name ('OTHER, N/A': 2018's filed rows, 15% organization dollars).
+        "OTHER, N/A",
+        # A CO fused to a word that is no legal form.
+        "SMITH, COLIN",
         None,
         "",
         " . ",
@@ -362,6 +378,10 @@ def test_payee_suffix_names_the_suffix_that_decides() -> None:
     assert normalize.payee_suffix("CHAIN BRIDGE BANK, N.A.") == "NA"
     assert normalize.payee_suffix("DEMOCRACY ENGINE, INC. PAC") == "PAC"
     assert normalize.payee_suffix("IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION") == "LLC"
+    # The comma-split N,A is read as NA, and a legal form fused to CO as that form.
+    assert normalize.payee_suffix("CHAIN BRIDGE BANK, N,A") == "NA"
+    assert normalize.payee_suffix("FLANAGAN,FULKERSON&CO.LLC") == "LLC"
+    assert normalize.payee_suffix("CIVIS ANALYTICS, ICN") == "ICN"
     assert normalize.payee_suffix("SMITH, JOHN") is None
     assert normalize.payee_suffix(None) is None
 

@@ -245,10 +245,12 @@ def is_organization_name(raw: str | None) -> bool:
 # name ends in that `STRICT_LEGAL_SUFFIXES` leaves out, as committees write their payees
 # ('VERDOLINO & LOWEY, P.C.', 'CHAIN BRIDGE BANK, N.A.', '… & ASSOCIATES'), and two typos of INC
 # and LLC ('MERKLE RESPONSE SERVICES ,LNC', 'IMAGE DIRECT,LLN'). A payee is paid by a committee, so
-# a PC or CO at its end is a firm's far more often than in `indiv`, where it ends people's names.
-# CPA and BANK are out: on 2018's filed rows CPA ends people's names a third of the time ('BLACKMAN,
-# PERRY CPA'), and BANK ends no name filed as an organization's that V8 misses. Change them only by
-# measuring again (docs/measurements/payee-names-2018.md).
+# a PC, CO or LP at its end is a firm's far more often than in `indiv`, where it ends people's
+# names. NEU-2566 added LP and five more typos ('CIVIS ANALYTICS, ICN', 'TRILOGY INTERACTIVE,
+# LLCQ', '…, LLX', '…, LL', '…,LIC'). CPA and BANK are out: on 2018's filed rows CPA ends people's
+# names a third of the time ('BLACKMAN, PERRY CPA'), and BANK ends no name filed as an
+# organization's that V8 misses. Change them only by measuring again
+# (docs/measurements/payee-names-2018.md).
 PAYEE_SUFFIXES = frozenset(
     {
         "PC",
@@ -260,22 +262,44 @@ PAYEE_SUFFIXES = frozenset(
         "COMPANY",
         "ASSOCIATES",
         "GROUP",
+        "LP",
         "LNC",
         "LLN",
+        "ICN",
+        "LLCQ",
+        "LLX",
+        "LL",
+        "LIC",
     }
 )
 # Words a firm's name goes on after: its suffix is the word before ('DEMOCRACY ENGINE, INC. PAC',
 # 'IMPREMEDIA OPERATING COMPANY, LLC DBA LA OPINION').
 _PAYEE_SUFFIX_FOLLOWERS = frozenset({"PAC", "DBA"})
+# N and A at a name's end split by a comma alone ('CHAIN BRIDGE BANK, N,A'). Split by a slash they
+# are the N/A placeholder ('OTHER, N/A'), which filers type as a person's name.
+_COMMA_SPLIT_NA = re.compile(r"[^A-Z0-9]N\s*,\s*A\W*$")
+
+
+def _payee_name_tokens(raw: str) -> list[str]:
+    """`raw` tokenized as `_name_tokens` does, then read as a payee's (NEU-2566): a comma-split N,A
+    at its end is NA, and a last word that is CO fused to a strict legal suffix is CO and that
+    suffix ('FLANAGAN,FULKERSON&CO.LLC' is … CO LLC, its period having been deleted)."""
+    tokens = _name_tokens(raw)
+    if len(tokens) >= 3 and tokens[-2:] == ["N", "A"] and _COMMA_SPLIT_NA.search(raw.upper()):
+        tokens[-2:] = ["NA"]
+    if tokens and tokens[-1].startswith("CO") and tokens[-1][2:] in STRICT_LEGAL_SUFFIXES:
+        tokens[-1:] = ["CO", tokens[-1][2:]]
+    return tokens
 
 
 def payee_suffix(raw: str | None) -> str | None:
     """The suffix that makes `raw`, a payee's name, a firm's: its last word, or a word before a PAC
-    or DBA, when that is a strict legal suffix or a payee suffix ('CHAIN BRIDGE BANK, N.A.' is
-    'NA'); None when there is none."""
+    or DBA, when that is a strict legal suffix or a payee suffix ('CHAIN BRIDGE BANK, N.A.' and
+    'CHAIN BRIDGE BANK, N,A' are 'NA'); None when there is none. It reads the words
+    `_payee_name_tokens` gives."""
     if raw is None:
         return None
-    tokens = _name_tokens(raw)
+    tokens = _payee_name_tokens(raw)
     ends = [tokens[-1]] if tokens else []
     ends += [tokens[i - 1] for i in range(1, len(tokens)) if tokens[i] in _PAYEE_SUFFIX_FOLLOWERS]
     for end in ends:
